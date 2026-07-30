@@ -404,6 +404,17 @@ install_panel_blur_unit() {
     run systemctl --user daemon-reload
     run systemctl --user enable tahoe-glass-panel-blur.service >/dev/null 2>&1 || true
     ok "tahoe-glass-panel-blur.service enabled"
+
+    # Enabling only queues the unit for the *next* graphical-session.target, so
+    # a session that is already up keeps the mismatched strip until logout —
+    # which reads as "the blur is broken" immediately after running this. Kick
+    # it once now if a session is live. --no-block because the unit deliberately
+    # sleeps 12s waiting for geometry to settle, and there is no reason to hold
+    # the installer for that.
+    if systemctl --user is-active --quiet graphical-session.target 2>/dev/null; then
+        run systemctl --user start --no-block tahoe-glass-panel-blur.service 2>/dev/null || true
+        info "rebuilding panel blur in the current session (~15s)"
+    fi
 }
 
 finish() {
