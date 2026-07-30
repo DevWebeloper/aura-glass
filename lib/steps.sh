@@ -654,61 +654,41 @@ flatpak_override() {
 }
 
 install_panel_blur_unit() {
-    step "Blur My Shell panel fix at login"
+    step "Blur My Shell panel blur rebuild"
 
-    # Blur My Shell builds one background actor per monitor and clips it to the
-    # panel geometry, which is not settled at login — the left part of the bar
-    # can end up showing a mismatched strip. Toggling the blur once the session
-    # has settled rebuilds the actor against correct geometry.
-    #
-    # This only ever manifested on a multi-monitor setup, and the workaround is
-    # not free: the unit deliberately sleeps 12s after login, which is a long
-    # time to wait for something most people do not have. Off unless asked for,
-    # and a previously installed unit is taken back out, so a plain re-run does
-    # not leave the delay behind.
-    # bms-panel-blur-rebuild is what this unit was called before the project
-    # was named, and it is still enabled on machines set up by hand back then.
-    local units="tahoe-glass-panel-blur.service bms-panel-blur-rebuild.service"
-
-    if [ "${WANT_PANEL_BLUR_FIX:-0}" != 1 ]; then
+    if [ "${WANT_PANEL_BLUR_FIX:-1}" != 1 ]; then
+        # bms-panel-blur-rebuild is the name this carried before the project
+        # was named, and is still enabled on machines set up by hand back then.
         local found=0 u
-        for u in $units; do
+        for u in tahoe-glass-panel-blur.service bms-panel-blur-rebuild.service; do
             [ -f "$HOME/.config/systemd/user/$u" ] || continue
             found=1
             run systemctl --user disable --now "$u" >/dev/null 2>&1 || true
             run rm -f "$HOME/.config/systemd/user/$u"
             ok "removed $u"
         done
-        if [ "$found" = 1 ]; then
-            run systemctl --user daemon-reload
-            info "no more 12s wait after login — --panel-blur-fix puts it back"
-        else
-            skip "not installed — pass --panel-blur-fix if the top bar shows a mismatched strip"
-        fi
+        [ "$found" = 1 ] && run systemctl --user daemon-reload
+        skip "not installed (--no-panel-blur-fix)"
         return 0
     fi
 
-    # Replacing the legacy unit rather than running both.
     if [ -f "$HOME/.config/systemd/user/bms-panel-blur-rebuild.service" ]; then
         run systemctl --user disable --now bms-panel-blur-rebuild.service >/dev/null 2>&1 || true
         run rm -f "$HOME/.config/systemd/user/bms-panel-blur-rebuild.service"
     fi
+
+    run install -Dm755 "$REPO_ROOT/bin/tahoe-glass-panel-blur" \
+        "$HOME/.local/bin/tahoe-glass-panel-blur"
     run install -Dm644 "$REPO_ROOT/systemd/tahoe-glass-panel-blur.service" \
         "$HOME/.config/systemd/user/tahoe-glass-panel-blur.service"
     run systemctl --user daemon-reload
     run systemctl --user enable tahoe-glass-panel-blur.service >/dev/null 2>&1 || true
-    ok "tahoe-glass-panel-blur.service enabled"
 
-    # Enabling only queues the unit for the *next* graphical-session.target, so
-    # a session that is already up keeps the mismatched strip until logout —
-    # which reads as "the blur is broken" immediately after running this. Kick
-    # it once now if a session is live. --no-block because the unit deliberately
-    # sleeps 12s waiting for geometry to settle, and there is no reason to hold
-    # the installer for that.
+    # enable only arms it for the next login, and the strip is on screen now.
     if systemctl --user is-active --quiet graphical-session.target 2>/dev/null; then
-        run systemctl --user start --no-block tahoe-glass-panel-blur.service 2>/dev/null || true
-        info "rebuilding panel blur in the current session (~15s)"
+        run systemctl --user restart tahoe-glass-panel-blur.service 2>/dev/null || true
     fi
+    ok "panel blur rebuilds on every monitor change, and once at login"
 }
 
 finish() {

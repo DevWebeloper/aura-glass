@@ -23,7 +23,7 @@ WANT_ICONS=1
 WANT_CURSORS=1
 WANT_WM_BUTTONS=1
 WANT_DEPS=1
-WANT_PANEL_BLUR_FIX=0
+WANT_PANEL_BLUR_FIX=1
 CURSORS="adwaita"   # adwaita | mactahoe
 GRAIN=""          # empty keeps the preset's value, or the remembered choice
 ASSUME_YES=0
@@ -48,9 +48,10 @@ ${C_BLD}tahoe-glass${C_OFF} — a macOS Tahoe glass desktop for GNOME 48-50
                       How heavy it reads depends on the screen and the GPU;
                       drop it if the background looks like static
     --no-grain        no grain at all (same as --grain 0)
-    --panel-blur-fix  install a login-time unit that rebuilds the panel blur
-                      12s in. Only worth it on multi-monitor, where the top
-                      bar can come up with a mismatched strip
+    --no-panel-blur-fix
+                      skip the agent that rebuilds Blur My Shell's panel blur
+                      when the monitor layout changes. Without it the top bar
+                      can show a strip that doesn't line up with the wallpaper
     --cursors WHICH   adwaita (default, ships with GNOME) or mactahoe
     --no-icons        keep your current icon theme
     --no-cursors      keep your current cursor theme
@@ -75,7 +76,8 @@ while [ $# -gt 0 ]; do
         --grain)         GRAIN="${2:-}"; shift 2 ;;
         --grain=*)       GRAIN="${1#*=}"; shift ;;
         --no-grain)      GRAIN=0; shift ;;
-        --panel-blur-fix) WANT_PANEL_BLUR_FIX=1; shift ;;
+        --panel-blur-fix)    WANT_PANEL_BLUR_FIX=1; shift ;;
+        --no-panel-blur-fix) WANT_PANEL_BLUR_FIX=0; shift ;;
         --cursors)       CURSORS="${2:-}"; shift 2 ;;
         --cursors=*)     CURSORS="${1#*=}"; shift ;;
         --no-icons)      WANT_ICONS=0; shift ;;
