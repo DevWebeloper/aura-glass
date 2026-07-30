@@ -303,6 +303,97 @@ install_cursors() {
 
 # --------------------------------------------------------------- css + dconf --
 
+# The CSS is written in logical pixels and was tuned on a 3440x1440 34" display
+# — 109 logical PPI. GNOME's stylesheet has no media queries, so those numbers
+# are the same on every screen and a dense panel renders them proportionally
+# smaller: at the 144 PPI of a 15" 1080p laptop the top bar status icons come
+# out a third under the size they were drawn for. Measure the panel at install
+# time and emit corrected rules.
+TUNED_PPI=109
+
+# Logical PPI of the primary output, or nothing if it cannot be measured.
+measure_logical_ppi() {
+    python3 - <<'PY' 2>/dev/null
+import glob, math, os, re, subprocess
+
+def primary_and_scale():
+    """Connector name and scale of the primary logical monitor, per mutter."""
+    try:
+        out = subprocess.run(
+            ["gdbus", "call", "--session", "--dest", "org.gnome.Mutter.DisplayConfig",
+             "--object-path", "/org/gnome/Mutter/DisplayConfig",
+             "--method", "org.gnome.Mutter.DisplayConfig.GetCurrentState"],
+            capture_output=True, text=True, timeout=5).stdout
+        m = re.search(r"\(\d+, \d+, ([0-9.]+), uint32 \d+, true, \[\('([^']+)'", out)
+        if m:
+            return m.group(2), float(m.group(1))
+    except Exception:
+        pass
+    return None, 1.0
+
+conn, scale = primary_and_scale()
+
+def ppi_of(path):
+    w, h = (int(x) for x in open(path + "modes").read().split()[0].split("x"))
+    edid = open(path + "edid", "rb").read()
+    wcm, hcm = edid[21], edid[22]        # EDID basic params: image size in cm
+    if not (wcm and hcm):
+        return None
+    return math.hypot(w, h) / (math.hypot(wcm, hcm) / 2.54)
+
+best = None
+for path in sorted(glob.glob("/sys/class/drm/card*-*/")):
+    try:
+        if open(path + "status").read().strip() != "connected":
+            continue
+        name = os.path.basename(path.rstrip("/")).split("-", 1)[1]
+        ppi = ppi_of(path)
+        if ppi is None:
+            continue
+        # Prefer the output mutter calls primary; fall back to the first
+        # connected one so this still works with no session bus (dry runs).
+        if conn and name == conn:
+            best = ppi
+            break
+        if best is None:
+            best = ppi
+    except Exception:
+        continue
+
+if best and scale:
+    print(round(best / scale))
+PY
+}
+
+# Emit the density correction, or nothing when the display is close enough to
+# what the CSS assumes that rescaling would be noise.
+density_css() {
+    local ppi="$1"
+    python3 - "$ppi" "$TUNED_PPI" <<'PY'
+import sys
+ppi, tuned = float(sys.argv[1]), float(sys.argv[2])
+ratio = ppi / tuned
+if ratio < 1.12:
+    sys.exit(0)
+icon = round(16 * ratio)
+hpad = round(6 * ratio)
+print(f"""
+/* ---------- Display density -------------------------------------------
+ * Sizes above are logical pixels tuned for {tuned:.0f} logical PPI. This
+ * display measures {ppi:.0f}, so the same numbers land {(1 - 1/ratio) * 100:.0f}% smaller than
+ * drawn. Scale the top bar status icons — wifi, bluetooth, volume, battery —
+ * back to their intended size. Generated at install time by install.sh. */
+#panel .panel-button .system-status-icon {{
+  icon-size: {icon}px;
+  padding: 4px;
+}}
+#panel .panel-button {{
+  -natural-hpadding: {hpad}px;
+  -minimum-hpadding: {max(hpad - 2, 3)}px;
+}}""")
+PY
+}
+
 install_css() {
     step "Installing the CSS tweaks"
 
@@ -312,6 +403,25 @@ install_css() {
     run install -Dm755 "$REPO_ROOT/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-apply"
     ok "css -> $CONF_DIR"
     ok "re-apply command -> ~/.local/bin/tahoe-glass-apply"
+
+    # Appended to the copy rather than kept in css/, so it is regenerated for
+    # whatever screen the installer is actually run on. Re-copying the file
+    # above is what makes this idempotent.
+    local ppi extra
+    ppi="$(measure_logical_ppi || true)"
+    if [ -z "$ppi" ]; then
+        skip "could not measure display density — panel sizes left as tuned"
+    else
+        extra="$(density_css "$ppi")"
+        if [ -z "$extra" ]; then
+            ok "display is ${ppi} logical PPI — no scaling needed"
+        elif [ "${DRY_RUN:-0}" = 1 ]; then
+            info "dry-run: scale panel icons for ${ppi} logical PPI"
+        else
+            printf '%s\n' "$extra" >> "$CONF_DIR/shell-tweaks.css"
+            ok "scaled panel icons for ${ppi} logical PPI (tuned at ${TUNED_PPI})"
+        fi
+    fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
         info "dry-run: tahoe-glass-apply"
