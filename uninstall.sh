@@ -180,7 +180,8 @@ fi
 # ------------------------------------------------------------------ our own --
 
 step "Removing tahoe-glass itself"
-run rm -f "$HOME/.local/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-icon-sync"
+run rm -f "$HOME/.local/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-icon-sync" \
+          "$HOME/.local/bin/tahoe-glass-panel-blur"
 if confirm "Delete $CONF_DIR (this also deletes the backups above)?" 0; then
     run rm -rf "$CONF_DIR"
     ok "removed"

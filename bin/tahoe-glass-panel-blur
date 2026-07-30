@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Rebuild Blur My Shell's panel blur whenever the monitor layout changes.
+#
+# Blur My Shell builds one background actor per monitor and clips it to the
+# panel's geometry. Its own source notes that get_transformed_position
+# "sometimes yields NaN when the actor is not fully positionned yet" — so an
+# actor built before the layout has settled gets clipped in the wrong place and
+# part of the top bar shows a strip that does not line up with the wallpaper.
+#
+# The old fix was `sleep 12` after login and one toggle. That is a guess: it
+# waits when nothing is wrong, is still too short on a slow session, and does
+# nothing at all when a monitor is plugged in later — which is exactly when a
+# per-monitor actor is rebuilt against a layout that is once again in flux.
+#
+# This waits for the real signal instead. Mutter emits MonitorsChanged on every
+# layout change, so each one gets a rebuild, and there is one rebuild at start
+# for the login case.
+set -euo pipefail
+
+KEY=/org/gnome/shell/extensions/blur-my-shell/panel/blur
+
+# Settle time between the layout changing and the actor being rebuilt. The
+# toggle is only correct once the new geometry is in place; 3s is comfortably
+# past mutter's own reconfiguration without being a noticeable wait.
+SETTLE="${TAHOE_GLASS_BLUR_SETTLE:-3}"
+
+rebuild() {
+    # Only meaningful when the panel blur is actually on — otherwise this would
+    # switch on a feature the user turned off.
+    [ "$(dconf read "$KEY" 2>/dev/null)" = "true" ] || return 0
+    sleep "$SETTLE"
+    dconf write "$KEY" false
+    sleep 1
+    dconf write "$KEY" true
+}
+
+# The login case: the session is starting around us, so settle before the first
+# rebuild the same way a layout change does.
+rebuild || true
+
+# One line per signal; each is a layout change worth rebuilding for. gdbus
+# monitor never exits, so this is the whole loop.
+gdbus monitor --session --dest org.gnome.Mutter.DisplayConfig \
+              --object-path /org/gnome/Mutter/DisplayConfig 2>/dev/null \
+    | while read -r line; do
+        case "$line" in
+            *MonitorsChanged*) rebuild || true ;;
+        esac
+    done
