@@ -1,0 +1,45 @@
+/* tahoe-tweaks:gtk3 — appended to ~/.config/gtk-3.0/gtk.css
+ *
+ * WC-1 Monochrome Minimal, for GTK3 apps. The GTK3 half of Tahoe-Dark ships as
+ * a gresource, so it cannot be edited the way the GTK4 sheet can — but user CSS
+ * loads at GTK_STYLE_PROVIDER_PRIORITY_USER, above the theme, so these win
+ * regardless of specificity.
+ */
+
+headerbar button.titlebutton,
+.titlebar button.titlebutton,
+headerbar button.titlebutton.close,
+headerbar button.titlebutton.minimize,
+headerbar button.titlebutton.maximize {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  margin: 0 2px;
+  border-radius: 9999px;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  -gtk-icon-shadow: none;
+}
+
+headerbar button.titlebutton:hover,
+.titlebar button.titlebutton:hover {
+  background-color: rgba(255, 255, 255, 0.14);
+  background-image: none;
+  box-shadow: none;
+  color: #ffffff;
+}
+
+headerbar button.titlebutton.close:hover,
+.titlebar button.titlebutton.close:hover {
+  background-color: #ff5f57;
+  color: #ffffff;
+}
+
+headerbar button.titlebutton:backdrop,
+.titlebar button.titlebutton:backdrop {
+  opacity: 0.45;
+  background-color: transparent;
+}
