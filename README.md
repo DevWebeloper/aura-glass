@@ -99,7 +99,7 @@ so you can read `css/` and disagree with any of it.
 Without this a Flatpak app is sandboxed away from the GTK config and silently
 keeps stock Adwaita, which looks exactly like the install having failed.
 
-**A systemd user unit** (optional) — see *Panel blur* below.
+**A systemd user unit** (opt-in, `--panel-blur-fix`) — see *Panel blur* below.
 
 ---
 
@@ -157,11 +157,18 @@ GTK reads its CSS at startup. Restart the app.
 Blur My Shell builds one background actor per monitor and clips it to the
 panel's geometry, which isn't settled at login — its own source notes that
 `get_transformed_position` "sometimes yields NaN when the actor is not fully
-positionned yet". The optional `tahoe-glass-panel-blur.service` toggles the blur
-off and on 12 seconds into the session, which rebuilds the actor against correct
-geometry. If the strip survives that, your session takes longer to settle: raise
-the first `sleep` in `~/.config/systemd/user/tahoe-glass-panel-blur.service`,
-then `systemctl --user daemon-reload`.
+positionned yet".
+
+Only seen on multi-monitor, so it is **off by default** — the fix costs a 12
+second wait after every login, which is not worth paying for a bug you probably
+don't have. If you do see the strip, run the installer with `--panel-blur-fix`
+to get `tahoe-glass-panel-blur.service`, which toggles the blur off and on once
+the session has settled and rebuilds the actor against correct geometry. If the
+strip survives that, your session takes longer to settle: raise the first
+`sleep` in `~/.config/systemd/user/tahoe-glass-panel-blur.service`, then
+`systemctl --user daemon-reload`.
+
+Re-running the installer without `--panel-blur-fix` removes the unit again.
 
 **Open Bar on GNOME 50.**
 There is no GNOME 50 release. The installer builds it from upstream's last

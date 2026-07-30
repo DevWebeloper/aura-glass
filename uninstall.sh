@@ -122,11 +122,17 @@ fi
 # ------------------------------------------------------------------- units --
 
 step "Removing the panel blur unit"
-if [ -f "$HOME/.config/systemd/user/tahoe-glass-panel-blur.service" ]; then
-    run systemctl --user disable --now tahoe-glass-panel-blur.service >/dev/null 2>&1 || true
-    run rm -f "$HOME/.config/systemd/user/tahoe-glass-panel-blur.service"
+# bms-panel-blur-rebuild is the name this unit had before the project was named.
+found=0
+for u in tahoe-glass-panel-blur.service bms-panel-blur-rebuild.service; do
+    [ -f "$HOME/.config/systemd/user/$u" ] || continue
+    found=1
+    run systemctl --user disable --now "$u" >/dev/null 2>&1 || true
+    run rm -f "$HOME/.config/systemd/user/$u"
+    ok "removed $u"
+done
+if [ "$found" = 1 ]; then
     run systemctl --user daemon-reload
-    ok "removed"
 else
     skip "not installed"
 fi
