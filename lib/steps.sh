@@ -453,6 +453,45 @@ load_dconf() {
     # Open Bar regenerates its stylesheet when this key changes, so writing it
     # last is what makes the preset take effect without a restart.
     run dconf write /org/gnome/shell/extensions/openbar/trigger-reload true
+
+    apply_grain
+}
+
+# Blur My Shell's noise effect lays film grain over every blurred surface. It
+# is generated per physical pixel and its strength is not scaled by anything,
+# so how it reads depends on the panel and the GPU: the value that gives a
+# frosted texture on one machine can look like television static on another.
+#
+# The preset ships the tuned strength. This makes it adjustable without hand
+# editing a nested dconf blob, and — because dconf load rewrites the whole
+# pipelines key — remembers the choice so the next install does not silently
+# put the grain back.
+apply_grain() {
+    local want="${GRAIN:-}" memo="$CONF_DIR/grain"
+    if [ -z "$want" ] && [ -f "$memo" ]; then
+        want="$(cat "$memo" 2>/dev/null || true)"
+    fi
+    [ -n "$want" ] || return 0
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: set blur grain to $want"
+        return 0
+    fi
+
+    python3 - "$want" <<'PY' || { warn "could not set grain"; return 0; }
+import re, subprocess, sys
+want = float(sys.argv[1])
+KEY = "/org/gnome/shell/extensions/blur-my-shell/pipelines"
+cur = subprocess.run(["dconf", "read", KEY], capture_output=True, text=True).stdout.strip()
+if not cur:
+    sys.exit(0)
+new = re.sub(r"('noise': <)[0-9.]+(>)", lambda m: m.group(1) + repr(want) + m.group(2), cur)
+if new != cur:
+    subprocess.run(["dconf", "write", KEY, new], check=True)
+PY
+    run mkdir -p "$CONF_DIR"
+    printf '%s\n' "$want" > "$memo"
+    ok "blur grain set to $want (remembered for future installs)"
 }
 
 apply_gsettings() {
