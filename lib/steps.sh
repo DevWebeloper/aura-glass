@@ -188,19 +188,24 @@ install_ext_ego() {
     url="$(printf '%s' "$info_json" | python3 -c 'import sys,json;print(json.load(sys.stdin)["download_url"])')" \
         || { warn "$uuid: no download url — skipped"; return 1; }
 
-    tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' RETURN
-    curl -sLo "$tmp/e.zip" "https://extensions.gnome.org$url" \
-        || { warn "$uuid: download failed — skipped"; return 1; }
-
-    if ! ext_supports_shell "$tmp/e.zip" "$GNOME_MAJOR"; then
+    # Deliberately not `trap ... RETURN`: that trap is not scoped to this
+    # function, so it stays registered and fires again on the next function
+    # return in the whole script — by which point $tmp is gone and `set -u`
+    # turns the stale cleanup into a fatal "unbound variable" mid-install.
+    tmp="$(mktemp -d)"
+    local rc=0
+    if ! curl -sLo "$tmp/e.zip" "https://extensions.gnome.org$url"; then
+        warn "$uuid: download failed — skipped"; rc=1
+    elif ! ext_supports_shell "$tmp/e.zip" "$GNOME_MAJOR"; then
         ver="$(unzip -p "$tmp/e.zip" metadata.json | python3 -c 'import sys,json;print(json.load(sys.stdin).get("shell-version"))')"
-        warn "$uuid: published build supports $ver, not GNOME $GNOME_MAJOR — skipped"
-        return 1
+        warn "$uuid: published build supports $ver, not GNOME $GNOME_MAJOR — skipped"; rc=1
+    elif ! gnome-extensions install --force "$tmp/e.zip" >/dev/null; then
+        warn "$uuid: install failed — skipped"; rc=1
+    else
+        ok "$uuid"
     fi
-
-    gnome-extensions install --force "$tmp/e.zip" >/dev/null \
-        || { warn "$uuid: install failed — skipped"; return 1; }
-    ok "$uuid"
+    rm -rf "$tmp"
+    return "$rc"
 }
 
 # Open Bar is the one extension with no GNOME 50 release. Upstream's last
