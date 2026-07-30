@@ -28,7 +28,11 @@ detect_distro() {
 
     # Atomic wins over the ID_LIKE=fedora it also reports: an ostree system
     # needs a completely different dependency strategy from a mutable one.
-    if have rpm-ostree && [ -d /run/ostree-booted ]; then
+    # /run/ostree-booted is a plain file written by ostree-prepare-root, not a
+    # directory — `-d` silently never matches it and detection falls through
+    # to the fedora branch, which tries dnf. Bazzite's dnf refuses to run at
+    # all in that case, so this one check decides the whole install path.
+    if have rpm-ostree && [ -e /run/ostree-booted ]; then
         DISTRO_FAMILY="atomic"
         return
     fi
@@ -58,6 +62,21 @@ declare -A PKG_DEBIAN=(
 )
 
 REQUIRED_CMDS=(git curl unzip sassc gsettings dconf gnome-extensions)
+
+# Bazzite and Bluefin preinstall a rootless Homebrew prefix at
+# /home/linuxbrew/.linuxbrew so images that ship it never need to run brew's
+# installer. But that prefix is only added to PATH by shell profile snippets,
+# which a non-interactive session — cron, or `ssh host command` — never
+# sources. `command -v brew` alone misses a real, working brew in exactly the
+# situation this installer is likely to be run from.
+find_brew() {
+    have brew && { command -v brew; return 0; }
+    local p
+    for p in /home/linuxbrew/.linuxbrew/bin/brew "$HOME/.linuxbrew/bin/brew" /opt/homebrew/bin/brew; do
+        [ -x "$p" ] && { printf '%s' "$p"; return 0; }
+    done
+    return 1
+}
 
 missing_cmds() {
     local c
@@ -98,11 +117,21 @@ install_deps() {
             # /home/linuxbrew, so it needs no layering and no reboot. Layering
             # is offered second because it costs a reboot before the install
             # can even continue.
-            if have brew; then
-                info "would run: brew install ${missing[*]}"
+            local brew_bin
+            if brew_bin="$(find_brew)"; then
+                # A brew found outside PATH means the shell that will run the
+                # rest of this script — including the theme's own installer,
+                # which shells out to sassc — can't see it either. Put its bin
+                # dir on PATH now so both `brew install` and everything
+                # downstream in this process can find what it just installed.
+                case ":$PATH:" in
+                    *":$(dirname "$brew_bin"):"*) ;;
+                    *) export PATH="$(dirname "$brew_bin"):$PATH" ;;
+                esac
+                info "would run: $brew_bin install ${missing[*]}"
                 confirm "Install these with Homebrew? (no reboot needed)" 1 \
                     || { warn "skipping — install them yourself, then re-run"; return 1; }
-                run brew install "${missing[@]}"
+                run "$brew_bin" install "${missing[@]}"
             else
                 local pkgs; pkgs="$(install_hint PKG_FEDORA "${missing[@]}")"
                 warn "Homebrew not found on an atomic system."
