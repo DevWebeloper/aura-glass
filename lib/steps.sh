@@ -269,10 +269,50 @@ enable_extensions() {
             skip "$u not installed — not enabling"
             continue
         fi
-        run gnome-extensions enable "$u" 2>/dev/null \
-            && ok "enabled $u" \
-            || warn "could not enable $u yet — it will be picked up after logout"
+        if run gnome-extensions enable "$u" 2>/dev/null; then
+            ok "enabled $u"
+            continue
+        fi
+
+        # gnome-extensions enable goes through the running shell, which refuses
+        # a UUID it has not loaded — and on Wayland it cannot load one that
+        # appeared after login. Claiming it will be "picked up after logout" is
+        # not enough: the shell only starts what is listed in enabled-
+        # extensions, so the UUID has to be put there directly or the next
+        # session comes up without it.
+        if [ "${DRY_RUN:-0}" = 1 ]; then
+            info "dry-run: add $u to enabled-extensions for the next session"
+            continue
+        fi
+        if enqueue_extension "$u"; then
+            ok "$u queued — active after logout"
+        else
+            warn "could not enable $u"
+        fi
     done
+}
+
+# Append a UUID to org.gnome.shell enabled-extensions without disturbing what
+# is already there.
+enqueue_extension() {
+    python3 - "$1" <<'PY'
+import subprocess, sys
+uuid = sys.argv[1]
+KEY = ["org.gnome.shell", "enabled-extensions"]
+cur = subprocess.run(["gsettings", "get", *KEY], capture_output=True, text=True).stdout.strip()
+# "@as []" is how an empty array comes back; strip the type annotation.
+if cur.startswith("@as "):
+    cur = cur[4:]
+try:
+    items = [x.strip().strip("'\"") for x in cur.strip("[]").split(",") if x.strip()]
+except Exception:
+    items = []
+if uuid in items:
+    sys.exit(0)
+items.append(uuid)
+new = "[" + ", ".join("'" + i + "'" for i in items) + "]"
+subprocess.run(["gsettings", "set", *KEY, new], check=True)
+PY
 }
 
 # ------------------------------------------------------------------- icons --
