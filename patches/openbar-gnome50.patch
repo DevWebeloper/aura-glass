@@ -1,0 +1,292 @@
+From 58537c0ee92ba834875dd69313677822f30d06a7 Mon Sep 17 00:00:00 2001
+From: alienware <gheith.sy@gmail.com>
+Date: Thu, 30 Jul 2026 15:55:49 +0300
+Subject: [PATCH 1/2] GNOME 50 support: metadata, null guards, GTK4/libadwaita
+ prefs layout
+
+Applies PR #169 (ykiryeyev:Gome50_update) with two deviations:
+- Skips autothemes.js, which changes auto-theme foreground selection
+  behaviour (forces autofg-bar/autofg-menu off) rather than fixing GNOME 50
+  compatibility, and whose getBestContrastColor fallback is unreachable
+  (contrast ratio can never be < 1.0).
+- Keeps the existing local 'position' variable in updatePanelStyle instead
+  of switching to 'this.position', which is undefined and would have pinned
+  notification banners to the top.
+---
+ openbar@neuromorph/extension.js  | 32 +++++++-----
+ openbar@neuromorph/metadata.json |  3 +-
+ openbar@neuromorph/prefs.css     | 10 ++++
+ openbar@neuromorph/prefs.js      | 84 +++++++++++++++++++++-----------
+ 4 files changed, 87 insertions(+), 42 deletions(-)
+
+diff --git a/openbar@neuromorph/extension.js b/openbar@neuromorph/extension.js
+index f716f91..a8b7163 100644
+--- a/openbar@neuromorph/extension.js
++++ b/openbar@neuromorph/extension.js
+@@ -383,17 +383,22 @@ export default class Openbar extends Extension {
+                         this.applySectionStyles(sectionList, add);
+ 
+                         const msgHbox = msgbox.get_child_at_index(1); // hbox at botton for dnd and clear buttons
++                        let clearBtn;
+                         if(this.gnomeVersion < 49) {
+                             const dndBtn = msgHbox.get_child_at_index(1);
+-                            this.applyMenuClass(dndBtn, add);
+-                            const toggleSwitch = dndBtn.get_child_at_index(0);
+-                            this.applyMenuClass(toggleSwitch, add);
+-                            const clearBtn = msgHbox.get_child_at_index(2);
++                            if (dndBtn) {
++                                this.applyMenuClass(dndBtn, add);
++                                const toggleSwitch = dndBtn.get_child_at_index(0);
++                                if (toggleSwitch)
++                                    this.applyMenuClass(toggleSwitch, add);
++                            }
++                            clearBtn = msgHbox.get_child_at_index(2);
+                         }
+                         else {
+-                            const clearBtn = msgHbox.get_child_at_index(1);
++                            clearBtn = msgHbox.get_child_at_index(1);
+                         }
+-                        this.applyMenuClass(clearBtn, add);
++                        if (clearBtn)
++                            this.applyMenuClass(clearBtn, add);
+ 
+                         const vbox = hbox.get_child_at_index(1); // Right Pane/Section vbox for calendar etc
+                         vbox.get_children().forEach(item => {
+@@ -773,10 +778,12 @@ export default class Openbar extends Extension {
+         let setNotifPos = this._settings.get_boolean('set-notif-position');
+         let notifKeys = ['set-notif-position', 'position', 'monitors-changed', 'updated', 'enabled'];
+         if(notifKeys.includes(key) && setNotifPos) {
+-            if(position == 'Bottom')
+-                Main.messageTray._bannerBin.y_align = Clutter.ActorAlign.END;
+-            else
+-                Main.messageTray._bannerBin.y_align = Clutter.ActorAlign.START;
++            if(Main.messageTray._bannerBin) {
++                if(position == 'Bottom')
++                    Main.messageTray._bannerBin.y_align = Clutter.ActorAlign.END;
++                else
++                    Main.messageTray._bannerBin.y_align = Clutter.ActorAlign.START;
++            }
+         }
+         // Notifications style
+         if(key == this.addedSignal && callbk_param == 'message-banner' && setNotifications) {
+@@ -1428,7 +1435,7 @@ export default class Openbar extends Extension {
+             [ global.display, 'window-left-monitor', this.setWindowMaxBar.bind(this), 'window-left-monitor' ],
+             [ Main.layoutManager, 'startup-complete', this.postStartup.bind(this) ],
+             // [ Main.sessionMode, 'updated', this.updatePanelStyle.bind(this), 'session-mode-updated' ],
+-        ];
++        ].filter(c => c[0] != null);
+         // Connections for actor-added/removed OR child-added/removed as per Gnome version
+         for(const panelBox of this.panelBoxes) {
+             connections.push([panelBox, this.addedSignal, this.updatePanelStyle.bind(this)]);
+@@ -1647,7 +1654,8 @@ export default class Openbar extends Extension {
+ 
+         // Reset panel and banner position to Top
+         this.setPanelBoxPosition('Top');
+-        Main.messageTray._bannerBin.y_align = Clutter.ActorAlign.START;
++        if(Main.messageTray._bannerBin)
++            Main.messageTray._bannerBin.y_align = Clutter.ActorAlign.START;
+ 
+         // Clear/Restore Gtk css and Flatpak override
+         StyleSheets.saveGtkCss(this, 'disable');
+diff --git a/openbar@neuromorph/metadata.json b/openbar@neuromorph/metadata.json
+index 8f543f7..c43c704 100644
+--- a/openbar@neuromorph/metadata.json
++++ b/openbar@neuromorph/metadata.json
+@@ -12,7 +12,8 @@
+     "46",
+     "47",
+     "48",
+-    "49"
++    "49",
++    "50"
+   ],
+   "url": "https://github.com/neuromorph/openbar",
+   "uuid": "openbar@neuromorph",
+diff --git a/openbar@neuromorph/prefs.css b/openbar@neuromorph/prefs.css
+index 268b47f..46e589a 100644
+--- a/openbar@neuromorph/prefs.css
++++ b/openbar@neuromorph/prefs.css
+@@ -52,7 +52,17 @@
+ .openbar-sidebar {
+     border: 0px solid rgba(125, 125, 125, 0.1);
+     border-right-width: 1px;
++    min-width: 220px;
+ }
++
++.openbar-sidebar row {
++    min-width: 200px;
++}
++
++.openbar-prefs-page clamp {
++    max-width: 9999px;
++}
++
+ .openbar-sidebar StBin {
+     padding: 14px;
+     text-shadow: 1px 1px rgba(0, 0, 0, 0.25);
+diff --git a/openbar@neuromorph/prefs.js b/openbar@neuromorph/prefs.js
+index eeaa3e2..7396c69 100644
+--- a/openbar@neuromorph/prefs.js
++++ b/openbar@neuromorph/prefs.js
+@@ -382,11 +382,7 @@ class OpenbarPrefs {
+         let mWidth = this._settings.get_int('monitor-width');
+         let mHeight = this._settings.get_int('monitor-height');
+ 
+-        window.default_width = 820; // 825
+-        window.default_height = 940; //910
+-        let reqWidth = mWidth >= 1000? 815: mWidth - 100;
+-        let reqHeight = mHeight >= 1000? 935: mHeight - 100;
+-        window.set_size_request(reqWidth, reqHeight); // 815, 885
++        window.set_default_size(-1, -1);
+ 
+         window.paletteButtons = [];
+         window.colorButtons = [];
+@@ -466,16 +462,9 @@ class OpenbarPrefs {
+         // navigation.set_sidebar(sidebar);
+ 
+ 
+-        // Create the Settings page
+-        const settingsPage = new Adw.PreferencesPage({
+-            name: 'settings',
+-            title: _('Settings'),
+-            icon_name: 'emblem-system-symbolic',
+-        });
+-        window.add(settingsPage);
+-
+-        const settingsGroup = new Adw.PreferencesGroup();
+-        settingsPage.add(settingsGroup);
++        let toolbar = new Adw.ToolbarView();
++        let header = new Adw.HeaderBar();
++        toolbar.add_top_bar(header);
+ 
+ 
+         // Open Bar Title Grid
+@@ -2800,18 +2789,39 @@ class OpenbarPrefs {
+         const scrollWindow = new Gtk.ScrolledWindow({
+             hscrollbar_policy: Gtk.PolicyType.NEVER,
+             vscrollbar_policy: Gtk.PolicyType.AUTOMATIC,
++            hexpand: true,
++            vexpand: true,
+             css_classes: ['openbar-scroll'],
+         });
+ 
+-        let stack = new Gtk.Stack({
+-            transition_type: Gtk.StackTransitionType.NONE,//ROTATE_LEFT_RIGHT,
+-            hhomogeneous: true,
+-            vhomogeneous: false,
+-            valign: Gtk.Align.CENTER,
+-            halign: Gtk.Align.CENTER,
+-            // vexpand: true,
+-            css_classes: ['openbar-stack'],
+-        });
++        let stack;
++        if (Adw.ViewStack) {
++            stack = new Adw.ViewStack({
++                hhomogeneous: true,
++                vhomogeneous: false,
++                vexpand: true,
++                hexpand: true,
++                valign: Gtk.Align.FILL,
++                halign: Gtk.Align.FILL,
++                css_classes: ['openbar-stack'],
++            });
++            stack.add_titled = (child, name, title) => {
++                let page = stack.add_named(child, name);
++                page.title = title;
++                return page;
++            };
++        } else {
++            stack = new Gtk.Stack({
++                transition_type: Gtk.StackTransitionType.NONE,
++                hhomogeneous: true,
++                vhomogeneous: false,
++                vexpand: true,
++                hexpand: true,
++                valign: Gtk.Align.FILL,
++                halign: Gtk.Align.FILL,
++                css_classes: ['openbar-stack'],
++            });
++        }
+         // Add pages to the stack
+         stack.add_titled(welcomegrid, 'welcome',  '🙏🏻  Welcome');
+         stack.add_titled(palettegrid, 'autotheme',  '✨  Auto Theming');
+@@ -2829,24 +2839,40 @@ class OpenbarPrefs {
+ 
+         scrollWindow.set_child(stack);
+ 
+-        let stackBox = new Gtk.Box({css_classes: ['openbar-stack-box']});
+-        let sideBar = new Gtk.StackSidebar({
+-            stack: stack,
+-            css_classes: ['openbar-sidebar'],
++        let stackBox = new Gtk.Box({
++            css_classes: ['openbar-stack-box'],
++            hexpand: true,
+             vexpand: true,
+         });
++        let sideBar;
++        if (Adw.ViewSwitcherSidebar && Adw.ViewStack && (stack instanceof Adw.ViewStack)) {
++            sideBar = new Adw.ViewSwitcherSidebar({
++                stack: stack,
++                css_classes: ['openbar-sidebar'],
++                vexpand: true,
++            });
++        } else {
++            sideBar = new Gtk.StackSidebar({
++                stack: stack,
++                css_classes: ['openbar-sidebar'],
++                vexpand: true,
++            });
++        }
+         stackBox.append(sideBar);
+         stackBox.append(scrollWindow);
+ 
+         let prefsBox = new Gtk.Box({
+             orientation: Gtk.Orientation.VERTICAL,
++            hexpand: true,
++            vexpand: true,
+             css_classes: ['openbar-prefs-box'],
+         });
+         prefsBox.append(titlegrid);
+         prefsBox.append(stackBox);
+         prefsBox.append(quoteBox);
+ 
+-        settingsGroup.add(prefsBox);
++        toolbar.set_content(prefsBox);
++        window.set_content(toolbar);
+ 
+         /////////////////////////////////////////////////////////////////////
+ 
+-- 
+2.55.0
+
+
+From 92964be2ff904a97145cdc877699124104ed1e80 Mon Sep 17 00:00:00 2001
+From: alienware <gheith.sy@gmail.com>
+Date: Thu, 30 Jul 2026 16:00:08 +0300
+Subject: [PATCH 2/2] prefs: drop invalid .openbar-prefs-page clamp rule
+
+GTK CSS has no max-width property, so this rule emitted a theme parser
+error on every prefs launch. The selector was also dead: the
+.openbar-prefs-page class went away with the Adw.PreferencesPage removal.
+---
+ openbar@neuromorph/prefs.css | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/openbar@neuromorph/prefs.css b/openbar@neuromorph/prefs.css
+index 46e589a..0d3a871 100644
+--- a/openbar@neuromorph/prefs.css
++++ b/openbar@neuromorph/prefs.css
+@@ -59,10 +59,6 @@
+     min-width: 200px;
+ }
+ 
+-.openbar-prefs-page clamp {
+-    max-width: 9999px;
+-}
+-
+ .openbar-sidebar StBin {
+     padding: 14px;
+     text-shadow: 1px 1px rgba(0, 0, 0, 0.25);
+-- 
+2.55.0
+

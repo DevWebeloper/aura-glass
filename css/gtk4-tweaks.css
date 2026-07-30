@@ -1,0 +1,379 @@
+/* tahoe-tweaks:gtk4 — appended to ~/.config/gtk-4.0/gtk.css and gtk-dark.css
+ *
+ * The theme styled `entry` with only a faint gradient and no metrics, so
+ * fields inherited libadwaita's compact height and read as part of the
+ * surface behind them. These give a text field its own material and a
+ * visible edge, so it's obvious where you can type.
+ *
+ * Matches the shell ladder in shell-tweaks.css:
+ *   field fill ....... rgba(255, 255, 255, 0.07)
+ *   field hover ...... rgba(255, 255, 255, 0.10)
+ *   hairline ......... rgba(255, 255, 255, 0.14)
+ */
+
+entry,
+entry.flat,
+spinbutton:not(.vertical) {
+  min-height: 34px;
+  padding: 4px 12px;
+  border-radius: 10px;
+  background-image: none;
+  background-color: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.22);
+  caret-color: @accent_bg_color;
+}
+
+entry:hover,
+spinbutton:not(.vertical):hover {
+  background-color: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.20);
+}
+
+/* focus-within rather than :focus — the focus lands on the inner text node. */
+entry:focus-within,
+spinbutton:not(.vertical):focus-within {
+  background-color: rgba(255, 255, 255, 0.10);
+  border-color: alpha(@accent_bg_color, 0.9);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18),
+              0 0 0 2px alpha(@accent_bg_color, 0.30);
+}
+
+entry:disabled,
+spinbutton:not(.vertical):disabled {
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+entry > text > placeholder {
+  opacity: 0.5;
+}
+
+/* Search fields keep the capsule shape they have on macOS. */
+entry.search {
+  border-radius: 9999px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+/* Error / warning states keep the same shape, only the edge changes colour. */
+entry.error {
+  border-color: alpha(@error_color, 0.9);
+}
+
+entry.error:focus-within {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18),
+              0 0 0 2px alpha(@error_color, 0.30);
+}
+
+entry.warning {
+  border-color: alpha(@warning_color, 0.9);
+}
+
+entry.warning:focus-within {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18),
+              0 0 0 2px alpha(@warning_color, 0.30);
+}
+
+/* ---------- Buttons ----------
+ * The theme set only `button { border-radius: 9999px }`, so buttons in action
+ * bars fell back to libadwaita's flat treatment and read as plain text labels.
+ * Anything carrying a label now gets a real surface. Icon-only buttons and
+ * window controls are deliberately left alone so toolbars stay quiet.
+ */
+button.text-button,
+button.flat.text-button,
+button.pill {
+  min-height: 32px;
+  padding: 4px 16px;
+  border-radius: 9999px;
+  background-image: none;
+  background-color: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: none;
+  color: @window_fg_color;
+}
+
+button.text-button:hover,
+button.flat.text-button:hover,
+button.pill:hover {
+  background-color: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+button.text-button:active,
+button.flat.text-button:active,
+button.pill:active,
+button.text-button:checked,
+button.flat.text-button:checked {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+button.text-button:disabled,
+button.flat.text-button:disabled,
+button.pill:disabled {
+  opacity: 0.5;
+}
+
+/* The primary action stays filled with the accent so it reads as primary. */
+button.suggested-action,
+button.suggested-action.text-button,
+button.suggested-action.flat.text-button,
+button.suggested-action.pill {
+  background-color: @accent_bg_color;
+  background-image: none;
+  color: @accent_fg_color;
+  border-color: transparent;
+}
+
+button.suggested-action:hover,
+button.suggested-action.text-button:hover {
+  background-color: shade(@accent_bg_color, 1.12);
+}
+
+button.destructive-action,
+button.destructive-action.text-button,
+button.destructive-action.flat.text-button {
+  background-color: @destructive_bg_color;
+  background-image: none;
+  color: @destructive_fg_color;
+  border-color: transparent;
+}
+
+/* Window controls must not pick up the fill above. */
+button.titlebutton,
+headerbar button.titlebutton,
+.titlebar button.titlebutton {
+  background-color: transparent;
+  border: none;
+}
+
+/* ---------- Dropdowns / combo rows ----------
+ * Not styled by the theme at all, so a select rendered as bare text with no
+ * affordance. Given the same recessed material as a text field, since that is
+ * what it is — a value you pick rather than an action you fire.
+ * Declared after the button block so the squarer radius wins.
+ */
+dropdown > button,
+combobox > box > button {
+  min-height: 34px;
+  padding: 4px 10px 4px 12px;
+  border-radius: 10px;
+  background-image: none;
+  background-color: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+
+dropdown > button:hover,
+combobox > box > button:hover {
+  background-color: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.20);
+}
+
+dropdown > button:focus-within,
+combobox > box > button:focus-within {
+  border-color: alpha(@accent_bg_color, 0.9);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18),
+              0 0 0 2px alpha(@accent_bg_color, 0.30);
+}
+
+/* Keep the chevron visible — it is the only cue that a row opens a list. */
+dropdown > button > arrow,
+row.combo > box > image.dropdown-arrow,
+row.expander > box > image.expander-row-arrow {
+  opacity: 0.85;
+  min-width: 16px;
+  min-height: 16px;
+}
+
+row.combo:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+/* ---------- Grouping containers ----------
+ * Boxed lists / cards were transparent with a barely-there gradient, so the
+ * box holding a set of rows was invisible and its rows floated loose on the
+ * window. One step up the ladder plus a hairline gives the group an edge.
+ * Row separators were rgba(0, 0, 0, 0.12) — a dark line on a dark surface.
+ */
+list.boxed-list,
+list.content,
+list.background,
+.card,
+scrolledwindow.card,
+preferencesgroup > box > list {
+  background-image: none;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+list.boxed-list row,
+list.content row {
+  background-color: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+list.boxed-list row:last-child,
+list.content row:last-child,
+list.boxed-list row:only-child,
+list.content row:only-child {
+  border-bottom: none;
+}
+
+list.boxed-list row:hover,
+list.content row:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* ---------- WC-1  Monochrome Minimal window controls ----------
+ * The theme painted coloured discs (#ff4245 / #ffd600 / #30d158) with a heavy
+ * bevel and hid the glyph with `color: transparent`. Selectors below mirror
+ * the theme's own specificity so that appending is enough to win.
+ */
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.close,
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.minimize,
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.maximize,
+headerbar button.titlebutton.close,
+headerbar button.titlebutton.minimize,
+headerbar button.titlebutton.maximize,
+.csd headerbar button.titlebutton.close,
+.csd headerbar button.titlebutton.minimize,
+.csd headerbar button.titlebutton.maximize,
+headerbar.default-decoration button.titlebutton.close,
+headerbar.default-decoration button.titlebutton.minimize,
+headerbar.default-decoration button.titlebutton.maximize,
+.titlebar button.titlebutton.close,
+.titlebar button.titlebutton.minimize,
+.titlebar button.titlebutton.maximize,
+.titlebar.default-decoration button.titlebutton.close,
+.titlebar.default-decoration button.titlebutton.minimize,
+.titlebar.default-decoration button.titlebutton.maximize {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  margin: 0 2px;
+  border-radius: 9999px;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  border: none;
+  color: alpha(currentColor, 0.6);
+}
+
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.close:hover,
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.minimize:hover,
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.maximize:hover,
+headerbar button.titlebutton.close:hover,
+headerbar button.titlebutton.minimize:hover,
+headerbar button.titlebutton.maximize:hover,
+.csd headerbar button.titlebutton.close:hover,
+.csd headerbar button.titlebutton.minimize:hover,
+.csd headerbar button.titlebutton.maximize:hover,
+.titlebar button.titlebutton.close:hover,
+.titlebar button.titlebutton.minimize:hover,
+.titlebar button.titlebutton.maximize:hover {
+  background-color: rgba(255, 255, 255, 0.14);
+  background-image: none;
+  box-shadow: none;
+  color: #ffffff;
+}
+
+/* Close is the only control that earns colour, and only under the pointer. */
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.close:hover,
+headerbar button.titlebutton.close:hover,
+.csd headerbar button.titlebutton.close:hover,
+.titlebar button.titlebutton.close:hover {
+  background-color: #ff5f57;
+  color: #ffffff;
+}
+
+button.titlebutton:backdrop {
+  opacity: 0.45;
+}
+
+/* ---------- TG-1  Adwaita-native switches, checks, radios, sliders ----------
+ * Colour comes from @accent_bg_color, so these follow whatever accent is set
+ * in Settings rather than being pinned to a hardcoded macOS green.
+ */
+switch {
+  background-color: rgba(255, 255, 255, 0.18);
+  background-image: none;
+  border: none;
+  box-shadow: none;
+}
+
+switch:checked {
+  background-color: @accent_bg_color;
+  background-image: none;
+}
+
+switch:disabled {
+  opacity: 0.5;
+}
+
+switch > slider,
+scale.horizontal > trough > slider,
+scale.marks-after > trough > slider {
+  background-color: #ffffff;
+  background-image: none;
+  min-width: 20px;
+  min-height: 20px;
+  border: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+/* The theme scaled the knob to 1.8x on press, which is what made these read as
+ * a novelty rather than a control.
+ */
+switch > slider:active,
+scale.horizontal > trough > slider:active,
+scale.marks-after > trough > slider:active {
+  transform: none;
+  background-color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+check {
+  border-radius: 6px;
+  background-color: rgba(255, 255, 255, 0.14);
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  min-width: 20px;
+  min-height: 20px;
+}
+
+radio {
+  border-radius: 9999px;
+  background-color: rgba(255, 255, 255, 0.14);
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  min-width: 20px;
+  min-height: 20px;
+}
+
+check:checked,
+check:indeterminate,
+radio:checked,
+radio:indeterminate {
+  background-color: @accent_bg_color;
+  background-image: none;
+  color: @accent_fg_color;
+}
+
+scale > trough {
+  background-color: rgba(255, 255, 255, 0.18);
+  background-image: none;
+  border: none;
+  box-shadow: none;
+}
+
+scale > trough > highlight {
+  background-color: @accent_bg_color;
+  background-image: none;
+  border: none;
+}

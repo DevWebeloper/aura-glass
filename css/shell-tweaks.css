@@ -1,0 +1,371 @@
+/* tahoe-tweaks:shell — appended to Tahoe-Dark/gnome-shell/gnome-shell.css
+ *
+ * Shared translucency ladder, so every shell surface reads as the same
+ * material with only a shade of difference between levels:
+ *
+ *   floating surface (menu / quick settings) ... rgba(0, 0, 0, 0.42)
+ *   surface resting on a surface .............. rgba(255, 255, 255, 0.10)
+ *   control hover ............................. rgba(255, 255, 255, 0.16)
+ *   control active ............................ rgba(255, 255, 255, 0.22)
+ *   hairline edge ............................. rgba(255, 255, 255, 0.14)
+ *
+ * Edges are a full-perimeter 1px hairline plus a soft even drop shadow —
+ * never a directional inset highlight, which is what produced the bright
+ * corner streak on menus.
+ */
+
+/* ---------- Quick Settings sliders (brightness / volume) ----------
+ * Upstream used padding: 1.636em 1.5em 1.636em 0.818em, which is what made
+ * these rows so tall. Tightened to a macOS-style capsule.
+ */
+.quick-slider {
+  padding: 0.45em 1em 0.45em 0.5em;
+  border-radius: 26px;
+  background-color: rgba(255, 255, 255, 0.10);
+  box-shadow: inset 0 0 4px rgba(255, 255, 255, 0.28) !important;
+}
+
+.quick-slider > StBoxLayout {
+  spacing: 8px;
+}
+
+.quick-slider .icon-button,
+.quick-slider .message .message-header .message-expand-button,
+.quick-slider .message .message-header .message-close-button {
+  padding: 0.35em;
+  border-radius: 9999px;
+}
+
+.quick-slider .icon-button:hover {
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+.quick-slider .icon-button:active {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+.quick-slider .slider-bin {
+  min-height: 18px;
+  padding: 0 10px 0 4px;
+}
+
+/* Round white knob on a thin track, the way macOS draws it. `height` is the
+ * hit area, `-barlevel-height` the visible track, so the knob can overhang.
+ */
+.slider {
+  height: 18px;
+  -barlevel-height: 8px;
+  -slider-handle-radius: 8px;
+  -barlevel-background-color: rgba(255, 255, 255, 0.18);
+  -barlevel-active-background-color: #ffffff;
+}
+
+/* ---------- Quick Settings icons ----------
+ * Upstream drew 16px glyphs inside 7px of padding, so the icons floated in
+ * oversized targets. Bigger glyph, tighter box — the target size barely moves.
+ */
+.quick-settings .icon-button,
+.quick-settings .button {
+  padding: 5px;
+}
+
+.quick-settings .icon-button StIcon,
+.quick-settings .button StIcon {
+  icon-size: 20px;
+}
+
+.quick-toggle .quick-toggle-icon {
+  icon-size: 20px;
+}
+
+.quick-slider .icon-button StIcon {
+  icon-size: 18px;
+}
+
+/* ---------- Popup menus ----------
+ * Right-click menus and top-bar menus (accessibility, power, tray icons) were
+ * rgba(0, 0, 0, 0.72) — near-solid black — with a directional inset highlight
+ * that only lit the top-left corner. Replaced with an even perimeter hairline
+ * and a soft drop shadow.
+ */
+.popup-menu-content {
+  background-color: rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 26px;
+  padding: 6px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.40);
+}
+
+/* ---------- Quick Settings panel ----------
+ * The panel shares .popup-menu-content with every other menu, so it needs its
+ * own treatment afterwards. Dropping the menu.svg border-image is deliberate:
+ * a 9-slice image paints *instead of* the border, so a crisp hairline is only
+ * possible without it.
+ */
+.popup-menu-content.quick-settings,
+.quick-settings {
+  background: none;
+  background-color: rgba(0, 0, 0, 0.46);
+  border-image: none;
+  border: 1px solid rgba(255, 255, 255, 0.20);
+  border-radius: 33px !important;
+  box-shadow: none;
+}
+
+.popup-menu .popup-menu-item:focus,
+.popup-menu .popup-menu-item:hover,
+.popup-menu .popup-menu-item:selected {
+  background-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+.popup-menu .popup-menu-item:active,
+.popup-menu .popup-menu-item.selected:active {
+  background-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+/* Submenus sit on top of an already translucent parent, so they only need a
+ * light lift rather than a second full layer of tint.
+ */
+.popup-sub-menu {
+  background-color: rgba(255, 255, 255, 0.06);
+  border: none;
+  box-shadow: none;
+}
+
+/* Keep the separators from reading as hard black lines on a glass surface. */
+.popup-separator-menu-item .popup-separator-menu-item-separator,
+.popup-menu .popup-separator-menu-item .popup-separator-menu-item-separator {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+/* ---------- Notifications ----------
+ * In the message list a notification sits *on* the already translucent
+ * calendar popup, so a dark fill reads as a hole punched through it. A light
+ * lift keeps it on the same material. Text is pushed back up to full contrast
+ * because the surface underneath is no longer solid.
+ */
+.message {
+  background-color: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  box-shadow: none;
+  color: #ffffff;
+}
+
+.message:hover,
+.message:focus {
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+.message:active {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+/* Stacked notifications step down the same ladder instead of switching to
+ * flat greys (#404040 / #363636), which broke the material.
+ */
+.message:second-in-stack {
+  background-color: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+.message:lower-in-stack {
+  background-color: rgba(255, 255, 255, 0.06);
+  box-shadow: none;
+  border-color: transparent;
+}
+
+/* Header was rgba(222, 222, 222, 0.35) — barely legible once the backdrop is
+ * translucent.
+ */
+.message .message-header {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.message .message-header .message-header-content .message-source-title {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.message .message-box .message-content {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.message .message-box .message-content .message-title {
+  color: #ffffff;
+}
+
+/* The arriving banner floats over whatever is on screen — a wallpaper, a
+ * bright window, video — so it carries a near-solid ground instead of the
+ * light lift used inside the calendar popup. No drop shadow, matching the
+ * rest of the desktop.
+ */
+.notification-banner {
+  background-color: rgba(22, 23, 27, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  box-shadow: none;
+  color: #ffffff;
+}
+
+/* The app name is the one piece of identity in a notification, so it takes the
+ * accent. Everything else stays neutral so the message itself still leads.
+ */
+.notification-banner .message-header .message-header-content .message-source-title,
+.message .message-header .message-header-content .message-source-title {
+  color: -st-accent-color;
+}
+
+.notification-banner .message-close-button,
+.message .message-close-button {
+  box-shadow: none !important;
+  background-color: rgba(255, 255, 255, 0.10);
+  border-radius: 9999px;
+}
+
+.notification-banner .message-close-button:hover,
+.message .message-close-button:hover {
+  background-color: -st-accent-color;
+  color: -st-accent-fg-color;
+}
+
+/* Action buttons under a notification follow the same control ladder as the
+ * rest of the shell rather than being flat text.
+ */
+.notification-buttons-bin .button,
+.message .button {
+  background-color: rgba(255, 255, 255, 0.12);
+  border: none;
+  border-radius: 9999px;
+  color: #ffffff;
+}
+
+.notification-buttons-bin .button:hover,
+.message .button:hover {
+  background-color: rgba(255, 255, 255, 0.18);
+}
+
+/* ---------- TG-1  Adwaita-native toggles in the shell ----------
+ * -st-accent-color resolves to whatever accent is set in Settings (currently
+ * pink), so the shell follows the same accent as GTK apps instead of the
+ * theme's hardcoded macOS green / #0091ff.
+ */
+.toggle-switch {
+  background-color: rgba(255, 255, 255, 0.18);
+}
+
+.toggle-switch:checked {
+  background-color: -st-accent-color;
+}
+
+.toggle-switch:hover {
+  background-color: rgba(255, 255, 255, 0.26);
+}
+
+.toggle-switch:checked:hover {
+  background-color: -st-accent-color;
+}
+
+/* Sliders move from the macOS all-white fill to an accent fill, which is what
+ * makes them read as Adwaita. The tightened padding from earlier is kept.
+ */
+.slider {
+  -barlevel-active-background-color: -st-accent-color;
+}
+
+/* Checked quick toggles follow the accent rather than the theme's fixed blue.
+ * The theme sets `background-color: white !important` here, so without a
+ * matching !important the fill stayed white while the label turned white too —
+ * an unreadable white-on-white tile.
+ */
+.quick-toggle:checked {
+  background-color: -st-accent-color !important;
+  color: -st-accent-fg-color;
+}
+
+.quick-toggle:checked:hover {
+  background-color: -st-accent-color !important;
+  color: -st-accent-fg-color;
+}
+
+.quick-toggle:checked:active {
+  background-color: -st-accent-color !important;
+  color: -st-accent-fg-color;
+}
+
+.quick-toggle-has-menu .quick-toggle:checked .quick-toggle-icon {
+  background-color: -st-accent-color;
+  color: -st-accent-fg-color;
+}
+
+/* ---------- Quick toggle icon discs ----------
+ * The glyph sat in a 3.4em disc, so it floated in the middle of a lot of
+ * empty colour. Smaller disc, larger glyph — the ring reads as an icon
+ * treatment rather than a badge. Both !important because the theme declares
+ * the disc size that way.
+ */
+.quick-toggle-has-menu .quick-toggle .quick-toggle-icon {
+  min-height: 2.6em !important;
+  min-width: 2.6em !important;
+}
+
+.quick-toggle .quick-toggle-icon {
+  icon-size: 24px;
+}
+
+.quick-settings .icon-button,
+.quick-settings .button {
+  padding: 4px;
+}
+
+.quick-settings .icon-button StIcon,
+.quick-settings .button StIcon {
+  icon-size: 22px;
+}
+
+/* ---------- Menu-toggle tiles (Wi-Fi, Bluetooth, Wired, Power…) ----------
+ * These tiles are two widgets in one pill: .quick-toggle on the left and a
+ * separate .quick-toggle-menu-button holding the arrow. The theme keeps the
+ * inner toggle transparent so the outer pill paints one continuous background
+ * underneath both. Filling .quick-toggle:checked with the accent broke that —
+ * the accent covered only the left widget and stopped in a hard edge before
+ * the arrow.
+ *
+ * The outer pill has its own :checked state, so the fill goes there instead:
+ * the whole capsule takes the accent, arrow included, and there is no seam.
+ * Plain toggles with no menu (Night Light, Do Not Disturb, Airplane Mode) are
+ * a single widget and keep the fill on .quick-toggle:checked.
+ */
+.quick-toggle-has-menu:checked,
+.quick-toggle-has-menu:checked:hover,
+.quick-toggle-has-menu:checked:active {
+  background-color: -st-accent-color !important;
+}
+
+.quick-toggle-has-menu .quick-toggle:checked,
+.quick-toggle-has-menu .quick-toggle:checked:hover,
+.quick-toggle-has-menu .quick-toggle:checked:active {
+  background: none !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  color: -st-accent-fg-color;
+}
+
+/* On an accent pill the disc reads as a translucent well rather than a second
+ * block of the same colour.
+ */
+.quick-toggle-has-menu .quick-toggle:checked .quick-toggle-icon {
+  background-color: rgba(255, 255, 255, 0.28);
+  color: -st-accent-fg-color;
+}
+
+.quick-toggle-has-menu:checked .quick-toggle-menu-button {
+  color: -st-accent-fg-color;
+}
+
+.quick-toggle-has-menu:checked .quick-toggle-menu-button:hover {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+.quick-toggle-has-menu:checked .quick-toggle-menu-button:active {
+  background-color: rgba(255, 255, 255, 0.30);
+}

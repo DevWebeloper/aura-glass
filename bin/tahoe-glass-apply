@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# Re-apply the tahoe-glass CSS on top of the installed theme.
+#
+# All four targets are generated files: re-running the Tahoe theme's own
+# install.sh overwrites them and drops these changes. Run this afterwards.
+# It is idempotent — an existing block is replaced, never stacked.
+set -euo pipefail
+
+DIR="${TAHOE_GLASS_DIR:-$HOME/.config/tahoe-glass}"
+THEME="${TAHOE_GLASS_THEME:-Tahoe-Dark}"
+
+SHELL_CSS="$HOME/.themes/$THEME/gnome-shell/gnome-shell.css"
+GTK4_CSS="$HOME/.config/gtk-4.0/gtk.css"
+GTK4_DARK_CSS="$HOME/.config/gtk-4.0/gtk-dark.css"
+GTK3_CSS="$HOME/.config/gtk-3.0/gtk.css"
+
+# The GTK3 half of the theme ships as a gresource and is never written here, so
+# user CSS is ours alone — create it if it does not exist. It loads at
+# GTK_STYLE_PROVIDER_PRIORITY_USER, above the theme, so it wins on merit.
+mkdir -p "$HOME/.config/gtk-3.0"
+[ -f "$GTK3_CSS" ] || : > "$GTK3_CSS"
+
+apply() {
+    local target="$1" snippet="$2"
+    [ -f "$target" ]  || { echo "skip (missing target): $target"; return; }
+    [ -f "$snippet" ] || { echo "skip (missing snippet): $snippet"; return; }
+    python3 - "$target" "$snippet" <<'PY'
+import sys, re
+target, snippet = sys.argv[1], sys.argv[2]
+BEGIN = "/* >>> tahoe-glass BEGIN <<< */"
+END   = "/* >>> tahoe-glass END <<< */"
+
+css = open(target, encoding="utf-8").read()
+# Drop any block appended previously so re-runs replace instead of stacking.
+# "tahoe-tweaks" is the marker this project used before it was named, and is
+# stripped too so an in-place upgrade doesn't leave two copies of the CSS.
+for name in ("tahoe-glass", "tahoe-tweaks"):
+    css = re.sub(
+        r"/\* >>> %s BEGIN <<< \*/.*?/\* >>> %s END <<< \*/\n?" % (name, name),
+        "", css, flags=re.S,
+    )
+block = open(snippet, encoding="utf-8").read().rstrip("\n")
+open(target, "w", encoding="utf-8").write(
+    css.rstrip("\n") + "\n\n" + BEGIN + "\n" + block + "\n" + END + "\n"
+)
+print("applied ->", target)
+PY
+}
+
+apply "$SHELL_CSS"     "$DIR/shell-tweaks.css"
+apply "$GTK4_CSS"      "$DIR/gtk4-tweaks.css"
+apply "$GTK4_DARK_CSS" "$DIR/gtk4-tweaks.css"
+apply "$GTK3_CSS"      "$DIR/gtk3-tweaks.css"
+
+# The User Themes extension reloads on a settings change, not on a file change,
+# so toggle the key to force Main.loadTheme().
+SD="$HOME/.local/share/gnome-shell/extensions/user-theme@gnome-shell-extensions.gcampax.github.com/schemas"
+[ -d "$SD" ] || SD="/usr/share/gnome-shell/extensions/user-theme@gnome-shell-extensions.gcampax.github.com/schemas"
+if [ -d "$SD" ]; then
+    cur=$(GSETTINGS_SCHEMA_DIR="$SD" gsettings get org.gnome.shell.extensions.user-theme name 2>/dev/null || echo "''")
+    cur=${cur#\'}; cur=${cur%\'}
+    if [ -n "$cur" ]; then
+        GSETTINGS_SCHEMA_DIR="$SD" gsettings set org.gnome.shell.extensions.user-theme name ''
+        sleep 1
+        GSETTINGS_SCHEMA_DIR="$SD" gsettings set org.gnome.shell.extensions.user-theme name "$cur"
+        echo "shell theme reloaded ($cur)"
+    fi
+fi
+
+# GTK apps read their CSS at startup, so already-running apps keep the old look
+# until they are restarted. Nothing to do about that from here.
+echo "done — restart GTK apps to pick up the GTK side"
