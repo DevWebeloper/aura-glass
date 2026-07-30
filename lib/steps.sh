@@ -26,12 +26,30 @@ EXT_CORE=(
     user-theme@gnome-shell-extensions.gcampax.github.com
     blur-my-shell@aunetx
 )
-# The rest of the reference desktop. None of it is required.
+# The rest of the reference desktop, in the order the shell lays them out.
+# None of it is required, and --extras is what asks for it.
+#
+# Several of these ship inside the Bazzite and Bluefin images already —
+# add-to-steam, appindicatorsupport, compiz-alike, hotedge and restartto all
+# live in /usr/share/gnome-shell/extensions there. install_ext_ego checks that
+# directory before downloading, so on an atomic system they are enabled in
+# place instead of being shadowed by a second copy under $HOME that would then
+# drift from whatever the image ships.
 EXT_EXTRA=(
     just-perfection-desktop@just-perfection
     gnome-ui-tune@itstime.tech
     space-bar@luchrioh
-    dash-to-dock@micxgx.gmail.com
+    auto-accent-colour@Wartybix
+    Vitals@CoreCoding.com
+    clipboard-indicator@tudmotu.com
+    ddterm@amezin.github.com
+    kiwimenu@kemma
+    hotedge@jonathan.jdoda.ca
+    restartto@tiagoporsch.github.io
+    xwayland-indicator@swsnr.de
+    appindicatorsupport@rgcjonas.gmail.com
+    compiz-alike-magic-lamp-effect@hermes83.github.com
+    add-to-steam@pupper.space
 )
 
 # GNOME's accent enum -> Colloid's folder-colour variant. Colloid calls blue
@@ -279,6 +297,15 @@ install_icons() {
 }
 
 install_cursors() {
+    # Adwaita's cursors ship with GNOME itself, so there is nothing to fetch,
+    # nothing to keep pinned, and they are crisper and better hinted at every
+    # size than the MacTahoe set. --cursors mactahoe asks for the old ones.
+    if [ "${CURSORS:-adwaita}" = adwaita ]; then
+        step "Cursors"
+        skip "using the stock Adwaita cursors (--cursors mactahoe for the macOS set)"
+        return 0
+    fi
+
     step "Installing MacTahoe cursors"
 
     if [ "${FORCE:-0}" != 1 ] \
@@ -506,17 +533,61 @@ apply_gsettings() {
     run gsettings set org.gnome.desktop.interface accent-color "$ACCENT"
     run gsettings set org.gnome.desktop.interface icon-theme   "$icons"
 
-    if [ -d "$HOME/.local/share/icons/MacTahoe-dark" ]; then
-        run gsettings set org.gnome.desktop.interface cursor-theme 'MacTahoe-dark'
+    local cursor='Adwaita'
+    if [ "${CURSORS:-adwaita}" = mactahoe ] \
+       && { [ -d "$HOME/.local/share/icons/MacTahoe-dark" ] \
+            || [ -d "/usr/share/icons/MacTahoe-dark" ]; }; then
+        cursor='MacTahoe-dark'
     fi
+    run gsettings set org.gnome.desktop.interface cursor-theme "$cursor"
 
-    # Single close button on the right, appmenu on the left — the reference
-    # desktop's layout. Change it in Tweaks if you prefer three buttons.
+    # All three controls, minimise and maximise before close, appmenu on the
+    # left. The window controls themselves are restyled in gtk4-tweaks.css.
     if [ "${WANT_WM_BUTTONS:-1}" = 1 ]; then
-        run gsettings set org.gnome.desktop.wm.preferences button-layout 'appmenu:close'
+        run gsettings set org.gnome.desktop.wm.preferences button-layout \
+            'appmenu:minimize,maximize,close'
     fi
 
-    ok "gtk-theme=Tahoe-Dark  icons=$icons  accent=$ACCENT"
+    ok "gtk-theme=Tahoe-Dark  icons=$icons  cursor=$cursor  accent=$ACCENT"
+}
+
+# Colloid ships a -Light and a -Dark build of every accent; GNOME's icon-theme
+# key holds exactly one name and knows nothing about the pair. Without this,
+# switching Settings > Appearance to Light restyles everything except the
+# icons, which stay dark and look wrong against the new background.
+install_icon_sync() {
+    step "Following the light/dark preference with the icons"
+
+    if [ "${WANT_ICONS:-1}" != 1 ]; then
+        skip "icons left alone (--no-icons)"
+        return 0
+    fi
+
+    # The base name without the variant suffix, which is what the agent needs
+    # in order to build "<base>-Dark" / "<base>-Light".
+    local base; base="$(accent_to_colloid_name "$ACCENT")"
+    base="${base%-Dark}"; base="${base%-Light}"
+
+    run install -Dm755 "$REPO_ROOT/bin/tahoe-glass-icon-sync" \
+        "$HOME/.local/bin/tahoe-glass-icon-sync"
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: remember icon set $base"
+    else
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$base" > "$CONF_DIR/icons"
+    fi
+
+    run install -Dm644 "$REPO_ROOT/systemd/tahoe-glass-icon-sync.service" \
+        "$HOME/.config/systemd/user/tahoe-glass-icon-sync.service"
+    run systemctl --user daemon-reload
+    run systemctl --user enable tahoe-glass-icon-sync.service >/dev/null 2>&1 || true
+
+    # enable alone only arms it for the next login, and there is no reason to
+    # make the user log out to see their icons follow the theme.
+    if systemctl --user is-active --quiet graphical-session.target 2>/dev/null; then
+        run systemctl --user restart tahoe-glass-icon-sync.service 2>/dev/null || true
+    fi
+    ok "icons follow Settings > Appearance ($base-Dark / $base-Light)"
 }
 
 # ------------------------------------------------------------- integration --
