@@ -23,6 +23,7 @@ WANT_ICONS=1
 WANT_CURSORS=1
 WANT_WM_BUTTONS=1
 WANT_DEPS=1
+GRAIN=""          # empty keeps the preset's value, or the remembered choice
 ASSUME_YES=0
 DRY_RUN=0
 FORCE=0
@@ -41,6 +42,10 @@ ${C_BLD}tahoe-glass${C_OFF} — a macOS Tahoe glass desktop for GNOME 48-50
                       one of: $VALID_ACCENTS
     --extras          also install the optional extensions
                       (Just Perfection, GNOME UI Tune, Space Bar, Dash to Dock)
+    --grain N         strength of the film grain over blurred surfaces, 0-1.
+                      How heavy it reads depends on the screen and the GPU;
+                      drop it if the background looks like static
+    --no-grain        no grain at all (same as --grain 0)
     --no-icons        keep your current icon theme
     --no-cursors      keep your current cursor theme
     --no-wm-buttons   keep your current titlebar button layout
@@ -61,6 +66,9 @@ while [ $# -gt 0 ]; do
         --accent)        ACCENT="${2:-}"; shift 2 ;;
         --accent=*)      ACCENT="${1#*=}"; shift ;;
         --extras)        WANT_EXTRAS=1; shift ;;
+        --grain)         GRAIN="${2:-}"; shift 2 ;;
+        --grain=*)       GRAIN="${1#*=}"; shift ;;
+        --no-grain)      GRAIN=0; shift ;;
         --no-icons)      WANT_ICONS=0; shift ;;
         --no-cursors)    WANT_CURSORS=0; shift ;;
         --no-wm-buttons) WANT_WM_BUTTONS=0; shift ;;
