@@ -41,7 +41,8 @@ Have a look first if you like — nothing is written:
 | Flag | Effect |
 |---|---|
 | `--accent COLOR` | `blue teal green yellow orange red pink purple slate` (default `pink`) |
-| `--extras` | also install Just Perfection, GNOME UI Tune, Space Bar, Dash to Dock |
+| `--extras` | also install the rest of the reference desktop — see below |
+| `--cursors WHICH` | `adwaita` (default) or `mactahoe` |
 | `--no-icons` | keep your icon theme |
 | `--no-cursors` | keep your cursor theme |
 | `--no-wm-buttons` | keep your titlebar button layout |
@@ -65,11 +66,45 @@ override, pinned to a known-good commit.
 
 **Extensions** — [User Themes][ut] (loads the shell theme),
 [Blur My Shell][bms] (the actual glass), [Open Bar][ob] (top-bar geometry, menu
-and notification radii). Optional with `--extras`: Just Perfection, GNOME UI
-Tune, Space Bar, Dash to Dock.
+and notification radii).
 
-**Icons and cursors** — [Colloid][colloid] in your accent colour, and the
-[MacTahoe][mactahoe] cursors. Both install to `~/.local/share/icons`.
+`--extras` adds the rest of the reference desktop: Just Perfection, GNOME UI
+Tune, Space Bar, Auto Accent Colour, Vitals, Clipboard Indicator, ddterm,
+Kiwi Menu, HotEdge, Restart To, XWayland Indicator, AppIndicator Support,
+Magic Lamp Effect and Add to Steam.
+
+Bazzite and Bluefin already ship several of those inside the image. The
+installer looks in `/usr/share/gnome-shell/extensions` before it downloads
+anything, so on an atomic system they are enabled where they are rather than
+shadowed by a second copy under `$HOME` that would drift from the image.
+
+**Icons and cursors** — [Colloid][colloid] in your accent colour, installed to
+`~/.local/share/icons`. Cursors are GNOME's own Adwaita by default; pass
+`--cursors mactahoe` for the [MacTahoe][mactahoe] set instead.
+
+Colloid ships a `-Light` and a `-Dark` build of every accent, but GNOME's
+`icon-theme` key holds one name and knows nothing about the pair — so
+switching **Settings → Appearance** to Light would restyle everything except
+the icons. `tahoe-glass-icon-sync.service` watches the colour scheme and keeps
+the key pointing at the matching variant.
+
+### Custom colours
+
+**Settings → Appearance cannot take custom swatches.** Its nine accents are
+compiled into gnome-control-center; no extension can add to that list, and the
+only way to change it is to patch and rebuild the app — which on an atomic
+system also means layering an RPM and rebooting, and comes undone at every
+GNOME update. Not worth it.
+
+For arbitrary colours, use the two layers that *are* designed to be changed:
+
+- **Open Bar → Settings** has RGB pickers for the bar, menu, highlight and
+  border colours. This is where the shipped look comes from, and it can also
+  derive a whole palette from the current wallpaper.
+- **Auto Accent Colour** (installed with `--extras`) keeps GNOME's own accent
+  tracking the wallpaper, so the parts that read the accent stay in step.
+
+Both are GUI, and neither needs the terminal or a rebuilt package.
 
 **A dconf preset** — the Blur My Shell pipelines and the Open Bar geometry that
 this look depends on. Machine-specific keys are stripped out of the preset:

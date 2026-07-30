@@ -24,6 +24,7 @@ WANT_CURSORS=1
 WANT_WM_BUTTONS=1
 WANT_DEPS=1
 WANT_PANEL_BLUR_FIX=0
+CURSORS="adwaita"   # adwaita | mactahoe
 GRAIN=""          # empty keeps the preset's value, or the remembered choice
 ASSUME_YES=0
 DRY_RUN=0
@@ -50,6 +51,7 @@ ${C_BLD}tahoe-glass${C_OFF} — a macOS Tahoe glass desktop for GNOME 48-50
     --panel-blur-fix  install a login-time unit that rebuilds the panel blur
                       12s in. Only worth it on multi-monitor, where the top
                       bar can come up with a mismatched strip
+    --cursors WHICH   adwaita (default, ships with GNOME) or mactahoe
     --no-icons        keep your current icon theme
     --no-cursors      keep your current cursor theme
     --no-wm-buttons   keep your current titlebar button layout
@@ -74,6 +76,8 @@ while [ $# -gt 0 ]; do
         --grain=*)       GRAIN="${1#*=}"; shift ;;
         --no-grain)      GRAIN=0; shift ;;
         --panel-blur-fix) WANT_PANEL_BLUR_FIX=1; shift ;;
+        --cursors)       CURSORS="${2:-}"; shift 2 ;;
+        --cursors=*)     CURSORS="${1#*=}"; shift ;;
         --no-icons)      WANT_ICONS=0; shift ;;
         --no-cursors)    WANT_CURSORS=0; shift ;;
         --no-wm-buttons) WANT_WM_BUTTONS=0; shift ;;
@@ -85,6 +89,11 @@ while [ $# -gt 0 ]; do
         *)               usage; die "unknown option: $1" ;;
     esac
 done
+
+case "$CURSORS" in
+    adwaita|mactahoe) ;;
+    *) die "unknown --cursors '$CURSORS' — pick adwaita or mactahoe" ;;
+esac
 
 case " $VALID_ACCENTS " in
     *" $ACCENT "*) ;;
@@ -117,6 +126,7 @@ if [ "$WANT_CURSORS" = 1 ]; then install_cursors; else step "Cursors"; skip "lef
 load_dconf
 install_css
 apply_gsettings
+install_icon_sync
 flatpak_override
 install_panel_blur_unit
 enable_extensions

@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Keep the icon theme in step with the system light/dark preference.
+#
+# GNOME has one icon-theme key and no notion of a light and a dark variant of
+# the same set, so switching Settings > Appearance between Light and Dark
+# leaves the icons wherever they were. Colloid ships -Light and -Dark builds of
+# every accent, which is exactly the pair that key cannot express.
+#
+# This watches org.gnome.desktop.interface color-scheme and writes the matching
+# variant. With no argument it runs as a daemon; `--once` just corrects the
+# current setting and exits.
+set -euo pipefail
+
+BASE="${TAHOE_GLASS_ICONS:-}"
+if [ -z "$BASE" ] && [ -r "$HOME/.config/tahoe-glass/icons" ]; then
+    BASE="$(cat "$HOME/.config/tahoe-glass/icons")"
+fi
+BASE="${BASE:-Colloid}"
+
+have_theme() {
+    [ -d "$HOME/.local/share/icons/$1" ] || [ -d "/usr/share/icons/$1" ]
+}
+
+apply() {
+    local scheme variant want
+    scheme="$(gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null || echo "''")"
+    case "$scheme" in
+        *prefer-dark*) variant="Dark" ;;
+        *)             variant="Light" ;;
+    esac
+
+    want="$BASE-$variant"
+    # A set without the variant installed is left alone rather than swapped for
+    # something that would silently look wrong.
+    have_theme "$want" || { have_theme "$BASE" && want="$BASE" || return 0; }
+
+    local cur
+    cur="$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d \")"
+    cur="${cur#\'}"; cur="${cur%\'}"
+    [ "$cur" = "$want" ] && return 0
+    gsettings set org.gnome.desktop.interface icon-theme "$want"
+}
+
+apply
+[ "${1:-}" = "--once" ] && exit 0
+
+# gsettings monitor prints a line per change and never exits, so this is the
+# whole loop. Any line is a colour-scheme change worth reacting to.
+gsettings monitor org.gnome.desktop.interface color-scheme | while read -r _; do
+    apply || true
+done
