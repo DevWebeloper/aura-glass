@@ -15,6 +15,9 @@ CUSTOMOSD_REF="334ac17e9348"     # last upstream commit; patched for GNOME 50
 COLLOID_REPO="https://github.com/vinceliuice/Colloid-icon-theme.git"
 COLLOID_REF="c9e702beb96f"
 
+REVERSAL_REPO="https://github.com/yeyushengfan258/Reversal-icon-theme.git"
+REVERSAL_REF="2c8122287e3b"
+
 MACTAHOE_REPO="https://github.com/vinceliuice/MacTahoe-icon-theme.git"
 MACTAHOE_REF="b85923bb87f5"
 
@@ -374,7 +377,67 @@ PY
 
 # ------------------------------------------------------------------- icons --
 
+# The icon set, minus any light/dark suffix. Everything downstream — the
+# gsettings key and the light/dark agent — works from this one name.
+#
+# --icons takes either "colloid", which follows --accent, or a pack and colour
+# like "reversal-purple". Folder colour and accent are separate on purpose:
+# wanting purple folders under a pink accent is a perfectly ordinary thing to
+# want, and tying them together would make it unsayable.
+icon_base() {
+    case "${ICONS:-colloid}" in
+        colloid)
+            local n; n="$(accent_to_colloid_name "$ACCENT")"
+            n="${n%-Dark}"; n="${n%-Light}"
+            printf '%s\n' "$n" ;;
+        reversal)        printf 'Reversal\n' ;;
+        reversal-*)      printf 'Reversal-%s\n' "${ICONS#reversal-}" ;;
+        *)               printf '%s\n' "$ICONS" ;;
+    esac
+}
+
+# Packs disagree about how they spell the pair: Colloid ships -Light/-Dark,
+# Reversal ships the bare name plus -dark. Rather than teach every caller the
+# conventions, ask the filesystem which of them exists.
+icon_variant() {
+    local base="$1" want="$2" c   # want: Dark | Light
+    for c in "$base-$want" "$base-$(printf '%s' "$want" | tr '[:upper:]' '[:lower:]')" "$base"; do
+        if [ -d "$HOME/.local/share/icons/$c" ] || [ -d "/usr/share/icons/$c" ]; then
+            printf '%s\n' "$c"; return 0
+        fi
+    done
+    return 1
+}
+
+install_reversal() {
+    local color="${ICONS#reversal}"; color="${color#-}"
+    [ -n "$color" ] || color=purple
+    local name="Reversal-$color"
+
+    step "Installing the Reversal icon theme ($color)"
+    if [ "${FORCE:-0}" != 1 ] \
+       && { [ -d "$HOME/.local/share/icons/$name" ] || [ -d "/usr/share/icons/$name" ]; }; then
+        skip "$name already installed"
+        return 0
+    fi
+
+    local src="$SRC_CACHE/Reversal-icon-theme"
+    clone_pinned "$REVERSAL_REPO" "$REVERSAL_REF" "$src"
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: $src/install.sh -t $color"
+    else
+        ( cd "$src" && ./install.sh -t "$color" ) >/dev/null \
+            || die "the Reversal installer failed"
+    fi
+    ok "$name"
+}
+
 install_icons() {
+    case "${ICONS:-colloid}" in
+        reversal|reversal-*) install_reversal; return ;;
+    esac
+
     step "Installing the Colloid icon theme ($ACCENT)"
 
     local name; name="$(accent_to_colloid_name "$ACCENT")"
@@ -675,9 +738,12 @@ PY
 apply_gsettings() {
     step "Setting themes and accent"
 
-    local icons; icons="$(accent_to_colloid_name "$ACCENT")"
-    [ -d "$HOME/.local/share/icons/$icons" ] || [ -d "/usr/share/icons/$icons" ] \
-        || { warn "icon theme $icons is not installed — falling back to Adwaita"; icons="Adwaita"; }
+    # prefer-dark is set below, so pick the dark half of the pair here and save
+    # the agent a visible swap a moment later.
+    local base icons; base="$(icon_base)"
+    icons="$(icon_variant "$base" Dark || true)"
+    [ -n "$icons" ] \
+        || { warn "icon theme $base is not installed — falling back to Adwaita"; icons="Adwaita"; }
 
     run gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
     run gsettings set org.gnome.desktop.interface gtk-theme    'Tahoe-Dark'
@@ -715,9 +781,8 @@ install_icon_sync() {
     fi
 
     # The base name without the variant suffix, which is what the agent needs
-    # in order to build "<base>-Dark" / "<base>-Light".
-    local base; base="$(accent_to_colloid_name "$ACCENT")"
-    base="${base%-Dark}"; base="${base%-Light}"
+    # in order to find the light and dark halves of the pair.
+    local base; base="$(icon_base)"
 
     run install -Dm755 "$REPO_ROOT/bin/tahoe-glass-icon-sync" \
         "$HOME/.local/bin/tahoe-glass-icon-sync"
@@ -726,6 +791,7 @@ install_icon_sync() {
     else
         mkdir -p "$CONF_DIR"
         printf '%s\n' "$base" > "$CONF_DIR/icons"
+        printf '%s\n' "${ICONS:-colloid}" > "$CONF_DIR/icon-pack"
     fi
 
     run install -Dm644 "$REPO_ROOT/systemd/tahoe-glass-icon-sync.service" \
@@ -738,7 +804,7 @@ install_icon_sync() {
     if systemctl --user is-active --quiet graphical-session.target 2>/dev/null; then
         run systemctl --user restart tahoe-glass-icon-sync.service 2>/dev/null || true
     fi
-    ok "icons follow Settings > Appearance ($base-Dark / $base-Light)"
+    ok "icons follow Settings > Appearance ($(icon_variant "$base" Dark || echo "$base") / $(icon_variant "$base" Light || echo "$base"))"
 }
 
 # ------------------------------------------------------------- integration --

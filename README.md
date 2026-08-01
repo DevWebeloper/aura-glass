@@ -47,6 +47,7 @@ Have a look first if you like — nothing is written:
 | `--accent COLOR` | `blue teal green yellow orange red pink purple slate` (default `pink`) |
 | `--full` | the whole reference desktop — every extension and every preset |
 | `--extras` | also install the rest of the reference desktop — see below |
+| `--icons WHICH` | `colloid` (default, follows `--accent`) or `reversal-COLOUR` |
 | `--cursors WHICH` | `adwaita` (default) or `mactahoe` |
 | `--no-osd` | keep the stock volume/brightness popup |
 | `--no-icons` | keep your icon theme |

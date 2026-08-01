@@ -26,6 +26,7 @@ WANT_DEPS=1
 WANT_OSD=1
 WANT_PANEL_BLUR_FIX=1
 CURSORS="adwaita"   # adwaita | mactahoe
+ICONS=""            # empty = remembered choice, then colloid
 GRAIN=""          # empty keeps the preset's value, or the remembered choice
 ASSUME_YES=0
 DRY_RUN=0
@@ -56,6 +57,9 @@ ${C_BLD}tahoe-glass${C_OFF} — a macOS Tahoe glass desktop for GNOME 48-50
                       skip the agent that rebuilds Blur My Shell's panel blur
                       when the monitor layout changes. Without it the top bar
                       can show a strip that doesn't line up with the wallpaper
+    --icons WHICH     colloid (default, follows --accent) or reversal-COLOUR,
+                      e.g. reversal-purple. Folder colour is separate from the
+                      accent on purpose. Remembered for later runs
     --cursors WHICH   adwaita (default, ships with GNOME) or mactahoe
     --no-osd          keep the stock volume and brightness popup. By default
                       it is reduced to its level bar — no icon, no device
@@ -95,6 +99,8 @@ while [ $# -gt 0 ]; do
         --no-panel-blur-fix) WANT_PANEL_BLUR_FIX=0; shift ;;
         --cursors)       CURSORS="${2:-}"; shift 2 ;;
         --cursors=*)     CURSORS="${1#*=}"; shift ;;
+        --icons)         ICONS="${2:-}"; shift 2 ;;
+        --icons=*)       ICONS="${1#*=}"; shift ;;
         --osd)           WANT_OSD=1; shift ;;
         --no-osd)        WANT_OSD=0; shift ;;
         --no-icons)      WANT_ICONS=0; shift ;;
@@ -112,6 +118,25 @@ done
 case "$CURSORS" in
     adwaita|mactahoe) ;;
     *) die "unknown --cursors '$CURSORS' — pick adwaita or mactahoe" ;;
+esac
+
+# Remembered per machine, for the same reason --grain is: dconf and gsettings
+# get rewritten on every run, so a flagless re-install would quietly put the
+# default pack back over a deliberate choice.
+if [ -z "$ICONS" ] && [ -r "$CONF_DIR/icon-pack" ]; then
+    ICONS="$(cat "$CONF_DIR/icon-pack" 2>/dev/null || true)"
+fi
+ICONS="${ICONS:-colloid}"
+
+VALID_REVERSAL="default black blue brown cyan green grey lightblue orange pink purple red"
+case "$ICONS" in
+    colloid|reversal) ;;
+    reversal-*)
+        case " $VALID_REVERSAL " in
+            *" ${ICONS#reversal-} "*) ;;
+            *) die "unknown Reversal colour '${ICONS#reversal-}' — pick one of: $VALID_REVERSAL" ;;
+        esac ;;
+    *) die "unknown --icons '$ICONS' — colloid, reversal, or reversal-COLOUR" ;;
 esac
 
 case " $VALID_ACCENTS " in

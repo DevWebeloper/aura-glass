@@ -22,17 +22,24 @@ have_theme() {
 }
 
 apply() {
-    local scheme variant want
+    local scheme variant want c
     scheme="$(gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null || echo "''")"
     case "$scheme" in
         *prefer-dark*) variant="Dark" ;;
         *)             variant="Light" ;;
     esac
 
-    want="$BASE-$variant"
-    # A set without the variant installed is left alone rather than swapped for
-    # something that would silently look wrong.
-    have_theme "$want" || { have_theme "$BASE" && want="$BASE" || return 0; }
+    # Packs disagree about how they spell the pair. Colloid ships -Light and
+    # -Dark; Reversal ships the bare name for light and -dark for dark. Try
+    # both spellings, then the bare name — a set with only one half is left on
+    # that half rather than swapped for something that would look wrong.
+    want=""
+    for c in "$BASE-$variant" \
+             "$BASE-$(printf '%s' "$variant" | tr '[:upper:]' '[:lower:]')" \
+             "$BASE"; do
+        if have_theme "$c"; then want="$c"; break; fi
+    done
+    [ -n "$want" ] || return 0
 
     local cur
     cur="$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d \")"
