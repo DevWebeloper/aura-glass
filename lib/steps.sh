@@ -9,6 +9,9 @@ THEME_REF="6dfcd9d941e5"
 OPENBAR_REPO="https://github.com/neuromorph/openbar.git"
 OPENBAR_REF="01fb24217e0c"       # last upstream commit; patched for GNOME 50
 
+CUSTOMOSD_REPO="https://github.com/neuromorph/custom-osd.git"
+CUSTOMOSD_REF="334ac17e9348"     # last upstream commit; patched for GNOME 50
+
 COLLOID_REPO="https://github.com/vinceliuice/Colloid-icon-theme.git"
 COLLOID_REF="c9e702beb96f"
 
@@ -247,11 +250,64 @@ install_openbar() {
     ok "$uuid (patched for GNOME $GNOME_MAJOR)"
 }
 
+# Custom OSD is what turns the volume and brightness popup into the bar on its
+# own. Upstream's last release is for GNOME 46 and its last commit does not run
+# on 50 — the ShellBlurEffect:sigma property, the meta_*_clutter_debug_flags()
+# calls and OsdWindowManager.show()'s signature have all gone since. The patch
+# in patches/ fixes those, and rounds the blur to the popup's corners: a
+# background blur covers the actor's bounding box, so without it the pill sits
+# in a hard-edged rectangle of blur no matter what radius is set.
+install_custom_osd() {
+    local uuid="custom-osd@neuromorph"
+
+    if [ "${WANT_OSD:-1}" != 1 ]; then
+        step "Custom OSD"
+        skip "not installed (--no-osd)"
+        return 0
+    fi
+
+    if [ -d "$EXT_DIR/$uuid" ] && ext_supports_shell "$EXT_DIR/$uuid" "$GNOME_MAJOR" \
+       && [ "${FORCE:-0}" != 1 ]; then
+        skip "$uuid already patched for GNOME $GNOME_MAJOR"
+        return 0
+    fi
+
+    info "no GNOME $GNOME_MAJOR release exists — building from $CUSTOMOSD_REF + patches/custom-osd-gnome50.patch"
+    local src="$SRC_CACHE/custom-osd"
+    # A cached checkout still carries the patch from last time, and git refuses
+    # to check out over modified files — so --force would fail on the second
+    # run rather than rebuild.
+    if [ -d "$src/.git" ]; then
+        run git -C "$src" checkout --quiet -- . 2>/dev/null || true
+    fi
+    clone_pinned "$CUSTOMOSD_REPO" "$CUSTOMOSD_REF" "$src"
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: apply patch, copy to $EXT_DIR/$uuid, compile schemas"
+        return 0
+    fi
+
+    git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/custom-osd-gnome50.patch" \
+        || die "the Custom OSD patch did not apply — upstream may have moved"
+
+    # Upstream keeps the extension at the root of the repo rather than in a
+    # directory named after the UUID, so this copies the checkout itself.
+    rm -rf "$EXT_DIR/$uuid"
+    mkdir -p "$EXT_DIR/$uuid"
+    tar -C "$src" --exclude=.git --exclude=screens --exclude=po -cf - . \
+        | tar -C "$EXT_DIR/$uuid" -xf -
+
+    glib-compile-schemas "$EXT_DIR/$uuid/schemas" \
+        || die "failed to compile Custom OSD's gsettings schemas"
+    ok "$uuid (patched for GNOME $GNOME_MAJOR)"
+}
+
 install_extensions() {
     step "Installing shell extensions"
     local u
     for u in "${EXT_CORE[@]}"; do install_ext_ego "$u" || true; done
     install_openbar
+    install_custom_osd
 
     if [ "${WANT_EXTRAS:-0}" = 1 ]; then
         step "Installing optional extensions"
@@ -262,6 +318,7 @@ install_extensions() {
 enable_extensions() {
     step "Enabling extensions"
     local want=("${EXT_CORE[@]}" openbar@neuromorph) u
+    [ "${WANT_OSD:-1}" = 1 ] && want+=(custom-osd@neuromorph)
     [ "${WANT_EXTRAS:-0}" = 1 ] && want+=("${EXT_EXTRA[@]}")
 
     for u in "${want[@]}"; do
@@ -527,6 +584,55 @@ load_dconf() {
     run dconf write /org/gnome/shell/extensions/openbar/trigger-reload true
 
     apply_grain
+    sync_osd_profile
+}
+
+# Custom OSD keeps a set of named profiles beside the live settings, and its
+# preferences window overwrites the live settings with the active profile the
+# moment one is picked from the list. The preset above only writes the live
+# settings, so without this the popup would quietly go back to stock the first
+# time anyone opened that page. Copying the loaded values into the Default
+# profile makes the preset what "Default" actually means.
+sync_osd_profile() {
+    [ "${WANT_OSD:-1}" = 1 ] || return 0
+    local schemas="$EXT_DIR/custom-osd@neuromorph/schemas"
+    [ -d "$schemas" ] || return 0
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: save the OSD preset into Custom OSD's Default profile"
+        return 0
+    fi
+
+    python3 - "$schemas" <<'PY' || { warn "could not sync the OSD profile"; return 0; }
+import sys
+import gi
+from gi.repository import Gio, GLib
+
+source = Gio.SettingsSchemaSource.new_from_directory(
+    sys.argv[1], Gio.SettingsSchemaSource.get_default(), False)
+schema = source.lookup("org.gnome.shell.extensions.custom-osd", False)
+if schema is None:
+    sys.exit(1)
+settings = Gio.Settings.new_full(schema, None, None)
+
+# The same exclusions the extension's own "save profile" uses: these are
+# either global or set per popup type rather than per profile.
+skip = {"default-font", "profiles", "active-profile",
+        "icon", "label", "level", "numeric", "showosd", "clock-osd"}
+profile = {k: settings.get_value(k) for k in schema.list_keys() if k not in skip}
+
+existing = settings.get_value("profiles")
+merged = {}
+for i in range(existing.n_children()):
+    entry = existing.get_child_value(i)
+    merged[entry.get_child_value(0).get_string()] = entry.get_child_value(1).get_variant()
+merged["Default"] = GLib.Variant("a{sv}", profile)
+
+settings.set_value("profiles", GLib.Variant("a{sv}", merged))
+settings.set_string("active-profile", "Default")
+Gio.Settings.sync()
+PY
+    ok "OSD preset saved as Custom OSD's Default profile"
 }
 
 # Blur My Shell's noise effect lays film grain over every blurred surface. It

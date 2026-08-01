@@ -23,6 +23,7 @@ WANT_ICONS=1
 WANT_CURSORS=1
 WANT_WM_BUTTONS=1
 WANT_DEPS=1
+WANT_OSD=1
 WANT_PANEL_BLUR_FIX=1
 CURSORS="adwaita"   # adwaita | mactahoe
 GRAIN=""          # empty keeps the preset's value, or the remembered choice
@@ -53,6 +54,9 @@ ${C_BLD}tahoe-glass${C_OFF} — a macOS Tahoe glass desktop for GNOME 48-50
                       when the monitor layout changes. Without it the top bar
                       can show a strip that doesn't line up with the wallpaper
     --cursors WHICH   adwaita (default, ships with GNOME) or mactahoe
+    --no-osd          keep the stock volume and brightness popup. By default
+                      it is reduced to its level bar — no icon, no device
+                      name — on a blurred pill
     --no-icons        keep your current icon theme
     --no-cursors      keep your current cursor theme
     --no-wm-buttons   keep your current titlebar button layout
@@ -80,6 +84,8 @@ while [ $# -gt 0 ]; do
         --no-panel-blur-fix) WANT_PANEL_BLUR_FIX=0; shift ;;
         --cursors)       CURSORS="${2:-}"; shift 2 ;;
         --cursors=*)     CURSORS="${1#*=}"; shift ;;
+        --osd)           WANT_OSD=1; shift ;;
+        --no-osd)        WANT_OSD=0; shift ;;
         --no-icons)      WANT_ICONS=0; shift ;;
         --no-cursors)    WANT_CURSORS=0; shift ;;
         --no-wm-buttons) WANT_WM_BUTTONS=0; shift ;;
