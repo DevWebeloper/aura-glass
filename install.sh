@@ -47,10 +47,11 @@ ${C_BLD}tahoe-glass${C_OFF} — a macOS Tahoe glass desktop for GNOME 48-50
                       preset. What you want on a fresh machine
     --extras          also install the optional extensions
                       (Just Perfection, GNOME UI Tune, Space Bar, Dash to Dock)
-    --grain N         strength of the film grain over blurred surfaces, 0-1.
-                      How heavy it reads depends on the screen and the GPU;
-                      drop it if the background looks like static
-    --no-grain        no grain at all (same as --grain 0)
+    --grain N         film grain over blurred surfaces, 0-1. The preset ships
+                      none: how heavy it reads depends entirely on the screen
+                      and the GPU, and on most it looks like static rather
+                      than like frosted glass. Raise it if you want texture
+    --no-grain        no grain at all (same as --grain 0, and the default)
     --no-panel-blur-fix
                       skip the agent that rebuilds Blur My Shell's panel blur
                       when the monitor layout changes. Without it the top bar
