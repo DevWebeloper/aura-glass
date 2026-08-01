@@ -85,15 +85,20 @@
 /* ---------- Popup menus ----------
  * Right-click menus and top-bar menus (accessibility, power, tray icons) were
  * rgba(0, 0, 0, 0.72) — near-solid black — with a directional inset highlight
- * that only lit the top-left corner. Replaced with an even perimeter hairline
- * and a soft drop shadow.
+ * that only lit the top-left corner. Replaced with an even perimeter hairline.
+ *
+ * No drop shadow: these menus are translucent and sit over a blurred panel, so
+ * a shadow does not read as depth, it reads as a dark rectangle stamped around
+ * a rounded menu — the corners are exactly where it shows. Quick Settings has
+ * been shadowless since it got its own block below, which is why it looked
+ * right while the tray menus next to it did not.
  */
 .popup-menu-content {
   background-color: rgba(0, 0, 0, 0.42);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 26px;
   padding: 6px;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.40);
+  box-shadow: none;
 }
 
 /* ---------- Quick Settings panel ----------
