@@ -43,6 +43,7 @@ Have a look first if you like — nothing is written:
 | `--accent COLOR` | `blue teal green yellow orange red pink purple slate` (default `pink`) |
 | `--extras` | also install the rest of the reference desktop — see below |
 | `--cursors WHICH` | `adwaita` (default) or `mactahoe` |
+| `--no-osd` | keep the stock volume/brightness popup |
 | `--no-icons` | keep your icon theme |
 | `--no-cursors` | keep your cursor theme |
 | `--no-wm-buttons` | keep your titlebar button layout |
@@ -66,7 +67,8 @@ override, pinned to a known-good commit.
 
 **Extensions** — [User Themes][ut] (loads the shell theme),
 [Blur My Shell][bms] (the actual glass), [Open Bar][ob] (top-bar geometry, menu
-and notification radii).
+and notification radii), [Custom OSD][cosd] (the volume and brightness popup —
+see below).
 
 `--extras` adds the rest of the reference desktop: Just Perfection, GNOME UI
 Tune, Space Bar, Auto Accent Colour, Vitals, Clipboard Indicator, ddterm,
@@ -87,6 +89,30 @@ Colloid ships a `-Light` and a `-Dark` build of every accent, but GNOME's
 switching **Settings → Appearance** to Light would restyle everything except
 the icons. `tahoe-glass-icon-sync.service` watches the colour scheme and keeps
 the key pointing at the matching variant.
+
+### The volume and brightness popup
+
+Stock GNOME shows a speaker icon, the output device's name and a bar every time
+you touch the volume keys. tahoe-glass drops the icon and the name and keeps
+the bar, on a translucent pill with the wallpaper blurred behind it. Brightness
+gets the same treatment — both go through the same shell class, so there is
+only one thing to configure.
+
+It is [Custom OSD][cosd] doing the work, so everything stays adjustable from a
+window: **Extensions → Custom OSD → Settings**. Position, size, hide delay,
+colours, corner radius and which parts show are all there, and the preset is
+saved as its `Default` profile so the Profiles page reproduces this look rather
+than reverting to upstream's.
+
+Upstream's last release targets GNOME 46 and its last commit does not run on
+50 at all — `ShellBlurEffect:sigma`, `meta_add_clutter_debug_flags()` and
+`OsdWindowManager.show()`'s signature have all changed since. `patches/custom-osd-gnome50.patch`
+fixes those and adds one thing upstream never had: a shader that clips the blur
+to the popup's corners. A background blur covers the actor's bounding box and
+knows nothing about `border-radius`, so without it a rounded pill sits inside a
+hard-edged rectangle of blur.
+
+Pass `--no-osd` to leave the stock popup alone.
 
 ### Custom colours
 
@@ -274,6 +300,7 @@ The parts that aren't mine, and the people who made them:
 - [kayozxo/GNOME-macOS-Tahoe][tahoe] — the theme
 - [aunetx/blur-my-shell][bms] — the blur
 - [neuromorph/openbar][ob] — the top bar and menu geometry
+- [neuromorph/custom-osd][cosd] — the volume and brightness popup
 - [vinceliuice/Colloid-icon-theme][colloid] and
   [vinceliuice/MacTahoe-icon-theme][mactahoe] — icons and cursors
 
@@ -282,6 +309,7 @@ MIT, for the parts in this repository. The upstreams carry their own licences.
 [tahoe]: https://github.com/kayozxo/GNOME-macOS-Tahoe
 [bms]: https://github.com/aunetx/blur-my-shell
 [ob]: https://github.com/neuromorph/openbar
+[cosd]: https://github.com/neuromorph/custom-osd
 [ut]: https://extensions.gnome.org/extension/19/user-themes/
 [colloid]: https://github.com/vinceliuice/Colloid-icon-theme
 [mactahoe]: https://github.com/vinceliuice/MacTahoe-icon-theme

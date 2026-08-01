@@ -111,9 +111,10 @@ run dconf reset /org/gnome/shell/extensions/user-theme/name
 ok "back to the GNOME defaults"
 
 step "Resetting the extension preset"
-if confirm "Reset Open Bar and Blur My Shell to their defaults?" 1; then
+if confirm "Reset Open Bar, Blur My Shell and Custom OSD to their defaults?" 1; then
     run dconf reset -f /org/gnome/shell/extensions/openbar/
     run dconf reset -f /org/gnome/shell/extensions/blur-my-shell/
+    run dconf reset -f /org/gnome/shell/extensions/custom-osd/
     ok "reset"
 else
     skip "kept"
@@ -144,7 +145,7 @@ if [ "$REMOVE_EXTENSIONS" = 1 ]; then
     step "Removing extensions"
     # Only the ones installed under $HOME are touched: on Bazzite several of
     # these live in /usr/share and belong to the image, not to us.
-    for u in openbar@neuromorph blur-my-shell@aunetx \
+    for u in openbar@neuromorph custom-osd@neuromorph blur-my-shell@aunetx \
              just-perfection-desktop@just-perfection gnome-ui-tune@itstime.tech \
              space-bar@luchrioh auto-accent-colour@Wartybix \
              Vitals@CoreCoding.com clipboard-indicator@tudmotu.com \
