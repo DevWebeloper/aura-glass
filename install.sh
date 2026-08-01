@@ -43,6 +43,8 @@ ${C_BLD}tahoe-glass${C_OFF} — a macOS Tahoe glass desktop for GNOME 48-50
   ${C_BLD}options${C_OFF}
     --accent COLOR    accent to build around (default: pink)
                       one of: $VALID_ACCENTS
+    --full            the whole reference desktop: every extension and every
+                      preset. What you want on a fresh machine
     --extras          also install the optional extensions
                       (Just Perfection, GNOME UI Tune, Space Bar, Dash to Dock)
     --grain N         strength of the film grain over blurred surfaces, 0-1.
@@ -77,6 +79,14 @@ while [ $# -gt 0 ]; do
         --accent)        ACCENT="${2:-}"; shift 2 ;;
         --accent=*)      ACCENT="${1#*=}"; shift ;;
         --extras)        WANT_EXTRAS=1; shift ;;
+        # Turns on every optional piece, so a fresh machine ends up with the
+        # whole reference desktop from one flag. Set here rather than checked
+        # later so that anything after it still wins: --full --no-osd is the
+        # lot minus the OSD. It deliberately leaves --cursors alone — MacTahoe
+        # cursors are a different look, not a more complete one.
+        --full)          WANT_EXTRAS=1; WANT_ICONS=1; WANT_CURSORS=1
+                         WANT_WM_BUTTONS=1; WANT_OSD=1; WANT_PANEL_BLUR_FIX=1
+                         shift ;;
         --grain)         GRAIN="${2:-}"; shift 2 ;;
         --grain=*)       GRAIN="${1#*=}"; shift ;;
         --no-grain)      GRAIN=0; shift ;;

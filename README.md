@@ -23,8 +23,12 @@ tested on     CachyOS · Bazzite (GNOME image)
 ```bash
 git clone https://github.com/DevWebeloper/tahoe-glass.git
 cd tahoe-glass
-./install.sh
+./install.sh --full
 ```
+
+`--full` is the whole reference desktop — every extension and every preset —
+which is what you want on a fresh machine. Plain `./install.sh` installs the
+core look only and leaves the optional extensions out.
 
 Then **log out and back in**. Extensions cannot be loaded into a running shell
 on Wayland, so the top bar, the blur and the quick settings only appear on the
@@ -41,6 +45,7 @@ Have a look first if you like — nothing is written:
 | Flag | Effect |
 |---|---|
 | `--accent COLOR` | `blue teal green yellow orange red pink purple slate` (default `pink`) |
+| `--full` | the whole reference desktop — every extension and every preset |
 | `--extras` | also install the rest of the reference desktop — see below |
 | `--cursors WHICH` | `adwaita` (default) or `mactahoe` |
 | `--no-osd` | keep the stock volume/brightness popup |
