@@ -111,9 +111,10 @@ run dconf reset /org/gnome/shell/extensions/user-theme/name
 ok "back to the GNOME defaults"
 
 step "Resetting the extension preset"
-if confirm "Reset Open Bar and Blur My Shell to their defaults?" 1; then
+if confirm "Reset Open Bar, Blur My Shell and Custom OSD to their defaults?" 1; then
     run dconf reset -f /org/gnome/shell/extensions/openbar/
     run dconf reset -f /org/gnome/shell/extensions/blur-my-shell/
+    run dconf reset -f /org/gnome/shell/extensions/custom-osd/
     ok "reset"
 else
     skip "kept"
@@ -122,11 +123,18 @@ fi
 # ------------------------------------------------------------------- units --
 
 step "Removing the panel blur unit"
-if [ -f "$HOME/.config/systemd/user/tahoe-glass-panel-blur.service" ]; then
-    run systemctl --user disable --now tahoe-glass-panel-blur.service >/dev/null 2>&1 || true
-    run rm -f "$HOME/.config/systemd/user/tahoe-glass-panel-blur.service"
+# bms-panel-blur-rebuild is the name this unit had before the project was named.
+found=0
+for u in tahoe-glass-panel-blur.service bms-panel-blur-rebuild.service \
+         tahoe-glass-icon-sync.service; do
+    [ -f "$HOME/.config/systemd/user/$u" ] || continue
+    found=1
+    run systemctl --user disable --now "$u" >/dev/null 2>&1 || true
+    run rm -f "$HOME/.config/systemd/user/$u"
+    ok "removed $u"
+done
+if [ "$found" = 1 ]; then
     run systemctl --user daemon-reload
-    ok "removed"
 else
     skip "not installed"
 fi
@@ -135,9 +143,17 @@ fi
 
 if [ "$REMOVE_EXTENSIONS" = 1 ]; then
     step "Removing extensions"
-    for u in openbar@neuromorph blur-my-shell@aunetx \
+    # Only the ones installed under $HOME are touched: on Bazzite several of
+    # these live in /usr/share and belong to the image, not to us.
+    for u in openbar@neuromorph custom-osd@neuromorph blur-my-shell@aunetx \
              just-perfection-desktop@just-perfection gnome-ui-tune@itstime.tech \
-             space-bar@luchrioh dash-to-dock@micxgx.gmail.com; do
+             space-bar@luchrioh auto-accent-colour@Wartybix \
+             Vitals@CoreCoding.com clipboard-indicator@tudmotu.com \
+             ddterm@amezin.github.com kiwimenu@kemma \
+             hotedge@jonathan.jdoda.ca restartto@tiagoporsch.github.io \
+             xwayland-indicator@swsnr.de appindicatorsupport@rgcjonas.gmail.com \
+             compiz-alike-magic-lamp-effect@hermes83.github.com \
+             add-to-steam@pupper.space; do
         if [ -d "$EXT_DIR/$u" ]; then
             run gnome-extensions disable "$u" 2>/dev/null || true
             run rm -rf "$EXT_DIR/$u"
@@ -165,7 +181,8 @@ fi
 # ------------------------------------------------------------------ our own --
 
 step "Removing tahoe-glass itself"
-run rm -f "$HOME/.local/bin/tahoe-glass-apply"
+run rm -f "$HOME/.local/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-icon-sync" \
+          "$HOME/.local/bin/tahoe-glass-panel-blur"
 if confirm "Delete $CONF_DIR (this also deletes the backups above)?" 0; then
     run rm -rf "$CONF_DIR"
     ok "removed"

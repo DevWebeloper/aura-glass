@@ -1,26 +1,25 @@
 [Unit]
-# Blur My Shell's static panel blur creates one background actor per monitor
-# and clips it to the panel's geometry (components/panel.js, update_size).
-# At login that geometry is not settled yet — the source itself notes that
-# get_transformed_position "sometimes yields NaN when the actor is not fully
-# positionned yet" — so the clip lands in the wrong place and the left part of
-# the top bar shows a mismatched strip against the wallpaper.
+# Blur My Shell builds one background actor per monitor and clips it to the
+# panel's geometry (components/panel.js, update_size). That geometry is not
+# settled at login — the source itself notes that get_transformed_position
+# "sometimes yields NaN when the actor is not fully positionned yet" — and it
+# is in flux again every time a monitor is plugged in or unplugged. An actor
+# built during either window gets clipped in the wrong place, and part of the
+# top bar shows a strip that does not line up with the wallpaper.
 #
-# Toggling the blur off and on once the session has settled tears the actor
-# down and rebuilds it against correct geometry.
-#
-# If the strip is still there after login, the session took longer than 12s to
-# settle: raise the first sleep and `systemctl --user daemon-reload`.
-Description=Rebuild Blur My Shell panel blur once the session has settled
+# tahoe-glass-panel-blur watches mutter for MonitorsChanged and rebuilds the
+# actor after each one, plus once at login. That replaces a fixed `sleep 12`,
+# which guessed at the login case, waited when nothing was wrong, and did
+# nothing at all when the layout changed later in the session.
+Description=Rebuild Blur My Shell panel blur when the monitor layout changes
 PartOf=graphical-session.target
 After=graphical-session.target
 
 [Service]
-Type=oneshot
-ExecStart=/bin/sh -c 'sleep 12; \
-  dconf write /org/gnome/shell/extensions/blur-my-shell/panel/blur false; \
-  sleep 2; \
-  dconf write /org/gnome/shell/extensions/blur-my-shell/panel/blur true'
+Type=simple
+ExecStart=%h/.local/bin/tahoe-glass-panel-blur
+Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=graphical-session.target

@@ -9,6 +9,9 @@ THEME_REF="6dfcd9d941e5"
 OPENBAR_REPO="https://github.com/neuromorph/openbar.git"
 OPENBAR_REF="01fb24217e0c"       # last upstream commit; patched for GNOME 50
 
+CUSTOMOSD_REPO="https://github.com/neuromorph/custom-osd.git"
+CUSTOMOSD_REF="334ac17e9348"     # last upstream commit; patched for GNOME 50
+
 COLLOID_REPO="https://github.com/vinceliuice/Colloid-icon-theme.git"
 COLLOID_REF="c9e702beb96f"
 
@@ -26,12 +29,30 @@ EXT_CORE=(
     user-theme@gnome-shell-extensions.gcampax.github.com
     blur-my-shell@aunetx
 )
-# The rest of the reference desktop. None of it is required.
+# The rest of the reference desktop, in the order the shell lays them out.
+# None of it is required, and --extras is what asks for it.
+#
+# Several of these ship inside the Bazzite and Bluefin images already —
+# add-to-steam, appindicatorsupport, compiz-alike, hotedge and restartto all
+# live in /usr/share/gnome-shell/extensions there. install_ext_ego checks that
+# directory before downloading, so on an atomic system they are enabled in
+# place instead of being shadowed by a second copy under $HOME that would then
+# drift from whatever the image ships.
 EXT_EXTRA=(
     just-perfection-desktop@just-perfection
     gnome-ui-tune@itstime.tech
     space-bar@luchrioh
-    dash-to-dock@micxgx.gmail.com
+    auto-accent-colour@Wartybix
+    Vitals@CoreCoding.com
+    clipboard-indicator@tudmotu.com
+    ddterm@amezin.github.com
+    kiwimenu@kemma
+    hotedge@jonathan.jdoda.ca
+    restartto@tiagoporsch.github.io
+    xwayland-indicator@swsnr.de
+    appindicatorsupport@rgcjonas.gmail.com
+    compiz-alike-magic-lamp-effect@hermes83.github.com
+    add-to-steam@pupper.space
 )
 
 # GNOME's accent enum -> Colloid's folder-colour variant. Colloid calls blue
@@ -170,19 +191,24 @@ install_ext_ego() {
     url="$(printf '%s' "$info_json" | python3 -c 'import sys,json;print(json.load(sys.stdin)["download_url"])')" \
         || { warn "$uuid: no download url — skipped"; return 1; }
 
-    tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' RETURN
-    curl -sLo "$tmp/e.zip" "https://extensions.gnome.org$url" \
-        || { warn "$uuid: download failed — skipped"; return 1; }
-
-    if ! ext_supports_shell "$tmp/e.zip" "$GNOME_MAJOR"; then
+    # Deliberately not `trap ... RETURN`: that trap is not scoped to this
+    # function, so it stays registered and fires again on the next function
+    # return in the whole script — by which point $tmp is gone and `set -u`
+    # turns the stale cleanup into a fatal "unbound variable" mid-install.
+    tmp="$(mktemp -d)"
+    local rc=0
+    if ! curl -sLo "$tmp/e.zip" "https://extensions.gnome.org$url"; then
+        warn "$uuid: download failed — skipped"; rc=1
+    elif ! ext_supports_shell "$tmp/e.zip" "$GNOME_MAJOR"; then
         ver="$(unzip -p "$tmp/e.zip" metadata.json | python3 -c 'import sys,json;print(json.load(sys.stdin).get("shell-version"))')"
-        warn "$uuid: published build supports $ver, not GNOME $GNOME_MAJOR — skipped"
-        return 1
+        warn "$uuid: published build supports $ver, not GNOME $GNOME_MAJOR — skipped"; rc=1
+    elif ! gnome-extensions install --force "$tmp/e.zip" >/dev/null; then
+        warn "$uuid: install failed — skipped"; rc=1
+    else
+        ok "$uuid"
     fi
-
-    gnome-extensions install --force "$tmp/e.zip" >/dev/null \
-        || { warn "$uuid: install failed — skipped"; return 1; }
-    ok "$uuid"
+    rm -rf "$tmp"
+    return "$rc"
 }
 
 # Open Bar is the one extension with no GNOME 50 release. Upstream's last
@@ -224,11 +250,64 @@ install_openbar() {
     ok "$uuid (patched for GNOME $GNOME_MAJOR)"
 }
 
+# Custom OSD is what turns the volume and brightness popup into the bar on its
+# own. Upstream's last release is for GNOME 46 and its last commit does not run
+# on 50 — the ShellBlurEffect:sigma property, the meta_*_clutter_debug_flags()
+# calls and OsdWindowManager.show()'s signature have all gone since. The patch
+# in patches/ fixes those, and rounds the blur to the popup's corners: a
+# background blur covers the actor's bounding box, so without it the pill sits
+# in a hard-edged rectangle of blur no matter what radius is set.
+install_custom_osd() {
+    local uuid="custom-osd@neuromorph"
+
+    if [ "${WANT_OSD:-1}" != 1 ]; then
+        step "Custom OSD"
+        skip "not installed (--no-osd)"
+        return 0
+    fi
+
+    if [ -d "$EXT_DIR/$uuid" ] && ext_supports_shell "$EXT_DIR/$uuid" "$GNOME_MAJOR" \
+       && [ "${FORCE:-0}" != 1 ]; then
+        skip "$uuid already patched for GNOME $GNOME_MAJOR"
+        return 0
+    fi
+
+    info "no GNOME $GNOME_MAJOR release exists — building from $CUSTOMOSD_REF + patches/custom-osd-gnome50.patch"
+    local src="$SRC_CACHE/custom-osd"
+    # A cached checkout still carries the patch from last time, and git refuses
+    # to check out over modified files — so --force would fail on the second
+    # run rather than rebuild.
+    if [ -d "$src/.git" ]; then
+        run git -C "$src" checkout --quiet -- . 2>/dev/null || true
+    fi
+    clone_pinned "$CUSTOMOSD_REPO" "$CUSTOMOSD_REF" "$src"
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: apply patch, copy to $EXT_DIR/$uuid, compile schemas"
+        return 0
+    fi
+
+    git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/custom-osd-gnome50.patch" \
+        || die "the Custom OSD patch did not apply — upstream may have moved"
+
+    # Upstream keeps the extension at the root of the repo rather than in a
+    # directory named after the UUID, so this copies the checkout itself.
+    rm -rf "$EXT_DIR/$uuid"
+    mkdir -p "$EXT_DIR/$uuid"
+    tar -C "$src" --exclude=.git --exclude=screens --exclude=po -cf - . \
+        | tar -C "$EXT_DIR/$uuid" -xf -
+
+    glib-compile-schemas "$EXT_DIR/$uuid/schemas" \
+        || die "failed to compile Custom OSD's gsettings schemas"
+    ok "$uuid (patched for GNOME $GNOME_MAJOR)"
+}
+
 install_extensions() {
     step "Installing shell extensions"
     local u
     for u in "${EXT_CORE[@]}"; do install_ext_ego "$u" || true; done
     install_openbar
+    install_custom_osd
 
     if [ "${WANT_EXTRAS:-0}" = 1 ]; then
         step "Installing optional extensions"
@@ -239,6 +318,7 @@ install_extensions() {
 enable_extensions() {
     step "Enabling extensions"
     local want=("${EXT_CORE[@]}" openbar@neuromorph) u
+    [ "${WANT_OSD:-1}" = 1 ] && want+=(custom-osd@neuromorph)
     [ "${WANT_EXTRAS:-0}" = 1 ] && want+=("${EXT_EXTRA[@]}")
 
     for u in "${want[@]}"; do
@@ -246,10 +326,50 @@ enable_extensions() {
             skip "$u not installed — not enabling"
             continue
         fi
-        run gnome-extensions enable "$u" 2>/dev/null \
-            && ok "enabled $u" \
-            || warn "could not enable $u yet — it will be picked up after logout"
+        if run gnome-extensions enable "$u" 2>/dev/null; then
+            ok "enabled $u"
+            continue
+        fi
+
+        # gnome-extensions enable goes through the running shell, which refuses
+        # a UUID it has not loaded — and on Wayland it cannot load one that
+        # appeared after login. Claiming it will be "picked up after logout" is
+        # not enough: the shell only starts what is listed in enabled-
+        # extensions, so the UUID has to be put there directly or the next
+        # session comes up without it.
+        if [ "${DRY_RUN:-0}" = 1 ]; then
+            info "dry-run: add $u to enabled-extensions for the next session"
+            continue
+        fi
+        if enqueue_extension "$u"; then
+            ok "$u queued — active after logout"
+        else
+            warn "could not enable $u"
+        fi
     done
+}
+
+# Append a UUID to org.gnome.shell enabled-extensions without disturbing what
+# is already there.
+enqueue_extension() {
+    python3 - "$1" <<'PY'
+import subprocess, sys
+uuid = sys.argv[1]
+KEY = ["org.gnome.shell", "enabled-extensions"]
+cur = subprocess.run(["gsettings", "get", *KEY], capture_output=True, text=True).stdout.strip()
+# "@as []" is how an empty array comes back; strip the type annotation.
+if cur.startswith("@as "):
+    cur = cur[4:]
+try:
+    items = [x.strip().strip("'\"") for x in cur.strip("[]").split(",") if x.strip()]
+except Exception:
+    items = []
+if uuid in items:
+    sys.exit(0)
+items.append(uuid)
+new = "[" + ", ".join("'" + i + "'" for i in items) + "]"
+subprocess.run(["gsettings", "set", *KEY, new], check=True)
+PY
 }
 
 # ------------------------------------------------------------------- icons --
@@ -279,6 +399,15 @@ install_icons() {
 }
 
 install_cursors() {
+    # Adwaita's cursors ship with GNOME itself, so there is nothing to fetch,
+    # nothing to keep pinned, and they are crisper and better hinted at every
+    # size than the MacTahoe set. --cursors mactahoe asks for the old ones.
+    if [ "${CURSORS:-adwaita}" = adwaita ]; then
+        step "Cursors"
+        skip "using the stock Adwaita cursors (--cursors mactahoe for the macOS set)"
+        return 0
+    fi
+
     step "Installing MacTahoe cursors"
 
     if [ "${FORCE:-0}" != 1 ] \
@@ -303,6 +432,97 @@ install_cursors() {
 
 # --------------------------------------------------------------- css + dconf --
 
+# The CSS is written in logical pixels and was tuned on a 3440x1440 34" display
+# — 109 logical PPI. GNOME's stylesheet has no media queries, so those numbers
+# are the same on every screen and a dense panel renders them proportionally
+# smaller: at the 144 PPI of a 15" 1080p laptop the top bar status icons come
+# out a third under the size they were drawn for. Measure the panel at install
+# time and emit corrected rules.
+TUNED_PPI=109
+
+# Logical PPI of the primary output, or nothing if it cannot be measured.
+measure_logical_ppi() {
+    python3 - <<'PY' 2>/dev/null
+import glob, math, os, re, subprocess
+
+def primary_and_scale():
+    """Connector name and scale of the primary logical monitor, per mutter."""
+    try:
+        out = subprocess.run(
+            ["gdbus", "call", "--session", "--dest", "org.gnome.Mutter.DisplayConfig",
+             "--object-path", "/org/gnome/Mutter/DisplayConfig",
+             "--method", "org.gnome.Mutter.DisplayConfig.GetCurrentState"],
+            capture_output=True, text=True, timeout=5).stdout
+        m = re.search(r"\(\d+, \d+, ([0-9.]+), uint32 \d+, true, \[\('([^']+)'", out)
+        if m:
+            return m.group(2), float(m.group(1))
+    except Exception:
+        pass
+    return None, 1.0
+
+conn, scale = primary_and_scale()
+
+def ppi_of(path):
+    w, h = (int(x) for x in open(path + "modes").read().split()[0].split("x"))
+    edid = open(path + "edid", "rb").read()
+    wcm, hcm = edid[21], edid[22]        # EDID basic params: image size in cm
+    if not (wcm and hcm):
+        return None
+    return math.hypot(w, h) / (math.hypot(wcm, hcm) / 2.54)
+
+best = None
+for path in sorted(glob.glob("/sys/class/drm/card*-*/")):
+    try:
+        if open(path + "status").read().strip() != "connected":
+            continue
+        name = os.path.basename(path.rstrip("/")).split("-", 1)[1]
+        ppi = ppi_of(path)
+        if ppi is None:
+            continue
+        # Prefer the output mutter calls primary; fall back to the first
+        # connected one so this still works with no session bus (dry runs).
+        if conn and name == conn:
+            best = ppi
+            break
+        if best is None:
+            best = ppi
+    except Exception:
+        continue
+
+if best and scale:
+    print(round(best / scale))
+PY
+}
+
+# Emit the density correction, or nothing when the display is close enough to
+# what the CSS assumes that rescaling would be noise.
+density_css() {
+    local ppi="$1"
+    python3 - "$ppi" "$TUNED_PPI" <<'PY'
+import sys
+ppi, tuned = float(sys.argv[1]), float(sys.argv[2])
+ratio = ppi / tuned
+if ratio < 1.12:
+    sys.exit(0)
+icon = round(16 * ratio)
+hpad = round(6 * ratio)
+print(f"""
+/* ---------- Display density -------------------------------------------
+ * Sizes above are logical pixels tuned for {tuned:.0f} logical PPI. This
+ * display measures {ppi:.0f}, so the same numbers land {(1 - 1/ratio) * 100:.0f}% smaller than
+ * drawn. Scale the top bar status icons — wifi, bluetooth, volume, battery —
+ * back to their intended size. Generated at install time by install.sh. */
+#panel .panel-button .system-status-icon {{
+  icon-size: {icon}px;
+  padding: 4px;
+}}
+#panel .panel-button {{
+  -natural-hpadding: {hpad}px;
+  -minimum-hpadding: {max(hpad - 2, 3)}px;
+}}""")
+PY
+}
+
 install_css() {
     step "Installing the CSS tweaks"
 
@@ -312,6 +532,25 @@ install_css() {
     run install -Dm755 "$REPO_ROOT/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-apply"
     ok "css -> $CONF_DIR"
     ok "re-apply command -> ~/.local/bin/tahoe-glass-apply"
+
+    # Appended to the copy rather than kept in css/, so it is regenerated for
+    # whatever screen the installer is actually run on. Re-copying the file
+    # above is what makes this idempotent.
+    local ppi extra
+    ppi="$(measure_logical_ppi || true)"
+    if [ -z "$ppi" ]; then
+        skip "could not measure display density — panel sizes left as tuned"
+    else
+        extra="$(density_css "$ppi")"
+        if [ -z "$extra" ]; then
+            ok "display is ${ppi} logical PPI — no scaling needed"
+        elif [ "${DRY_RUN:-0}" = 1 ]; then
+            info "dry-run: scale panel icons for ${ppi} logical PPI"
+        else
+            printf '%s\n' "$extra" >> "$CONF_DIR/shell-tweaks.css"
+            ok "scaled panel icons for ${ppi} logical PPI (tuned at ${TUNED_PPI})"
+        fi
+    fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
         info "dry-run: tahoe-glass-apply"
@@ -343,6 +582,94 @@ load_dconf() {
     # Open Bar regenerates its stylesheet when this key changes, so writing it
     # last is what makes the preset take effect without a restart.
     run dconf write /org/gnome/shell/extensions/openbar/trigger-reload true
+
+    apply_grain
+    sync_osd_profile
+}
+
+# Custom OSD keeps a set of named profiles beside the live settings, and its
+# preferences window overwrites the live settings with the active profile the
+# moment one is picked from the list. The preset above only writes the live
+# settings, so without this the popup would quietly go back to stock the first
+# time anyone opened that page. Copying the loaded values into the Default
+# profile makes the preset what "Default" actually means.
+sync_osd_profile() {
+    [ "${WANT_OSD:-1}" = 1 ] || return 0
+    local schemas="$EXT_DIR/custom-osd@neuromorph/schemas"
+    [ -d "$schemas" ] || return 0
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: save the OSD preset into Custom OSD's Default profile"
+        return 0
+    fi
+
+    python3 - "$schemas" <<'PY' || { warn "could not sync the OSD profile"; return 0; }
+import sys
+import gi
+from gi.repository import Gio, GLib
+
+source = Gio.SettingsSchemaSource.new_from_directory(
+    sys.argv[1], Gio.SettingsSchemaSource.get_default(), False)
+schema = source.lookup("org.gnome.shell.extensions.custom-osd", False)
+if schema is None:
+    sys.exit(1)
+settings = Gio.Settings.new_full(schema, None, None)
+
+# The same exclusions the extension's own "save profile" uses: these are
+# either global or set per popup type rather than per profile.
+skip = {"default-font", "profiles", "active-profile",
+        "icon", "label", "level", "numeric", "showosd", "clock-osd"}
+profile = {k: settings.get_value(k) for k in schema.list_keys() if k not in skip}
+
+existing = settings.get_value("profiles")
+merged = {}
+for i in range(existing.n_children()):
+    entry = existing.get_child_value(i)
+    merged[entry.get_child_value(0).get_string()] = entry.get_child_value(1).get_variant()
+merged["Default"] = GLib.Variant("a{sv}", profile)
+
+settings.set_value("profiles", GLib.Variant("a{sv}", merged))
+settings.set_string("active-profile", "Default")
+Gio.Settings.sync()
+PY
+    ok "OSD preset saved as Custom OSD's Default profile"
+}
+
+# Blur My Shell's noise effect lays film grain over every blurred surface. It
+# is generated per physical pixel and its strength is not scaled by anything,
+# so how it reads depends on the panel and the GPU: the value that gives a
+# frosted texture on one machine can look like television static on another.
+#
+# The preset ships the tuned strength. This makes it adjustable without hand
+# editing a nested dconf blob, and — because dconf load rewrites the whole
+# pipelines key — remembers the choice so the next install does not silently
+# put the grain back.
+apply_grain() {
+    local want="${GRAIN:-}" memo="$CONF_DIR/grain"
+    if [ -z "$want" ] && [ -f "$memo" ]; then
+        want="$(cat "$memo" 2>/dev/null || true)"
+    fi
+    [ -n "$want" ] || return 0
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: set blur grain to $want"
+        return 0
+    fi
+
+    python3 - "$want" <<'PY' || { warn "could not set grain"; return 0; }
+import re, subprocess, sys
+want = float(sys.argv[1])
+KEY = "/org/gnome/shell/extensions/blur-my-shell/pipelines"
+cur = subprocess.run(["dconf", "read", KEY], capture_output=True, text=True).stdout.strip()
+if not cur:
+    sys.exit(0)
+new = re.sub(r"('noise': <)[0-9.]+(>)", lambda m: m.group(1) + repr(want) + m.group(2), cur)
+if new != cur:
+    subprocess.run(["dconf", "write", KEY, new], check=True)
+PY
+    run mkdir -p "$CONF_DIR"
+    printf '%s\n' "$want" > "$memo"
+    ok "blur grain set to $want (remembered for future installs)"
 }
 
 apply_gsettings() {
@@ -357,17 +684,61 @@ apply_gsettings() {
     run gsettings set org.gnome.desktop.interface accent-color "$ACCENT"
     run gsettings set org.gnome.desktop.interface icon-theme   "$icons"
 
-    if [ -d "$HOME/.local/share/icons/MacTahoe-dark" ]; then
-        run gsettings set org.gnome.desktop.interface cursor-theme 'MacTahoe-dark'
+    local cursor='Adwaita'
+    if [ "${CURSORS:-adwaita}" = mactahoe ] \
+       && { [ -d "$HOME/.local/share/icons/MacTahoe-dark" ] \
+            || [ -d "/usr/share/icons/MacTahoe-dark" ]; }; then
+        cursor='MacTahoe-dark'
     fi
+    run gsettings set org.gnome.desktop.interface cursor-theme "$cursor"
 
-    # Single close button on the right, appmenu on the left — the reference
-    # desktop's layout. Change it in Tweaks if you prefer three buttons.
+    # All three controls, minimise and maximise before close, appmenu on the
+    # left. The window controls themselves are restyled in gtk4-tweaks.css.
     if [ "${WANT_WM_BUTTONS:-1}" = 1 ]; then
-        run gsettings set org.gnome.desktop.wm.preferences button-layout 'appmenu:close'
+        run gsettings set org.gnome.desktop.wm.preferences button-layout \
+            'appmenu:minimize,maximize,close'
     fi
 
-    ok "gtk-theme=Tahoe-Dark  icons=$icons  accent=$ACCENT"
+    ok "gtk-theme=Tahoe-Dark  icons=$icons  cursor=$cursor  accent=$ACCENT"
+}
+
+# Colloid ships a -Light and a -Dark build of every accent; GNOME's icon-theme
+# key holds exactly one name and knows nothing about the pair. Without this,
+# switching Settings > Appearance to Light restyles everything except the
+# icons, which stay dark and look wrong against the new background.
+install_icon_sync() {
+    step "Following the light/dark preference with the icons"
+
+    if [ "${WANT_ICONS:-1}" != 1 ]; then
+        skip "icons left alone (--no-icons)"
+        return 0
+    fi
+
+    # The base name without the variant suffix, which is what the agent needs
+    # in order to build "<base>-Dark" / "<base>-Light".
+    local base; base="$(accent_to_colloid_name "$ACCENT")"
+    base="${base%-Dark}"; base="${base%-Light}"
+
+    run install -Dm755 "$REPO_ROOT/bin/tahoe-glass-icon-sync" \
+        "$HOME/.local/bin/tahoe-glass-icon-sync"
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: remember icon set $base"
+    else
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$base" > "$CONF_DIR/icons"
+    fi
+
+    run install -Dm644 "$REPO_ROOT/systemd/tahoe-glass-icon-sync.service" \
+        "$HOME/.config/systemd/user/tahoe-glass-icon-sync.service"
+    run systemctl --user daemon-reload
+    run systemctl --user enable tahoe-glass-icon-sync.service >/dev/null 2>&1 || true
+
+    # enable alone only arms it for the next login, and there is no reason to
+    # make the user log out to see their icons follow the theme.
+    if systemctl --user is-active --quiet graphical-session.target 2>/dev/null; then
+        run systemctl --user restart tahoe-glass-icon-sync.service 2>/dev/null || true
+    fi
+    ok "icons follow Settings > Appearance ($base-Dark / $base-Light)"
 }
 
 # ------------------------------------------------------------- integration --
@@ -389,21 +760,41 @@ flatpak_override() {
 }
 
 install_panel_blur_unit() {
-    step "Blur My Shell panel fix at login"
+    step "Blur My Shell panel blur rebuild"
 
-    # Blur My Shell builds one background actor per monitor and clips it to the
-    # panel geometry, which is not settled at login — the left part of the bar
-    # ends up showing a mismatched strip. Toggling the blur once the session
-    # has settled rebuilds the actor against correct geometry.
-    if ! confirm "Install the login-time panel blur rebuild (recommended on multi-monitor)?" 1; then
-        skip "not installed"
+    if [ "${WANT_PANEL_BLUR_FIX:-1}" != 1 ]; then
+        # bms-panel-blur-rebuild is the name this carried before the project
+        # was named, and is still enabled on machines set up by hand back then.
+        local found=0 u
+        for u in tahoe-glass-panel-blur.service bms-panel-blur-rebuild.service; do
+            [ -f "$HOME/.config/systemd/user/$u" ] || continue
+            found=1
+            run systemctl --user disable --now "$u" >/dev/null 2>&1 || true
+            run rm -f "$HOME/.config/systemd/user/$u"
+            ok "removed $u"
+        done
+        [ "$found" = 1 ] && run systemctl --user daemon-reload
+        skip "not installed (--no-panel-blur-fix)"
         return 0
     fi
+
+    if [ -f "$HOME/.config/systemd/user/bms-panel-blur-rebuild.service" ]; then
+        run systemctl --user disable --now bms-panel-blur-rebuild.service >/dev/null 2>&1 || true
+        run rm -f "$HOME/.config/systemd/user/bms-panel-blur-rebuild.service"
+    fi
+
+    run install -Dm755 "$REPO_ROOT/bin/tahoe-glass-panel-blur" \
+        "$HOME/.local/bin/tahoe-glass-panel-blur"
     run install -Dm644 "$REPO_ROOT/systemd/tahoe-glass-panel-blur.service" \
         "$HOME/.config/systemd/user/tahoe-glass-panel-blur.service"
     run systemctl --user daemon-reload
     run systemctl --user enable tahoe-glass-panel-blur.service >/dev/null 2>&1 || true
-    ok "tahoe-glass-panel-blur.service enabled"
+
+    # enable only arms it for the next login, and the strip is on screen now.
+    if systemctl --user is-active --quiet graphical-session.target 2>/dev/null; then
+        run systemctl --user restart tahoe-glass-panel-blur.service 2>/dev/null || true
+    fi
+    ok "panel blur rebuilds on every monitor change, and once at login"
 }
 
 finish() {

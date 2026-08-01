@@ -1,0 +1,18 @@
+[Unit]
+# GNOME's icon-theme key holds one name, with no notion of a light and a dark
+# build of the same set — so toggling Settings > Appearance between Light and
+# Dark changes the shell and the GTK theme but leaves the icons behind.
+# Colloid ships -Light and -Dark for every accent, and this keeps the key
+# pointing at whichever one matches the current preference.
+Description=Follow the system light/dark preference with the icon theme
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/tahoe-glass-icon-sync
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
