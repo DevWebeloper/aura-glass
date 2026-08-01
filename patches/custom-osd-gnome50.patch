@@ -1,5 +1,5 @@
 diff --git a/extension.js b/extension.js
-index 27fbac8..2f34ce4 100644
+index 27fbac8..f15ba78 100644
 --- a/extension.js
 +++ b/extension.js
 @@ -1,4 +1,5 @@
@@ -8,7 +8,7 @@ index 27fbac8..2f34ce4 100644
  import St from 'gi://St';
  import GObject from 'gi://GObject';
  import Gio from 'gi://Gio';
-@@ -14,6 +15,119 @@ import {Extension, gettext as _, pgettext} from 'resource:///org/gnome/shell/ext
+@@ -14,6 +15,131 @@ import {Extension, gettext as _, pgettext} from 'resource:///org/gnome/shell/ext
  
  const OsdWindowManager = Main.osdWindowManager;
  
@@ -78,40 +78,52 @@ index 27fbac8..2f34ce4 100644
 +    super._init({shader_type: fragment});
 +    this.set_uniform_value('tex', 0);
 +    this._geometry = null;
-+    // Stays off until the popup has been laid out — see setGeometry.
-+    this.enabled = false;
++    this._radiusPercent = 100;
 +  }
 +
 +  vfunc_get_static_shader_source() {
 +    return CORNER_SHADER;
 +  }
 +
-+  setGeometry(width, height, radius) {
-+    // This is an offscreen effect, so Clutter asks Cogl for a framebuffer the
-+    // size of the actor. The OSD has never been laid out before its first
-+    // show, so that is a request for a 0x0 buffer:
-+    //
-+    //   cogl_framebuffer_set_viewport: assertion 'width > 0 && height > 0'
-+    //
-+    // The effect is then dropped for that paint and the popup comes out with
-+    // square corners. Whether it recovers afterwards is down to the driver —
-+    // it did on AMD and did not on Intel — so rather than rely on that, the
-+    // effect stays disabled until there is something real to clip.
-+    if (!(width > 0 && height > 0)) {
-+      this.enabled = false;
-+      return;
-+    }
-+    this.enabled = true;
++  // Blur My Shell's border radius, as a percentage of half the popup's height,
++  // which is how Custom OSD stores it. 100 is a full pill.
++  setRadiusPercent(percent) {
++    this._radiusPercent = percent;
++  }
 +
++  // The size has to be read here rather than passed in from show(). This is an
++  // offscreen effect, so Clutter asks Cogl for a framebuffer the size of the
++  // actor before painting; at the point show() runs, the popup has not been
++  // through a layout pass yet, so its size is still whatever it was last time
++  // — zero on the first run. That is a request for a 0x0 buffer:
++  //
++  //   cogl_framebuffer_set_viewport: assertion 'width > 0 && height > 0'
++  //
++  // Returning false here skips the effect for that paint, cleanly, without
++  // asking for the buffer at all. Clutter then paints the actor unclipped for
++  // one frame instead of logging an assertion on every frame and leaving the
++  // corners square for good.
++  vfunc_pre_paint(node, paintContext) {
++    const actor = this.get_actor();
++    if (!actor)
++      return false;
++
++    const [width, height] = actor.get_size();
++    if (!(width > 0 && height > 0))
++      return false;
++
++    const radius = this._radiusPercent * height / 2 / 100;
 +    const key = `${width}x${height}r${radius}`;
-+    if (this._geometry === key)
-+      return;
-+    this._geometry = key;
-+    // A float that lands on a whole number marshals as an int, which the
-+    // shader's float uniforms reject, so nudge every value off the integers.
-+    this.set_uniform_value('width', width + 0.0001);
-+    this.set_uniform_value('height', height + 0.0001);
-+    this.set_uniform_value('radius', radius + 0.0001);
++    if (this._geometry !== key) {
++      this._geometry = key;
++      // A float that lands on a whole number marshals as an int, which the
++      // shader's float uniforms reject, so nudge every value off the integers.
++      this.set_uniform_value('width', width + 0.0001);
++      this.set_uniform_value('height', height + 0.0001);
++      this.set_uniform_value('radius', radius + 0.0001);
++    }
++
++    return super.vfunc_pre_paint(node, paintContext);
 +  }
 +});
 +
@@ -128,7 +140,7 @@ index 27fbac8..2f34ce4 100644
  export default class CustomOSDExtension extends Extension {
    constructor(metadata) {
      super(metadata);
-@@ -42,11 +156,11 @@ export default class CustomOSDExtension extends Extension {
+@@ -42,11 +168,11 @@ export default class CustomOSDExtension extends Extension {
    }
  
    _showOSD(osd) {
@@ -143,7 +155,7 @@ index 27fbac8..2f34ce4 100644
      }
      if (osd == "Command OSD") {
        let cmdosd = this._settings.get_string('showosd');
-@@ -56,9 +170,9 @@ export default class CustomOSDExtension extends Extension {
+@@ -56,9 +182,9 @@ export default class CustomOSDExtension extends Extension {
        let level = parseFloat(cmdosd[3]);
        icon? icon = Gio.ThemedIcon.new_with_default_fallbacks(icon) : icon = this._custOSDIcon;
        if (level!=0 && !level)
@@ -155,7 +167,7 @@ index 27fbac8..2f34ce4 100644
      }
    }
    
-@@ -318,17 +432,29 @@ export default class CustomOSDExtension extends Extension {
+@@ -318,17 +444,29 @@ export default class CustomOSDExtension extends Extension {
        
        // DYNAMIC BLUR
        else if (bgeffect == "dynamic-blur") {
@@ -195,7 +207,7 @@ index 27fbac8..2f34ce4 100644
        }
  
        // GLASS OR WOOD RAW OR WOOD POLISHED
-@@ -346,11 +472,11 @@ export default class CustomOSDExtension extends Extension {
+@@ -346,11 +484,11 @@ export default class CustomOSDExtension extends Extension {
        }
  
        if (bgeffect != "dynamic-blur") {
@@ -212,7 +224,7 @@ index 27fbac8..2f34ce4 100644
        
        osdW._hbox.style = hboxSty;
  
-@@ -410,13 +536,13 @@ export default class CustomOSDExtension extends Extension {
+@@ -410,13 +548,13 @@ export default class CustomOSDExtension extends Extension {
        if (osdW._hideTimeoutId)
          GLib.source_remove(osdW._hideTimeoutId);
  
@@ -231,7 +243,7 @@ index 27fbac8..2f34ce4 100644
          GLib.source_remove(osdW._blurTimeoutId);
          osdW._blurTimeoutId = null;
        }
-@@ -462,13 +588,7 @@ export default class CustomOSDExtension extends Extension {
+@@ -462,13 +600,7 @@ export default class CustomOSDExtension extends Extension {
  
      // Check if Clipped Redraws flag is set externally (e.g. by Blur My Shell)
      this.redrawFlagTimeoutId = setTimeout( () => {
@@ -246,7 +258,7 @@ index 27fbac8..2f34ce4 100644
      }, 2000);
  
   
-@@ -572,8 +692,15 @@ export default class CustomOSDExtension extends Extension {
+@@ -572,8 +704,15 @@ export default class CustomOSDExtension extends Extension {
  
          this._hbox.style += ` border-radius: ${br1*hbxH/2/100}px ${br2*hbxH/2/100}px;`;
  
@@ -254,17 +266,17 @@ index 27fbac8..2f34ce4 100644
 -        
 +        let hbxW = this._hbox.width;
 +
-+        // The clip has to follow the pill, which changes width with the label
-+        // and the numeric %, and height with the square/circle setting.
++        // Only the radius has to be handed over; the effect reads the popup's
++        // size itself, at paint time, when it is actually known.
 +        const corner = this._hbox.get_effect(CORNER_EFFECT);
 +        if (corner)
-+          corner.setGeometry(hbxW, hbxH, br1*hbxH/2/100);
++          corner.setRadiusPercent(br1);
 +
 +
          if(bgeffect == 'progress-ring') {
            custOSD.progressRing = true;
            custOSD.height = hbxH;
-@@ -601,14 +728,14 @@ export default class CustomOSDExtension extends Extension {
+@@ -601,14 +740,14 @@ export default class CustomOSDExtension extends Extension {
          let transY = -v_percent * (monitor.height - hbxH)/100.0;
          this._hbox.translation_y = transY;
  
