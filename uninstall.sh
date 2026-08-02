@@ -143,8 +143,8 @@ fi
 
 if [ "$REMOVE_EXTENSIONS" = 1 ]; then
     step "Removing extensions"
-    # Only the ones installed under $HOME are touched: on Bazzite several of
-    # these live in /usr/share and belong to the image, not to us.
+    # Only the ones installed under $HOME are touched: a distro-packaged copy
+    # in /usr/share belongs to the system, not to us.
     for u in openbar@neuromorph custom-osd@neuromorph blur-my-shell@aunetx \
              just-perfection-desktop@just-perfection gnome-ui-tune@itstime.tech \
              space-bar@luchrioh auto-accent-colour@Wartybix \

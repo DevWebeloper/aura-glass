@@ -1,7 +1,7 @@
 # tahoe-glass
 
-A macOS Tahoe **glass** desktop for GNOME — one script, no root, works the same
-on a mutable Arch system and a read-only atomic one.
+A macOS Tahoe **glass** desktop for GNOME — one script, and nothing but the
+optional dependency install ever needs root.
 
 This is a packaged version of a working desktop, not a fresh design. It installs
 the [GNOME-macOS-Tahoe][tahoe] theme, the extensions that make it hold together,
@@ -13,7 +13,7 @@ controls that read as a novelty rather than a control.
 ```
 GNOME Shell   48 · 49 · 50        (developed on 50.3)
 session       Wayland preferred, X11 works with degraded blur
-tested on     CachyOS · Bazzite (GNOME image)
+tested on     CachyOS (Arch family)
 ```
 
 ---
@@ -81,10 +81,10 @@ Tune, Space Bar, Auto Accent Colour, Vitals, Clipboard Indicator, ddterm,
 Kiwi Menu, HotEdge, Restart To, XWayland Indicator, AppIndicator Support,
 Magic Lamp Effect and Add to Steam.
 
-Bazzite and Bluefin already ship several of those inside the image. The
-installer looks in `/usr/share/gnome-shell/extensions` before it downloads
-anything, so on an atomic system they are enabled where they are rather than
-shadowed by a second copy under `$HOME` that would drift from the image.
+Some of those may already be packaged by your distro. The installer looks in
+`/usr/share/gnome-shell/extensions` before it downloads anything, so those are
+enabled where they are rather than shadowed by a second copy under `$HOME` that
+would drift from the packaged one.
 
 **Icons and cursors** — [Colloid][colloid] in your accent colour, installed to
 `~/.local/share/icons`. Cursors are GNOME's own Adwaita by default; pass
@@ -124,9 +124,8 @@ Pass `--no-osd` to leave the stock popup alone.
 
 **Settings → Appearance cannot take custom swatches.** Its nine accents are
 compiled into gnome-control-center; no extension can add to that list, and the
-only way to change it is to patch and rebuild the app — which on an atomic
-system also means layering an RPM and rebooting, and comes undone at every
-GNOME update. Not worth it.
+only way to change it is to patch and rebuild the app — which comes undone at
+every GNOME update. Not worth it.
 
 For arbitrary colours, use the two layers that *are* designed to be changed:
 
@@ -170,21 +169,18 @@ keeps stock Adwaita, which looks exactly like the install having failed.
 
 ---
 
-## Atomic systems (Bazzite, Bluefin, Silverblue)
+## Where things land
 
 Every asset installs under `$HOME`. `~/.themes`, `~/.local/share/icons` and
 `~/.local/share/gnome-shell/extensions` are ordinary writable directories that
-GNOME reads exactly like the `/usr` ones, so nothing needs layering and nothing
-needs a reboot.
+GNOME reads exactly like the `/usr` ones, so no step scatters files into system
+directories and none of them needs root.
 
 The one dependency that is usually missing is `sassc`, which the Tahoe theme
-uses to compile its SCSS. The installer offers Homebrew for it — Bazzite and
-Bluefin ship `brew`, it installs into `/home/linuxbrew`, and it costs no reboot.
-Layering (`rpm-ostree install sassc`) works too, but you have to reboot before
-the install can continue, so it is only suggested as a fallback.
+uses to compile its SCSS. The installer prints the exact `pacman` line and asks
+before running it.
 
-**Bazzite ships KDE by default.** This is a GNOME theme; you need the
-`bazzite-gnome` image. The installer checks `XDG_CURRENT_DESKTOP` and stops
+This is a GNOME theme. The installer checks `XDG_CURRENT_DESKTOP` and stops
 rather than scattering files into a session that will never read them.
 
 ---
