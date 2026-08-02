@@ -10,6 +10,9 @@ BMS_REPO="https://github.com/aunetx/blur-my-shell.git"
 BMS_REF="7d1290bbcff9"            # master; no release carries the popup component
 BMS_UUID="blur-my-shell@aunetx"
 
+ROUNDEDBLUR_REPO="https://github.com/kancko/gnome-rounded-blur.git"
+ROUNDEDBLUR_REF="9c7efb7ac5de"    # v1.0.1
+
 OPENBAR_REPO="https://github.com/neuromorph/openbar.git"
 OPENBAR_REF="01fb24217e0c"       # last upstream commit; patched for GNOME 50
 
@@ -399,6 +402,108 @@ install_custom_osd() {
     glib-compile-schemas "$EXT_DIR/$uuid/schemas" \
         || die "failed to compile Custom OSD's gsettings schemas"
     ok "$uuid (patched for GNOME $GNOME_MAJOR)"
+}
+
+# Blur My Shell gets rounded corners on a *dynamic* blur from Blur.BlurEffect,
+# which comes from this small C library — a vendored copy of gnome-shell's own
+# shell-blur-effect.c with a corner mask. Without it the popup blur falls back
+# to static, which still rounds (see apply_popup_blur); this is the upgrade
+# from "blurred wallpaper" to "blurred whatever is actually behind the popup".
+#
+# It is the only thing this project installs outside $HOME, so it is the only
+# step that asks first — and it asks even under --yes, because agreeing to a
+# theme installer is not the same as agreeing to a package from the AUR.
+#
+# It hard-pins libmutter-18, so every mutter update breaks it until it is
+# rebuilt. That failure is silent by design upstream: Blur My Shell just falls
+# back to Shell.BlurEffect. rounded_blur_staleness_check is what makes it loud.
+install_rounded_blur() {
+    step "Rounded corners for dynamic blur"
+
+    if [ "${WANT_ROUNDED_BLUR:-1}" != 1 ]; then
+        skip "not installed (--no-rounded-blur) — popup blur stays static"
+        return 0
+    fi
+
+    if gjs -c 'imports.gi.Blur;' >/dev/null 2>&1 && [ "${FORCE:-0}" != 1 ]; then
+        skip "gnome-rounded-blur already installed"
+        rounded_blur_stamp
+        return 0
+    fi
+
+    local helper='' h
+    for h in paru yay; do have "$h" && { helper="$h"; break; }; done
+
+    if [ -z "$helper" ] && ! have meson; then
+        warn "neither an AUR helper (paru/yay) nor meson is installed."
+        warn "Popup blur still works and its corners are still round — it just"
+        warn "samples the wallpaper instead of the window behind it."
+        return 0
+    fi
+
+    local cmd
+    if [ -n "$helper" ]; then
+        cmd="$helper -S --needed gnome-rounded-blur"
+    else
+        cmd="meson setup --prefix=/usr build && sudo meson install -C build"
+    fi
+
+    info "this is the one part of tahoe-glass that installs outside \$HOME:"
+    info "    $cmd"
+    if ! confirm_always "Install gnome-rounded-blur? It needs root."; then
+        skip "not installed — popup blur stays static, and still rounded"
+        return 0
+    fi
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: $cmd"
+        return 0
+    fi
+
+    if [ -n "$helper" ]; then
+        "$helper" -S --needed gnome-rounded-blur \
+            || { warn "the AUR build failed — popup blur stays static"; return 0; }
+    else
+        local src="$SRC_CACHE/gnome-rounded-blur"
+        clone_pinned "$ROUNDEDBLUR_REPO" "$ROUNDEDBLUR_REF" "$src"
+        ( cd "$src" && rm -rf build \
+            && meson setup --prefix=/usr build \
+            && meson compile -C build \
+            && sudo meson install -C build ) \
+            || { warn "the meson build failed — popup blur stays static"; return 0; }
+    fi
+
+    if gjs -c 'imports.gi.Blur;' >/dev/null 2>&1; then
+        rounded_blur_stamp
+        ok "gnome-rounded-blur installed — popup blur can be dynamic"
+        info "it is compiled against this mutter, so re-run with --rounded-blur --force after a mutter update"
+    else
+        warn "installed, but the shell still cannot import gi://Blur"
+    fi
+}
+
+# Records the mutter it was built against, which is what makes staleness
+# detectable later.
+rounded_blur_stamp() {
+    [ "${DRY_RUN:-0}" = 1 ] && return 0
+    mkdir -p "$CONF_DIR"
+    printf '%s\n' "$(pkg-config --modversion libmutter-18 2>/dev/null || gnome_major)" \
+        > "$CONF_DIR/rounded-blur"
+}
+
+# Blur My Shell publishes the answer itself: it writes rounded-blur-found at
+# every enable. If this machine installed the library but the shell is no
+# longer finding it, mutter has moved and the library needs rebuilding.
+rounded_blur_staleness_check() {
+    [ -f "$CONF_DIR/rounded-blur" ] || return 0
+    local found
+    found="$(dconf read /org/gnome/shell/extensions/blur-my-shell/rounded-blur-found 2>/dev/null || true)"
+    [ "$found" = false ] || return 0
+    warn "gnome-rounded-blur is installed here, but the shell is not finding it."
+    warn "Mutter has probably been updated — it has to be rebuilt against it:"
+    warn "    ./install.sh --rounded-blur --force"
+    warn "Until then the popup blur falls back to static. Still rounded, but it"
+    warn "samples the wallpaper rather than the window behind it."
 }
 
 install_extensions() {
@@ -1021,6 +1126,9 @@ install_panel_blur_unit() {
 }
 
 finish() {
+    # Runs whether or not --rounded-blur was passed, so a machine whose library
+    # went stale after a mutter update finds out on the next install either way.
+    rounded_blur_staleness_check
     step "Done"
     cat <<EOF
 

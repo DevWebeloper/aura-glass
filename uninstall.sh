@@ -180,13 +180,24 @@ fi
 
 # ------------------------------------------------------------------ our own --
 
+if [ -f "$CONF_DIR/rounded-blur" ]; then
+    step "gnome-rounded-blur"
+    # Not removed from here: it is the one thing this project installs outside
+    # $HOME, and an uninstaller that runs sudo on your behalf is worse than one
+    # that tells you what to run.
+    info "installed into /usr by this project. To remove it:"
+    info "    sudo pacman -Rs gnome-rounded-blur       # if it came from the AUR"
+    info "    sudo ninja -C ~/.cache/tahoe-glass/src/gnome-rounded-blur/build uninstall"
+fi
+
 step "Removing tahoe-glass itself"
 run rm -f "$HOME/.local/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-icon-sync" \
           "$HOME/.local/bin/tahoe-glass-panel-blur"
 # Stamps describing artifacts that have just been removed, rather than choices
 # the user made — so they go now instead of waiting on the $CONF_DIR prompt.
 run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
-          "$CONF_DIR/shell-popup-blur.css" "$CONF_DIR/popup-blur"
+          "$CONF_DIR/shell-popup-blur.css" "$CONF_DIR/popup-blur" \
+          "$CONF_DIR/rounded-blur"
 if confirm "Delete $CONF_DIR (this also deletes the backups above)?" 0; then
     run rm -rf "$CONF_DIR"
     ok "removed"
