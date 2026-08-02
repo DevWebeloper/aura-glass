@@ -6,6 +6,19 @@
  * regardless of specificity.
  */
 
+/* ---------- Flat, everywhere ----------
+ * The same rule as gtk4-tweaks.css and shell-tweaks.css: this desktop is 2D,
+ * and the blur behind a surface is the only depth it gets.
+ *
+ * No !important needed here, unlike the other two. The GTK3 half of Tahoe-Dark
+ * ships as a gresource, so this file is the only user CSS in play and it loads
+ * at GTK_STYLE_PROVIDER_PRIORITY_USER — above the theme, whatever its
+ * specificity.
+ */
+* {
+  box-shadow: none;
+}
+
 headerbar button.titlebutton,
 .titlebar button.titlebutton,
 headerbar button.titlebutton.close,

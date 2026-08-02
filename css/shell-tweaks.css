@@ -3,16 +3,51 @@
  * Shared translucency ladder, so every shell surface reads as the same
  * material with only a shade of difference between levels:
  *
- *   floating surface (menu / quick settings) ... rgba(0, 0, 0, 0.42)
- *   surface resting on a surface .............. rgba(255, 255, 255, 0.10)
+ *   floating surface (menu / dialog) .......... rgba(0, 0, 0, 0.42)
+ *   quick settings, being the largest of them . rgba(0, 0, 0, 0.46)
+ *   control resting on a surface .............. rgba(255, 255, 255, 0.10)
  *   control hover ............................. rgba(255, 255, 255, 0.16)
  *   control active ............................ rgba(255, 255, 255, 0.22)
- *   hairline edge ............................. rgba(255, 255, 255, 0.14)
  *
- * Edges are a full-perimeter 1px hairline plus a soft even drop shadow —
- * never a directional inset highlight, which is what produced the bright
- * corner streak on menus.
+ * Surfaces carry no edge at all: no hairline, no drop shadow, and above all
+ * no inset highlight. The blur behind a surface is what separates it from
+ * what it covers, so an edge on top of that only reads as a seam — which is
+ * exactly how the old 0.14 hairline and the theme's `inset 0 0 4px white`
+ * glow looked once there was a real blur underneath them. `border` is kept
+ * at `1px solid transparent` rather than dropped so the box metrics do not
+ * shift if an edge is ever wanted back.
+ *
+ * Two surfaces keep a fill off this ladder, both on purpose: `.message` sits
+ * *on* the already-translucent calendar popup and so takes a light lift
+ * instead of a dark one, and `.notification-banner` floats over arbitrary
+ * content and so needs a near-solid ground to stay readable.
  */
+
+/* ---------- Flat, everywhere ----------
+ * This desktop is 2D. The blur behind a surface is the only depth it gets;
+ * nothing is lifted off anything else, and nothing glows.
+ *
+ * The theme underneath ships 143 box-shadows and 54 text-shadows, 40 of them
+ * !important — which is why removing them one selector at a time kept missing
+ * (the quick-slider glow, the notification's white drop, the sidebar). St has
+ * no universal selector, so this resets the base widget types every shell
+ * actor inherits from, which reaches all of them.
+ *
+ * !important is not decoration here: without it the theme's own !important
+ * shadows win outright.
+ */
+StWidget,
+StBin,
+StButton,
+StEntry,
+StLabel,
+StIcon,
+StBoxLayout,
+StScrollView,
+StDrawingArea {
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
 
 /* ---------- Quick Settings sliders (brightness / volume) ----------
  * Upstream used padding: 1.636em 1.5em 1.636em 0.818em, which is what made
@@ -22,7 +57,7 @@
   padding: 0.45em 1em 0.45em 0.5em;
   border-radius: 26px;
   background-color: rgba(255, 255, 255, 0.10);
-  box-shadow: inset 0 0 4px rgba(255, 255, 255, 0.28) !important;
+  box-shadow: none !important;
 }
 
 .quick-slider > StBoxLayout {
@@ -85,7 +120,8 @@
 /* ---------- Popup menus ----------
  * Right-click menus and top-bar menus (accessibility, power, tray icons) were
  * rgba(0, 0, 0, 0.72) — near-solid black — with a directional inset highlight
- * that only lit the top-left corner. Replaced with an even perimeter hairline.
+ * that only lit the top-left corner. Both are gone: the fill is glass, and the
+ * blur behind it is the whole separation.
  *
  * No drop shadow: these menus are translucent and sit over a blurred panel, so
  * a shadow does not read as depth, it reads as a dark rectangle stamped around
@@ -95,7 +131,7 @@
  */
 .popup-menu-content {
   background-color: rgba(0, 0, 0, 0.42);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid transparent;
   border-radius: 26px;
   padding: 6px;
   box-shadow: none;
@@ -104,15 +140,15 @@
 /* ---------- Quick Settings panel ----------
  * The panel shares .popup-menu-content with every other menu, so it needs its
  * own treatment afterwards. Dropping the menu.svg border-image is deliberate:
- * a 9-slice image paints *instead of* the border, so a crisp hairline is only
- * possible without it.
+ * a 9-slice image paints *instead of* the background, so the glass fill below
+ * only reaches the surface once it is gone.
  */
 .popup-menu-content.quick-settings,
 .quick-settings {
   background: none;
   background-color: rgba(0, 0, 0, 0.46);
   border-image: none;
-  border: 1px solid rgba(255, 255, 255, 0.20);
+  border: 1px solid transparent;
   border-radius: 33px !important;
   box-shadow: none;
 }
@@ -144,14 +180,18 @@
 }
 
 /* ---------- Notifications ----------
- * In the message list a notification sits *on* the already translucent
- * calendar popup, so a dark fill reads as a hole punched through it. A light
- * lift keeps it on the same material. Text is pushed back up to full contrast
- * because the surface underneath is no longer solid.
+ * A dark translucent fill rather than the light lift this used to carry. The
+ * light version was chosen on the theory that a dark fill would read as a hole
+ * punched through the calendar popup behind it; with a real blur underneath it
+ * reads as glass instead, and the light lift was the thing that looked grey and
+ * flat. Text stays at full contrast because the surface is still translucent.
+ *
+ * Hover and active step *up* in opacity rather than lightening, so the whole
+ * ladder moves in one direction.
  */
 .message {
-  background-color: rgba(255, 255, 255, 0.09);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background-color: rgba(0, 0, 0, 0.35);
+  border: 1px solid transparent;
   border-radius: 20px;
   box-shadow: none;
   color: #ffffff;
@@ -159,23 +199,23 @@
 
 .message:hover,
 .message:focus {
-  background-color: rgba(255, 255, 255, 0.16);
+  background-color: rgba(0, 0, 0, 0.45);
 }
 
 .message:active {
-  background-color: rgba(255, 255, 255, 0.22);
+  background-color: rgba(0, 0, 0, 0.55);
 }
 
 /* Stacked notifications step down the same ladder instead of switching to
  * flat greys (#404040 / #363636), which broke the material.
  */
 .message:second-in-stack {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: rgba(0, 0, 0, 0.30);
   box-shadow: none;
 }
 
 .message:lower-in-stack {
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: rgba(0, 0, 0, 0.25);
   box-shadow: none;
   border-color: transparent;
 }
@@ -206,7 +246,7 @@
  */
 .notification-banner {
   background-color: rgba(22, 23, 27, 0.86);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid transparent;
   border-radius: 20px;
   box-shadow: none;
   color: #ffffff;
@@ -238,7 +278,7 @@
  */
 .notification-buttons-bin .button,
 .message .button {
-  background-color: rgba(255, 255, 255, 0.12);
+  background-color: rgba(255, 255, 255, 0.10);
   border: none;
   border-radius: 9999px;
   color: #ffffff;
@@ -246,7 +286,7 @@
 
 .notification-buttons-bin .button:hover,
 .message .button:hover {
-  background-color: rgba(255, 255, 255, 0.18);
+  background-color: rgba(255, 255, 255, 0.16);
 }
 
 /* ---------- TG-1  Adwaita-native toggles in the shell ----------
@@ -307,14 +347,42 @@
  * empty colour. Smaller disc, larger glyph — the ring reads as an icon
  * treatment rather than a badge. Both !important because the theme declares
  * the disc size that way.
+ *
+ * The disc is also what sets the tile's height: nothing else in the row is
+ * taller, so `min-height` on it is the row height. At 2.6em the tiles were
+ * tall enough that "Bluetooth" and "Power Mode" ellipsised — the disc was
+ * spending width the label needed. 2em buys back both at once.
  */
 .quick-toggle-has-menu .quick-toggle .quick-toggle-icon {
-  min-height: 2.6em !important;
-  min-width: 2.6em !important;
+  min-height: 2em !important;
+  min-width: 2em !important;
 }
 
 .quick-toggle .quick-toggle-icon {
-  icon-size: 24px;
+  icon-size: 18px;
+}
+
+/* The theme's `padding: 0 12px` on a tile that is already tight on width is
+ * 24px the label never gets. The arrow keeps its own hit area, so this only
+ * takes from the empty margins.
+ */
+.quick-toggle,
+.quick-toggle.button {
+  padding: 0 6px;
+}
+
+/* Labels ellipsise before they run out of room because the title reserves a
+ * width it does not need. Letting both lines shrink to their content is what
+ * lets "Bluetooth" and "Power Mode" render in full when the tile can hold them.
+ */
+.quick-toggle .quick-toggle-title,
+.quick-toggle .quick-toggle-subtitle {
+  min-width: 0;
+  padding-right: 2px;
+}
+
+.quick-toggle.power-item .quick-toggle-title {
+  padding-right: 2px;
 }
 
 .quick-settings .icon-button,
@@ -325,6 +393,25 @@
 .quick-settings .icon-button StIcon,
 .quick-settings .button StIcon {
   icon-size: 22px;
+}
+
+/* ---------- Menu-toggle tile metrics ----------
+ * The theme fixes these tiles at min-height 3.4em and max-width 13em, so the
+ * height is set here and nowhere else — shrinking the icon disc moved it a
+ * little only because the disc had grown taller than the row.
+ *
+ * The width is the reason labels ellipsise. The tile cannot grow past 13em, and
+ * the arrow spends 2.4em plus a 1em margin on each side — roughly a third of
+ * the tile before the label is given anything, which is why "Bluetooth" cut to
+ * "Blueto...". The arrow keeps its full 2.4em hit area; only the dead margin
+ * around it is reclaimed.
+ */
+.quick-toggle-has-menu {
+  min-height: 2.6em;
+}
+
+.quick-toggle-has-menu .quick-toggle-menu-button {
+  margin: 0.25em;
 }
 
 /* ---------- Menu-toggle tiles (Wi-Fi, Bluetooth, Wired, Power…) ----------
@@ -373,4 +460,59 @@
 
 .quick-toggle-has-menu:checked .quick-toggle-menu-button:active {
   background-color: rgba(255, 255, 255, 0.30);
+}
+
+/* ---------- Modal dialogs (log out, restart, power off) ----------
+ * Blur My Shell already blurs behind these — style-dialogs is on, and
+ * dialog-corner-radius agrees with the 20px below. None of it was visible,
+ * because nothing here styled .modal-dialog and stock GNOME's opaque fill
+ * therefore sat on top of the blur. The fill is the same material as
+ * .popup-menu-content so a dialog reads as the same glass as every menu.
+ */
+.modal-dialog,
+.end-session-dialog {
+  background-color: rgba(0, 0, 0, 0.42);
+  border: 1px solid transparent;
+  border-radius: 20px;
+  box-shadow: none;
+}
+
+.modal-dialog .modal-dialog-content-box,
+.end-session-dialog .modal-dialog-content-box {
+  background: none;
+  background-color: transparent;
+}
+
+/* Dialog buttons follow the same control ladder as the rest of the desktop.
+ * The default button was stock GNOME blue, which ignored the accent the whole
+ * desktop is built around — -st-accent-color tracks Settings → Appearance.
+ */
+.modal-dialog .modal-dialog-button,
+.modal-dialog .modal-dialog-linked-button,
+.modal-dialog .button {
+  background-color: rgba(255, 255, 255, 0.10);
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  box-shadow: none;
+  color: #ffffff;
+}
+
+.modal-dialog .modal-dialog-button:hover,
+.modal-dialog .modal-dialog-linked-button:hover,
+.modal-dialog .button:hover {
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+.modal-dialog .modal-dialog-button:default,
+.modal-dialog .modal-dialog-linked-button:default,
+.modal-dialog .button:default {
+  background-color: -st-accent-color;
+  color: -st-accent-fg-color;
+}
+
+.modal-dialog .modal-dialog-button:default:hover,
+.modal-dialog .modal-dialog-linked-button:default:hover,
+.modal-dialog .button:default:hover {
+  background-color: -st-accent-color;
+  box-shadow: inset 0 0 0 99px rgba(255, 255, 255, 0.12) !important;
 }

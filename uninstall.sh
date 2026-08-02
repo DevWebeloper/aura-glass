@@ -29,7 +29,7 @@ ${C_BLD}tahoe-glass uninstall${C_OFF}
 
     --extensions   also remove the extensions this installed (and their settings)
     --assets       also remove the Tahoe theme, Colloid icons and MacTahoe cursors
-    --all          both of the above
+    --all          both of the above (--full is accepted as the same thing)
     -y, --yes      answer yes to every prompt
     -n, --dry-run  print what would happen, change nothing
     -h, --help     this
@@ -43,7 +43,11 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --extensions) REMOVE_EXTENSIONS=1; shift ;;
         --assets)     REMOVE_ASSETS=1; shift ;;
-        --all)        REMOVE_EXTENSIONS=1; REMOVE_ASSETS=1; shift ;;
+        # --full is install.sh's flag, not this one's. Accepted anyway: reaching
+        # for it here is the obvious mistake, and the cost of rejecting it is a
+        # run that looks like it uninstalled and did not — the arg parser dies
+        # before the first step, so nothing at all is removed.
+        --all|--full) REMOVE_EXTENSIONS=1; REMOVE_ASSETS=1; shift ;;
         -y|--yes)     ASSUME_YES=1; shift ;;
         -n|--dry-run) DRY_RUN=1; shift ;;
         -h|--help)    usage; exit 0 ;;
