@@ -4,9 +4,8 @@
 #
 #   https://github.com/DevWebeloper/tahoe-glass
 #
-# Nothing here needs root except the optional dependency install, and every
-# asset lands under $HOME — which is what makes the same script work on both a
-# mutable Arch system and a read-only ostree one like Bazzite.
+# Nothing here needs root except the optional dependency install and the
+# optional rounded-blur library: every other asset lands under $HOME.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

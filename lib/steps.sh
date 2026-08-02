@@ -35,12 +35,10 @@ EXT_CORE=(
 # The rest of the reference desktop, in the order the shell lays them out.
 # None of it is required, and --extras is what asks for it.
 #
-# Several of these ship inside the Bazzite and Bluefin images already —
-# add-to-steam, appindicatorsupport, compiz-alike, hotedge and restartto all
-# live in /usr/share/gnome-shell/extensions there. install_ext_ego checks that
-# directory before downloading, so on an atomic system they are enabled in
-# place instead of being shadowed by a second copy under $HOME that would then
-# drift from whatever the image ships.
+# Some of these may already be packaged by the distro. install_ext_ego checks
+# /usr/share/gnome-shell/extensions before downloading, so those are enabled in
+# place rather than shadowed by a second copy under $HOME that would then drift
+# from whatever the system ships.
 EXT_EXTRA=(
     just-perfection-desktop@just-perfection
     gnome-ui-tune@itstime.tech
@@ -88,9 +86,7 @@ preflight() {
     case "$desktop" in
         *GNOME*) ok "GNOME session detected ($desktop)" ;;
         '')      warn "XDG_CURRENT_DESKTOP is unset — cannot confirm this is GNOME" ;;
-        *)       die "this is a GNOME desktop theme, but the session is '$desktop'.
-       On Bazzite that usually means you are on the KDE image; the GNOME
-       image is bazzite-gnome." ;;
+        *)       die "this is a GNOME desktop theme, but the session is '$desktop'" ;;
     esac
 
     GNOME_MAJOR="$(gnome_major)" || die "gnome-shell not found"
@@ -108,7 +104,6 @@ preflight() {
     detect_distro
     case "$DISTRO_FAMILY" in
         arch)    ok "$DISTRO_PRETTY (arch family)" ;;
-        atomic)  ok "$DISTRO_PRETTY (atomic — everything installs under \$HOME)" ;;
         *)       warn "$DISTRO_PRETTY — untested family '$DISTRO_FAMILY', continuing anyway" ;;
     esac
 
@@ -130,8 +125,8 @@ install_theme() {
     backup_once "$HOME/.config/gtk-3.0/gtk.css"      "$BACKUP_DIR" "gtk3-gtk.css"
 
     # -d installs the dark theme into ~/.themes, -la writes the libadwaita
-    # override into ~/.config/gtk-4.0. Both are per-user, so this works
-    # unchanged on an ostree system. </dev/null keeps its gum prompts quiet.
+    # override into ~/.config/gtk-4.0. Both are per-user, so this needs no
+    # root. </dev/null keeps its gum prompts quiet.
     info "running the theme's own installer (dark + libadwaita override)"
     if [ "${DRY_RUN:-0}" = 1 ]; then
         info "dry-run: $src/install.sh -d -la"
@@ -450,8 +445,8 @@ install_icons() {
     local src="$SRC_CACHE/Colloid-icon-theme"
     clone_pinned "$COLLOID_REPO" "$COLLOID_REF" "$src"
 
-    # No -d: unprivileged runs default to ~/.local/share/icons, which is the
-    # only writable location on an atomic system anyway.
+    # No -d: unprivileged runs default to ~/.local/share/icons, which keeps
+    # this step out of /usr like every other one.
     if [ "${DRY_RUN:-0}" = 1 ]; then
         info "dry-run: $src/install.sh -t $(accent_to_colloid_arg "$ACCENT")"
     else
@@ -815,8 +810,7 @@ flatpak_override() {
 
     # Without this a Flatpak app is sandboxed away from ~/.config/gtk-4.0 and
     # silently keeps stock Adwaita — which looks exactly like the tweaks
-    # failing to apply. On an atomic system most apps are Flatpaks, so this is
-    # the difference between a themed desktop and a half-themed one.
+    # failing to apply.
     run flatpak override --user \
         --filesystem=xdg-config/gtk-4.0:ro \
         --filesystem=xdg-config/gtk-3.0:ro \
