@@ -1,18 +1,15 @@
 # shellcheck shell=bash
 # tahoe-glass — distro detection and dependency installation.
 #
-# Two families are supported first-class:
+# arch — CachyOS, Arch, EndeavourOS … — is the family this is built and tested
+# on. fedora and debian are handled on the same terms but are not exercised.
 #
-#   arch    CachyOS, Arch, EndeavourOS …  — pacman, writable /usr
-#   atomic  Bazzite, Bluefin, Silverblue … — rpm-ostree, read-only /usr
-#
-# The atomic case is why every asset in this project installs under $HOME.
-# On Bazzite /usr/share/themes and /usr/share/icons cannot be written without
-# layering a package and rebooting, but ~/.themes, ~/.local/share/icons and
-# ~/.local/share/gnome-shell/extensions are all ordinary writable directories
-# and GNOME reads them exactly the same way.
+# Every asset still installs under $HOME: ~/.themes, ~/.local/share/icons and
+# ~/.local/share/gnome-shell/extensions are read by GNOME exactly as their
+# /usr counterparts are, and staying out of /usr is what keeps the whole
+# install root-free apart from fetching dependencies.
 
-DISTRO_FAMILY=""   # arch | atomic | fedora | debian | unknown
+DISTRO_FAMILY=""   # arch | fedora | debian | unknown
 DISTRO_NAME=""
 DISTRO_PRETTY=""
 
@@ -24,17 +21,6 @@ detect_distro() {
         id="${ID:-}"; id_like="${ID_LIKE:-}"
         DISTRO_NAME="$id"
         DISTRO_PRETTY="${PRETTY_NAME:-$id}"
-    fi
-
-    # Atomic wins over the ID_LIKE=fedora it also reports: an ostree system
-    # needs a completely different dependency strategy from a mutable one.
-    # /run/ostree-booted is a plain file written by ostree-prepare-root, not a
-    # directory — `-d` silently never matches it and detection falls through
-    # to the fedora branch, which tries dnf. Bazzite's dnf refuses to run at
-    # all in that case, so this one check decides the whole install path.
-    if have rpm-ostree && [ -e /run/ostree-booted ]; then
-        DISTRO_FAMILY="atomic"
-        return
     fi
 
     case " $id $id_like " in
@@ -62,21 +48,6 @@ declare -A PKG_DEBIAN=(
 )
 
 REQUIRED_CMDS=(git curl unzip sassc gsettings dconf gnome-extensions)
-
-# Bazzite and Bluefin preinstall a rootless Homebrew prefix at
-# /home/linuxbrew/.linuxbrew so images that ship it never need to run brew's
-# installer. But that prefix is only added to PATH by shell profile snippets,
-# which a non-interactive session — cron, or `ssh host command` — never
-# sources. `command -v brew` alone misses a real, working brew in exactly the
-# situation this installer is likely to be run from.
-find_brew() {
-    have brew && { command -v brew; return 0; }
-    local p
-    for p in /home/linuxbrew/.linuxbrew/bin/brew "$HOME/.linuxbrew/bin/brew" /opt/homebrew/bin/brew; do
-        [ -x "$p" ] && { printf '%s' "$p"; return 0; }
-    done
-    return 1
-}
 
 missing_cmds() {
     local c
@@ -111,36 +82,6 @@ install_deps() {
             info "would run: sudo pacman -S --needed $pkgs"
             confirm "Install these with pacman?" 1 || { warn "skipping — install them yourself, then re-run"; return 1; }
             run sudo pacman -S --needed --noconfirm $pkgs
-            ;;
-        atomic)
-            # Homebrew ships with Bazzite and Bluefin and installs into
-            # /home/linuxbrew, so it needs no layering and no reboot. Layering
-            # is offered second because it costs a reboot before the install
-            # can even continue.
-            local brew_bin
-            if brew_bin="$(find_brew)"; then
-                # A brew found outside PATH means the shell that will run the
-                # rest of this script — including the theme's own installer,
-                # which shells out to sassc — can't see it either. Put its bin
-                # dir on PATH now so both `brew install` and everything
-                # downstream in this process can find what it just installed.
-                case ":$PATH:" in
-                    *":$(dirname "$brew_bin"):"*) ;;
-                    *) export PATH="$(dirname "$brew_bin"):$PATH" ;;
-                esac
-                info "would run: $brew_bin install ${missing[*]}"
-                confirm "Install these with Homebrew? (no reboot needed)" 1 \
-                    || { warn "skipping — install them yourself, then re-run"; return 1; }
-                run "$brew_bin" install "${missing[@]}"
-            else
-                local pkgs; pkgs="$(install_hint PKG_FEDORA "${missing[@]}")"
-                warn "Homebrew not found on an atomic system."
-                warn "Layering requires a reboot before this installer can continue:"
-                warn "    rpm-ostree install $pkgs && systemctl reboot"
-                warn "Homebrew is the lighter option:"
-                warn "    /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/brew/HEAD/install.sh)\""
-                return 1
-            fi
             ;;
         fedora)
             local pkgs; pkgs="$(install_hint PKG_FEDORA "${missing[@]}")"
