@@ -790,6 +790,52 @@ print(f"""
 PY
 }
 
+# css/gtk4-transparency.css is written at the shipped level (0.92) so that the
+# file is readable on its own. --app-transparency N rewrites both spellings of
+# every value in the installed copy, scaling the whole ladder rather than
+# flattening it: the header bar is meant to stay a little more transparent than
+# the window and the content view a little less, at any setting.
+install_transparency_css() {
+    local level="${APP_TRANSPARENCY:-0}"
+
+    if [ "$level" = 0 ]; then
+        run rm -f "$CONF_DIR/gtk4-transparency.css"
+        [ "${DRY_RUN:-0}" = 1 ] || { mkdir -p "$CONF_DIR"; printf '0\n' > "$CONF_DIR/app-transparency"; }
+        return 0
+    fi
+
+    run install -Dm644 "$REPO_ROOT/css/gtk4-transparency.css" "$CONF_DIR/gtk4-transparency.css"
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: rewrite the transparency sheet to $level"
+        return 0
+    fi
+
+    python3 - "$CONF_DIR/gtk4-transparency.css" "$level" <<'PY'
+import re, sys
+path, want = sys.argv[1], float(sys.argv[2])
+SHIPPED = 0.92
+
+def scale(base):
+    # Keep each surface's distance from opaque in proportion, so the ladder
+    # written into the sheet survives being retuned.
+    if want >= 1.0:
+        return 1.0
+    return max(0.0, min(1.0, 1 - (1 - base) * (1 - want) / (1 - SHIPPED)))
+
+css = open(path, encoding="utf-8").read()
+css = re.sub(r"alpha\((@[a-z_]+), ([0-9.]+)\)",
+             lambda m: "alpha(%s, %.2f)" % (m.group(1), scale(float(m.group(2)))), css)
+css = re.sub(r"(var\(--[a-z-]+\)) ([0-9.]+)%",
+             lambda m: "%s %g%%" % (m.group(1), round(scale(float(m.group(2)) / 100) * 100, 1)), css)
+open(path, "w", encoding="utf-8").write(css)
+PY
+
+    mkdir -p "$CONF_DIR"
+    printf '%s\n' "$level" > "$CONF_DIR/app-transparency"
+    ok "app windows translucent at $level (remembered for later runs)"
+}
+
 install_css() {
     step "Installing the CSS tweaks"
 
@@ -806,6 +852,7 @@ install_css() {
     else
         run rm -f "$CONF_DIR/shell-popup-blur.css"
     fi
+    install_transparency_css
     ok "css -> $CONF_DIR"
     ok "re-apply command -> ~/.local/bin/tahoe-glass-apply"
 
@@ -861,7 +908,18 @@ load_dconf() {
 
     apply_grain
     apply_popup_blur
+    apply_app_opacity
     sync_osd_profile
+}
+
+# [applications] opacity dims the whole window actor, text included. That is
+# the only transparency available while GTK paints an opaque background, but
+# once GTK is doing it properly the two multiply and the text goes muddy — so
+# the actor goes back to fully opaque and the stylesheet does the work alone.
+apply_app_opacity() {
+    [ "${APP_TRANSPARENCY:-0}" != 0 ] || return 0
+    run dconf write /org/gnome/shell/extensions/blur-my-shell/applications/opacity 255
+    ok "window actor opacity back to 255 — GTK is doing the transparency now"
 }
 
 # The popup keys themselves ship in dconf/core.ini so the whole preset stays
