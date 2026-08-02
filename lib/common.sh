@@ -43,6 +43,24 @@ confirm() {
     esac
 }
 
+# confirm_always "question" — like confirm, but --yes does not answer it and a
+# non-interactive run declines instead of defaulting. For the one step that
+# installs a package outside $HOME: saying yes to a theme installer is not the
+# same as saying yes to that, and neither is piping this script into bash.
+confirm_always() {
+    local q="$1" ans
+    if [ ! -t 0 ]; then
+        warn "not an interactive terminal — declining. Re-run in a terminal to accept."
+        return 1
+    fi
+    printf '    %s [y/N] ' "$q" >&2
+    read -r ans || ans=''
+    case "${ans,,}" in
+        y|yes) return 0 ;;
+        *)     return 1 ;;
+    esac
+}
+
 have() { command -v "$1" >/dev/null 2>&1; }
 
 # Clone at a pinned ref, or fetch that ref into an existing clone. Pinning
