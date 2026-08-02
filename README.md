@@ -49,7 +49,11 @@ Have a look first if you like — nothing is written:
 | `--extras` | also install the rest of the reference desktop — see below |
 | `--icons WHICH` | `colloid` (default, follows `--accent`) or `reversal-COLOUR` |
 | `--cursors WHICH` | `adwaita` (default) or `mactahoe` |
+| `--app-transparency N` | translucent app windows, `0.70`–`1.00` (default `0.92`). Off unless asked for |
 | `--no-osd` | keep the stock volume/brightness popup |
+| `--no-popup-blur` | keep flat translucent popups, no blur behind them |
+| `--no-rounded-blur` | skip `gnome-rounded-blur` — popup blur stays static |
+| `--no-bms-git` | use Blur My Shell's published build (no popup component) |
 | `--no-icons` | keep your icon theme |
 | `--no-cursors` | keep your cursor theme |
 | `--no-wm-buttons` | keep your titlebar button layout |
@@ -96,6 +100,61 @@ switching **Settings → Appearance** to Light would restyle everything except
 the icons. `tahoe-glass-icon-sync.service` watches the colour scheme and keeps
 the key pointing at the matching variant.
 
+### Popup blur
+
+Menus, quick settings, notifications, dialogs, the alt-tab switcher and the
+volume/brightness OSD all sit on a real blur.
+
+This is why Blur My Shell is built from a pinned commit rather than taken from
+extensions.gnome.org: the popup component only exists on upstream's `master`,
+and no release carries it yet. When one does, this project will go back to the
+published build.
+
+There are two modes, and the difference is what the blur samples:
+
+- **dynamic** — whatever is actually behind the popup. This is the default, and
+  it needs [`gnome-rounded-blur`][roundedblur], a small C library that gives
+  Blur My Shell's dynamic blur a corner mask. Without it the blur still works
+  but the corners come out square.
+- **static** — the wallpaper, blurred once. Needs nothing extra, and rounds its
+  own corners.
+
+The installer picks between them from Blur My Shell's own `rounded-blur-found`
+key rather than assuming: library present means dynamic, absent means static.
+So declining the library, or a mutter update breaking it, costs you *what the
+blur samples* rather than the shape — round over the wallpaper, instead of
+square over the window. Re-run `./install.sh --rounded-blur --force` to rebuild
+it and the mode flips back on its own.
+
+`gnome-rounded-blur` is the only thing this project installs outside `$HOME`,
+so it is the only step that asks first — and it asks even under `--yes`. It is
+compiled against your current mutter and has to be rebuilt after a mutter
+update; the installer notices that case and says so.
+
+`--no-popup-blur` reverts to the flat translucent popups this project shipped
+before, exactly.
+
+### App transparency
+
+Blur My Shell can blur behind app windows, but libadwaita paints opaque
+backgrounds, so by default there is nothing to see through. `--app-transparency`
+makes the surfaces libadwaita actually paints translucent — the window, header
+bar, sidebar panes, content views and popovers.
+
+It is **off by default and not part of `--full`**, because it only works for
+apps that use GTK's stylesheet. These will ignore it and stay opaque:
+
+- Electron and Chromium apps — VS Code, Discord, Slack, Brave
+- Steam, Java/Swing apps, LibreOffice
+- anything drawing a GL or video surface — mpv, Totem's video widget
+- XWayland apps generally, and GTK3 apps
+
+Message dialogs and windows with server-side decorations are deliberately left
+opaque: a translucent dialog is harder to read, and a translucent window under
+an opaque frame reads as a rendering bug.
+
+Any app that looks wrong can be added to Blur My Shell's per-app blacklist.
+
 ### The volume and brightness popup
 
 Stock GNOME shows a speaker icon, the output device's name and a bar every time
@@ -113,10 +172,16 @@ than reverting to upstream's.
 Upstream's last release targets GNOME 46 and its last commit does not run on
 50 at all — `ShellBlurEffect:sigma`, `meta_add_clutter_debug_flags()` and
 `OsdWindowManager.show()`'s signature have all changed since. `patches/custom-osd-gnome50.patch`
-fixes those and adds one thing upstream never had: a shader that clips the blur
-to the popup's corners. A background blur covers the actor's bounding box and
-knows nothing about `border-radius`, so without it a rounded pill sits inside a
-hard-edged rectangle of blur.
+fixes exactly those and nothing else.
+
+The blur behind the pill, and its rounded corners, come from Blur My Shell's
+popup component instead — `osd-window` is one of the surfaces it blurs. This
+project used to carry its own corner shader for that job, and it was the most
+fragile code here: a `Clutter.ShaderEffect` gets an offscreen buffer sized to
+the actor's *paint volume* rather than its allocation, which rendered a rounded
+pill on one GPU and a hard square on another. Blur My Shell's own corner effect
+clamps the radius instead, so the shape comes out right without this project
+maintaining a shader. The preset therefore ships `bg-effect='none'`.
 
 Pass `--no-osd` to leave the stock popup alone.
 
@@ -222,8 +287,8 @@ panel's geometry, which isn't settled at login — its own source notes that
 `get_transformed_position` "sometimes yields NaN when the actor is not fully
 positionned yet".
 
-Only seen on multi-monitor, so it is **off by default** — the fix costs a 12
-second wait after every login, which is not worth paying for a bug you probably
+Only seen on multi-monitor. The fix is **on by default** and costs a 12
+second wait after every login; pass `--no-panel-blur-fix` to skip it for a bug you probably
 don't have. If you do see the strip, run the installer with `--panel-blur-fix`
 to get `tahoe-glass-panel-blur.service`, which toggles the blur off and on once
 the session has settled and rebuilds the actor against correct geometry. If the
@@ -246,11 +311,10 @@ redistributable, and is not installed by this project — without it fontconfig
 substitutes your default sans, which is what the reference desktop does too.
 Change it in Open Bar's preferences if you want something deliberate.
 
-**There is no real blur behind popup menus.**
-There cannot be, from CSS. St — the GNOME Shell CSS engine — has no blur
-property at all, and Blur My Shell has no popup component. What you get instead
-is frosted translucency on a consistent material ladder. True backdrop blur
-behind menus needs a `Shell.BlurEffect` extension, which is a different project.
+**The popup blur shows the wallpaper, not the window behind it.**
+That is static blur, and it means `gnome-rounded-blur` is missing or has gone
+stale. See *Popup blur* above; `./install.sh --rounded-blur` fixes it. The
+installer says so on its own if it detects that case.
 
 ---
 
@@ -261,10 +325,10 @@ install.sh              entry point, flag parsing, step order
 lib/common.sh           output, prompting, pinned-clone and backup helpers
 lib/distro.sh           distro detection and dependency install per family
 lib/steps.sh            the steps themselves, with the upstream pins at the top
-css/                    the three CSS sheets
-dconf/core.ini          Open Bar + Blur My Shell + shell theme name
+css/                    the CSS sheets, some installed only when asked for
+dconf/core.ini          Open Bar + Blur My Shell + Custom OSD + shell theme name
 dconf/extras.ini        optional extensions
-patches/                Open Bar GNOME 50 patch
+patches/                the GNOME 50 patches for Open Bar and Custom OSD
 systemd/                the panel blur rebuild unit
 bin/tahoe-glass-apply   idempotent CSS re-apply
 ```
@@ -310,6 +374,7 @@ MIT, for the parts in this repository. The upstreams carry their own licences.
 
 [tahoe]: https://github.com/kayozxo/GNOME-macOS-Tahoe
 [bms]: https://github.com/aunetx/blur-my-shell
+[roundedblur]: https://github.com/kancko/gnome-rounded-blur
 [ob]: https://github.com/neuromorph/openbar
 [cosd]: https://github.com/neuromorph/custom-osd
 [ut]: https://extensions.gnome.org/extension/19/user-themes/
