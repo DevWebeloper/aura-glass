@@ -1,8 +1,14 @@
 diff --git a/extension.js b/extension.js
-index 27fbac8..62e2d1a 100644
+index 27fbac8..95326df 100644
 --- a/extension.js
 +++ b/extension.js
-@@ -14,6 +14,50 @@ import {Extension, gettext as _, pgettext} from 'resource:///org/gnome/shell/ext
+@@ -1,4 +1,5 @@
+ import Clutter from 'gi://Clutter';
++import Cogl from 'gi://Cogl';
+ import St from 'gi://St';
+ import GObject from 'gi://GObject';
+ import Gio from 'gi://Gio';
+@@ -14,6 +15,101 @@ import {Extension, gettext as _, pgettext} from 'resource:///org/gnome/shell/ext
  
  const OsdWindowManager = Main.osdWindowManager;
  
@@ -39,6 +45,57 @@ index 27fbac8..62e2d1a 100644
 +}
 +
 +const BLUR_EFFECT = 'customOSD-dynamic';
++const CORNER_EFFECT = 'customOSD-corner';
++
++// Shell.BlurEffect blurs the actor's bounding box and knows nothing about
++// border-radius, so a rounded popup ends up sitting in a square patch of blur
++// that no amount of styling can cover — the blur is the outermost thing drawn.
++// This clips the finished paint, blur included, back to the rounded shape.
++const CORNER_SHADER = `
++uniform sampler2D tex;
++uniform float width;
++uniform float height;
++uniform float radius;
++
++void main() {
++    vec2 size = vec2(width, height);
++    vec2 pos = cogl_tex_coord_in[0].xy * size;
++    vec2 corner = min(pos, size - pos);
++    float dist = length(max(vec2(radius) - corner, vec2(0.0))) - radius;
++    float mask = 1.0 - smoothstep(-0.75, 0.75, dist);
++    cogl_color_out = texture2D(tex, cogl_tex_coord_in[0].xy) * mask;
++}
++`;
++
++const CornerEffect = GObject.registerClass(
++class CustomOSDCornerEffect extends Clutter.ShaderEffect {
++  _init() {
++    // Clutter 18 (GNOME 50) dropped ClutterShaderType; the shader-type
++    // property is a CoglShaderType now, and it is construct-only either way.
++    const fragment = Clutter.ShaderType
++      ? Clutter.ShaderType.FRAGMENT_SHADER
++      : Cogl.ShaderType.FRAGMENT;
++    super._init({shader_type: fragment});
++    this.set_uniform_value('tex', 0);
++    this._geometry = null;
++  }
++
++  vfunc_get_static_shader_source() {
++    return CORNER_SHADER;
++  }
++
++  setGeometry(width, height, radius) {
++    const key = `${width}x${height}r${radius}`;
++    if (this._geometry === key)
++      return;
++    this._geometry = key;
++    // A float that lands on a whole number marshals as an int, which the
++    // shader's float uniforms reject, so nudge every value off the integers.
++    this.set_uniform_value('width', width + 0.0001);
++    this.set_uniform_value('height', height + 0.0001);
++    this.set_uniform_value('radius', radius + 0.0001);
++  }
++});
 +
 +// GNOME 50 replaced OsdWindowManager.show(monitorIndex, ...), where -1 meant
 +// every monitor, with show(icon, label, {[index]: {level, maxLevel}}) and a
@@ -53,7 +110,7 @@ index 27fbac8..62e2d1a 100644
  export default class CustomOSDExtension extends Extension {
    constructor(metadata) {
      super(metadata);
-@@ -42,11 +86,11 @@ export default class CustomOSDExtension extends Extension {
+@@ -42,11 +138,11 @@ export default class CustomOSDExtension extends Extension {
    }
  
    _showOSD(osd) {
@@ -68,7 +125,7 @@ index 27fbac8..62e2d1a 100644
      }
      if (osd == "Command OSD") {
        let cmdosd = this._settings.get_string('showosd');
-@@ -56,9 +100,9 @@ export default class CustomOSDExtension extends Extension {
+@@ -56,9 +152,9 @@ export default class CustomOSDExtension extends Extension {
        let level = parseFloat(cmdosd[3]);
        icon? icon = Gio.ThemedIcon.new_with_default_fallbacks(icon) : icon = this._custOSDIcon;
        if (level!=0 && !level)
@@ -80,7 +137,7 @@ index 27fbac8..62e2d1a 100644
      }
    }
    
-@@ -318,17 +362,29 @@ export default class CustomOSDExtension extends Extension {
+@@ -318,17 +414,29 @@ export default class CustomOSDExtension extends Extension {
        
        // DYNAMIC BLUR
        else if (bgeffect == "dynamic-blur") {
@@ -94,13 +151,16 @@ index 27fbac8..62e2d1a 100644
 -              radius: 25,
 -              mode: Shell.BlurMode.BACKGROUND, 
 -          });
-+        // Upstream drops the background entirely here. Keeping the
-+        // translucent fill is what makes this read as glass rather than as a
-+        // smudge, and it is the only thing carrying the popup's shape: a
-+        // background blur covers the actor's bounding box and knows nothing
-+        // about border-radius. Brightness is left at 1.0 below so that
-+        // rectangle only ever softens what is behind it and never darkens it,
-+        // which is what stops the square edge being visible at all.
++        // Upstream drops the background entirely here. Keeping the translucent
++        // fill is what makes this read as glass rather than as a smudge, and
++        // the rounded corners below are what stop it reading as a rectangle.
++        //
++        // The corner effect has to go on first: Clutter runs the effect added
++        // first as the outermost one, so it wraps — and therefore clips — the
++        // blur painted after it.
++        if (!osdW._hbox.get_effect(CORNER_EFFECT))
++          osdW._hbox.add_effect_with_name(CORNER_EFFECT, new CornerEffect());
++
 +        let effect = osdW._hbox.get_effect(BLUR_EFFECT);
 +        if (!effect) {
 +          effect = new Shell.BlurEffect({name: BLUR_EFFECT});
@@ -110,17 +170,14 @@ index 27fbac8..62e2d1a 100644
 +        // only knob left, and effect.set() throws on a name it cannot find,
 +        // which would take the whole extension down with it.
 +        effect.set({
-+            // 1.0 = no darkening. The blur is a rectangle and always will
-+            // be, so it must not change brightness, or its corners show
-+            // outside the rounded pill drawn on top of it.
-+            brightness: 1.0,
++            brightness: 0.8,
 +            radius: 25,
 +            mode: Shell.BlurMode.BACKGROUND,
 +        });
        }
  
        // GLASS OR WOOD RAW OR WOOD POLISHED
-@@ -346,11 +402,9 @@ export default class CustomOSDExtension extends Extension {
+@@ -346,11 +454,11 @@ export default class CustomOSDExtension extends Extension {
        }
  
        if (bgeffect != "dynamic-blur") {
@@ -131,11 +188,13 @@ index 27fbac8..62e2d1a 100644
 -      }      
 +        if (osdW._hbox.get_effect(BLUR_EFFECT))
 +          osdW._hbox.remove_effect_by_name(BLUR_EFFECT);
++        if (osdW._hbox.get_effect(CORNER_EFFECT))
++          osdW._hbox.remove_effect_by_name(CORNER_EFFECT);
 +      }
        
        osdW._hbox.style = hboxSty;
  
-@@ -410,13 +464,11 @@ export default class CustomOSDExtension extends Extension {
+@@ -410,13 +518,13 @@ export default class CustomOSDExtension extends Extension {
        if (osdW._hideTimeoutId)
          GLib.source_remove(osdW._hideTimeoutId);
  
@@ -145,6 +204,8 @@ index 27fbac8..62e2d1a 100644
 -      }
 +      if (osdW._hbox.get_effect(BLUR_EFFECT))
 +        osdW._hbox.remove_effect_by_name(BLUR_EFFECT);
++      if (osdW._hbox.get_effect(CORNER_EFFECT))
++        osdW._hbox.remove_effect_by_name(CORNER_EFFECT);
  
        if (osdW._blurTimeoutId) {
 -        Meta.remove_clutter_debug_flags(null, Clutter.DrawDebugFlag.DISABLE_CLIPPED_REDRAWS, null);
@@ -152,7 +213,7 @@ index 27fbac8..62e2d1a 100644
          GLib.source_remove(osdW._blurTimeoutId);
          osdW._blurTimeoutId = null;
        }
-@@ -462,13 +514,7 @@ export default class CustomOSDExtension extends Extension {
+@@ -462,13 +570,7 @@ export default class CustomOSDExtension extends Extension {
  
      // Check if Clipped Redraws flag is set externally (e.g. by Blur My Shell)
      this.redrawFlagTimeoutId = setTimeout( () => {
@@ -167,7 +228,7 @@ index 27fbac8..62e2d1a 100644
      }, 2000);
  
   
-@@ -572,8 +618,9 @@ export default class CustomOSDExtension extends Extension {
+@@ -572,8 +674,15 @@ export default class CustomOSDExtension extends Extension {
  
          this._hbox.style += ` border-radius: ${br1*hbxH/2/100}px ${br2*hbxH/2/100}px;`;
  
@@ -175,11 +236,17 @@ index 27fbac8..62e2d1a 100644
 -        
 +        let hbxW = this._hbox.width;
 +
++        // The clip has to follow the pill, which changes width with the label
++        // and the numeric %, and height with the square/circle setting.
++        const corner = this._hbox.get_effect(CORNER_EFFECT);
++        if (corner)
++          corner.setGeometry(hbxW, hbxH, br1*hbxH/2/100);
++
 +
          if(bgeffect == 'progress-ring') {
            custOSD.progressRing = true;
            custOSD.height = hbxH;
-@@ -601,14 +648,14 @@ export default class CustomOSDExtension extends Extension {
+@@ -601,14 +710,14 @@ export default class CustomOSDExtension extends Extension {
          let transY = -v_percent * (monitor.height - hbxH)/100.0;
          this._hbox.translation_y = transY;
  
