@@ -325,7 +325,9 @@ install_openbar() {
         return
     fi
 
-    if [ -d "$EXT_DIR/$uuid" ] && ext_supports_shell "$EXT_DIR/$uuid" "$GNOME_MAJOR" && [ "${FORCE:-0}" != 1 ]; then
+    if [ -d "$EXT_DIR/$uuid" ] && ext_supports_shell "$EXT_DIR/$uuid" "$GNOME_MAJOR" \
+       && patch_stamp_current openbar-patch "$REPO_ROOT/patches/openbar-gnome50.patch" \
+       && [ "${FORCE:-0}" != 1 ]; then
         skip "$uuid already patched for GNOME $GNOME_MAJOR"
         return 0
     fi
@@ -350,6 +352,7 @@ install_openbar() {
         glib-compile-schemas "$EXT_DIR/$uuid/schemas" \
             || die "failed to compile Open Bar's gsettings schemas"
     fi
+    patch_stamp_write openbar-patch "$REPO_ROOT/patches/openbar-gnome50.patch"
     ok "$uuid (patched for GNOME $GNOME_MAJOR)"
 }
 
@@ -369,6 +372,7 @@ install_custom_osd() {
     fi
 
     if [ -d "$EXT_DIR/$uuid" ] && ext_supports_shell "$EXT_DIR/$uuid" "$GNOME_MAJOR" \
+       && patch_stamp_current custom-osd-patch "$REPO_ROOT/patches/custom-osd-gnome50.patch" \
        && [ "${FORCE:-0}" != 1 ]; then
         skip "$uuid already patched for GNOME $GNOME_MAJOR"
         return 0
@@ -401,6 +405,7 @@ install_custom_osd() {
 
     glib-compile-schemas "$EXT_DIR/$uuid/schemas" \
         || die "failed to compile Custom OSD's gsettings schemas"
+    patch_stamp_write custom-osd-patch "$REPO_ROOT/patches/custom-osd-gnome50.patch"
     ok "$uuid (patched for GNOME $GNOME_MAJOR)"
 }
 

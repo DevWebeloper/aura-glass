@@ -63,6 +63,23 @@ confirm_always() {
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# patch_stamp NAME PATCHFILE — true when the installed build already came from
+# this exact patch. A patched extension is built once and then skipped forever
+# on the strength of the directory existing, so editing a patch used to change
+# nothing on a machine that had already installed: the old build stayed, and
+# the only symptom was code on disk that no longer matched the repo.
+patch_stamp_current() {
+    local name="$1" patch="$2"
+    [ -r "$CONF_DIR/$name" ] || return 1
+    [ "$(cat "$CONF_DIR/$name" 2>/dev/null)" = "$(sha256sum "$patch" | cut -d' ' -f1)" ]
+}
+patch_stamp_write() {
+    local name="$1" patch="$2"
+    [ "${DRY_RUN:-0}" = 1 ] && return 0
+    mkdir -p "$CONF_DIR"
+    sha256sum "$patch" | cut -d' ' -f1 > "$CONF_DIR/$name"
+}
+
 # Clone at a pinned ref, or fetch that ref into an existing clone. Pinning
 # matters here: both upstreams are moving targets, and a theme that changes
 # under the tweaks is how you end up with half-applied CSS.
