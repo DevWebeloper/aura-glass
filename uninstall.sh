@@ -91,9 +91,22 @@ done
 step "Restoring the files that were overwritten"
 restore() {
     local orig="$BACKUP_DIR/$1.orig" dst="$2"
-    [ -f "$orig" ] || { skip "no backup of $1"; return 0; }
-    run cp -a "$orig" "$dst"
-    ok "restored $dst"
+    if [ -f "$orig" ]; then
+        run cp -a "$orig" "$dst"
+        ok "restored $dst"
+        return 0
+    fi
+    # No .orig because there was no file here before — the theme's own
+    # installer created it. Stripping our marked block out of it leaves the
+    # whole libadwaita override in place, which keeps every GTK4 app themed
+    # after an uninstall, so the file goes rather than stays.
+    if [ -e "$BACKUP_DIR/$1.absent" ]; then
+        [ -e "$dst" ] || { skip "$dst already gone"; return 0; }
+        run rm -f "$dst"
+        ok "removed $dst (nothing was there before install)"
+        return 0
+    fi
+    skip "no backup of $1"
 }
 restore "gtk4-gtk.css"      "$HOME/.config/gtk-4.0/gtk.css"
 restore "gtk4-gtk-dark.css" "$HOME/.config/gtk-4.0/gtk-dark.css"

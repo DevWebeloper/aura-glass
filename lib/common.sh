@@ -93,6 +93,12 @@ clone_pinned() {
         run git clone --quiet "$url" "$dest"
     fi
     run git -C "$dest" checkout --quiet --detach "$ref"
+    # Steps that patch this checkout (Open Bar, Custom OSD) leave modified
+    # tracked files behind. checkout is a no-op when already sitting on
+    # $ref, so a second run applies the same patch to the first run's
+    # already-patched files and every hunk fails. Force pristine every time.
+    run git -C "$dest" reset --quiet --hard "$ref"
+    run git -C "$dest" clean --quiet -fdx
 }
 
 # Back up a file once, keeping the first (pre-tahoe-glass) copy forever.
@@ -100,12 +106,25 @@ clone_pinned() {
 # are called gtk.css and would otherwise overwrite each other.
 backup_once() {
     local f="$1" dir="$2" name="${3:-}"
-    [ -f "$f" ] || return 0
     [ -n "$name" ] || name="$(basename "$f")"
     local dst="$dir/$name.orig"
-    [ -e "$dst" ] && return 0
+    # Never overwrite the first-run record, whichever kind it is.
+    if [ -e "$dst" ] || [ -e "$dir/$name.absent" ]; then
+        return 0
+    fi
     run mkdir -p "$dir"
-    run cp -a "$f" "$dst"
+    if [ -f "$f" ]; then
+        run cp -a "$f" "$dst"
+    elif [ "${DRY_RUN:-0}" = 1 ]; then
+        printf '    %sdry-run:%s note that %s did not exist\n' "$C_DIM" "$C_OFF" "$f"
+    else
+        # Nothing was here before us. Recorded, because a file we create
+        # has no .orig to restore from — and the uninstaller only strips
+        # its own marked block, so without this note the theme's own 41K
+        # libadwaita override stays in ~/.config/gtk-4.0 forever and every
+        # GTK4 app keeps the theme after a full uninstall.
+        : > "$dir/$name.absent"
+    fi
 }
 
 gnome_major() {
