@@ -197,7 +197,9 @@ run rm -f "$HOME/.local/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-ico
 # the user made — so they go now instead of waiting on the $CONF_DIR prompt.
 run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/shell-popup-blur.css" "$CONF_DIR/popup-blur" \
-          "$CONF_DIR/rounded-blur"
+          "$CONF_DIR/rounded-blur" \
+          "$CONF_DIR/gtk4-transparency.css" "$CONF_DIR/app-transparency" \
+          "$CONF_DIR/openbar-patch" "$CONF_DIR/custom-osd-patch"
 if confirm "Delete $CONF_DIR (this also deletes the backups above)?" 0; then
     run rm -rf "$CONF_DIR"
     ok "removed"

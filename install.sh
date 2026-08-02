@@ -28,6 +28,7 @@ WANT_BMS_GIT=1
 WANT_POPUP_BLUR=1
 POPUP_BLUR_EXPLICIT=""
 WANT_ROUNDED_BLUR=1
+APP_TRANSPARENCY=""   # empty = remembered choice, then off
 CURSORS="adwaita"   # adwaita | mactahoe
 ICONS=""            # empty = remembered choice, then colloid
 GRAIN=""          # empty keeps the preset's value, or the remembered choice
@@ -72,6 +73,15 @@ ${C_BLD}tahoe-glass${C_OFF} — a macOS Tahoe glass desktop for GNOME 48-50
     --no-bms-git      use Blur My Shell's published build instead of the pinned
                       git one. That build has no popup component, so it
                       implies --no-popup-blur
+    --app-transparency N
+                      make app windows translucent so the blur behind them
+                      shows through, N from 0.70 to 1.00 (default 0.92). Off
+                      unless asked for, and not part of --full: apps that do
+                      not use GTK's stylesheet — Electron, Steam, anything
+                      drawing a video or GL surface — ignore it and stay
+                      opaque. Remembered for later runs
+    --no-app-transparency
+                      keep app windows opaque
     --no-rounded-blur skip gnome-rounded-blur. It is the only thing installed
                       outside \$HOME and it always asks first, --yes included.
                       Without it the popup blur is still rounded, it just
@@ -129,6 +139,9 @@ while [ $# -gt 0 ]; do
         --no-popup-blur) WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1; shift ;;
         --rounded-blur)      WANT_ROUNDED_BLUR=1; shift ;;
         --no-rounded-blur)   WANT_ROUNDED_BLUR=0; shift ;;
+        --app-transparency)  APP_TRANSPARENCY="${2:-0.92}"; shift 2 ;;
+        --app-transparency=*) APP_TRANSPARENCY="${1#*=}"; shift ;;
+        --no-app-transparency) APP_TRANSPARENCY=0; shift ;;
         --no-icons)      WANT_ICONS=0; shift ;;
         --no-cursors)    WANT_CURSORS=0; shift ;;
         --no-wm-buttons) WANT_WM_BUTTONS=0; shift ;;
@@ -153,6 +166,21 @@ if [ -z "$ICONS" ] && [ -r "$CONF_DIR/icon-pack" ]; then
     ICONS="$(cat "$CONF_DIR/icon-pack" 2>/dev/null || true)"
 fi
 ICONS="${ICONS:-colloid}"
+
+# Resolved here rather than inside the steps because two of them need it and
+# load_dconf runs before install_css. Same remembered-choice rule as --icons.
+if [ -z "$APP_TRANSPARENCY" ] && [ -r "$CONF_DIR/app-transparency" ]; then
+    APP_TRANSPARENCY="$(cat "$CONF_DIR/app-transparency" 2>/dev/null || true)"
+fi
+APP_TRANSPARENCY="${APP_TRANSPARENCY:-0}"
+case "$APP_TRANSPARENCY" in
+    0|0.0) APP_TRANSPARENCY=0 ;;
+    *)
+        # Below 0.70 the text starts riding the wallpaper rather than a
+        # surface, and 1.00 is just "off" spelled the long way.
+        awk -v v="$APP_TRANSPARENCY" 'BEGIN{exit !(v+0>=0.70 && v+0<=1.00 && v ~ /^[0-9.]+$/)}' \
+            || die "--app-transparency takes 0, or a number from 0.70 to 1.00 — got '$APP_TRANSPARENCY'" ;;
+esac
 
 VALID_REVERSAL="default black blue brown cyan green grey lightblue orange pink purple red"
 case "$ICONS" in

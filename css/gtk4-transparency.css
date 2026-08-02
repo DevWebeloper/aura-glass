@@ -1,0 +1,116 @@
+/* tahoe-glass — translucent app windows, so the blur behind them is visible.
+ *
+ * Appended after gtk4-tweaks.css, and only installed when --app-transparency
+ * asked for it.
+ *
+ * Blur My Shell's [applications] blur has never had anything to show through:
+ * libadwaita paints opaque grounds, so the blur sat behind a solid window and
+ * the only "transparency" available was opacity=240 on the window actor —
+ * which dims the text along with everything else. This makes the surfaces
+ * libadwaita actually paints translucent instead, so what you see behind a
+ * window is the blur rather than a dimmed copy of the window.
+ *
+ * Every rule is written twice, and the order is load-bearing.
+ * alpha(@window_bg_color, N) is the named-colour form: deprecated since
+ * libadwaita 1.6 and gone from the 1.9 docs, but still resolving through a
+ * back-compat shim. color-mix(in srgb, var(--window-bg-color) N%, transparent)
+ * is the form that survives that shim being removed. GTK drops a declaration
+ * it cannot parse and the last one it understands wins, so writing the old
+ * spelling first and the new one second means whichever GTK understands is
+ * the one that lands. Both are present in libadwaita 1.9.2.
+ *
+ * The percentages below are the shipped level, 0.92. --app-transparency N
+ * rewrites them in the installed copy, keeping the ladder between surfaces
+ * rather than flattening every one of them to the same number.
+ */
+
+/* ---------- The window itself ----------
+ * libadwaita paints .background rather than window on most widgets, but
+ * AdwWindow sets both and older dialogs only set window.
+ */
+window,
+window.background,
+.background,
+windowhandle {
+  background-color: alpha(@window_bg_color, 0.92);
+  background-color: color-mix(in srgb, var(--window-bg-color) 92%, transparent);
+}
+
+/* Server-side decorations paint an opaque frame around the window. Letting the
+ * window under it go translucent shows the frame through the content, which
+ * reads as a rendering bug rather than as glass.
+ */
+window.solid-csd,
+window.solid-csd .background {
+  background-color: @window_bg_color;
+  background-color: var(--window-bg-color);
+}
+
+/* ---------- Header bars and toolbars ---------- */
+headerbar,
+headerbar.titlebar,
+.titlebar,
+toolbarview > .toolbar,
+.toolbar,
+searchbar > revealer > box,
+actionbar > revealer > box {
+  background-color: alpha(@headerbar_bg_color, 0.88);
+  background-color: color-mix(in srgb, var(--headerbar-bg-color) 88%, transparent);
+}
+
+headerbar:backdrop,
+.titlebar:backdrop {
+  background-color: alpha(@headerbar_backdrop_color, 0.88);
+  background-color: color-mix(in srgb, var(--headerbar-backdrop-color) 88%, transparent);
+}
+
+/* ---------- Split-view panes ----------
+ * AdwNavigationSplitView and AdwOverlaySplitView paint their own opaque
+ * grounds. Without these the window is translucent everywhere except the
+ * sidebar, which looks worse than either extreme.
+ */
+.sidebar-pane,
+.navigation-sidebar,
+.sidebar-pane .navigation-sidebar,
+stacksidebar,
+placessidebar {
+  background-color: alpha(@sidebar_bg_color, 0.86);
+  background-color: color-mix(in srgb, var(--sidebar-bg-color) 86%, transparent);
+}
+
+.content-pane {
+  background-color: alpha(@window_bg_color, 0.92);
+  background-color: color-mix(in srgb, var(--window-bg-color) 92%, transparent);
+}
+
+/* ---------- Content views ----------
+ * .view is the ground under lists, grids and text. Left denser than the
+ * window on purpose: this is where text is actually read.
+ */
+.view,
+textview.view > text,
+columnview > listview,
+gridview,
+scrolledwindow > viewport > .view {
+  background-color: alpha(@view_bg_color, 0.94);
+  background-color: color-mix(in srgb, var(--view-bg-color) 94%, transparent);
+}
+
+/* ---------- Popovers ----------
+ * A popover has no wallpaper behind it, only the window it belongs to, so it
+ * needs just enough translucency to sit on the same material.
+ */
+popover > contents,
+popover > arrow {
+  background-color: alpha(@popover_bg_color, 0.94);
+  background-color: color-mix(in srgb, var(--popover-bg-color) 94%, transparent);
+}
+
+/* Message dialogs stay opaque. They exist to be read and answered, and a
+ * translucent one over a busy window is genuinely harder to read.
+ */
+window.dialog.message .dialog-vbox,
+window.messagedialog .background {
+  background-color: @dialog_bg_color;
+  background-color: var(--dialog-bg-color);
+}
