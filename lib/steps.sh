@@ -6,6 +6,10 @@
 THEME_REPO="https://github.com/kayozxo/GNOME-macOS-Tahoe.git"
 THEME_REF="6dfcd9d941e5"
 
+BMS_REPO="https://github.com/aunetx/blur-my-shell.git"
+BMS_REF="7d1290bbcff9"            # master; no release carries the popup component
+BMS_UUID="blur-my-shell@aunetx"
+
 OPENBAR_REPO="https://github.com/neuromorph/openbar.git"
 OPENBAR_REF="01fb24217e0c"       # last upstream commit; patched for GNOME 50
 
@@ -26,11 +30,12 @@ CONF_DIR="$HOME/.config/tahoe-glass"
 BACKUP_DIR="$CONF_DIR/backups"
 SRC_CACHE="$HOME/.cache/tahoe-glass/src"
 
-# Everything the look actually needs. openbar is absent because it installs
-# differently on GNOME 50 — see install_openbar.
+# Everything the look actually needs that comes straight from the extensions
+# site. openbar, custom-osd and blur-my-shell are absent because each is built
+# from a pinned commit instead — see install_openbar, install_custom_osd and
+# install_bms.
 EXT_CORE=(
     user-theme@gnome-shell-extensions.gcampax.github.com
-    blur-my-shell@aunetx
 )
 # The rest of the reference desktop, in the order the shell lays them out.
 # None of it is required, and --extras is what asks for it.
@@ -209,6 +214,103 @@ install_ext_ego() {
     return "$rc"
 }
 
+# Blur My Shell's published build (v72) has no popup component: menus, quick
+# settings, notifications, dialogs and the OSD get no blur at all. That is why
+# css/shell-tweaks.css paints its own flat translucency behind them, and why the
+# OSD used to carry a hand-rolled corner shader. Upstream's master has the
+# component; there is no release with it yet, so it is built from a pinned
+# commit. gnome-extensions pack and gnome-extensions install both write under
+# $HOME, so this needs no root.
+install_bms() {
+    if [ "${WANT_BMS_GIT:-1}" != 1 ]; then
+        install_ext_ego "$BMS_UUID" || true
+        if [ "${DRY_RUN:-0}" != 1 ]; then
+            mkdir -p "$CONF_DIR"
+            printf 'ego\n' > "$CONF_DIR/bms-source"
+            rm -f "$CONF_DIR/bms-ref"
+        fi
+        skip "Blur My Shell from extensions.gnome.org (--no-bms-git) — no popup blur"
+        return 0
+    fi
+
+    # master still declares "version": 72, the same as the published build, so
+    # the version number cannot tell the two apart. Probe for the component and
+    # check the stamp — the directory test matters on its own because
+    # ./uninstall.sh --extensions removes the extension but leaves $CONF_DIR.
+    if [ "${FORCE:-0}" != 1 ] \
+       && [ -f "$EXT_DIR/$BMS_UUID/components/popup/index.js" ] \
+       && [ "$(cat "$CONF_DIR/bms-ref" 2>/dev/null || true)" = "$BMS_REF" ] \
+       && ext_supports_shell "$EXT_DIR/$BMS_UUID" "$GNOME_MAJOR"; then
+        skip "$BMS_UUID already built from $BMS_REF"
+        return 0
+    fi
+
+    info "no release carries the popup component — building from $BMS_REF"
+    local src="$SRC_CACHE/blur-my-shell"
+    clone_pinned "$BMS_REPO" "$BMS_REF" "$src"
+
+    local podir=(--podir=../po)
+    if ! have msgfmt; then
+        warn "msgfmt not found (install gettext) — building without translations"
+        podir=()
+    fi
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: gnome-extensions pack in $src/src, then install the zip"
+        return 0
+    fi
+
+    # This mirrors upstream's Makefile 'build' target rather than calling make,
+    # because make is not one of this project's dependencies. Doing it here also
+    # means a failed build never gets as far as deleting the working extension.
+    # The mkdir is not optional: given a -o directory that does not exist,
+    # gnome-extensions pack segfaults (139) instead of reporting an error.
+    rm -rf "$src/build"
+    mkdir -p "$src/build"
+    ( cd "$src/src" && gnome-extensions pack -f \
+        --extra-source=../metadata.json \
+        --extra-source=../LICENSE \
+        --extra-source=../resources/icons \
+        --extra-source=../resources/ui \
+        --extra-source=./components \
+        --extra-source=./conveniences \
+        --extra-source=./effects \
+        --extra-source=./preferences \
+        --extra-source=./dbus \
+        --extra-source=./styles \
+        "${podir[@]}" \
+        --schema=../schemas/org.gnome.shell.extensions.blur-my-shell.gschema.xml \
+        -o ../build ) >/dev/null \
+        || die "packing Blur My Shell failed — upstream's layout may have moved"
+
+    local zip="$src/build/$BMS_UUID.shell-extension.zip"
+    [ -f "$zip" ] || die "expected $zip after packing, but it is not there"
+    ext_supports_shell "$zip" "$GNOME_MAJOR" \
+        || die "the pinned Blur My Shell does not support GNOME $GNOME_MAJOR"
+
+    # Upstream's Makefile removes the directory before installing, and it is
+    # right to: v72 keeps its components as flat files where master keeps
+    # directories, so an overlay would leave both and load the wrong one.
+    # Settings live in dconf, not here, so nothing is lost. This runs only
+    # after the zip exists and has been checked.
+    rm -rf "$EXT_DIR/$BMS_UUID"
+    gnome-extensions install --force "$zip" >/dev/null \
+        || die "installing Blur My Shell failed"
+
+    # gnome-extensions install compiles the schema itself, but the whole popup
+    # section is unreadable if it ever stops, and that would show up as the
+    # preset silently doing nothing rather than as an error.
+    if [ ! -f "$EXT_DIR/$BMS_UUID/schemas/gschemas.compiled" ]; then
+        glib-compile-schemas "$EXT_DIR/$BMS_UUID/schemas" \
+            || die "failed to compile Blur My Shell's gsettings schemas"
+    fi
+
+    mkdir -p "$CONF_DIR"
+    printf '%s\n' "$BMS_REF" > "$CONF_DIR/bms-ref"
+    printf 'git\n' > "$CONF_DIR/bms-source"
+    ok "$BMS_UUID (built from $BMS_REF, with the popup component)"
+}
+
 # Open Bar is the one extension with no GNOME 50 release. Upstream's last
 # commit targets 49, so on 50 it is built from that commit plus the patch in
 # patches/. On 49 and below the published build is used unchanged.
@@ -304,6 +406,7 @@ install_extensions() {
     step "Installing shell extensions"
     local u
     for u in "${EXT_CORE[@]}"; do install_ext_ego "$u" || true; done
+    install_bms
     install_openbar
     install_custom_osd
 
@@ -315,7 +418,9 @@ install_extensions() {
 
 enable_extensions() {
     step "Enabling extensions"
-    local want=("${EXT_CORE[@]}" openbar@neuromorph) u
+    # $BMS_UUID is named explicitly rather than left in EXT_CORE so that it is
+    # enabled whichever source install_bms took it from.
+    local want=("${EXT_CORE[@]}" "$BMS_UUID" openbar@neuromorph) u
     [ "${WANT_OSD:-1}" = 1 ] && want+=(custom-osd@neuromorph)
     [ "${WANT_EXTRAS:-0}" = 1 ] && want+=("${EXT_EXTRA[@]}")
 

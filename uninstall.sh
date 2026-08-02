@@ -183,6 +183,9 @@ fi
 step "Removing tahoe-glass itself"
 run rm -f "$HOME/.local/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-icon-sync" \
           "$HOME/.local/bin/tahoe-glass-panel-blur"
+# Stamps describing artifacts that have just been removed, rather than choices
+# the user made — so they go now instead of waiting on the $CONF_DIR prompt.
+run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source"
 if confirm "Delete $CONF_DIR (this also deletes the backups above)?" 0; then
     run rm -rf "$CONF_DIR"
     ok "removed"
