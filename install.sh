@@ -24,6 +24,10 @@ WANT_WM_BUTTONS=1
 WANT_DEPS=1
 WANT_OSD=1
 WANT_PANEL_BLUR_FIX=1
+WANT_BMS_GIT=1
+WANT_POPUP_BLUR=1
+POPUP_BLUR_EXPLICIT=""
+WANT_ROUNDED_BLUR=1
 CURSORS="adwaita"   # adwaita | mactahoe
 ICONS=""            # empty = remembered choice, then colloid
 GRAIN=""          # empty keeps the preset's value, or the remembered choice
@@ -63,6 +67,15 @@ ${C_BLD}tahoe-glass${C_OFF} — a macOS Tahoe glass desktop for GNOME 48-50
     --no-osd          keep the stock volume and brightness popup. By default
                       it is reduced to its level bar — no icon, no device
                       name — on a blurred pill
+    --no-popup-blur   keep the flat translucent popups and skip the blur
+                      behind menus, quick settings, notifications and the OSD
+    --no-bms-git      use Blur My Shell's published build instead of the pinned
+                      git one. That build has no popup component, so it
+                      implies --no-popup-blur
+    --no-rounded-blur skip gnome-rounded-blur. It is the only thing installed
+                      outside \$HOME and it always asks first, --yes included.
+                      Without it the popup blur is still rounded, it just
+                      samples the wallpaper instead of the window behind it
     --no-icons        keep your current icon theme
     --no-cursors      keep your current cursor theme
     --no-wm-buttons   keep your current titlebar button layout
@@ -88,6 +101,10 @@ while [ $# -gt 0 ]; do
         # later so that anything after it still wins: --full --no-osd is the
         # lot minus the OSD. It deliberately leaves --cursors alone — MacTahoe
         # cursors are a different look, not a more complete one.
+        # --bms-git, --popup-blur and --rounded-blur are already on by default
+        # and so are not repeated here. Note that --full does not make the
+        # rounded-blur step any less interactive: it is the one step that
+        # installs outside $HOME and it always asks, --yes included.
         --full)          WANT_EXTRAS=1; WANT_ICONS=1; WANT_CURSORS=1
                          WANT_WM_BUTTONS=1; WANT_OSD=1; WANT_PANEL_BLUR_FIX=1
                          shift ;;
@@ -102,6 +119,16 @@ while [ $# -gt 0 ]; do
         --icons=*)       ICONS="${1#*=}"; shift ;;
         --osd)           WANT_OSD=1; shift ;;
         --no-osd)        WANT_OSD=0; shift ;;
+        # The published Blur My Shell has no popup schema at all, so asking for
+        # one without the other cannot work. Each flag drags the other along.
+        --bms-git)       WANT_BMS_GIT=1; shift ;;
+        --no-bms-git)    WANT_BMS_GIT=0; WANT_POPUP_BLUR=0
+                         POPUP_BLUR_EXPLICIT=1; shift ;;
+        --popup-blur)    WANT_POPUP_BLUR=1; WANT_BMS_GIT=1
+                         POPUP_BLUR_EXPLICIT=1; shift ;;
+        --no-popup-blur) WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1; shift ;;
+        --rounded-blur)      WANT_ROUNDED_BLUR=1; shift ;;
+        --no-rounded-blur)   WANT_ROUNDED_BLUR=0; shift ;;
         --no-icons)      WANT_ICONS=0; shift ;;
         --no-cursors)    WANT_CURSORS=0; shift ;;
         --no-wm-buttons) WANT_WM_BUTTONS=0; shift ;;
@@ -164,6 +191,10 @@ fi
 
 install_theme
 install_extensions
+# Before load_dconf, so apply_popup_blur sees the result. On a first install it
+# will still pick static: Blur My Shell only writes rounded-blur-found once the
+# shell has loaded this build, which is the next login.
+install_rounded_blur
 if [ "$WANT_ICONS" = 1 ]; then install_icons; else step "Icons"; skip "left alone (--no-icons)"; fi
 if [ "$WANT_CURSORS" = 1 ]; then install_cursors; else step "Cursors"; skip "left alone (--no-cursors)"; fi
 load_dconf

@@ -37,17 +37,26 @@ detect_distro() {
 declare -A PKG_ARCH=(
     [git]=git [curl]=curl [unzip]=unzip [sassc]=sassc
     [gsettings]=glib2 [dconf]=dconf [gnome-extensions]=gnome-shell
+    [msgfmt]=gettext
 )
 declare -A PKG_FEDORA=(
     [git]=git [curl]=curl [unzip]=unzip [sassc]=sassc
     [gsettings]=glib2 [dconf]=dconf [gnome-extensions]=gnome-shell
+    [msgfmt]=gettext
 )
 declare -A PKG_DEBIAN=(
     [git]=git [curl]=curl [unzip]=unzip [sassc]=sassc
     [gsettings]=libglib2.0-bin [dconf]=dconf-cli [gnome-extensions]=gnome-shell
+    [msgfmt]=gettext
 )
 
 REQUIRED_CMDS=(git curl unzip sassc gsettings dconf gnome-extensions)
+
+# Nice to have, never fatal. msgfmt compiles Blur My Shell's translations when
+# it is built from git; without it the extension works and its preferences are
+# simply untranslated. Kept out of REQUIRED_CMDS so a missing gettext cannot
+# block the whole install over a cosmetic loss.
+OPTIONAL_CMDS=(msgfmt)
 
 missing_cmds() {
     local c
@@ -68,6 +77,12 @@ install_hint() {
 install_deps() {
     local missing=() c
     while IFS= read -r c; do [ -n "$c" ] && missing+=("$c"); done < <(missing_cmds)
+
+    # Reported but never installed or waited on: an optional command going
+    # missing should read as a note, not as something the user has to act on.
+    local opt=() o
+    for o in "${OPTIONAL_CMDS[@]}"; do have "$o" || opt+=("$o"); done
+    [ ${#opt[@]} -gt 0 ] && info "optional, not installed: ${opt[*]}"
 
     if [ ${#missing[@]} -eq 0 ]; then
         ok "all dependencies present"

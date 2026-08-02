@@ -6,6 +6,13 @@
 THEME_REPO="https://github.com/kayozxo/GNOME-macOS-Tahoe.git"
 THEME_REF="6dfcd9d941e5"
 
+BMS_REPO="https://github.com/aunetx/blur-my-shell.git"
+BMS_REF="7d1290bbcff9"            # master; no release carries the popup component
+BMS_UUID="blur-my-shell@aunetx"
+
+ROUNDEDBLUR_REPO="https://github.com/kancko/gnome-rounded-blur.git"
+ROUNDEDBLUR_REF="9c7efb7ac5de"    # v1.0.1
+
 OPENBAR_REPO="https://github.com/neuromorph/openbar.git"
 OPENBAR_REF="01fb24217e0c"       # last upstream commit; patched for GNOME 50
 
@@ -26,11 +33,12 @@ CONF_DIR="$HOME/.config/tahoe-glass"
 BACKUP_DIR="$CONF_DIR/backups"
 SRC_CACHE="$HOME/.cache/tahoe-glass/src"
 
-# Everything the look actually needs. openbar is absent because it installs
-# differently on GNOME 50 — see install_openbar.
+# Everything the look actually needs that comes straight from the extensions
+# site. openbar, custom-osd and blur-my-shell are absent because each is built
+# from a pinned commit instead — see install_openbar, install_custom_osd and
+# install_bms.
 EXT_CORE=(
     user-theme@gnome-shell-extensions.gcampax.github.com
-    blur-my-shell@aunetx
 )
 # The rest of the reference desktop, in the order the shell lays them out.
 # None of it is required, and --extras is what asks for it.
@@ -209,6 +217,103 @@ install_ext_ego() {
     return "$rc"
 }
 
+# Blur My Shell's published build (v72) has no popup component: menus, quick
+# settings, notifications, dialogs and the OSD get no blur at all. That is why
+# css/shell-tweaks.css paints its own flat translucency behind them, and why the
+# OSD used to carry a hand-rolled corner shader. Upstream's master has the
+# component; there is no release with it yet, so it is built from a pinned
+# commit. gnome-extensions pack and gnome-extensions install both write under
+# $HOME, so this needs no root.
+install_bms() {
+    if [ "${WANT_BMS_GIT:-1}" != 1 ]; then
+        install_ext_ego "$BMS_UUID" || true
+        if [ "${DRY_RUN:-0}" != 1 ]; then
+            mkdir -p "$CONF_DIR"
+            printf 'ego\n' > "$CONF_DIR/bms-source"
+            rm -f "$CONF_DIR/bms-ref"
+        fi
+        skip "Blur My Shell from extensions.gnome.org (--no-bms-git) — no popup blur"
+        return 0
+    fi
+
+    # master still declares "version": 72, the same as the published build, so
+    # the version number cannot tell the two apart. Probe for the component and
+    # check the stamp — the directory test matters on its own because
+    # ./uninstall.sh --extensions removes the extension but leaves $CONF_DIR.
+    if [ "${FORCE:-0}" != 1 ] \
+       && [ -f "$EXT_DIR/$BMS_UUID/components/popup/index.js" ] \
+       && [ "$(cat "$CONF_DIR/bms-ref" 2>/dev/null || true)" = "$BMS_REF" ] \
+       && ext_supports_shell "$EXT_DIR/$BMS_UUID" "$GNOME_MAJOR"; then
+        skip "$BMS_UUID already built from $BMS_REF"
+        return 0
+    fi
+
+    info "no release carries the popup component — building from $BMS_REF"
+    local src="$SRC_CACHE/blur-my-shell"
+    clone_pinned "$BMS_REPO" "$BMS_REF" "$src"
+
+    local podir=(--podir=../po)
+    if ! have msgfmt; then
+        warn "msgfmt not found (install gettext) — building without translations"
+        podir=()
+    fi
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: gnome-extensions pack in $src/src, then install the zip"
+        return 0
+    fi
+
+    # This mirrors upstream's Makefile 'build' target rather than calling make,
+    # because make is not one of this project's dependencies. Doing it here also
+    # means a failed build never gets as far as deleting the working extension.
+    # The mkdir is not optional: given a -o directory that does not exist,
+    # gnome-extensions pack segfaults (139) instead of reporting an error.
+    rm -rf "$src/build"
+    mkdir -p "$src/build"
+    ( cd "$src/src" && gnome-extensions pack -f \
+        --extra-source=../metadata.json \
+        --extra-source=../LICENSE \
+        --extra-source=../resources/icons \
+        --extra-source=../resources/ui \
+        --extra-source=./components \
+        --extra-source=./conveniences \
+        --extra-source=./effects \
+        --extra-source=./preferences \
+        --extra-source=./dbus \
+        --extra-source=./styles \
+        "${podir[@]}" \
+        --schema=../schemas/org.gnome.shell.extensions.blur-my-shell.gschema.xml \
+        -o ../build ) >/dev/null \
+        || die "packing Blur My Shell failed — upstream's layout may have moved"
+
+    local zip="$src/build/$BMS_UUID.shell-extension.zip"
+    [ -f "$zip" ] || die "expected $zip after packing, but it is not there"
+    ext_supports_shell "$zip" "$GNOME_MAJOR" \
+        || die "the pinned Blur My Shell does not support GNOME $GNOME_MAJOR"
+
+    # Upstream's Makefile removes the directory before installing, and it is
+    # right to: v72 keeps its components as flat files where master keeps
+    # directories, so an overlay would leave both and load the wrong one.
+    # Settings live in dconf, not here, so nothing is lost. This runs only
+    # after the zip exists and has been checked.
+    rm -rf "$EXT_DIR/$BMS_UUID"
+    gnome-extensions install --force "$zip" >/dev/null \
+        || die "installing Blur My Shell failed"
+
+    # gnome-extensions install compiles the schema itself, but the whole popup
+    # section is unreadable if it ever stops, and that would show up as the
+    # preset silently doing nothing rather than as an error.
+    if [ ! -f "$EXT_DIR/$BMS_UUID/schemas/gschemas.compiled" ]; then
+        glib-compile-schemas "$EXT_DIR/$BMS_UUID/schemas" \
+            || die "failed to compile Blur My Shell's gsettings schemas"
+    fi
+
+    mkdir -p "$CONF_DIR"
+    printf '%s\n' "$BMS_REF" > "$CONF_DIR/bms-ref"
+    printf 'git\n' > "$CONF_DIR/bms-source"
+    ok "$BMS_UUID (built from $BMS_REF, with the popup component)"
+}
+
 # Open Bar is the one extension with no GNOME 50 release. Upstream's last
 # commit targets 49, so on 50 it is built from that commit plus the patch in
 # patches/. On 49 and below the published build is used unchanged.
@@ -252,9 +357,8 @@ install_openbar() {
 # own. Upstream's last release is for GNOME 46 and its last commit does not run
 # on 50 — the ShellBlurEffect:sigma property, the meta_*_clutter_debug_flags()
 # calls and OsdWindowManager.show()'s signature have all gone since. The patch
-# in patches/ fixes those, and rounds the blur to the popup's corners: a
-# background blur covers the actor's bounding box, so without it the pill sits
-# in a hard-edged rectangle of blur no matter what radius is set.
+# in patches/ fixes exactly those and nothing else. The blur behind the pill,
+# and the rounding of it, come from Blur My Shell's popup component.
 install_custom_osd() {
     local uuid="custom-osd@neuromorph"
 
@@ -300,10 +404,113 @@ install_custom_osd() {
     ok "$uuid (patched for GNOME $GNOME_MAJOR)"
 }
 
+# Blur My Shell gets rounded corners on a *dynamic* blur from Blur.BlurEffect,
+# which comes from this small C library — a vendored copy of gnome-shell's own
+# shell-blur-effect.c with a corner mask. Without it the popup blur falls back
+# to static, which still rounds (see apply_popup_blur); this is the upgrade
+# from "blurred wallpaper" to "blurred whatever is actually behind the popup".
+#
+# It is the only thing this project installs outside $HOME, so it is the only
+# step that asks first — and it asks even under --yes, because agreeing to a
+# theme installer is not the same as agreeing to a package from the AUR.
+#
+# It hard-pins libmutter-18, so every mutter update breaks it until it is
+# rebuilt. That failure is silent by design upstream: Blur My Shell just falls
+# back to Shell.BlurEffect. rounded_blur_staleness_check is what makes it loud.
+install_rounded_blur() {
+    step "Rounded corners for dynamic blur"
+
+    if [ "${WANT_ROUNDED_BLUR:-1}" != 1 ]; then
+        skip "not installed (--no-rounded-blur) — popup blur stays static"
+        return 0
+    fi
+
+    if gjs -c 'imports.gi.Blur;' >/dev/null 2>&1 && [ "${FORCE:-0}" != 1 ]; then
+        skip "gnome-rounded-blur already installed"
+        rounded_blur_stamp
+        return 0
+    fi
+
+    local helper='' h
+    for h in paru yay; do have "$h" && { helper="$h"; break; }; done
+
+    if [ -z "$helper" ] && ! have meson; then
+        warn "neither an AUR helper (paru/yay) nor meson is installed."
+        warn "Popup blur still works and its corners are still round — it just"
+        warn "samples the wallpaper instead of the window behind it."
+        return 0
+    fi
+
+    local cmd
+    if [ -n "$helper" ]; then
+        cmd="$helper -S --needed gnome-rounded-blur"
+    else
+        cmd="meson setup --prefix=/usr build && sudo meson install -C build"
+    fi
+
+    info "this is the one part of tahoe-glass that installs outside \$HOME:"
+    info "    $cmd"
+    if ! confirm_always "Install gnome-rounded-blur? It needs root."; then
+        skip "not installed — popup blur stays static, and still rounded"
+        return 0
+    fi
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: $cmd"
+        return 0
+    fi
+
+    if [ -n "$helper" ]; then
+        "$helper" -S --needed gnome-rounded-blur \
+            || { warn "the AUR build failed — popup blur stays static"; return 0; }
+    else
+        local src="$SRC_CACHE/gnome-rounded-blur"
+        clone_pinned "$ROUNDEDBLUR_REPO" "$ROUNDEDBLUR_REF" "$src"
+        ( cd "$src" && rm -rf build \
+            && meson setup --prefix=/usr build \
+            && meson compile -C build \
+            && sudo meson install -C build ) \
+            || { warn "the meson build failed — popup blur stays static"; return 0; }
+    fi
+
+    if gjs -c 'imports.gi.Blur;' >/dev/null 2>&1; then
+        rounded_blur_stamp
+        ok "gnome-rounded-blur installed — popup blur can be dynamic"
+        info "it is compiled against this mutter, so re-run with --rounded-blur --force after a mutter update"
+    else
+        warn "installed, but the shell still cannot import gi://Blur"
+    fi
+}
+
+# Records the mutter it was built against, which is what makes staleness
+# detectable later.
+rounded_blur_stamp() {
+    [ "${DRY_RUN:-0}" = 1 ] && return 0
+    mkdir -p "$CONF_DIR"
+    printf '%s\n' "$(pkg-config --modversion libmutter-18 2>/dev/null || gnome_major)" \
+        > "$CONF_DIR/rounded-blur"
+}
+
+# Blur My Shell publishes the answer itself: it writes rounded-blur-found at
+# every enable. If this machine installed the library but the shell is no
+# longer finding it, mutter has moved and the library needs rebuilding.
+rounded_blur_staleness_check() {
+    [ -f "$CONF_DIR/rounded-blur" ] || return 0
+    local found
+    found="$(dconf read /org/gnome/shell/extensions/blur-my-shell/rounded-blur-found 2>/dev/null || true)"
+    [ "$found" = false ] || return 0
+    warn "gnome-rounded-blur is installed here, but the shell is not finding it."
+    warn "Mutter has probably been updated — it has to be rebuilt against it:"
+    warn "    ./install.sh --rounded-blur --force"
+    warn "Until then the popup blur falls back to static. Still rounded, but it"
+    warn "samples the wallpaper rather than the window behind it."
+}
+
 install_extensions() {
     step "Installing shell extensions"
     local u
     for u in "${EXT_CORE[@]}"; do install_ext_ego "$u" || true; done
+    install_bms
     install_openbar
     install_custom_osd
 
@@ -315,7 +522,9 @@ install_extensions() {
 
 enable_extensions() {
     step "Enabling extensions"
-    local want=("${EXT_CORE[@]}" openbar@neuromorph) u
+    # $BMS_UUID is named explicitly rather than left in EXT_CORE so that it is
+    # enabled whichever source install_bms took it from.
+    local want=("${EXT_CORE[@]}" "$BMS_UUID" openbar@neuromorph) u
     [ "${WANT_OSD:-1}" = 1 ] && want+=(custom-osd@neuromorph)
     [ "${WANT_EXTRAS:-0}" = 1 ] && want+=("${EXT_EXTRA[@]}")
 
@@ -588,6 +797,15 @@ install_css() {
     run install -Dm644 "$REPO_ROOT/css/gtk4-tweaks.css"  "$CONF_DIR/gtk4-tweaks.css"
     run install -Dm644 "$REPO_ROOT/css/gtk3-tweaks.css"  "$CONF_DIR/gtk3-tweaks.css"
     run install -Dm755 "$REPO_ROOT/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-apply"
+
+    # Installed or removed rather than switched on at read time: tahoe-glass-apply
+    # concatenates whatever it finds in $CONF_DIR and has no way to know which
+    # options this install was given.
+    if [ "${WANT_POPUP_BLUR:-1}" = 1 ]; then
+        run install -Dm644 "$REPO_ROOT/css/shell-popup-blur.css" "$CONF_DIR/shell-popup-blur.css"
+    else
+        run rm -f "$CONF_DIR/shell-popup-blur.css"
+    fi
     ok "css -> $CONF_DIR"
     ok "re-apply command -> ~/.local/bin/tahoe-glass-apply"
 
@@ -642,7 +860,57 @@ load_dconf() {
     run dconf write /org/gnome/shell/extensions/openbar/trigger-reload true
 
     apply_grain
+    apply_popup_blur
     sync_osd_profile
+}
+
+# The popup keys themselves ship in dconf/core.ini so the whole preset stays
+# readable in one file. Two things cannot live there:
+#
+# The on/off choice, because dconf load rewrites the section on every run — a
+# flagless re-install would quietly turn popup blur back on over a deliberate
+# --no-popup-blur. Same reason --grain and --icons are remembered.
+#
+# static-blur, because the right value depends on the machine. Rounded corners
+# on a dynamic blur need the gnome-rounded-blur library; a static blur rounds
+# itself. So when the library is missing this falls back to static, and the
+# corners stay round instead of going square. It self-heals: install the
+# library, re-run, and it flips back to dynamic.
+apply_popup_blur() {
+    local base=/org/gnome/shell/extensions/blur-my-shell
+    local want="${WANT_POPUP_BLUR:-1}" memo="$CONF_DIR/popup-blur"
+
+    if [ -z "${POPUP_BLUR_EXPLICIT:-}" ] && [ -r "$memo" ]; then
+        want="$(cat "$memo" 2>/dev/null || true)"
+        want="${want:-1}"
+    fi
+
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$want" > "$memo"
+    fi
+
+    if [ "$want" != 1 ]; then
+        run dconf write "$base/popup/blur" false
+        skip "popup blur off — menus keep the flat translucent look"
+        return 0
+    fi
+
+    # Written by Blur My Shell at every enable, so on a first install — before
+    # the shell has ever loaded this build — it is absent and we start static.
+    # The next run picks the library up.
+    local found
+    found="$(dconf read "$base/rounded-blur-found" 2>/dev/null || true)"
+
+    run dconf write "$base/popup/blur" true
+    if [ "$found" = true ]; then
+        run dconf write "$base/popup/static-blur" false
+        ok "popup blur on, dynamic — it tracks whatever is behind the popup"
+    else
+        run dconf write "$base/popup/static-blur" true
+        ok "popup blur on, static — rounded, but sampling the wallpaper"
+        info "install gnome-rounded-blur (--rounded-blur) for blur that tracks windows"
+    fi
 }
 
 # Custom OSD keeps a set of named profiles beside the live settings, and its
@@ -858,6 +1126,9 @@ install_panel_blur_unit() {
 }
 
 finish() {
+    # Runs whether or not --rounded-blur was passed, so a machine whose library
+    # went stale after a mutter update finds out on the next install either way.
+    rounded_blur_staleness_check
     step "Done"
     cat <<EOF
 

@@ -1,0 +1,56 @@
+/* tahoe-glass — popup translucency, for when there is a real blur behind it.
+ *
+ * Appended after shell-tweaks.css, and only installed when Blur My Shell's
+ * popup component is active (--no-popup-blur leaves it out entirely, which is
+ * what makes that flag a true no-op).
+ *
+ * Everything in shell-tweaks.css paints its own fill because, with the
+ * published Blur My Shell, there is nothing behind a menu but the wallpaper —
+ * the alpha *is* the material. With an actual blur under them those same
+ * values read as smoke rather than glass, so each ground steps down. The
+ * ladder is preserved, only shifted:
+ *
+ *   floating surface (menu) ........... 0.42 -> 0.26
+ *   quick settings .................... 0.46 -> 0.30
+ *   arriving banner ................... 0.86 -> 0.52
+ *
+ * Nothing else moves. Radii, hairlines, the control ladder and every accent
+ * rule carry over from shell-tweaks.css untouched, and this file deliberately
+ * sets no border-radius: the shape is already agreed between that sheet and
+ * the *-corner-radius keys in dconf/core.ini, and repeating it here would be a
+ * third place to keep in sync.
+ *
+ * Nothing here fights Blur My Shell. Its popup stylesheet only applies when
+ * override-background is on, and the preset keeps it off.
+ */
+
+.popup-menu-content {
+  background-color: rgba(0, 0, 0, 0.26);
+}
+
+.popup-menu-content.quick-settings,
+.quick-settings {
+  background-color: rgba(0, 0, 0, 0.30);
+}
+
+/* The banner was near-solid because it floats over anything at all — a bright
+ * window, video, a pale wallpaper — and had to stay legible without help.
+ * It now has its own blurred ground, so it can stop carrying that alone.
+ */
+.notification-banner {
+  background-color: rgba(22, 23, 27, 0.52);
+}
+
+/* .message is a light lift *inside* the calendar popup rather than a ground of
+ * its own, so it is left where shell-tweaks.css put it. It rides whatever is
+ * under it, and what is under it just got lighter.
+ */
+
+/* The OSD pill's fill comes from Custom OSD's inline style, not from here —
+ * see [custom-osd] alpha in dconf/core.ini. Only the level bar needs a nudge:
+ * a blurred, moving ground is less predictable than the flat tint it used to
+ * sit on, and the empty half of the bar was the first thing to disappear.
+ */
+.osd-window .level {
+  -barlevel-background-color: rgba(255, 255, 255, 0.22);
+}
