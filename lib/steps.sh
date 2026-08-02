@@ -354,9 +354,8 @@ install_openbar() {
 # own. Upstream's last release is for GNOME 46 and its last commit does not run
 # on 50 — the ShellBlurEffect:sigma property, the meta_*_clutter_debug_flags()
 # calls and OsdWindowManager.show()'s signature have all gone since. The patch
-# in patches/ fixes those, and rounds the blur to the popup's corners: a
-# background blur covers the actor's bounding box, so without it the pill sits
-# in a hard-edged rectangle of blur no matter what radius is set.
+# in patches/ fixes exactly those and nothing else. The blur behind the pill,
+# and the rounding of it, come from Blur My Shell's popup component.
 install_custom_osd() {
     local uuid="custom-osd@neuromorph"
 
@@ -693,6 +692,15 @@ install_css() {
     run install -Dm644 "$REPO_ROOT/css/gtk4-tweaks.css"  "$CONF_DIR/gtk4-tweaks.css"
     run install -Dm644 "$REPO_ROOT/css/gtk3-tweaks.css"  "$CONF_DIR/gtk3-tweaks.css"
     run install -Dm755 "$REPO_ROOT/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-apply"
+
+    # Installed or removed rather than switched on at read time: tahoe-glass-apply
+    # concatenates whatever it finds in $CONF_DIR and has no way to know which
+    # options this install was given.
+    if [ "${WANT_POPUP_BLUR:-1}" = 1 ]; then
+        run install -Dm644 "$REPO_ROOT/css/shell-popup-blur.css" "$CONF_DIR/shell-popup-blur.css"
+    else
+        run rm -f "$CONF_DIR/shell-popup-blur.css"
+    fi
     ok "css -> $CONF_DIR"
     ok "re-apply command -> ~/.local/bin/tahoe-glass-apply"
 
@@ -747,7 +755,57 @@ load_dconf() {
     run dconf write /org/gnome/shell/extensions/openbar/trigger-reload true
 
     apply_grain
+    apply_popup_blur
     sync_osd_profile
+}
+
+# The popup keys themselves ship in dconf/core.ini so the whole preset stays
+# readable in one file. Two things cannot live there:
+#
+# The on/off choice, because dconf load rewrites the section on every run — a
+# flagless re-install would quietly turn popup blur back on over a deliberate
+# --no-popup-blur. Same reason --grain and --icons are remembered.
+#
+# static-blur, because the right value depends on the machine. Rounded corners
+# on a dynamic blur need the gnome-rounded-blur library; a static blur rounds
+# itself. So when the library is missing this falls back to static, and the
+# corners stay round instead of going square. It self-heals: install the
+# library, re-run, and it flips back to dynamic.
+apply_popup_blur() {
+    local base=/org/gnome/shell/extensions/blur-my-shell
+    local want="${WANT_POPUP_BLUR:-1}" memo="$CONF_DIR/popup-blur"
+
+    if [ -z "${POPUP_BLUR_EXPLICIT:-}" ] && [ -r "$memo" ]; then
+        want="$(cat "$memo" 2>/dev/null || true)"
+        want="${want:-1}"
+    fi
+
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$want" > "$memo"
+    fi
+
+    if [ "$want" != 1 ]; then
+        run dconf write "$base/popup/blur" false
+        skip "popup blur off — menus keep the flat translucent look"
+        return 0
+    fi
+
+    # Written by Blur My Shell at every enable, so on a first install — before
+    # the shell has ever loaded this build — it is absent and we start static.
+    # The next run picks the library up.
+    local found
+    found="$(dconf read "$base/rounded-blur-found" 2>/dev/null || true)"
+
+    run dconf write "$base/popup/blur" true
+    if [ "$found" = true ]; then
+        run dconf write "$base/popup/static-blur" false
+        ok "popup blur on, dynamic — it tracks whatever is behind the popup"
+    else
+        run dconf write "$base/popup/static-blur" true
+        ok "popup blur on, static — rounded, but sampling the wallpaper"
+        info "install gnome-rounded-blur (--rounded-blur) for blur that tracks windows"
+    fi
 }
 
 # Custom OSD keeps a set of named profiles beside the live settings, and its

@@ -20,13 +20,19 @@ GTK3_CSS="$HOME/.config/gtk-3.0/gtk.css"
 mkdir -p "$HOME/.config/gtk-3.0"
 [ -f "$GTK3_CSS" ] || : > "$GTK3_CSS"
 
+# apply TARGET SNIPPET... — one marked block per target, concatenating every
+# snippet that is actually present. Optional sheets are installed and removed
+# by install.sh rather than switched on here, so a missing one simply drops out
+# and an older $CONF_DIR with only the original sheets keeps working.
 apply() {
-    local target="$1" snippet="$2"
-    [ -f "$target" ]  || { echo "skip (missing target): $target"; return; }
-    [ -f "$snippet" ] || { echo "skip (missing snippet): $snippet"; return; }
-    python3 - "$target" "$snippet" <<'PY'
+    local target="$1"; shift
+    [ -f "$target" ] || { echo "skip (missing target): $target"; return; }
+    local present=() s
+    for s in "$@"; do [ -f "$s" ] && present+=("$s"); done
+    [ ${#present[@]} -gt 0 ] || { echo "skip (no snippets): $target"; return; }
+    python3 - "$target" "${present[@]}" <<'PY'
 import sys, re
-target, snippet = sys.argv[1], sys.argv[2]
+target, snippets = sys.argv[1], sys.argv[2:]
 BEGIN = "/* >>> tahoe-glass BEGIN <<< */"
 END   = "/* >>> tahoe-glass END <<< */"
 
@@ -39,17 +45,21 @@ for name in ("tahoe-glass", "tahoe-tweaks"):
         r"/\* >>> %s BEGIN <<< \*/.*?/\* >>> %s END <<< \*/\n?" % (name, name),
         "", css, flags=re.S,
     )
-block = open(snippet, encoding="utf-8").read().rstrip("\n")
+# Order is the order given: later sheets are overrides and must win on equal
+# specificity, so they are concatenated rather than merged.
+block = "\n\n".join(
+    open(p, encoding="utf-8").read().rstrip("\n") for p in snippets
+)
 open(target, "w", encoding="utf-8").write(
     css.rstrip("\n") + "\n\n" + BEGIN + "\n" + block + "\n" + END + "\n"
 )
-print("applied ->", target)
+print("applied ->", target, "(%d snippet%s)" % (len(snippets), "" if len(snippets) == 1 else "s"))
 PY
 }
 
-apply "$SHELL_CSS"     "$DIR/shell-tweaks.css"
-apply "$GTK4_CSS"      "$DIR/gtk4-tweaks.css"
-apply "$GTK4_DARK_CSS" "$DIR/gtk4-tweaks.css"
+apply "$SHELL_CSS"     "$DIR/shell-tweaks.css" "$DIR/shell-popup-blur.css"
+apply "$GTK4_CSS"      "$DIR/gtk4-tweaks.css"  "$DIR/gtk4-transparency.css"
+apply "$GTK4_DARK_CSS" "$DIR/gtk4-tweaks.css"  "$DIR/gtk4-transparency.css"
 apply "$GTK3_CSS"      "$DIR/gtk3-tweaks.css"
 
 # The User Themes extension reloads on a settings change, not on a file change,
