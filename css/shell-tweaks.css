@@ -142,6 +142,22 @@ StDrawingArea {
   box-shadow: none;
 }
 
+/* The date menu — the calendar and notification list under the clock — is a
+ * .popup-menu-content that the theme singles out at `border-radius: 22px
+ * !important`, so it paints a tighter corner than every other menu while Blur
+ * My Shell still blurs it at menu-corner-radius=26. The blur's corner then sits
+ * outside the fill's, which reads as two stacked surfaces with mismatched
+ * corners rather than one menu.
+ *
+ * A painted radius must always equal the blur radius behind it. !important is
+ * required to answer the theme's own, and the value has to track
+ * blur-my-shell/popup/menu-corner-radius in dconf/core.ini — the two are set
+ * independently, which is exactly how they drifted apart.
+ */
+.datemenu-popover {
+  border-radius: 26px !important;
+}
+
 /* ---------- Quick Settings panel ----------
  * The panel shares .popup-menu-content with every other menu, so it needs its
  * own treatment afterwards. Dropping the menu.svg border-image is deliberate:
