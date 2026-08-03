@@ -346,10 +346,13 @@ error to explain it.
 ./uninstall.sh --all            # also the extensions, theme, icons and cursors
 ```
 
-The installer only ever appends to generated files inside a marked block, and
-keeps a first-run copy of anything it overwrites in
-`~/.config/tahoe-glass/backups`. Extensions are left installed unless you ask,
-because removing one also throws away its settings.
+The installer writes its CSS into generated files inside a marked block, and
+additionally flattens those files in place — the theme's own shadow and gradient
+values are rewritten to `none`, which is how the desktop stays flat without a
+cascade fight. Both are undone by `./uninstall.sh`, which restores a first-run
+copy of every file it touched from `~/.config/tahoe-glass/backups`. Extensions
+are left installed unless you ask, because removing one also throws away its
+settings.
 
 Take your own snapshot first if you have a desktop worth keeping:
 

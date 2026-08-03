@@ -115,6 +115,12 @@ restore() {
 restore "gtk4-gtk.css"      "$HOME/.config/gtk-4.0/gtk.css"
 restore "gtk4-gtk-dark.css" "$HOME/.config/gtk-4.0/gtk-dark.css"
 restore "gtk3-gtk.css"      "$HOME/.config/gtk-3.0/gtk.css"
+# The shell sheet needs restoring rather than just un-blocking: apply flattens
+# the theme's own shadow and gradient values in place, so stripping the appended
+# block leaves a theme that is still flat. Unlike the GTK files this one has no
+# .absent marker — the theme's installer always creates it — so a missing backup
+# falls through to "no backup of", which is correct.
+restore "gnome-shell.css"   "$HOME/.themes/Tahoe-Dark/gnome-shell/gnome-shell.css"
 
 # ----------------------------------------------------------------- settings --
 

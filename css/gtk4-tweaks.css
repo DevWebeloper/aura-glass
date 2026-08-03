@@ -19,11 +19,11 @@
  * This desktop is 2D. The blur behind a surface is the only depth it gets;
  * nothing is lifted off anything else.
  *
- * The theme underneath ships 63 box-shadows in GTK4 alone, and every one this
- * file does not name comes back the moment a widget it never thought about is
- * drawn — which is how the sidebar glow and the slider knobs survived three
- * rounds of removing shadows by hand. A blanket reset is the only version of
- * "no shadows" that stays true as the theme moves under it.
+ * tahoe-glass-apply has already rewritten the theme's own shadow and gradient
+ * values to `none` before this sheet is read, so this is a safety net rather
+ * than the mechanism — it catches anything written in a form that pass does not
+ * match, and any shadow arriving from an app's own CSS rather than the theme.
+ * Unlike St, GTK4 has a universal selector, so one rule covers it.
  *
  * The accent focus ring is re-asserted where it belongs, with !important so it
  * survives this. It is a 0-offset, 0-blur ring, not a shadow: it says where the

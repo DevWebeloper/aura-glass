@@ -20,19 +20,23 @@ GTK3_CSS="$HOME/.config/gtk-3.0/gtk.css"
 mkdir -p "$HOME/.config/gtk-3.0"
 [ -f "$GTK3_CSS" ] || : > "$GTK3_CSS"
 
-# apply TARGET SNIPPET... — one marked block per target, concatenating every
-# snippet that is actually present. Optional sheets are installed and removed
-# by install.sh rather than switched on here, so a missing one simply drops out
-# and an older $CONF_DIR with only the original sheets keeps working.
+# apply TARGET FLATTEN SNIPPET... — one marked block per target, concatenating
+# every snippet that is actually present. Optional sheets are installed and
+# removed by install.sh rather than switched on here, so a missing one simply
+# drops out and an older $CONF_DIR with only the original sheets keeps working.
+#
+# FLATTEN=1 also rewrites the theme's own shadow and gradient values to `none`
+# in place. See the note on flattening below; FLATTEN=0 leaves the target's
+# existing content untouched and only appends.
 apply() {
-    local target="$1"; shift
+    local target="$1" flatten="$2"; shift 2
     [ -f "$target" ] || { echo "skip (missing target): $target"; return; }
     local present=() s
     for s in "$@"; do [ -f "$s" ] && present+=("$s"); done
     [ ${#present[@]} -gt 0 ] || { echo "skip (no snippets): $target"; return; }
-    python3 - "$target" "${present[@]}" <<'PY'
+    python3 - "$target" "$flatten" "${present[@]}" <<'PY'
 import sys, re
-target, snippets = sys.argv[1], sys.argv[2:]
+target, flatten, snippets = sys.argv[1], sys.argv[2] == "1", sys.argv[3:]
 BEGIN = "/* >>> tahoe-glass BEGIN <<< */"
 END   = "/* >>> tahoe-glass END <<< */"
 
@@ -45,6 +49,46 @@ for name in ("tahoe-glass", "tahoe-tweaks"):
         r"/\* >>> %s BEGIN <<< \*/.*?/\* >>> %s END <<< \*/\n?" % (name, name),
         "", css, flags=re.S,
     )
+
+# Flattening rewrites the theme's values rather than trying to out-rank them.
+#
+# The earlier approach appended counter-rules, which meant winning a cascade
+# fight against a sheet that marks 37 of its own shadows !important. That is not
+# winnable with a blanket reset: between two !important declarations specificity
+# still decides, so `.a .b` beats `StWidget`. Mirroring the theme's own
+# selectors back worked but had to be regenerated on every theme bump, and it
+# only ever covered the selectors that existed when it ran.
+#
+# Setting the value to `none` where it is declared sidesteps the cascade
+# completely — there is no rule left to lose to. It is also why the sheets can
+# keep their blanket resets as a cheap safety net for anything this misses:
+# nothing in the theme is !important for these properties afterwards, so a
+# single !important reset now actually wins.
+#
+# Only the three properties the theme is flattened for are touched, so a bad
+# regex cannot silently restyle something unrelated. The pristine file is in
+# $CONF_DIR/backups and uninstall restores it.
+if flatten:
+    n = [0, 0]
+
+    def shadow(m):
+        prop, val = m.group(1), m.group(2)
+        if val.strip() == "none":
+            return m.group(0)
+        n[0] += 1
+        return "%s: none" % prop
+
+    def gradient(m):
+        if "gradient" not in m.group(1):
+            return m.group(0)
+        n[1] += 1
+        return "background-image: none"
+
+    css = re.sub(r"\b(box-shadow|text-shadow)\s*:\s*([^;}]*)", shadow, css)
+    css = re.sub(r"\bbackground-image\s*:\s*([^;}]*)", gradient, css)
+    print("flattened -> %s (%d shadow%s, %d gradient%s)"
+          % (target, n[0], "" if n[0] == 1 else "s", n[1], "" if n[1] == 1 else "s"))
+
 # Order is the order given: later sheets are overrides and must win on equal
 # specificity, so they are concatenated rather than merged.
 block = "\n\n".join(
@@ -57,96 +101,17 @@ print("applied ->", target, "(%d snippet%s)" % (len(snippets), "" if len(snippet
 PY
 }
 
-# flat_reset TARGET MODE — emit the blanket "no shadow, no gradient" reset for
-# whatever theme is in TARGET right now, on stdout.
-#
-# This is generated per run rather than committed, because it is derived from
-# the theme and the theme is pinned but not frozen. A committed list goes stale
-# the moment THEME_REF moves: new decorated selectors appear uncovered, and the
-# only symptom is glows quietly coming back. Deriving it here means a theme bump
-# regenerates the reset instead of silently degrading the look.
-#
-# It handles only the blanket cases. Surfaces the theme singles out — the
-# Nautilus floating bar, tooltips, the quick-toggle discs — still need the
-# hand-written rules in the sheets, which are concatenated after this and so
-# win on equal specificity.
-flat_reset() {
-    python3 - "$1" "$2" <<'PY'
-import sys, re
-
-target, mode = sys.argv[1], sys.argv[2]
-try:
-    css = open(target, encoding="utf-8").read()
-except OSError:
-    sys.exit(0)
-
-# Only ever read the theme's own CSS, never a block appended on a previous run,
-# or the reset would start resetting itself and grow without bound.
-for name in ("tahoe-glass", "tahoe-tweaks"):
-    css = re.sub(
-        r"/\* >>> %s BEGIN <<< \*/.*?/\* >>> %s END <<< \*/\n?" % (name, name),
-        "", css, flags=re.S,
-    )
-
-def selectors(pattern):
-    found, seen = [], set()
-    for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
-        if not re.search(pattern, m.group(2)):
-            continue
-        sel = re.sub(r"/\*.*?\*/", " ", m.group(1), flags=re.S)
-        sel = sel.replace("*/", " ").replace("/*", " ")
-        for part in " ".join(sel.split()).split(","):
-            part = part.strip()
-            if part and not part.startswith("@") and part not in seen:
-                seen.add(part)
-                found.append(part)
-    return found
-
-if mode == "shell":
-    # St has no universal selector, and the sheets' own StWidget reset loses to
-    # any theme rule pairing a class with !important — between two !important
-    # declarations specificity still decides. Mirroring the theme's own
-    # selectors back is the only thing that reliably outranks them.
-    sels = selectors(r"(box|text)-shadow\s*:[^;]*!important")
-    decls = "  box-shadow: none !important;\n  text-shadow: none !important;"
-    why = "theme rules that mark a shadow !important"
-else:
-    # Flat means one fill value. Every gradient goes, not just the pale ones:
-    # the Nautilus sidebar's is dark, and survived a white-only pass.
-    sels = selectors(r"gradient")
-    decls = "  background-image: none;\n  box-shadow: none;"
-    why = "theme rules that paint a gradient"
-
-if not sels:
-    sys.exit(0)
-
-print("/* Generated by tahoe-glass-apply from the installed theme — %d %s." % (len(sels), why))
-print(" * Not hand-edited and not committed: it is rebuilt on every apply, so a")
-print(" * theme update cannot leave it stale. Hand-written rules follow below and")
-print(" * override it. */")
-print(",\n".join(sels) + " {")
-print(decls)
-print("}")
-PY
-}
-
-RESET_DIR="$(mktemp -d)"
-trap 'rm -rf "$RESET_DIR"' EXIT
-
-flat_reset "$SHELL_CSS"     shell > "$RESET_DIR/shell-flat.css"
-flat_reset "$GTK4_CSS"      gtk4  > "$RESET_DIR/gtk4-flat.css"
-flat_reset "$GTK4_DARK_CSS" gtk4  > "$RESET_DIR/gtk4-dark-flat.css"
-
-# The reset goes first so the hand-written sheets, concatenated after it, win.
-apply "$SHELL_CSS"     "$RESET_DIR/shell-flat.css" \
-                       "$DIR/shell-tweaks.css" "$DIR/shell-popup-blur.css"
-apply "$GTK4_CSS"      "$RESET_DIR/gtk4-flat.css" \
-                       "$DIR/gtk4-tweaks.css"  "$DIR/gtk4-transparency.css"
-apply "$GTK4_DARK_CSS" "$RESET_DIR/gtk4-dark-flat.css" \
-                       "$DIR/gtk4-tweaks.css"  "$DIR/gtk4-transparency.css"
-# GTK3's half of the theme ships as a gresource, so there is no theme CSS here
-# to derive a reset from — gtk3-tweaks.css resets it with `*` instead.
-apply "$GTK3_CSS"      "$DIR/gtk3-tweaks.css"
+# The three theme-generated targets are flattened. Re-running is safe: a value
+# already rewritten to `none` is left alone, so the second run reports zero.
+apply "$SHELL_CSS"     1 "$DIR/shell-tweaks.css" "$DIR/shell-popup-blur.css"
+apply "$GTK4_CSS"      1 "$DIR/gtk4-tweaks.css"  "$DIR/gtk4-transparency.css"
+apply "$GTK4_DARK_CSS" 1 "$DIR/gtk4-tweaks.css"  "$DIR/gtk4-transparency.css"
+# GTK3's half of the theme ships as a gresource, so there is nothing here to
+# flatten — gtk3-tweaks.css resets it with `*` instead, which works because user
+# CSS loads at GTK_STYLE_PROVIDER_PRIORITY_USER, above the theme. Flattening is
+# off for a second reason too: unlike the other three this file is not
+# theme-generated, so anything already in it is the user's own and stays as is.
+apply "$GTK3_CSS"      0 "$DIR/gtk3-tweaks.css"
 
 # The User Themes extension reloads on a settings change, not on a file change,
 # so toggle the key to force Main.loadTheme().
