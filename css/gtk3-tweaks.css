@@ -19,6 +19,32 @@
   box-shadow: none;
 }
 
+/* ---------- Window corners, matched to the blur ----------
+ * The GTK3 half of the theme rounds windows at 24 while its libadwaita half
+ * rounds them at 30, so GTK3 and GTK4 apps are visibly different shapes sitting
+ * next to each other.
+ *
+ * 30 is also what the blur behind them uses. Blur My Shell has a single
+ * blur-my-shell/applications/corner-radius for every window, so at 24 the
+ * window's corner extends past the blur's — a radius of 30 removes more of the
+ * corner than 24 does, making the blurred shape the smaller one — and that
+ * sliver sits over unblurred desktop.
+ *
+ * As everywhere else in this project: a painted radius must equal the blur
+ * radius behind it. This one tracks blur-my-shell/applications/corner-radius in
+ * dconf/core.ini, the same key the theme's `window { border-radius: 30px }` is
+ * already matched to.
+ */
+decoration {
+  border-radius: 30px;
+}
+
+.titlebar,
+.titlebar.background {
+  border-top-left-radius: 30px;
+  border-top-right-radius: 30px;
+}
+
 headerbar button.titlebutton,
 .titlebar button.titlebutton,
 headerbar button.titlebutton.close,
