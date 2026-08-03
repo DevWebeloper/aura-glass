@@ -14,15 +14,43 @@
  * alpha(@window_bg_color, N) is the named-colour form: deprecated since
  * libadwaita 1.6 and gone from the 1.9 docs, but still resolving through a
  * back-compat shim. color-mix(in srgb, var(--window-bg-color) N%, transparent)
- * is the form that survives that shim being removed. GTK drops a declaration
- * it cannot parse and the last one it understands wins, so writing the old
- * spelling first and the new one second means whichever GTK understands is
- * the one that lands. Both are present in libadwaita 1.9.2.
+ * is the form that survives that shim being removed. Both are present in
+ * libadwaita 1.9.2, and writing the old spelling first means the new one wins
+ * wherever GTK understands it.
+ *
+ * That pairing is only safe because of the :root block below. `var()` is not a
+ * parse error when the property is undefined — GTK parses it happily and fails
+ * at computed-value time, which sets the property to its initial value rather
+ * than falling back to the previous declaration. For background-color the
+ * initial value is transparent. So in any GTK4 app that is not a libadwaita
+ * app, and therefore never defines these properties, the second declaration
+ * won and painted nothing at all.
+ *
+ * That is not a corner case: /usr/lib/mutter-x11-frames draws the titlebar of
+ * every XWayland window, in its own process, with plain GTK4 — so those frames
+ * went fully transparent while the app's own content stayed opaque, and the
+ * window looked sliced in two. Chrome and Vesktop were the visible cases;
+ * any non-libadwaita GTK4 app was affected.
  *
  * The percentages below are the shipped level, 0.92. --app-transparency N
  * rewrites them in the installed copy, keeping the ladder between surfaces
  * rather than flattening every one of them to the same number.
  */
+
+/* Bridge the libadwaita named colours to the custom properties the rules below
+ * use, so `var()` resolves outside libadwaita too. The values are not repeated
+ * here — each maps to the @define-color the theme already set, so there is one
+ * source and nothing to drift. adw-gtk3 does the same thing in its
+ * libadwaita-tweaks.css for the same reason.
+ */
+:root {
+  --window-bg-color: @window_bg_color;
+  --view-bg-color: @view_bg_color;
+  --sidebar-bg-color: @sidebar_bg_color;
+  --headerbar-bg-color: @headerbar_bg_color;
+  --headerbar-backdrop-color: @headerbar_backdrop_color;
+  --dialog-bg-color: @dialog_bg_color;
+}
 
 /* ---------- The window itself ----------
  * libadwaita paints .background rather than window on most widgets, but
@@ -62,6 +90,30 @@ headerbar:backdrop,
 .titlebar:backdrop {
   background-color: alpha(@headerbar_backdrop_color, 0.88);
   background-color: color-mix(in srgb, var(--headerbar-backdrop-color) 88%, transparent);
+}
+
+/* Decoration frames stay solid.
+ *
+ * XWayland windows do not draw their own titlebar — /usr/lib/mutter-x11-frames
+ * does, in a separate process that loads libgtk-4 and therefore reads this
+ * sheet. The headerbar rule above then made that frame translucent while the
+ * app's own content below it stayed opaque, so the window looked sliced in two
+ * exactly at the titlebar. Chrome's profile picker is the clearest case: Chrome
+ * loads no GTK at all, so the only part of that window this sheet can reach is
+ * the frame someone else drew for it.
+ *
+ * Same reasoning as window.solid-csd above — a frame is not part of the app's
+ * surface, so there is nothing behind it for it to be translucent against.
+ * .default-decoration is the node GTK uses for those frames; adw-gtk3 targets
+ * the same one for its window controls.
+ */
+headerbar.default-decoration,
+headerbar.default-decoration.titlebar,
+.titlebar.default-decoration,
+headerbar.default-decoration:backdrop,
+.titlebar.default-decoration:backdrop {
+  background-color: @headerbar_bg_color;
+  background-color: var(--headerbar-bg-color);
 }
 
 /* ---------- Split-view panes ----------

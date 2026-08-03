@@ -143,19 +143,28 @@ StDrawingArea {
 }
 
 /* The date menu — the calendar and notification list under the clock — is a
- * .popup-menu-content that the theme singles out at `border-radius: 22px
- * !important`, so it paints a tighter corner than every other menu while Blur
- * My Shell still blurs it at menu-corner-radius=26. The blur's corner then sits
- * outside the fill's, which reads as two stacked surfaces with mismatched
- * corners rather than one menu.
+ * .popup-menu-content, and the theme singles it out at `border-radius: 22px
+ * !important` so it paints a tighter corner than every other menu. The blur
+ * behind it then shows its own corner outside the fill's, which reads as two
+ * stacked surfaces rather than one menu.
+ *
+ * The value is 33 and not 26, which is not guessable from the name. Blur My
+ * Shell groups this surface with Quick Settings, not with menus —
+ * components/popup/targets.js:
+ *
+ *     key: 'quick-settings-corner-radius',
+ *     style_classes: ['quick-settings', 'quick-toggle-menu', 'datemenu-popover'],
+ *
+ * so it is blurred at quick-settings-corner-radius, while every other
+ * .popup-menu-content is blurred at menu-corner-radius. Setting this to 26 to
+ * match the menus left it still mismatched, just less obviously.
  *
  * A painted radius must always equal the blur radius behind it. !important is
- * required to answer the theme's own, and the value has to track
- * blur-my-shell/popup/menu-corner-radius in dconf/core.ini — the two are set
- * independently, which is exactly how they drifted apart.
+ * required to answer the theme's own, and this tracks
+ * blur-my-shell/popup/quick-settings-corner-radius in dconf/core.ini.
  */
 .datemenu-popover {
-  border-radius: 26px !important;
+  border-radius: 33px !important;
 }
 
 /* ---------- Quick Settings panel ----------
