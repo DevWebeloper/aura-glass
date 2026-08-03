@@ -68,8 +68,64 @@ for name in ("tahoe-glass", "tahoe-tweaks"):
 # Only the three properties the theme is flattened for are touched, so a bad
 # regex cannot silently restyle something unrelated. The pristine file is in
 # $CONF_DIR/backups and uninstall restores it.
+
+# A gradient function, not the word. `url('gradient-bg.svg')` is a real asset —
+# the Alt+Tab selected-item highlight — and a substring match on "gradient"
+# deleted it.
+GRADIENT = re.compile(r"\b(?:repeating-)?(?:linear|radial|conic)-gradient\s*\(")
+COLOR = re.compile(r"rgba?\(([^)]*)\)|#([0-9a-fA-F]{3,8})\b")
+
+
+def parse_color(m):
+    if m.group(2):
+        h = m.group(2)
+        if len(h) in (3, 4):
+            h = "".join(c * 2 for c in h)
+        if len(h) not in (6, 8):
+            return None
+        v = [int(h[i:i + 2], 16) for i in range(0, len(h), 2)]
+        return (v[0], v[1], v[2], v[3] / 255 if len(v) == 4 else 1.0)
+    parts = [p.strip() for p in m.group(1).replace("/", ",").split(",") if p.strip()]
+    if len(parts) < 3:
+        return None
+    try:
+        rgb = [float(p.rstrip("%")) for p in parts[:3]]
+        a = float(parts[3].rstrip("%")) if len(parts) > 3 else 1.0
+    except ValueError:
+        return None
+    return (rgb[0], rgb[1], rgb[2], a)
+
+
+def average(value):
+    """The flat equivalent of a gradient: the mean of its colour stops.
+
+    A vertical gradient reads as its midpoint, so this is what replaces it. Its
+    first stop would be truer to the top edge but is often near-opaque, which
+    fights --app-transparency. Returns None if any stop is a form this cannot
+    read (a named colour, an @reference, a nested colour function), because a
+    partial average would be a made-up colour rather than a flat version of
+    this one.
+    """
+    stops = [parse_color(m) for m in COLOR.finditer(value)]
+    if not stops or any(s is None for s in stops):
+        return None
+    k = len(stops)
+    r, g, b = (sum(s[i] for s in stops) / k for i in range(3))
+    a = sum(s[3] for s in stops) / k
+    return "rgba(%d, %d, %d, %s)" % (round(r), round(g), round(b),
+                                     ("%.3f" % a).rstrip("0").rstrip("."))
+
+
+def is_transparent(value):
+    value = value.strip()
+    if not value or value == "transparent":
+        return True
+    c = COLOR.match(value)
+    return c is not None and parse_color(c) is not None and parse_color(c)[3] == 0
+
+
 if flatten:
-    n = [0, 0]
+    n = [0, 0, 0]
 
     def shadow(m):
         prop, val = m.group(1), m.group(2)
@@ -78,16 +134,48 @@ if flatten:
         n[0] += 1
         return "%s: none" % prop
 
-    def gradient(m):
-        if "gradient" not in m.group(1):
-            return m.group(0)
-        n[1] += 1
-        return "background-image: none"
+    def body(m):
+        decls = m.group(1)
+        decls = re.sub(r"\b(box-shadow|text-shadow)\s*:\s*([^;}]*)", shadow, decls)
 
-    css = re.sub(r"\b(box-shadow|text-shadow)\s*:\s*([^;}]*)", shadow, css)
-    css = re.sub(r"\bbackground-image\s*:\s*([^;}]*)", gradient, css)
-    print("flattened -> %s (%d shadow%s, %d gradient%s)"
-          % (target, n[0], "" if n[0] == 1 else "s", n[1], "" if n[1] == 1 else "s"))
+        img = re.search(r"\bbackground-image\s*:\s*([^;}]*)", decls)
+        if img and GRADIENT.search(img.group(1)):
+            # Where the theme declares no colour, or a transparent one, the
+            # gradient IS the surface — `none` does not flatten it, it deletes
+            # it. That left the Nautilus content pane painting nothing, so the
+            # folder grid's own darker ground showed as a rectangle inside it.
+            # Give those a flat colour; a gradient over a real colour is
+            # decoration and still just goes.
+            colours = re.findall(r"\bbackground-color\s*:\s*([^;}]*)", decls)
+            if not colours or is_transparent(colours[-1]):
+                flat = average(img.group(1))
+                if flat:
+                    n[2] += 1
+                    if colours:
+                        decls = re.sub(
+                            r"\bbackground-color\s*:\s*([^;}]*)",
+                            lambda c: ("background-color: " + flat
+                                       if is_transparent(c.group(1)) else c.group(0)),
+                            decls,
+                        )
+                    else:
+                        decls = decls.replace(
+                            img.group(0), "background-color: %s; %s" % (flat, img.group(0)), 1)
+            n[1] += 1
+            decls = re.sub(r"\bbackground-image\s*:\s*([^;}]*)",
+                           lambda i: ("background-image: none"
+                                      if GRADIENT.search(i.group(1)) else i.group(0)),
+                           decls)
+        return "{%s}" % decls
+
+    # Per rule body rather than per declaration: whether a gradient is the only
+    # ground can only be decided by looking at the whole rule. `[^{}]*` matches
+    # innermost braces only, so @media and @keyframes wrappers are left alone
+    # and their inner rules are still visited.
+    css = re.sub(r"\{([^{}]*)\}", body, css)
+    print("flattened -> %s (%d shadow%s, %d gradient%s, %d ground%s kept)"
+          % (target, n[0], "" if n[0] == 1 else "s", n[1], "" if n[1] == 1 else "s",
+             n[2], "" if n[2] == 1 else "s"))
 
 # Order is the order given: later sheets are overrides and must win on equal
 # specificity, so they are concatenated rather than merged.

@@ -96,15 +96,18 @@ scrolledwindow > viewport > .view {
   background-color: color-mix(in srgb, var(--view-bg-color) 94%, transparent);
 }
 
-/* ---------- Popovers ----------
- * A popover has no wallpaper behind it, only the window it belongs to, so it
- * needs just enough translucency to sit on the same material.
+/* Popovers are deliberately absent from this sheet.
+ *
+ * They were here, at 0.94, and because this sheet is appended after
+ * gtk4-tweaks.css they silently overrode the near-solid ground that sheet sets
+ * for them — so a popover looked one way with --app-transparency and another
+ * way without, for no reason a user could see.
+ *
+ * gtk4-tweaks.css owns them, and the reasoning does not depend on this flag:
+ * Blur My Shell blurs shell surfaces only, never an app's own popovers, so
+ * translucency there shows the app underneath rather than a blur. There is
+ * nothing for a popover to be translucent *against*.
  */
-popover > contents,
-popover > arrow {
-  background-color: alpha(@popover_bg_color, 0.94);
-  background-color: color-mix(in srgb, var(--popover-bg-color) 94%, transparent);
-}
 
 /* Message dialogs stay opaque. They exist to be read and answered, and a
  * translucent one over a busy window is genuinely harder to read.
