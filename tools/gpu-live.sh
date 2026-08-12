@@ -46,7 +46,7 @@ sample_into() {
 
 report() {
     local name="$1" file="$2"
-    python3 - "$name" "$file" "$LABEL" <<'PY'
+    python3 - "$name" "$file" "$LABEL" <<'PY' | tee -a "$LOG"
 import sys
 name, path, label = sys.argv[1], sys.argv[2], sys.argv[3]
 v = sorted(int(x) for x in open(path) if x.strip().isdigit())
@@ -77,6 +77,14 @@ overview() {
 }
 
 TMP="$(mktemp -d)"
+# Results are also appended to a log, so a run can be read back afterwards
+# rather than depending on the terminal it was run in still being on screen.
+LOG="${TAHOE_GPU_LOG:-$HOME/.cache/tahoe-glass/gpu-live.log}"
+mkdir -p "$(dirname "$LOG")"
+{
+    echo
+    echo "=== $(date '+%Y-%m-%d %H:%M:%S')${LABEL:+  label: $LABEL} ==="
+} >> "$LOG"
 trap 'rm -rf "$TMP"; overview false' EXIT
 
 say "sampling $CARD${LABEL:+  (label: $LABEL)}"
@@ -117,4 +125,4 @@ countdown 3
 sample_into 10 "$TMP/menus"
 report "menus" "$TMP/menus"
 
-say "done"
+say "done — results also in $LOG"
