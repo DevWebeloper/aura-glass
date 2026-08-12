@@ -73,18 +73,18 @@
  * shim goes. mix()'s third argument is the weight of the *second* colour, so
  * it is the complement of the color-mix percentage.
  */
-@define-color tg_tint_window mix(@window_bg_color, #000000, 0.45);
-@define-color tg_tint_view mix(@view_bg_color, #000000, 0.45);
-@define-color tg_tint_sidebar mix(@sidebar_bg_color, #000000, 0.45);
-@define-color tg_tint_headerbar mix(@headerbar_bg_color, #000000, 0.45);
-@define-color tg_tint_headerbar_backdrop mix(@headerbar_backdrop_color, #000000, 0.45);
+@define-color tg_tint_window mix(@window_bg_color, #000000, 0.55);
+@define-color tg_tint_view mix(@view_bg_color, #000000, 0.55);
+@define-color tg_tint_sidebar mix(@sidebar_bg_color, #000000, 0.55);
+@define-color tg_tint_headerbar mix(@headerbar_bg_color, #000000, 0.55);
+@define-color tg_tint_headerbar_backdrop mix(@headerbar_backdrop_color, #000000, 0.55);
 
 :root {
-  --tg-tint-window: color-mix(in srgb, var(--window-bg-color) 55%, #000000);
-  --tg-tint-view: color-mix(in srgb, var(--view-bg-color) 55%, #000000);
-  --tg-tint-sidebar: color-mix(in srgb, var(--sidebar-bg-color) 55%, #000000);
-  --tg-tint-headerbar: color-mix(in srgb, var(--headerbar-bg-color) 55%, #000000);
-  --tg-tint-headerbar-backdrop: color-mix(in srgb, var(--headerbar-backdrop-color) 55%, #000000);
+  --tg-tint-window: color-mix(in srgb, var(--window-bg-color) 45%, #000000);
+  --tg-tint-view: color-mix(in srgb, var(--view-bg-color) 45%, #000000);
+  --tg-tint-sidebar: color-mix(in srgb, var(--sidebar-bg-color) 45%, #000000);
+  --tg-tint-headerbar: color-mix(in srgb, var(--headerbar-bg-color) 45%, #000000);
+  --tg-tint-headerbar-backdrop: color-mix(in srgb, var(--headerbar-backdrop-color) 45%, #000000);
 }
 
 /* ---------- Why the inner panes are transparent ----------

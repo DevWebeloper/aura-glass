@@ -981,27 +981,37 @@ apply_app_opacity() {
 # itself. So when the library is missing this falls back to static, and the
 # corners stay round instead of going square. It self-heals: install the
 # library, re-run, and it flips back to dynamic.
-# The window blur is worth having only when there is something to see through.
-# It is off in dconf/core.ini and turned on here when --app-transparency asked
-# for a real level, which is the only case where the surfaces libadwaita paints
-# are translucent enough to reveal it.
+# The window blur is its own opt-in, not a consequence of anything else.
 #
-# Deliberately not remembered. It is a consequence of the transparency setting,
-# which is itself remembered — so persisting this too would let it outlive the
-# thing it follows, which is exactly how --no-blur left menus unblurred after a
-# return to glass.
+# It is the most expensive thing this preset can switch on — a blur behind every
+# window, rebuilt as the window moves, which measured the overview at p90 99%
+# GPU against 32% without it on an RX 7600 — and it only becomes visible at all
+# once --app-transparency has made the surfaces translucent. Paired with
+# --app-transparency it is a real effect for a real cost; on its own it is a
+# cost for almost nothing, since the window sits at 94% opacity.
+#
+# The cheaper way to the same readable, see-through window is the tint: darken
+# the ground under the alpha instead of blurring what is behind it. That costs
+# no GPU at all. See TOKEN_APP_TINT in tokens/tokens.sh.
+#
+# Deliberately not remembered, like the popup-blur memo it sits beside: a flag
+# that persists past the run that set it is how --no-blur left menus unblurred
+# after a return to glass.
 apply_app_blur() {
     local base=/org/gnome/shell/extensions/blur-my-shell
-    local level="${APP_TRANSPARENCY:-0}"
 
-    if [ -z "$level" ] || [ "$level" = 0 ]; then
+    if [ "${WANT_WINDOW_BLUR:-0}" != 1 ]; then
         run dconf write "$base/applications/blur" false
-        skip "window blur off — nothing to see through without --app-transparency"
+        skip "window blur off — pass --window-blur if you want it"
         return 0
     fi
 
     run dconf write "$base/applications/blur" true
-    ok "window blur on, behind translucent app windows"
+    ok "window blur on behind app windows"
+    if [ -z "${APP_TRANSPARENCY:-}" ] || [ "${APP_TRANSPARENCY:-0}" = 0 ]; then
+        warn "without --app-transparency the windows stay 94% opaque, so very"
+        warn "little of that blur will be visible for what it costs"
+    fi
 }
 
 apply_popup_blur() {

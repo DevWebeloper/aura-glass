@@ -31,6 +31,7 @@ WANT_OSD=1
 WANT_PANEL_BLUR_FIX=1
 WANT_BMS_GIT=1
 WANT_BLUR=1
+WANT_WINDOW_BLUR=0
 WANT_POPUP_BLUR=1
 POPUP_BLUR_EXPLICIT=""
 WANT_ROUNDED_BLUR=1
@@ -88,6 +89,13 @@ ${C_BLD}tahoe-glass${C_OFF} — a macOS Tahoe glass desktop for GNOME 48-50
                       opaque. Remembered for later runs
     --no-app-transparency
                       keep app windows opaque
+    --window-blur     blur behind app windows. Off by default and not part of
+                      --full: it is the most expensive thing Blur My Shell
+                      does — it paints a blur behind every window and rebuilds
+                      it as the window moves, which took the overview from 27%
+                      to 99% GPU on an RX 7600 — and it only becomes visible
+                      with --app-transparency. Prefer making the windows darker
+                      and translucent instead, which costs nothing
     --no-blur         no blur anywhere, and opaque surfaces instead of
                       translucent ones. Same geometry, radii, accent, icons and
                       controls — only the depth is gone. Blur is the one part
@@ -152,6 +160,8 @@ while [ $# -gt 0 ]; do
                          POPUP_BLUR_EXPLICIT=1; shift ;;
         --no-popup-blur) WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1; shift ;;
         --blur)          WANT_BLUR=1; shift ;;
+        --window-blur)    WANT_WINDOW_BLUR=1; shift ;;
+        --no-window-blur) WANT_WINDOW_BLUR=0; shift ;;
         # Turns the whole glass effect off rather than only the popups. Sets
         # the popup and rounded-blur switches too so that --no-blur alone is
         # enough and cannot be half-applied by an earlier flag.

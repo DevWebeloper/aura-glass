@@ -138,7 +138,7 @@ TOKEN_APP_TRANSPARENCY_SHIPPED=0.92
 # that still disagree. The mix() weight is the complement (100 - this).
 #
 #   css/gtk4-transparency.css   the @define-color and :root tint blocks
-TOKEN_APP_TINT=55
+TOKEN_APP_TINT=45
 
 # ---------- Not tokens, deliberately ----------
 #
