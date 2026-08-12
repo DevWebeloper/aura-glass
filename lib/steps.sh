@@ -954,6 +954,7 @@ load_dconf() {
 
     apply_grain
     apply_popup_blur
+    apply_app_blur
     apply_app_opacity
     sync_osd_profile
 }
@@ -980,6 +981,29 @@ apply_app_opacity() {
 # itself. So when the library is missing this falls back to static, and the
 # corners stay round instead of going square. It self-heals: install the
 # library, re-run, and it flips back to dynamic.
+# The window blur is worth having only when there is something to see through.
+# It is off in dconf/core.ini and turned on here when --app-transparency asked
+# for a real level, which is the only case where the surfaces libadwaita paints
+# are translucent enough to reveal it.
+#
+# Deliberately not remembered. It is a consequence of the transparency setting,
+# which is itself remembered — so persisting this too would let it outlive the
+# thing it follows, which is exactly how --no-blur left menus unblurred after a
+# return to glass.
+apply_app_blur() {
+    local base=/org/gnome/shell/extensions/blur-my-shell
+    local level="${APP_TRANSPARENCY:-0}"
+
+    if [ -z "$level" ] || [ "$level" = 0 ]; then
+        run dconf write "$base/applications/blur" false
+        skip "window blur off — nothing to see through without --app-transparency"
+        return 0
+    fi
+
+    run dconf write "$base/applications/blur" true
+    ok "window blur on, behind translucent app windows"
+}
+
 apply_popup_blur() {
     local base=/org/gnome/shell/extensions/blur-my-shell
     local want="${WANT_POPUP_BLUR:-1}" memo="$CONF_DIR/popup-blur"

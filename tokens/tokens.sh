@@ -102,7 +102,12 @@ TOKEN_SIGMA_APPFOLDER=50        # transient, but an outlier above every other
                                 # pipeline's ~30 ceiling for no recorded reason.
 TOKEN_SIGMA_POPUP=30
 TOKEN_SIGMA_WINDOW_LIST=30
-TOKEN_SIGMA_APPLICATIONS=12     # opt-in with --app-transparency; already modest.
+# Only ever applied when --app-transparency is on: the window blur is off in
+# dconf/core.ini and install.sh turns it on to follow that flag. Leaving it on
+# by default was the single most expensive thing in this preset — overview p90
+# GPU busy 99% against 28% with it off, on an RX 7600 — and with the window at
+# 94% opacity almost none of it reached the screen.
+TOKEN_SIGMA_APPLICATIONS=12
 TOKEN_SIGMA_DASH_TO_DOCK=4      # the cheap end of the range, kept as reference.
 
 # ---------- App transparency ----------

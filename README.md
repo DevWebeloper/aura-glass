@@ -196,6 +196,14 @@ backgrounds, so by default there is nothing to see through. `--app-transparency`
 makes the surfaces libadwaita actually paints translucent — the window, header
 bar, sidebar panes, content views and popovers.
 
+Blur My Shell's window blur follows this flag rather than being on by default,
+because it is the flag that gives it anything to reveal. That blur paints behind
+every window and rebuilds as the window moves, while the window sits at 94%
+opacity — so with transparency off it was expensive and all but invisible.
+Measured on the live session, overview toggled six times on a Radeon RX 7600:
+p90 GPU busy **99% with it on, 28% with it off**, and it is on only when you ask
+for transparency now.
+
 It is **off by default and not part of `--full`**, because it only works for
 apps that use GTK's stylesheet. These will ignore it and stay opaque:
 
