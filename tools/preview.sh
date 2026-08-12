@@ -12,6 +12,7 @@
 #   tools/preview.sh --gtk-only      one GTK app, no shell, on your own session
 #   tools/preview.sh --keep          leave the session up (see --keep below)
 #   tools/preview.sh --gpu           sample GPU busy% while the session runs
+#   tools/preview.sh --solid         render --no-blur mode instead of the glass one
 #
 # ---------------------------------------------------------------------------
 # What this is NOT
@@ -61,6 +62,7 @@ DRIVER_UUID="tahoe-preview-driver@tahoe-glass.local"
 MODE="shell"
 KEEP=0
 GPU=0
+SOLID=0
 GTK_APP="nautilus"
 
 while [ $# -gt 0 ]; do
@@ -68,6 +70,7 @@ while [ $# -gt 0 ]; do
         --gtk-only) MODE="gtk"; [ "${2:-}" ] && [ "${2#--}" = "$2" ] && { GTK_APP="$2"; shift; }; shift ;;
         --keep)     KEEP=1; shift ;;
         --gpu)      GPU=1; shift ;;
+        --solid)    SOLID=1; shift ;;
         --res)      RESOLUTION="$2"; shift 2 ;;
         -h|--help)  sed -n '2,30p' "$0" | sed 's/^# \?//'; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
@@ -108,7 +111,14 @@ build_profile() {
         ln -sfn "$HOME/.local/share/icons" "$home/.local/share/icons"
 
     cp "$REPO_ROOT"/css/shell-[0-9][0-9]-*.css "$REPO_ROOT"/css/gtk4-[0-9][0-9]-*.css "$conf/"
-    cp "$REPO_ROOT/css/gtk3-tweaks.css" "$REPO_ROOT/css/shell-popup-blur.css" "$conf/"
+    cp "$REPO_ROOT/css/gtk3-tweaks.css" "$conf/"
+    # Mirrors what install_css does with these two: solid mode gets the opaque
+    # overrides and no popup blur sheet, glass mode the other way round.
+    if [ "$SOLID" = 1 ]; then
+        cp "$REPO_ROOT/css/shell-80-solid.css" "$conf/"
+    else
+        cp "$REPO_ROOT/css/shell-popup-blur.css" "$conf/"
+    fi
 
     HOME="$home" TAHOE_GLASS_DIR="$conf" TAHOE_GLASS_THEME="$THEME" \
         bash "$REPO_ROOT/bin/tahoe-glass-apply" | sed 's/^/   /'
@@ -142,7 +152,7 @@ mkdir -p "$SHOTS"
 
 export TG_REPO_ROOT="$REPO_ROOT" TG_PROFILE="$PROFILE" TG_SHOTS="$SHOTS"
 export TG_DISPLAY="$DISPLAY_NAME" TG_RES="$RESOLUTION" TG_KEEP="$KEEP" TG_GPU="$GPU"
-export TG_DRIVER_UUID="$DRIVER_UUID"
+export TG_DRIVER_UUID="$DRIVER_UUID" TG_SOLID="$SOLID"
 
 # Kept inside the real runtime dir so it is still tmpfs owned by this user,
 # which is what a runtime dir has to be; only the path differs.

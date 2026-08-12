@@ -209,6 +209,7 @@ SHELL_SNIPPETS=(
     "$DIR/shell-30-notifications.css"
     "$DIR/shell-40-quick-toggles.css"
     "$DIR/shell-50-dialogs.css"
+    "$DIR/shell-80-solid.css"
     "$DIR/shell-90-density.css"
     "$DIR/shell-popup-blur.css"
 )

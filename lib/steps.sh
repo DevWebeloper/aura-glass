@@ -515,7 +515,14 @@ install_extensions() {
     step "Installing shell extensions"
     local u
     for u in "${EXT_CORE[@]}"; do install_ext_ego "$u" || true; done
-    install_bms
+    # Solid mode does not install Blur My Shell at all. Disabling its components
+    # would leave the extension loaded and still building one background actor
+    # per surface; not installing it is what actually removes the cost.
+    if [ "${WANT_BLUR:-1}" = 1 ]; then
+        install_bms
+    else
+        skip "$BMS_UUID left out (--no-blur)"
+    fi
     install_openbar
     install_custom_osd
 
@@ -528,8 +535,12 @@ install_extensions() {
 enable_extensions() {
     step "Enabling extensions"
     # $BMS_UUID is named explicitly rather than left in EXT_CORE so that it is
-    # enabled whichever source install_bms took it from.
-    local want=("${EXT_CORE[@]}" "$BMS_UUID" openbar@neuromorph) u
+    # enabled whichever source install_bms took it from — and so that solid
+    # mode can leave it out without editing the shared list.
+    local want=("${EXT_CORE[@]}" openbar@neuromorph) u
+    if [ "${WANT_BLUR:-1}" = 1 ]; then
+        want+=("$BMS_UUID")
+    fi
     [ "${WANT_OSD:-1}" = 1 ] && want+=(custom-osd@neuromorph)
     [ "${WANT_EXTRAS:-0}" = 1 ] && want+=("${EXT_EXTRA[@]}")
 
@@ -867,6 +878,16 @@ install_css() {
     # Installed or removed rather than switched on at read time: tahoe-glass-apply
     # concatenates whatever it finds in $CONF_DIR and has no way to know which
     # options this install was given.
+    # --no-blur swaps the translucent ladder for opaque surfaces. Installed or
+    # removed rather than switched on at read time, for the same reason as the
+    # sheets below: tahoe-glass-apply concatenates what it finds and cannot know
+    # which options this install was given.
+    if [ "${WANT_BLUR:-1}" = 1 ]; then
+        run rm -f "$CONF_DIR/shell-80-solid.css"
+    else
+        run install -Dm644 "$REPO_ROOT/css/shell-80-solid.css" "$CONF_DIR/shell-80-solid.css"
+    fi
+
     if [ "${WANT_POPUP_BLUR:-1}" = 1 ]; then
         run install -Dm644 "$REPO_ROOT/css/shell-popup-blur.css" "$CONF_DIR/shell-popup-blur.css"
     else
@@ -916,6 +937,19 @@ load_dconf() {
             || die "dconf load failed"
     fi
     ok "core look loaded"
+
+    # Applied over the top rather than as a separate preset, so solid mode is
+    # one overlay to read and to review rather than a second full copy of every
+    # key that would then have to be kept in step with core.ini.
+    if [ "${WANT_BLUR:-1}" != 1 ]; then
+        if [ "${DRY_RUN:-0}" = 1 ]; then
+            info "dry-run: dconf load /org/gnome/shell/extensions/ < dconf/solid.ini"
+        else
+            dconf load /org/gnome/shell/extensions/ < "$REPO_ROOT/dconf/solid.ini" \
+                || die "dconf load of the solid preset failed"
+        fi
+        ok "solid mode loaded — no blur, opaque surfaces"
+    fi
 
     if [ "${WANT_EXTRAS:-0}" = 1 ]; then
         if [ "${DRY_RUN:-0}" = 1 ]; then

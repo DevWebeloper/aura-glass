@@ -48,9 +48,15 @@ out = [
     "[org/gnome/shell]",
     # Set here rather than through the extensions D-Bus API, which needs a
     # shell that is already running.
-    "enabled-extensions=['user-theme@gnome-shell-extensions.gcampax.github.com', "
-    "'blur-my-shell@aunetx', 'openbar@neuromorph', 'custom-osd@neuromorph', "
-    "'%s']" % os.environ["TG_DRIVER_UUID"],
+    # Blur My Shell is left out of solid mode entirely rather than switched
+    # off, matching what install.sh does: an extension that is loaded still
+    # builds a background actor per surface even with every component disabled.
+    "enabled-extensions=[%s]" % ", ".join(
+        "'%s'" % u for u in
+        ["user-theme@gnome-shell-extensions.gcampax.github.com"]
+        + ([] if os.environ.get("TG_SOLID") == "1" else ["blur-my-shell@aunetx"])
+        + ["openbar@neuromorph", "custom-osd@neuromorph",
+           os.environ["TG_DRIVER_UUID"]]),
     "disable-user-extensions=false",
     "",
     "[org/gnome/desktop/interface]",
@@ -68,6 +74,23 @@ for line in open(src, encoding="utf-8"):
         out.append("[%s%s]" % (PREFIX, stripped[1:-1]))
     else:
         out.append(line)
+
+if os.environ.get("TG_SOLID") == "1":
+    # After core.ini, never before. A keyfile takes the *last* value for a key,
+    # so an overlay written first is silently overridden by the thing it is
+    # meant to override — which showed up as a top bar that stayed transparent
+    # because core.ini's bgalpha=0.0 won. load_dconf applies it in this order
+    # too.
+    out.append("# --- solid mode overlay (dconf/solid.ini) ---")
+    for line in open(os.path.join(os.path.dirname(src), "solid.ini"),
+                     encoding="utf-8"):
+        line = line.rstrip("\n")
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            out.append("[%s%s]" % (PREFIX, stripped[1:-1]))
+        else:
+            out.append(line)
+    out.append("")
 
 # The shell theme name is under the same prefix, but the preset does not carry
 # it as a section of its own.
@@ -156,14 +179,18 @@ done
 # GPU sampling runs alongside everything below, so the number covers the same
 # work every time. gpu_busy_percent is the zero-install baseline; radeontop
 # would break it down per block but is not needed to compare two sigmas.
+# tools/gpu-sample.py knows which interface this machine's driver exposes, and
+# says so plainly when it exposes none — an Intel iGPU has no sysfs busy figure
+# at all, and printing 0 there would read as an idle GPU rather than as a
+# missing measurement.
 GPU_CARD=""
 if [ "$TG_GPU" = 1 ]; then
-    for c in /sys/class/drm/card*/device/gpu_busy_percent; do
-        [ -r "$c" ] && { GPU_CARD="$c"; break; }
-    done
+    if python3 "$REPO_ROOT/tools/gpu-sample.py" --probe; then
+        GPU_CARD="$(ls /sys/class/drm/card*/device/gpu_busy_percent 2>/dev/null | head -1)"
+    fi
     if [ -n "$GPU_CARD" ]; then
         say "sampling $GPU_CARD"
-        ( while :; do cat "$GPU_CARD"; sleep 0.1; done > "$PROFILE/gpu.samples" ) &
+        ( while :; do cat "$GPU_CARD" 2>/dev/null; sleep 0.1; done > "$PROFILE/gpu.samples" ) &
         CLIENTS+=($!)
     else
         echo "   no gpu_busy_percent on this machine — skipping GPU sampling"

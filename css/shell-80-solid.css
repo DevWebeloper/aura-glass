@@ -1,0 +1,66 @@
+/* ---------- Solid mode ----------
+ * Installed only by --no-blur, and concatenated after every sheet above so it
+ * wins on equal specificity.
+ *
+ * Translucency and blur are one effect, not two. Every fill in the sheets above
+ * is translucent *because* something blurs what is behind it — take the blur
+ * away and the same rules read as a smeared window rather than as glass, which
+ * is worse than either. So this does not simply drop the blur: it swaps the
+ * whole ladder for opaque surfaces on the same geometry.
+ *
+ * Nothing about the shape language changes. Radii, spacing, the flat treatment,
+ * the accent, the Adwaita-native controls and the monochrome window buttons all
+ * come from the sheets above and are untouched here. What is lost is depth;
+ * what is kept is everything that does not cost a shader.
+ *
+ * The ground is rgb(22, 23, 27). That is not a new colour — it is what
+ * .notification-banner already used above for the one surface that had to read
+ * as near-solid over arbitrary content, so solid mode is the rest of the
+ * desktop agreeing with a decision this theme had already made.
+ */
+
+/* Menus, and the Quick Settings panel that shares their class. */
+.popup-menu-content,
+.popup-menu-content.quick-settings,
+.quick-settings,
+.datemenu-popover {
+  background-color: rgb(22, 23, 27);
+}
+
+/* Notifications, in the calendar popup and as arriving banners.
+ * .message sat at 0.35 over a blurred calendar popup; with no blur it needs a
+ * ground of its own, one step lighter than the popup it sits on so the card is
+ * still legible as a separate surface.
+ */
+.message {
+  background-color: rgb(35, 36, 41);
+}
+
+.message:hover,
+.message:focus {
+  background-color: rgb(44, 45, 51);
+}
+
+.notification-banner {
+  background-color: rgb(22, 23, 27);
+}
+
+/* Modal dialogs. */
+.modal-dialog,
+.end-session-dialog {
+  background-color: rgb(22, 23, 27);
+}
+
+/* The Quick Settings sliders and toggle tiles are white overlays at low alpha,
+ * which composite correctly over an opaque ground and are deliberately left
+ * alone — they are how the tiles stay legible as raised surfaces without a
+ * second colour to maintain.
+ */
+
+/* The OSD pill. Custom OSD's own alpha is a dconf key rather than CSS, and
+ * dconf/solid.ini raises it; this covers the shell's stock window behind it so
+ * a translucent edge cannot show at the corners.
+ */
+.osd-window {
+  background-color: rgb(22, 23, 27);
+}

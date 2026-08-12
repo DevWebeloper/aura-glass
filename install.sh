@@ -30,6 +30,7 @@ WANT_DEPS=1
 WANT_OSD=1
 WANT_PANEL_BLUR_FIX=1
 WANT_BMS_GIT=1
+WANT_BLUR=1
 WANT_POPUP_BLUR=1
 POPUP_BLUR_EXPLICIT=""
 WANT_ROUNDED_BLUR=1
@@ -87,6 +88,14 @@ ${C_BLD}tahoe-glass${C_OFF} — a macOS Tahoe glass desktop for GNOME 48-50
                       opaque. Remembered for later runs
     --no-app-transparency
                       keep app windows opaque
+    --no-blur         no blur anywhere, and opaque surfaces instead of
+                      translucent ones. Same geometry, radii, accent, icons and
+                      controls — only the depth is gone. Blur is the one part
+                      of this desktop that costs real GPU time, and the panel's
+                      is on continuously, so this is the mode for an Intel
+                      iGPU, an older discrete card, or a laptop on battery.
+                      Blur My Shell is not installed or enabled at all in this
+                      mode
     --no-rounded-blur skip gnome-rounded-blur. It is the only thing installed
                       outside \$HOME and it always asks first, --yes included.
                       Without it the popup blur is still rounded, it just
@@ -142,6 +151,12 @@ while [ $# -gt 0 ]; do
         --popup-blur)    WANT_POPUP_BLUR=1; WANT_BMS_GIT=1
                          POPUP_BLUR_EXPLICIT=1; shift ;;
         --no-popup-blur) WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1; shift ;;
+        --blur)          WANT_BLUR=1; shift ;;
+        # Turns the whole glass effect off rather than only the popups. Sets
+        # the popup and rounded-blur switches too so that --no-blur alone is
+        # enough and cannot be half-applied by an earlier flag.
+        --no-blur)       WANT_BLUR=0; WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1
+                         WANT_ROUNDED_BLUR=0; shift ;;
         --rounded-blur)      WANT_ROUNDED_BLUR=1; shift ;;
         --no-rounded-blur)   WANT_ROUNDED_BLUR=0; shift ;;
         --app-transparency)  APP_TRANSPARENCY="${2:-$TOKEN_APP_TRANSPARENCY_SHIPPED}"; shift 2 ;;
@@ -227,7 +242,12 @@ install_extensions
 # Before load_dconf, so apply_popup_blur sees the result. On a first install it
 # will still pick static: Blur My Shell only writes rounded-blur-found once the
 # shell has loaded this build, which is the next login.
-install_rounded_blur
+if [ "$WANT_BLUR" = 1 ]; then
+    install_rounded_blur
+else
+    step "Blur"
+    skip "no blur (--no-blur) — opaque surfaces, and Blur My Shell left out"
+fi
 if [ "$WANT_ICONS" = 1 ]; then install_icons; else step "Icons"; skip "left alone (--no-icons)"; fi
 if [ "$WANT_CURSORS" = 1 ]; then install_cursors; else step "Cursors"; skip "left alone (--no-cursors)"; fi
 load_dconf
