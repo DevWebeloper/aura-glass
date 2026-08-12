@@ -847,10 +847,22 @@ PY
 install_css() {
     step "Installing the CSS tweaks"
 
-    run install -Dm644 "$REPO_ROOT/css/shell-tweaks.css" "$CONF_DIR/shell-tweaks.css"
-    run install -Dm644 "$REPO_ROOT/css/gtk4-tweaks.css"  "$CONF_DIR/gtk4-tweaks.css"
+    # The shell and gtk4 sheets are split by concern, and the numeric prefix is
+    # the cascade order tahoe-glass-apply concatenates them in. Copy whatever
+    # css/ actually holds rather than naming each one twice.
+    local sheet
+    for sheet in "$REPO_ROOT"/css/shell-[0-9][0-9]-*.css \
+                 "$REPO_ROOT"/css/gtk4-[0-9][0-9]-*.css; do
+        run install -Dm644 "$sheet" "$CONF_DIR/$(basename "$sheet")"
+    done
     run install -Dm644 "$REPO_ROOT/css/gtk3-tweaks.css"  "$CONF_DIR/gtk3-tweaks.css"
     run install -Dm755 "$REPO_ROOT/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-apply"
+
+    # Upgrading from a version that shipped one sheet per target. Both names are
+    # gone from tahoe-glass-apply's lists, so leaving them would only be dead
+    # weight — but they were also the file the density block used to be appended
+    # to, and that copy would still be found by an older apply script.
+    run rm -f "$CONF_DIR/shell-tweaks.css" "$CONF_DIR/gtk4-tweaks.css"
 
     # Installed or removed rather than switched on at read time: tahoe-glass-apply
     # concatenates whatever it finds in $CONF_DIR and has no way to know which
@@ -864,11 +876,15 @@ install_css() {
     ok "css -> $CONF_DIR"
     ok "re-apply command -> ~/.local/bin/tahoe-glass-apply"
 
-    # Appended to the copy rather than kept in css/, so it is regenerated for
-    # whatever screen the installer is actually run on. Re-copying the file
-    # above is what makes this idempotent.
+    # Generated rather than kept in css/, so it is written for whatever screen
+    # the installer is actually run on. It gets its own sheet — prefix 90, so it
+    # lands after every hand-written shell sheet and overrides them — rather
+    # than being appended to one of them: an appended block would be silently
+    # doubled the next time this ran, and would be lost the moment the sheet it
+    # was appended to got recopied.
     local ppi extra
     ppi="$(measure_logical_ppi || true)"
+    run rm -f "$CONF_DIR/shell-90-density.css"
     if [ -z "$ppi" ]; then
         skip "could not measure display density — panel sizes left as tuned"
     else
@@ -878,7 +894,7 @@ install_css() {
         elif [ "${DRY_RUN:-0}" = 1 ]; then
             info "dry-run: scale panel icons for ${ppi} logical PPI"
         else
-            printf '%s\n' "$extra" >> "$CONF_DIR/shell-tweaks.css"
+            printf '%s\n' "$extra" > "$CONF_DIR/shell-90-density.css"
             ok "scaled panel icons for ${ppi} logical PPI (tuned at ${TUNED_PPI})"
         fi
     fi

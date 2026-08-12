@@ -1,0 +1,172 @@
+/* ---------- TG-1  Adwaita-native toggles in the shell ----------
+ * -st-accent-color resolves to whatever accent is set in Settings (currently
+ * pink), so the shell follows the same accent as GTK apps instead of the
+ * theme's hardcoded macOS green / #0091ff.
+ */
+.toggle-switch {
+  background-color: rgba(255, 255, 255, 0.18);
+}
+
+.toggle-switch:checked {
+  background-color: -st-accent-color;
+}
+
+.toggle-switch:hover {
+  background-color: rgba(255, 255, 255, 0.26);
+}
+
+.toggle-switch:checked:hover {
+  background-color: -st-accent-color;
+}
+
+/* Sliders move from the macOS all-white fill to an accent fill, which is what
+ * makes them read as Adwaita. The tightened padding from earlier is kept.
+ */
+.slider {
+  -barlevel-active-background-color: -st-accent-color;
+}
+
+/* Checked quick toggles follow the accent rather than the theme's fixed blue.
+ * The theme sets `background-color: white !important` here, so without a
+ * matching !important the fill stayed white while the label turned white too —
+ * an unreadable white-on-white tile.
+ */
+.quick-toggle:checked {
+  background-color: -st-accent-color !important;
+  color: -st-accent-fg-color;
+}
+
+.quick-toggle:checked:hover {
+  background-color: -st-accent-color !important;
+  color: -st-accent-fg-color;
+}
+
+.quick-toggle:checked:active {
+  background-color: -st-accent-color !important;
+  color: -st-accent-fg-color;
+}
+
+.quick-toggle-has-menu .quick-toggle:checked .quick-toggle-icon {
+  background-color: -st-accent-color;
+  color: -st-accent-fg-color;
+}
+
+/* ---------- Quick toggle icon discs ----------
+ * The glyph sat in a 3.4em disc, so it floated in the middle of a lot of
+ * empty colour. Smaller disc, larger glyph — the ring reads as an icon
+ * treatment rather than a badge. Both !important because the theme declares
+ * the disc size that way.
+ *
+ * The disc is also what sets the tile's height: nothing else in the row is
+ * taller, so `min-height` on it is the row height. At 2.6em the tiles were
+ * tall enough that "Bluetooth" and "Power Mode" ellipsised — the disc was
+ * spending width the label needed. 2em buys back both at once.
+ */
+.quick-toggle-has-menu .quick-toggle .quick-toggle-icon {
+  min-height: 2em !important;
+  min-width: 2em !important;
+}
+
+.quick-toggle .quick-toggle-icon {
+  icon-size: 18px;
+}
+
+/* The theme's `padding: 0 12px` on a tile that is already tight on width is
+ * 24px the label never gets. The arrow keeps its own hit area, so this only
+ * takes from the empty margins.
+ */
+.quick-toggle,
+.quick-toggle.button {
+  padding: 0 6px;
+}
+
+/* Labels ellipsise before they run out of room because the title reserves a
+ * width it does not need. Letting both lines shrink to their content is what
+ * lets "Bluetooth" and "Power Mode" render in full when the tile can hold them.
+ */
+.quick-toggle .quick-toggle-title,
+.quick-toggle .quick-toggle-subtitle {
+  min-width: 0;
+  padding-right: 2px;
+}
+
+.quick-toggle.power-item .quick-toggle-title {
+  padding-right: 2px;
+}
+
+.quick-settings .icon-button,
+.quick-settings .button {
+  padding: 4px;
+}
+
+.quick-settings .icon-button StIcon,
+.quick-settings .button StIcon {
+  icon-size: 22px;
+}
+
+/* ---------- Menu-toggle tile metrics ----------
+ * The theme fixes these tiles at min-height 3.4em and max-width 13em, so the
+ * height is set here and nowhere else — shrinking the icon disc moved it a
+ * little only because the disc had grown taller than the row.
+ *
+ * The width is the reason labels ellipsise. The tile cannot grow past 13em, and
+ * the arrow spends 2.4em plus a 1em margin on each side — roughly a third of
+ * the tile before the label is given anything, which is why "Bluetooth" cut to
+ * "Blueto...". The arrow keeps its full 2.4em hit area; only the dead margin
+ * around it is reclaimed.
+ */
+.quick-toggle-has-menu {
+  min-height: 2.6em;
+}
+
+.quick-toggle-has-menu .quick-toggle-menu-button {
+  margin: 0.25em;
+}
+
+/* ---------- Menu-toggle tiles (Wi-Fi, Bluetooth, Wired, Power…) ----------
+ * These tiles are two widgets in one pill: .quick-toggle on the left and a
+ * separate .quick-toggle-menu-button holding the arrow. The theme keeps the
+ * inner toggle transparent so the outer pill paints one continuous background
+ * underneath both. Filling .quick-toggle:checked with the accent broke that —
+ * the accent covered only the left widget and stopped in a hard edge before
+ * the arrow.
+ *
+ * The outer pill has its own :checked state, so the fill goes there instead:
+ * the whole capsule takes the accent, arrow included, and there is no seam.
+ * Plain toggles with no menu (Night Light, Do Not Disturb, Airplane Mode) are
+ * a single widget and keep the fill on .quick-toggle:checked.
+ */
+.quick-toggle-has-menu:checked,
+.quick-toggle-has-menu:checked:hover,
+.quick-toggle-has-menu:checked:active {
+  background-color: -st-accent-color !important;
+}
+
+.quick-toggle-has-menu .quick-toggle:checked,
+.quick-toggle-has-menu .quick-toggle:checked:hover,
+.quick-toggle-has-menu .quick-toggle:checked:active {
+  background: none !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  color: -st-accent-fg-color;
+}
+
+/* On an accent pill the disc reads as a translucent well rather than a second
+ * block of the same colour.
+ */
+.quick-toggle-has-menu .quick-toggle:checked .quick-toggle-icon {
+  background-color: rgba(255, 255, 255, 0.28);
+  color: -st-accent-fg-color;
+}
+
+.quick-toggle-has-menu:checked .quick-toggle-menu-button {
+  color: -st-accent-fg-color;
+}
+
+.quick-toggle-has-menu:checked .quick-toggle-menu-button:hover {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+.quick-toggle-has-menu:checked .quick-toggle-menu-button:active {
+  background-color: rgba(255, 255, 255, 0.30);
+}

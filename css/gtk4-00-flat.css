@@ -1,0 +1,45 @@
+/* tahoe-tweaks:gtk4 — appended to ~/.config/gtk-4.0/gtk.css and gtk-dark.css
+ *
+ * The theme styled `entry` with only a faint gradient and no metrics, so
+ * fields inherited libadwaita's compact height and read as part of the
+ * surface behind them. These give a text field its own material and its own
+ * height, so it's obvious where you can type.
+ *
+ * Matches the shell ladder in shell-tweaks.css:
+ *   field fill ....... rgba(255, 255, 255, 0.07)
+ *   field hover ...... rgba(255, 255, 255, 0.10)
+ *
+ * A field is told apart by its fill, not by an edge — same rule as the shell
+ * surfaces, and for the same reason. `border` stays at `1px solid transparent`
+ * so the metrics hold, and the only edge any field ever draws is the accent
+ * focus ring, which is the one edge that carries information.
+ */
+
+/* ---------- Flat, everywhere ----------
+ * This desktop is 2D. The blur behind a surface is the only depth it gets;
+ * nothing is lifted off anything else.
+ *
+ * tahoe-glass-apply has already rewritten the theme's own shadow and gradient
+ * values to `none` before this sheet is read, so this is a safety net rather
+ * than the mechanism — it catches anything written in a form that pass does not
+ * match, and any shadow arriving from an app's own CSS rather than the theme.
+ * Unlike St, GTK4 has a universal selector, so one rule covers it.
+ *
+ * The accent focus ring is re-asserted where it belongs, with !important so it
+ * survives this. It is a 0-offset, 0-blur ring, not a shadow: it says where the
+ * keyboard is, which is information rather than decoration.
+ */
+* {
+  box-shadow: none !important;
+}
+
+/* libadwaita draws the sidebar's inward shadow and hairline from two named
+ * colours rather than from any rule, so they cannot be turned off by
+ * overriding a selector — the names have to be redefined. Appended after the
+ * theme's own definitions, so these win. Both go fully transparent: the
+ * sidebar is told apart by its fill, like every other surface here.
+ */
+@define-color sidebar_shade_color transparent;
+@define-color secondary_sidebar_shade_color transparent;
+@define-color sidebar_border_color transparent;
+@define-color secondary_sidebar_border_color transparent;

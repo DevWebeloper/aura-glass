@@ -1,0 +1,102 @@
+/* ---------- WC-1  Monochrome Minimal window controls ----------
+ * The theme painted coloured discs (#ff4245 / #ffd600 / #30d158) with a heavy
+ * bevel and hid the glyph with `color: transparent`. Selectors below mirror
+ * the theme's own specificity so that appending is enough to win.
+ */
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.close,
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.minimize,
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.maximize,
+headerbar button.titlebutton.close,
+headerbar button.titlebutton.minimize,
+headerbar button.titlebutton.maximize,
+.csd headerbar button.titlebutton.close,
+.csd headerbar button.titlebutton.minimize,
+.csd headerbar button.titlebutton.maximize,
+headerbar.default-decoration button.titlebutton.close,
+headerbar.default-decoration button.titlebutton.minimize,
+headerbar.default-decoration button.titlebutton.maximize,
+.titlebar button.titlebutton.close,
+.titlebar button.titlebutton.minimize,
+.titlebar button.titlebutton.maximize,
+.titlebar.default-decoration button.titlebutton.close,
+.titlebar.default-decoration button.titlebutton.minimize,
+.titlebar.default-decoration button.titlebutton.maximize {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  margin: 0 2px;
+  border-radius: 9999px;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  border: none;
+  color: alpha(currentColor, 0.6);
+}
+
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.close:hover,
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.minimize:hover,
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.maximize:hover,
+headerbar button.titlebutton.close:hover,
+headerbar button.titlebutton.minimize:hover,
+headerbar button.titlebutton.maximize:hover,
+.csd headerbar button.titlebutton.close:hover,
+.csd headerbar button.titlebutton.minimize:hover,
+.csd headerbar button.titlebutton.maximize:hover,
+.titlebar button.titlebutton.close:hover,
+.titlebar button.titlebutton.minimize:hover,
+.titlebar button.titlebutton.maximize:hover {
+  background-color: rgba(255, 255, 255, 0.14);
+  background-image: none;
+  box-shadow: none;
+  color: #ffffff;
+}
+
+/* Close is the only control that earns colour, and only under the pointer. */
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.close:hover,
+headerbar button.titlebutton.close:hover,
+.csd headerbar button.titlebutton.close:hover,
+.titlebar button.titlebutton.close:hover {
+  background-color: #ff5f57;
+  color: #ffffff;
+}
+
+/* The theme paints the macOS traffic lights on the image *inside* each button
+ * — `windowcontrols > button.close > image { background-color: #fd5f51 }` and
+ * friends — and blanks the button itself with `color: transparent`. Styling
+ * only the button, as everything above does, therefore changed nothing on
+ * GTK4: the coloured circles are a layer further in. GTK3 has no such child,
+ * which is why the rules above did land there and the two toolkits disagreed.
+ */
+headerbar button.titlebutton > image,
+.titlebar button.titlebutton > image,
+windowcontrols > button > image {
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* `color: transparent` on the button is what hides the symbolic glyph, so the
+ * glyph has to be given back before the monochrome control has anything to
+ * show. Specificity beats the theme's `windowcontrols > button.close`.
+ */
+headerbar windowcontrols > button.titlebutton,
+.titlebar windowcontrols > button.titlebutton,
+windowcontrols > button.titlebutton.close,
+windowcontrols > button.titlebutton.minimize,
+windowcontrols > button.titlebutton.maximize {
+  color: alpha(currentColor, 0.6);
+}
+
+headerbar windowcontrols > button.titlebutton:hover,
+.titlebar windowcontrols > button.titlebutton:hover,
+windowcontrols > button.titlebutton.close:hover,
+windowcontrols > button.titlebutton.minimize:hover,
+windowcontrols > button.titlebutton.maximize:hover {
+  color: #ffffff;
+}
+
+button.titlebutton:backdrop {
+  opacity: 0.45;
+}

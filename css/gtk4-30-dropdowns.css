@@ -1,0 +1,41 @@
+/* ---------- Dropdowns / combo rows ----------
+ * Not styled by the theme at all, so a select rendered as bare text with no
+ * affordance. Given the same recessed material as a text field, since that is
+ * what it is — a value you pick rather than an action you fire.
+ * Declared after the button block so the squarer radius wins.
+ */
+dropdown > button,
+combobox > box > button {
+  min-height: 34px;
+  padding: 4px 10px 4px 12px;
+  border-radius: 10px;
+  background-image: none;
+  background-color: rgba(255, 255, 255, 0.07);
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+
+dropdown > button:hover,
+combobox > box > button:hover {
+  background-color: rgba(255, 255, 255, 0.10);
+  border-color: transparent;
+}
+
+dropdown > button:focus-within,
+combobox > box > button:focus-within {
+  border-color: alpha(@accent_bg_color, 0.9);
+  box-shadow: 0 0 0 2px alpha(@accent_bg_color, 0.30) !important;
+}
+
+/* Keep the chevron visible — it is the only cue that a row opens a list. */
+dropdown > button > arrow,
+row.combo > box > image.dropdown-arrow,
+row.expander > box > image.expander-row-arrow {
+  opacity: 0.85;
+  min-width: 16px;
+  min-height: 16px;
+}
+
+row.combo:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+}

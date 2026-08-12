@@ -1,0 +1,86 @@
+/* ---------- Popup menus ----------
+ * Right-click menus and top-bar menus (accessibility, power, tray icons) were
+ * rgba(0, 0, 0, 0.72) — near-solid black — with a directional inset highlight
+ * that only lit the top-left corner. Both are gone: the fill is glass, and the
+ * blur behind it is the whole separation.
+ *
+ * No drop shadow: these menus are translucent and sit over a blurred panel, so
+ * a shadow does not read as depth, it reads as a dark rectangle stamped around
+ * a rounded menu — the corners are exactly where it shows. Quick Settings has
+ * been shadowless since it got its own block below, which is why it looked
+ * right while the tray menus next to it did not.
+ */
+.popup-menu-content {
+  background-color: rgba(0, 0, 0, 0.42);
+  border: 1px solid transparent;
+  border-radius: 26px;
+  padding: 6px;
+  box-shadow: none;
+}
+
+/* The date menu — the calendar and notification list under the clock — is a
+ * .popup-menu-content, and the theme singles it out at `border-radius: 22px
+ * !important` so it paints a tighter corner than every other menu. The blur
+ * behind it then shows its own corner outside the fill's, which reads as two
+ * stacked surfaces rather than one menu.
+ *
+ * The value is 33 and not 26, which is not guessable from the name. Blur My
+ * Shell groups this surface with Quick Settings, not with menus —
+ * components/popup/targets.js:
+ *
+ *     key: 'quick-settings-corner-radius',
+ *     style_classes: ['quick-settings', 'quick-toggle-menu', 'datemenu-popover'],
+ *
+ * so it is blurred at quick-settings-corner-radius, while every other
+ * .popup-menu-content is blurred at menu-corner-radius. Setting this to 26 to
+ * match the menus left it still mismatched, just less obviously.
+ *
+ * A painted radius must always equal the blur radius behind it. !important is
+ * required to answer the theme's own, and this tracks
+ * blur-my-shell/popup/quick-settings-corner-radius in dconf/core.ini.
+ */
+.datemenu-popover {
+  border-radius: 33px !important;
+}
+
+/* ---------- Quick Settings panel ----------
+ * The panel shares .popup-menu-content with every other menu, so it needs its
+ * own treatment afterwards. Dropping the menu.svg border-image is deliberate:
+ * a 9-slice image paints *instead of* the background, so the glass fill below
+ * only reaches the surface once it is gone.
+ */
+.popup-menu-content.quick-settings,
+.quick-settings {
+  background: none;
+  background-color: rgba(0, 0, 0, 0.46);
+  border-image: none;
+  border: 1px solid transparent;
+  border-radius: 33px !important;
+  box-shadow: none;
+}
+
+.popup-menu .popup-menu-item:focus,
+.popup-menu .popup-menu-item:hover,
+.popup-menu .popup-menu-item:selected {
+  background-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+.popup-menu .popup-menu-item:active,
+.popup-menu .popup-menu-item.selected:active {
+  background-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+/* Submenus sit on top of an already translucent parent, so they only need a
+ * light lift rather than a second full layer of tint.
+ */
+.popup-sub-menu {
+  background-color: rgba(255, 255, 255, 0.06);
+  border: none;
+  box-shadow: none;
+}
+
+/* Keep the separators from reading as hard black lines on a glass surface. */
+.popup-separator-menu-item .popup-separator-menu-item-separator,
+.popup-menu .popup-separator-menu-item .popup-separator-menu-item-separator {
+  background-color: rgba(255, 255, 255, 0.12);
+}

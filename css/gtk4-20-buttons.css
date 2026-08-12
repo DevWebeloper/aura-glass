@@ -1,0 +1,72 @@
+/* ---------- Buttons ----------
+ * The theme set only `button { border-radius: 9999px }`, so buttons in action
+ * bars fell back to libadwaita's flat treatment and read as plain text labels.
+ * Anything carrying a label now gets a real surface. Icon-only buttons and
+ * window controls are deliberately left alone so toolbars stay quiet.
+ */
+button.text-button,
+button.flat.text-button,
+button.pill {
+  min-height: 32px;
+  padding: 4px 16px;
+  border-radius: 9999px;
+  background-image: none;
+  background-color: rgba(255, 255, 255, 0.10);
+  border: 1px solid transparent;
+  box-shadow: none;
+  color: @window_fg_color;
+}
+
+button.text-button:hover,
+button.flat.text-button:hover,
+button.pill:hover {
+  background-color: rgba(255, 255, 255, 0.16);
+  border-color: transparent;
+}
+
+button.text-button:active,
+button.flat.text-button:active,
+button.pill:active,
+button.text-button:checked,
+button.flat.text-button:checked {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+button.text-button:disabled,
+button.flat.text-button:disabled,
+button.pill:disabled {
+  opacity: 0.5;
+}
+
+/* The primary action stays filled with the accent so it reads as primary. */
+button.suggested-action,
+button.suggested-action.text-button,
+button.suggested-action.flat.text-button,
+button.suggested-action.pill {
+  background-color: @accent_bg_color;
+  background-image: none;
+  color: @accent_fg_color;
+  border-color: transparent;
+}
+
+button.suggested-action:hover,
+button.suggested-action.text-button:hover {
+  background-color: shade(@accent_bg_color, 1.12);
+}
+
+button.destructive-action,
+button.destructive-action.text-button,
+button.destructive-action.flat.text-button {
+  background-color: @destructive_bg_color;
+  background-image: none;
+  color: @destructive_fg_color;
+  border-color: transparent;
+}
+
+/* Window controls must not pick up the fill above. */
+button.titlebutton,
+headerbar button.titlebutton,
+.titlebar button.titlebutton {
+  background-color: transparent;
+  border: none;
+}

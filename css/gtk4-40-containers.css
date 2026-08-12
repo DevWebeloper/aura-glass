@@ -1,0 +1,36 @@
+/* ---------- Grouping containers ----------
+ * Boxed lists / cards were transparent with a barely-there gradient, so the
+ * box holding a set of rows was invisible and its rows floated loose on the
+ * window. One step up the ladder is what now gives the group its shape.
+ * Row separators were rgba(0, 0, 0, 0.12) — a dark line on a dark surface.
+ */
+list.boxed-list,
+list.content,
+list.background,
+.card,
+scrolledwindow.card,
+preferencesgroup > box > list {
+  background-image: none;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid transparent;
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+list.boxed-list row,
+list.content row {
+  background-color: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+list.boxed-list row:last-child,
+list.content row:last-child,
+list.boxed-list row:only-child,
+list.content row:only-child {
+  border-bottom: none;
+}
+
+list.boxed-list row:hover,
+list.content row:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}

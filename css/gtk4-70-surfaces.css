@@ -1,0 +1,98 @@
+/* ---------- Nautilus floating status bar ----------
+ * The "N items selected" badge that appears over the file list on hover. The
+ * theme gives it its own treatment — rgba(0, 0, 0, 0.6) plus a pair of white
+ * inset highlights (`inset 2px 2px 2px -2.8px rgba(255,255,255,0.8)` and its
+ * mirror) — so it carried the lit edge every other surface has lost, and read
+ * as a different material from the rest of the desktop.
+ *
+ * It floats over file content rather than over a blurred surface, so it takes
+ * the near-solid ground `.notification-banner` uses in the shell for the same
+ * reason: whatever is behind it is arbitrary, and legibility wins.
+ */
+.floating-bar,
+box.floating-bar,
+box.bottom.floating-bar,
+.floating-bar.bottom {
+  background-color: rgba(22, 23, 27, 0.86);
+  background-image: none;
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  box-shadow: none !important;
+  color: #ffffff;
+  padding: 4px 14px;
+  margin: 6px;
+}
+
+/* ---------- Popover menus ----------
+ * The dropdown from a menubutton — the "Kill App / Halt App" menu in
+ * Resources, and every app menu like it. The theme gave it rgba(0, 0, 0, 0.92)
+ * with the white gradient and inset highlights that the blocks above now strip,
+ * so what was left was a fill and a radius on no particular ladder, and menu
+ * items with no hover treatment of their own.
+ *
+ * Near-solid rather than the glass used for shell menus, and deliberately so:
+ * Blur My Shell blurs shell surfaces only, never an app's own popovers, so a
+ * translucent fill here would show the app underneath rather than a blur —
+ * muddy, not glassy. The tone matches the shell's material; the opacity is what
+ * the absence of blur forces.
+ *
+ * Items take the same 0.16 / 0.22 hover and active steps as the shell.
+ */
+popover > contents,
+popover.menu > contents {
+  background-color: rgba(22, 23, 27, 0.96);
+  background-image: none;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  box-shadow: none;
+  padding: 6px;
+}
+
+popover > arrow {
+  background-color: rgba(22, 23, 27, 0.96);
+  background-image: none;
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+
+popover modelbutton,
+popover.menu modelbutton {
+  min-height: 30px;
+  border-radius: 10px;
+  padding: 2px 10px;
+}
+
+popover modelbutton:hover,
+popover.menu modelbutton:hover {
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+popover modelbutton:active,
+popover.menu modelbutton:active {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+/* ---------- Tooltips ----------
+ * `window > tooltip.background` carried the same mirrored white inset pair as
+ * the floating bar, so the little "Current Folder Menu" label had a lit edge
+ * while everything around it had lost one. Same material as popover menus:
+ * near-solid, because a tooltip floats over app content that is never blurred.
+ */
+tooltip,
+tooltip.background,
+window > tooltip.background {
+  background-color: rgba(22, 23, 27, 0.96);
+  background-image: none;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  box-shadow: none !important;
+  color: #ffffff;
+  padding: 4px 10px;
+}
+
+tooltip > box,
+tooltip label {
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+}

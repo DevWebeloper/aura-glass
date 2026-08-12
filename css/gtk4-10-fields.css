@@ -1,0 +1,94 @@
+entry,
+entry.flat,
+spinbutton:not(.vertical) {
+  min-height: 34px;
+  padding: 4px 12px;
+  border-radius: 10px;
+  background-image: none;
+  background-color: rgba(255, 255, 255, 0.07);
+  border: 1px solid transparent;
+  box-shadow: none;
+  caret-color: @accent_bg_color;
+}
+
+entry:hover,
+spinbutton:not(.vertical):hover {
+  background-color: rgba(255, 255, 255, 0.10);
+  border-color: transparent;
+}
+
+/* focus-within rather than :focus — the focus lands on the inner text node. */
+entry:focus-within,
+spinbutton:not(.vertical):focus-within {
+  background-color: rgba(255, 255, 255, 0.10);
+  border-color: alpha(@accent_bg_color, 0.9);
+  box-shadow: 0 0 0 2px alpha(@accent_bg_color, 0.30) !important;
+}
+
+entry:disabled,
+spinbutton:not(.vertical):disabled {
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+entry > text > placeholder {
+  opacity: 0.5;
+}
+
+/* Search fields keep the capsule shape they have on macOS. */
+entry.search {
+  border-radius: 9999px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+/* So do the fields that sit in a header bar — Nautilus' path bar above all.
+ * The theme paints those as a capsule, so leaving them at the 10px above drew
+ * the focus ring on a tighter radius than the fill and its corners cut across
+ * the rounded ends. The ring follows border-radius, so the two have to agree.
+ */
+headerbar entry,
+headerbar entry.flat,
+.nautilus-path-bar,
+entry.nautilus-path-bar {
+  min-height: 30px;
+  border-radius: 9999px;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+/* The button that closes path-bar edit mode sits immediately after the entry.
+ * The theme leaves it at the default rounded-rect, so next to a capsule field
+ * it read as a lozenge rather than a matching control. Equal min-width and
+ * min-height are what actually make a circle — border-radius alone only
+ * rounds whatever rectangle the button already is.
+ *
+ * Matched to the entry's 30px so the two line up, with the gap on the button
+ * rather than the entry, so the field's own width is not affected.
+ */
+headerbar entry + button,
+.nautilus-path-bar + button,
+entry.nautilus-path-bar + button {
+  min-width: 30px;
+  min-height: 30px;
+  border-radius: 9999px;
+  padding: 0;
+  margin-left: 5px;
+}
+
+/* Error / warning states keep the same shape, only the edge changes colour. */
+entry.error {
+  border-color: alpha(@error_color, 0.9);
+}
+
+entry.error:focus-within {
+  box-shadow: 0 0 0 2px alpha(@error_color, 0.30) !important;
+}
+
+entry.warning {
+  border-color: alpha(@warning_color, 0.9);
+}
+
+entry.warning:focus-within {
+  box-shadow: 0 0 0 2px alpha(@warning_color, 0.30) !important;
+}

@@ -1,0 +1,55 @@
+/* tahoe-tweaks:shell — appended to Tahoe-Dark/gnome-shell/gnome-shell.css
+ *
+ * Shared translucency ladder, so every shell surface reads as the same
+ * material with only a shade of difference between levels:
+ *
+ *   floating surface (menu / dialog) .......... rgba(0, 0, 0, 0.42)
+ *   quick settings, being the largest of them . rgba(0, 0, 0, 0.46)
+ *   control resting on a surface .............. rgba(255, 255, 255, 0.10)
+ *   control hover ............................. rgba(255, 255, 255, 0.16)
+ *   control active ............................ rgba(255, 255, 255, 0.22)
+ *
+ * Surfaces carry no edge at all: no hairline, no drop shadow, and above all
+ * no inset highlight. The blur behind a surface is what separates it from
+ * what it covers, so an edge on top of that only reads as a seam — which is
+ * exactly how the old 0.14 hairline and the theme's `inset 0 0 4px white`
+ * glow looked once there was a real blur underneath them. `border` is kept
+ * at `1px solid transparent` rather than dropped so the box metrics do not
+ * shift if an edge is ever wanted back.
+ *
+ * Two surfaces keep a fill off this ladder, both on purpose: `.message` sits
+ * *on* the already-translucent calendar popup and so takes a light lift
+ * instead of a dark one, and `.notification-banner` floats over arbitrary
+ * content and so needs a near-solid ground to stay readable.
+ */
+
+/* ---------- Flat, everywhere ----------
+ * This desktop is 2D. The blur behind a surface is the only depth it gets;
+ * nothing is lifted off anything else, and nothing glows.
+ *
+ * The heavy lifting is not done here. tahoe-glass-apply rewrites the theme's
+ * own shadow and gradient values to `none` where they are declared, so by the
+ * time this sheet is read there is nothing left to out-rank. That replaced an
+ * earlier approach that appended counter-rules and had to win a cascade fight
+ * against a sheet marking 37 of its own shadows !important — unwinnable with a
+ * blanket rule, because between two !important declarations specificity still
+ * decides and `.a .b` beats `StWidget`.
+ *
+ * This stays as a cheap safety net for anything that pass misses: a shadow
+ * written in a form the rewrite does not match, or one arriving from outside
+ * the theme file. St has no universal selector, so it lists the base widget
+ * types instead. The !important now wins on its own, since after flattening
+ * nothing in the theme marks these properties important.
+ */
+StWidget,
+StBin,
+StButton,
+StEntry,
+StLabel,
+StIcon,
+StBoxLayout,
+StScrollView,
+StDrawingArea {
+  box-shadow: none !important;
+  text-shadow: none !important;
+}

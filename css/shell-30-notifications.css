@@ -1,0 +1,109 @@
+/* ---------- Notifications ----------
+ * A dark translucent fill rather than the light lift this used to carry. The
+ * light version was chosen on the theory that a dark fill would read as a hole
+ * punched through the calendar popup behind it; with a real blur underneath it
+ * reads as glass instead, and the light lift was the thing that looked grey and
+ * flat. Text stays at full contrast because the surface is still translucent.
+ *
+ * Hover and active step *up* in opacity rather than lightening, so the whole
+ * ladder moves in one direction.
+ */
+.message {
+  background-color: rgba(0, 0, 0, 0.35);
+  border: 1px solid transparent;
+  border-radius: 20px;
+  box-shadow: none;
+  color: #ffffff;
+}
+
+.message:hover,
+.message:focus {
+  background-color: rgba(0, 0, 0, 0.45);
+}
+
+.message:active {
+  background-color: rgba(0, 0, 0, 0.55);
+}
+
+/* Stacked notifications step down the same ladder instead of switching to
+ * flat greys (#404040 / #363636), which broke the material.
+ */
+.message:second-in-stack {
+  background-color: rgba(0, 0, 0, 0.30);
+  box-shadow: none;
+}
+
+.message:lower-in-stack {
+  background-color: rgba(0, 0, 0, 0.25);
+  box-shadow: none;
+  border-color: transparent;
+}
+
+/* Header was rgba(222, 222, 222, 0.35) — barely legible once the backdrop is
+ * translucent.
+ */
+.message .message-header {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.message .message-header .message-header-content .message-source-title {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.message .message-box .message-content {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.message .message-box .message-content .message-title {
+  color: #ffffff;
+}
+
+/* The arriving banner floats over whatever is on screen — a wallpaper, a
+ * bright window, video — so it carries a near-solid ground instead of the
+ * light lift used inside the calendar popup. No drop shadow, matching the
+ * rest of the desktop.
+ */
+.notification-banner {
+  background-color: rgba(22, 23, 27, 0.86);
+  border: 1px solid transparent;
+  border-radius: 20px;
+  box-shadow: none;
+  color: #ffffff;
+}
+
+/* The app name is the one piece of identity in a notification, so it takes the
+ * accent. Everything else stays neutral so the message itself still leads.
+ */
+.notification-banner .message-header .message-header-content .message-source-title,
+.message .message-header .message-header-content .message-source-title {
+  color: -st-accent-color;
+}
+
+.notification-banner .message-close-button,
+.message .message-close-button {
+  box-shadow: none !important;
+  background-color: rgba(255, 255, 255, 0.10);
+  border-radius: 9999px;
+}
+
+.notification-banner .message-close-button:hover,
+.message .message-close-button:hover {
+  background-color: -st-accent-color;
+  color: -st-accent-fg-color;
+}
+
+/* Action buttons under a notification follow the same control ladder as the
+ * rest of the shell rather than being flat text.
+ */
+.notification-buttons-bin .button,
+.message .button {
+  background-color: rgba(255, 255, 255, 0.10);
+  border: none;
+  border-radius: 9999px;
+  color: #ffffff;
+}
+
+.notification-buttons-bin .button:hover,
+.message .button:hover {
+  background-color: rgba(255, 255, 255, 0.16);
+}

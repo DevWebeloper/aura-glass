@@ -189,11 +189,46 @@ print("applied ->", target, "(%d snippet%s)" % (len(snippets), "" if len(snippet
 PY
 }
 
+# Snippet order is the cascade. These sheets override each other on equal
+# specificity in several places by design — the dropdown radius is meant to beat
+# the button radius it follows, the accent slider fill is meant to beat the
+# white one, and the second .quick-settings .icon-button block is meant to beat
+# the first — so the numeric prefixes are load-bearing, not decoration. Keep
+# each list sorted by prefix, and put anything new at the position its cascade
+# needs rather than at the end.
+#
+# A file that is absent drops out silently (see apply), which is how the two
+# optional sheets plug in and out. The monolithic shell-tweaks.css and
+# gtk4-tweaks.css these replaced are deliberately not listed: install_css
+# deletes them from $CONF_DIR on upgrade, because a $CONF_DIR holding both the
+# monolith and its parts would apply every rule twice.
+SHELL_SNIPPETS=(
+    "$DIR/shell-00-flat.css"
+    "$DIR/shell-10-quick-settings.css"
+    "$DIR/shell-20-popup-menus.css"
+    "$DIR/shell-30-notifications.css"
+    "$DIR/shell-40-quick-toggles.css"
+    "$DIR/shell-50-dialogs.css"
+    "$DIR/shell-90-density.css"
+    "$DIR/shell-popup-blur.css"
+)
+GTK4_SNIPPETS=(
+    "$DIR/gtk4-00-flat.css"
+    "$DIR/gtk4-10-fields.css"
+    "$DIR/gtk4-20-buttons.css"
+    "$DIR/gtk4-30-dropdowns.css"
+    "$DIR/gtk4-40-containers.css"
+    "$DIR/gtk4-50-window-controls.css"
+    "$DIR/gtk4-60-controls.css"
+    "$DIR/gtk4-70-surfaces.css"
+    "$DIR/gtk4-transparency.css"
+)
+
 # The three theme-generated targets are flattened. Re-running is safe: a value
 # already rewritten to `none` is left alone, so the second run reports zero.
-apply "$SHELL_CSS"     1 "$DIR/shell-tweaks.css" "$DIR/shell-popup-blur.css"
-apply "$GTK4_CSS"      1 "$DIR/gtk4-tweaks.css"  "$DIR/gtk4-transparency.css"
-apply "$GTK4_DARK_CSS" 1 "$DIR/gtk4-tweaks.css"  "$DIR/gtk4-transparency.css"
+apply "$SHELL_CSS"     1 "${SHELL_SNIPPETS[@]}"
+apply "$GTK4_CSS"      1 "${GTK4_SNIPPETS[@]}"
+apply "$GTK4_DARK_CSS" 1 "${GTK4_SNIPPETS[@]}"
 # GTK3's half of the theme ships as a gresource, so there is nothing here to
 # flatten — gtk3-tweaks.css resets it with `*` instead, which works because user
 # CSS loads at GTK_STYLE_PROVIDER_PRIORITY_USER, above the theme. Flattening is

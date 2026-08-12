@@ -1,0 +1,54 @@
+/* ---------- Modal dialogs (log out, restart, power off) ----------
+ * Blur My Shell already blurs behind these — style-dialogs is on, and
+ * dialog-corner-radius agrees with the 20px below. None of it was visible,
+ * because nothing here styled .modal-dialog and stock GNOME's opaque fill
+ * therefore sat on top of the blur. The fill is the same material as
+ * .popup-menu-content so a dialog reads as the same glass as every menu.
+ */
+.modal-dialog,
+.end-session-dialog {
+  background-color: rgba(0, 0, 0, 0.42);
+  border: 1px solid transparent;
+  border-radius: 20px;
+  box-shadow: none;
+}
+
+.modal-dialog .modal-dialog-content-box,
+.end-session-dialog .modal-dialog-content-box {
+  background: none;
+  background-color: transparent;
+}
+
+/* Dialog buttons follow the same control ladder as the rest of the desktop.
+ * The default button was stock GNOME blue, which ignored the accent the whole
+ * desktop is built around — -st-accent-color tracks Settings → Appearance.
+ */
+.modal-dialog .modal-dialog-button,
+.modal-dialog .modal-dialog-linked-button,
+.modal-dialog .button {
+  background-color: rgba(255, 255, 255, 0.10);
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  box-shadow: none;
+  color: #ffffff;
+}
+
+.modal-dialog .modal-dialog-button:hover,
+.modal-dialog .modal-dialog-linked-button:hover,
+.modal-dialog .button:hover {
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+.modal-dialog .modal-dialog-button:default,
+.modal-dialog .modal-dialog-linked-button:default,
+.modal-dialog .button:default {
+  background-color: -st-accent-color;
+  color: -st-accent-fg-color;
+}
+
+.modal-dialog .modal-dialog-button:default:hover,
+.modal-dialog .modal-dialog-linked-button:default:hover,
+.modal-dialog .button:default:hover {
+  background-color: -st-accent-color;
+  box-shadow: inset 0 0 0 99px rgba(255, 255, 255, 0.12) !important;
+}

@@ -1,0 +1,67 @@
+/* ---------- Quick Settings sliders (brightness / volume) ----------
+ * Upstream used padding: 1.636em 1.5em 1.636em 0.818em, which is what made
+ * these rows so tall. Tightened to a macOS-style capsule.
+ */
+.quick-slider {
+  padding: 0.45em 1em 0.45em 0.5em;
+  border-radius: 26px;
+  background-color: rgba(255, 255, 255, 0.10);
+  box-shadow: none !important;
+}
+
+.quick-slider > StBoxLayout {
+  spacing: 8px;
+}
+
+.quick-slider .icon-button,
+.quick-slider .message .message-header .message-expand-button,
+.quick-slider .message .message-header .message-close-button {
+  padding: 0.35em;
+  border-radius: 9999px;
+}
+
+.quick-slider .icon-button:hover {
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+.quick-slider .icon-button:active {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+.quick-slider .slider-bin {
+  min-height: 18px;
+  padding: 0 10px 0 4px;
+}
+
+/* Round white knob on a thin track, the way macOS draws it. `height` is the
+ * hit area, `-barlevel-height` the visible track, so the knob can overhang.
+ */
+.slider {
+  height: 18px;
+  -barlevel-height: 8px;
+  -slider-handle-radius: 8px;
+  -barlevel-background-color: rgba(255, 255, 255, 0.18);
+  -barlevel-active-background-color: #ffffff;
+}
+
+/* ---------- Quick Settings icons ----------
+ * Upstream drew 16px glyphs inside 7px of padding, so the icons floated in
+ * oversized targets. Bigger glyph, tighter box — the target size barely moves.
+ */
+.quick-settings .icon-button,
+.quick-settings .button {
+  padding: 5px;
+}
+
+.quick-settings .icon-button StIcon,
+.quick-settings .button StIcon {
+  icon-size: 20px;
+}
+
+.quick-toggle .quick-toggle-icon {
+  icon-size: 20px;
+}
+
+.quick-slider .icon-button StIcon {
+  icon-size: 18px;
+}

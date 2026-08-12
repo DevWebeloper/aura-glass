@@ -1,0 +1,83 @@
+/* ---------- TG-1  Adwaita-native switches, checks, radios, sliders ----------
+ * Colour comes from @accent_bg_color, so these follow whatever accent is set
+ * in Settings rather than being pinned to a hardcoded macOS green.
+ */
+switch {
+  background-color: rgba(255, 255, 255, 0.18);
+  background-image: none;
+  border: none;
+  box-shadow: none;
+}
+
+switch:checked {
+  background-color: @accent_bg_color;
+  background-image: none;
+}
+
+switch:disabled {
+  opacity: 0.5;
+}
+
+switch > slider,
+scale.horizontal > trough > slider,
+scale.marks-after > trough > slider {
+  background-color: #ffffff;
+  background-image: none;
+  min-width: 20px;
+  min-height: 20px;
+  border: none;
+  box-shadow: none;
+}
+
+/* The theme scaled the knob to 1.8x on press, which is what made these read as
+ * a novelty rather than a control.
+ */
+switch > slider:active,
+scale.horizontal > trough > slider:active,
+scale.marks-after > trough > slider:active {
+  transform: none;
+  background-color: #ffffff;
+  box-shadow: none;
+}
+
+check {
+  border-radius: 6px;
+  background-color: rgba(255, 255, 255, 0.14);
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  min-width: 20px;
+  min-height: 20px;
+}
+
+radio {
+  border-radius: 9999px;
+  background-color: rgba(255, 255, 255, 0.14);
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  min-width: 20px;
+  min-height: 20px;
+}
+
+check:checked,
+check:indeterminate,
+radio:checked,
+radio:indeterminate {
+  background-color: @accent_bg_color;
+  background-image: none;
+  color: @accent_fg_color;
+}
+
+scale > trough {
+  background-color: rgba(255, 255, 255, 0.18);
+  background-image: none;
+  border: none;
+  box-shadow: none;
+}
+
+scale > trough > highlight {
+  background-color: @accent_bg_color;
+  background-image: none;
+  border: none;
+}
