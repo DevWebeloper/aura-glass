@@ -60,6 +60,16 @@ else:
 PY
 }
 
+countdown() {
+    local n="$1"
+    while [ "$n" -gt 0 ]; do
+        printf '\r   starting in %d... ' "$n"
+        sleep 1
+        n=$((n - 1))
+    done
+    printf '\r   GO — %-30s\n' "sampling for 10s"
+}
+
 overview() {
     gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
         --method org.freedesktop.DBus.Properties.Set \
@@ -96,14 +106,14 @@ fi
 # Wayland has no scriptable pointer for this, and injecting one at the uinput
 # level would hit whatever is focused rather than a window we chose. So this
 # asks, which is less elegant and measures the real thing.
-say "window drag — drag a window around the screen for the next 10s"
-echo "   (press enter when ready)"; read -r _
+say "window drag — drag a window around the screen when the count starts"
+countdown 3
 sample_into 10 "$TMP/drag"
 report "window drag" "$TMP/drag"
 
 # --- menus, prompted ------------------------------------------------------
-say "menus — open Quick Settings and the date menu repeatedly for 10s"
-echo "   (press enter when ready)"; read -r _
+say "menus — open and close Quick Settings and the date menu when it starts"
+countdown 3
 sample_into 10 "$TMP/menus"
 report "menus" "$TMP/menus"
 
