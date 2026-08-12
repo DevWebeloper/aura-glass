@@ -984,6 +984,19 @@ apply_popup_blur() {
     local base=/org/gnome/shell/extensions/blur-my-shell
     local want="${WANT_POPUP_BLUR:-1}" memo="$CONF_DIR/popup-blur"
 
+    # --no-blur turns this off as a consequence of turning everything off, not
+    # because the user asked for flat popups. Remembering it would outlive the
+    # mode: installing --no-blur and later going back to glass came up with
+    # blurred windows and unblurred menus, because the memo said 0 and nothing
+    # on the second run contradicted it. So solid mode neither reads nor writes
+    # the memo — it leaves whatever the last real choice was intact, ready for
+    # the next glass install.
+    if [ "${WANT_BLUR:-1}" != 1 ]; then
+        run dconf write "$base/popup/blur" false
+        skip "popup blur off with the rest of it (--no-blur)"
+        return 0
+    fi
+
     if [ -z "${POPUP_BLUR_EXPLICIT:-}" ] && [ -r "$memo" ]; then
         want="$(cat "$memo" 2>/dev/null || true)"
         want="${want:-1}"
