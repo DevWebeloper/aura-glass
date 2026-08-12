@@ -51,6 +51,7 @@ Have a look first if you like — nothing is written:
 | `--cursors WHICH` | `adwaita` (default) or `mactahoe` |
 | `--app-transparency N` | translucent app windows, `0.70`–`1.00` (default `0.92`). Off unless asked for |
 | `--no-osd` | keep the stock volume/brightness popup |
+| `--no-blur` | no blur anywhere, opaque surfaces instead of translucent — see *Without blur* |
 | `--no-popup-blur` | keep flat translucent popups, no blur behind them |
 | `--no-rounded-blur` | skip `gnome-rounded-blur` — popup blur stays static |
 | `--no-bms-git` | use Blur My Shell's published build (no popup component) |
@@ -134,6 +135,52 @@ update; the installer notices that case and says so.
 `--no-popup-blur` reverts to the flat translucent popups this project shipped
 before, exactly.
 
+### Without blur
+
+```bash
+./install.sh --full --no-blur
+```
+
+Blur is the only part of this desktop that costs real GPU time, and the cost is
+not spread evenly. Blur My Shell attaches a Gaussian shader per surface; the
+panel's is the only one that is both always visible and always active, since
+every other pipeline exists for the seconds a menu, the overview or the OSD is
+open. On top of that the preset runs `hacks-level=2`, which turns off clipped
+redraws — it has to, or blur actors go stale when what is behind them moves —
+and the cost of that is a full-screen repaint every frame, for everything.
+
+On a discrete card that is affordable. On an Intel iGPU, an older discrete card,
+or a laptop trying to stay awake on battery, it is the difference between a
+desktop that feels light and one that does not.
+
+**`--no-blur` is not the glass look with the blur switched off.** Translucency
+and blur are one effect: take the blur away and the same translucent fills read
+as a smeared window rather than as glass, which is worse than either. So this
+mode swaps the whole ladder for opaque surfaces on the same geometry.
+
+What is kept: every radius and every spacing, the flat pass, the accent, the
+icons and cursors, the monochrome window controls, the Adwaita-native switches
+and sliders, the Quick Settings capsules, the OSD reduced to its level bar.
+What is lost: depth. Nothing else.
+
+Blur My Shell is not installed and not enabled in this mode. Disabling its
+components would leave the extension loaded and still building one background
+actor per surface; leaving it out is what actually removes the cost.
+
+Measured over the same scripted sequence in the preview harness, on a Radeon
+RX 7600:
+
+| | median GPU busy | p90 | max |
+|---|---|---|---|
+| glass | 11% | 19% | 45% |
+| `--no-blur` | 10% | 13% | 46% |
+
+Those are from a headless render, which does not pay the continuous panel cost a
+real display does — treat them as a floor rather than as the figure you would
+see. The max is unchanged because it is app startup, not blur.
+
+To go back, reinstall without the flag: `./install.sh --full`.
+
 ### App transparency
 
 Blur My Shell can blur behind app windows, but libadwaita paints opaque
@@ -207,8 +254,9 @@ this look depends on. Machine-specific keys are stripped out of the preset:
 wallpaper URIs, the wallpaper-derived colour palette, monitor dimensions and
 Open Bar's usage counters are all regenerated on first run.
 
-**CSS tweaks** — three sheets, appended to the generated theme files inside a
-marked block. This is the part you cannot get from any of the upstreams:
+**CSS tweaks** — a set of sheets, one per concern, concatenated in cascade order
+and appended to the generated theme files inside a marked block. This is the
+part you cannot get from any of the upstreams:
 
 - Quick Settings sliders as macOS capsules instead of 1.6em-padded rows
 - text fields with real metrics, a visible edge and an accent focus ring
@@ -325,13 +373,57 @@ install.sh              entry point, flag parsing, step order
 lib/common.sh           output, prompting, pinned-clone and backup helpers
 lib/distro.sh           distro detection and dependency install per family
 lib/steps.sh            the steps themselves, with the upstream pins at the top
-css/                    the CSS sheets, some installed only when asked for
+css/shell-NN-*.css      the shell sheets, in cascade order — see below
+css/gtk4-NN-*.css       the GTK4 sheets, likewise
+css/gtk3-tweaks.css     GTK3, which is small enough to stay one file
+tokens/tokens.sh        every value that is written down in more than one place
 dconf/core.ini          Open Bar + Blur My Shell + Custom OSD + shell theme name
+dconf/solid.ini         the --no-blur overlay, applied on top of core.ini
 dconf/extras.ini        optional extensions
 patches/                the GNOME 50 patches for Open Bar and Custom OSD
 systemd/                the panel blur rebuild unit
 bin/tahoe-glass-apply   idempotent CSS re-apply
+tools/                  development only, never installed — see below
 ```
+
+**The numeric prefix on a sheet is its cascade position, not decoration.**
+`tahoe-glass-apply` concatenates them in that order into one block, and several
+rules here are meant to override each other on equal specificity: the dropdown
+radius beats the button radius it follows, the accent slider fill beats the
+white one. Put a new sheet at the position its cascade needs.
+
+---
+
+## Developing
+
+None of this is installed. It exists so that a change can be looked at before it
+is lived with.
+
+```bash
+tools/preview.sh              render the working tree, screenshot it
+tools/preview.sh --solid      the same, in --no-blur mode
+tools/preview.sh --gpu        sample GPU busy% over the run
+tools/preview.sh --gtk-only nautilus    one GTK app + the inspector, no shell
+tools/check-tokens.sh         assert tokens/tokens.sh still matches every file
+tools/gpu-sample.py --probe   say what this machine can measure
+```
+
+`preview.sh` builds a throwaway profile from the installed theme plus this
+tree's CSS, runs a real GNOME Shell against it with the real extensions, opens
+the menus, notifications and OSD that an idle desktop never shows, and leaves
+eight PNGs in `screenshots/preview/`. It takes about a minute, and it does not
+touch the session you are sitting in: `HOME`, the XDG directories and the D-Bus
+bus are all redirected, and settings go through GLib's keyfile backend rather
+than dconf so a preset cannot reach the live database at all.
+
+It is a headless render, not a window to click around in — mutter has no nested
+backend compiled in on Arch, so a shell started inside your session tries to
+take the seat and dies. The long comment at the top of `tools/preview.sh`
+explains the rest.
+
+`check-tokens.sh` is the reason a radius in a stylesheet and the same radius in
+a dconf key cannot drift apart any more. Run it after changing either. It fails
+on a check that has stopped matching anything, not just on a wrong value.
 
 Upstream commits are pinned in `lib/steps.sh`. They are all moving targets, and
 a theme that changes under the CSS is how you get a half-applied look with no

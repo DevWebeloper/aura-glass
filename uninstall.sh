@@ -218,10 +218,19 @@ run rm -f "$HOME/.local/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-ico
           "$HOME/.local/bin/tahoe-glass-panel-blur"
 # Stamps describing artifacts that have just been removed, rather than choices
 # the user made — so they go now instead of waiting on the $CONF_DIR prompt.
+#
+# The sheets go by glob rather than by name. They used to be listed one by one,
+# which was already leaving some behind when there were three of them, and the
+# split into per-concern sheets turned that into fourteen names to keep in step
+# with css/. A glob cannot fall behind. The remembered choices that describe a
+# theme still on disk — icons, icon-pack, grain — are deliberately not matched:
+# those are answers the user gave rather than artifacts, and they wait for the
+# prompt below.
+run rm -f "$CONF_DIR"/shell-*.css "$CONF_DIR"/gtk3-*.css "$CONF_DIR"/gtk4-*.css
 run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
-          "$CONF_DIR/shell-popup-blur.css" "$CONF_DIR/popup-blur" \
+          "$CONF_DIR/popup-blur" \
           "$CONF_DIR/rounded-blur" \
-          "$CONF_DIR/gtk4-transparency.css" "$CONF_DIR/app-transparency" \
+          "$CONF_DIR/app-transparency" \
           "$CONF_DIR/openbar-patch" "$CONF_DIR/custom-osd-patch"
 if confirm "Delete $CONF_DIR (this also deletes the backups above)?" 0; then
     run rm -rf "$CONF_DIR"
