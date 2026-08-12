@@ -77,6 +77,62 @@ windowcontrols > button > image {
   padding: 0;
 }
 
+/* The block above is not enough on its own, and for a long time it was the
+ * whole rule — which is why GTK4 windows still showed the coloured discs while
+ * the comment above said they did not.
+ *
+ * `windowcontrols > button > image` is three element selectors, 0-0-3. The
+ * theme's are class-qualified on both ancestors —
+ * `windowcontrols.end > button.minimize > image` is 0-2-3, and even the
+ * unplaced `windowcontrols > button.close > image` is 0-1-3 — so every one of
+ * them outranks it and appending changed nothing. Being appended only decides
+ * ties, and these were not ties.
+ *
+ * So the qualified forms are matched exactly. Equal specificity now, and later
+ * in the file, which is what makes the reset win. `.start` and `.end` both
+ * appear because the theme swaps minimize and maximize between them.
+ */
+windowcontrols > button.close > image,
+windowcontrols > button.minimize > image,
+windowcontrols > button.maximize > image,
+windowcontrols.start > button.close > image,
+windowcontrols.start > button.minimize > image,
+windowcontrols.start > button.maximize > image,
+windowcontrols.end > button.close > image,
+windowcontrols.end > button.minimize > image,
+windowcontrols.end > button.maximize > image {
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  /* The glyph is given back here rather than on the button. The theme hides it
+   * with `color: transparent` at 0-2-2, which outranks the button-level rules
+   * further up, so clearing the disc alone left three invisible controls. A
+   * literal is used rather than alpha(currentColor, …) because the colour
+   * being inherited at this point is the transparent one — taking 60% of it
+   * would still be transparent. */
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Hover is a separate fight: the theme tints the image on hover as well, at
+ * 0-3-3. Left alone, a pointer over a control brought the disc back. The
+ * hover colour this project does want — close, and only close — is painted on
+ * the button underneath by the rule further up, so the image stays clear here.
+ */
+windowcontrols > button.close > image:hover,
+windowcontrols > button.minimize > image:hover,
+windowcontrols > button.maximize > image:hover,
+windowcontrols.start > button.close > image:hover,
+windowcontrols.start > button.minimize > image:hover,
+windowcontrols.start > button.maximize > image:hover,
+windowcontrols.end > button.close > image:hover,
+windowcontrols.end > button.minimize > image:hover,
+windowcontrols.end > button.maximize > image:hover {
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: #ffffff;
+}
+
 /* `color: transparent` on the button is what hides the symbolic glyph, so the
  * glyph has to be given back before the monochrome control has anything to
  * show. Specificity beats the theme's `windowcontrols > button.close`.
