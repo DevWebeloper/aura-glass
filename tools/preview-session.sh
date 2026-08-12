@@ -35,6 +35,7 @@ mkdir -p "$(dirname "$KEYFILE")"
 
 say "seeding settings from dconf/core.ini"
 python3 - "$REPO_ROOT/dconf/core.ini" "$KEYFILE" <<'PY'
+import os
 import sys
 
 src, dst = sys.argv[1], sys.argv[2]
@@ -48,7 +49,8 @@ out = [
     # Set here rather than through the extensions D-Bus API, which needs a
     # shell that is already running.
     "enabled-extensions=['user-theme@gnome-shell-extensions.gcampax.github.com', "
-    "'blur-my-shell@aunetx', 'openbar@neuromorph', 'custom-osd@neuromorph']",
+    "'blur-my-shell@aunetx', 'openbar@neuromorph', 'custom-osd@neuromorph', "
+    "'%s']" % os.environ["TG_DRIVER_UUID"],
     "disable-user-extensions=false",
     "",
     "[org/gnome/desktop/interface]",
@@ -133,6 +135,24 @@ launch() {
     sleep 5
 }
 
+# The driver extension opens the surfaces that an idle desktop never shows.
+# Most of this project's shell CSS paints those, so without it the screenshots
+# cover the panel and nothing else.
+driver() {
+    local method="$1"; shift
+    gdbus call --session --dest org.tahoeGlass.PreviewDriver \
+        --object-path /org/tahoeGlass/PreviewDriver \
+        --method "org.tahoeGlass.PreviewDriver.$method" "$@" >/dev/null 2>&1
+}
+
+DRIVER=0
+for _ in $(seq 1 20); do
+    driver Ping && { DRIVER=1; break; }
+    sleep 0.5
+done
+[ "$DRIVER" = 1 ] || echo "   driver extension did not answer — menu, notification
+   and OSD shots will be skipped. Check that $TG_DRIVER_UUID loaded above."
+
 # GPU sampling runs alongside everything below, so the number covers the same
 # work every time. gpu_busy_percent is the zero-install baseline; radeontop
 # would break it down per block but is not needed to compare two sigmas.
@@ -162,6 +182,29 @@ launch nautilus
 shot 03-nautilus
 launch gnome-text-editor
 shot 04-text-editor
+
+if [ "$DRIVER" = 1 ]; then
+    # Each of these is the only coverage a whole sheet gets:
+    #   quick settings  -> css/shell-10-quick-settings.css, shell-40-quick-toggles.css
+    #   date menu       -> css/shell-20-popup-menus.css (.datemenu-popover at 33)
+    #   notification    -> css/shell-30-notifications.css
+    #   OSD             -> the Custom OSD pill and its blur
+    driver OpenQuickSettings; sleep 2; shot 05-quick-settings
+    driver CloseMenus;        sleep 1
+    driver OpenDateMenu;      sleep 2; shot 06-date-menu
+    driver CloseMenus;        sleep 1
+
+    # The OSD goes before the notification, and not the other way round,
+    # because the OSD can be dismissed on command and a notification banner
+    # cannot — it sits there for several seconds and lands in whatever is shot
+    # next. Doing the banner last means nothing has to wait for it.
+    driver ShowOsd "audio-volume-high-symbolic" 0.65
+    sleep 1; shot 07-osd
+    driver HideOsd; sleep 2
+
+    driver Notify "tahoe-glass" "Notification banner, for the CSS under test."
+    sleep 1; shot 08-notification
+fi
 
 if [ "$TG_GPU" = 1 ] && [ -n "$GPU_CARD" ]; then
     say "GPU busy% over the run"

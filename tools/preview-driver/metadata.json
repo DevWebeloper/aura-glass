@@ -1,0 +1,7 @@
+{
+  "uuid": "tahoe-preview-driver@tahoe-glass.local",
+  "name": "tahoe-glass preview driver",
+  "description": "Opens menus, notifications and the OSD on command so tools/preview.sh can screenshot them. Installed only into the throwaway preview profile — never into a real session.",
+  "shell-version": ["48", "49", "50"],
+  "session-modes": ["user"]
+}

@@ -26,16 +26,15 @@
 #
 # Isolation is three separate things, and all three are needed:
 #
-#   dbus-run-session   a private bus. This is the one that matters: dconf writes
-#                      are forwarded over D-Bus to whichever dconf-service is
-#                      running, so without a private bus a `dconf load` here
-#                      lands in the live desktop's database. DCONF_PROFILE does
-#                      not prevent that — it has been tried, and it silently
-#                      rewrote the real session's OSD keys.
+#   dbus-run-session   a private bus, so the preview shell owns org.gnome.Shell
+#                      without fighting the real one, and so the driver
+#                      extension is reachable by nothing outside this session.
 #   HOME               the User Themes extension reads ~/.themes/<name> relative
 #                      to $HOME, which no XDG variable governs.
-#   XDG_{CONFIG,DATA,CACHE}_HOME   where the private dconf-service and the
-#                      preview session's own state land.
+#   XDG_{CONFIG,DATA,CACHE}_HOME   where the preview session's own state lands,
+#                      including the GSettings keyfile it is seeded from.
+#                      Settings deliberately do not go through dconf here — see
+#                      the long note in tools/preview-session.sh.
 #
 #   XDG_RUNTIME_DIR    isolated too, and this one is not optional. GNOME Shell
 #                      disables every extension when
@@ -55,6 +54,9 @@ SHOTS="${TAHOE_PREVIEW_SHOTS:-$REPO_ROOT/screenshots/preview}"
 DISPLAY_NAME="tahoe-preview"
 RESOLUTION="${TAHOE_PREVIEW_RES:-1920x1080}"
 THEME="Tahoe-Dark"
+# Loaded only into the preview profile — see tools/preview-driver/extension.js
+# for why it must never reach a real session.
+DRIVER_UUID="tahoe-preview-driver@tahoe-glass.local"
 
 MODE="shell"
 KEEP=0
@@ -91,10 +93,17 @@ build_profile() {
    previews changes to an installed theme; it does not build one from scratch."
     cp -a "$HOME/.themes/$THEME" "$home/.themes/$THEME"
 
-    # Read-only reuse: neither is what is being iterated on here.
-    mkdir -p "$home/.local/share/gnome-shell"
-    ln -sfn "$HOME/.local/share/gnome-shell/extensions" \
-            "$home/.local/share/gnome-shell/extensions"
+    # Each installed extension is linked in individually rather than linking
+    # the directory itself, because the preview needs one extension of its own
+    # in there and a symlinked directory would put it in the real one.
+    local extdir="$home/.local/share/gnome-shell/extensions" ext
+    mkdir -p "$extdir"
+    for ext in "$HOME/.local/share/gnome-shell/extensions"/*/; do
+        [ -d "$ext" ] || continue
+        ln -sfn "${ext%/}" "$extdir/$(basename "$ext")"
+    done
+    cp -a "$REPO_ROOT/tools/preview-driver" "$extdir/$DRIVER_UUID"
+
     [ -d "$HOME/.local/share/icons" ] && \
         ln -sfn "$HOME/.local/share/icons" "$home/.local/share/icons"
 
@@ -133,6 +142,7 @@ mkdir -p "$SHOTS"
 
 export TG_REPO_ROOT="$REPO_ROOT" TG_PROFILE="$PROFILE" TG_SHOTS="$SHOTS"
 export TG_DISPLAY="$DISPLAY_NAME" TG_RES="$RESOLUTION" TG_KEEP="$KEEP" TG_GPU="$GPU"
+export TG_DRIVER_UUID="$DRIVER_UUID"
 
 # Kept inside the real runtime dir so it is still tmpfs owned by this user,
 # which is what a runtime dir has to be; only the path differs.
