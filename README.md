@@ -168,16 +168,24 @@ components would leave the extension loaded and still building one background
 actor per surface; leaving it out is what actually removes the cost.
 
 Measured over the same scripted sequence in the preview harness, on a Radeon
-RX 7600:
+RX 7600. Absolute numbers move a lot with whatever else the machine is doing,
+so what is worth quoting is the ratio, which held across two sessions with very
+different baselines:
 
-| | median GPU busy | p90 | max |
-|---|---|---|---|
-| glass | 11% | 19% | 45% |
-| `--no-blur` | 10% | 13% | 46% |
+| | glass | `--no-blur` |
+|---|---|---|
+| p90 GPU busy, session A | 19% | 13% |
+| p90 GPU busy, session B | 28-31% | 18-22% |
 
-Those are from a headless render, which does not pay the continuous panel cost a
-real display does — treat them as a floor rather than as the figure you would
-see. The max is unchanged because it is app startup, not blur.
+That is `--no-blur` costing about **70% of what glass costs**, both times. The
+maximum is unchanged between modes because it is app startup rather than blur.
+
+Two caveats worth having. This is a headless render, which does not pay the
+continuous repaint cost a real display does, so it is a floor. And the saving
+comes from Blur My Shell not running at all — lowering the panel's sigma from
+30 to 20 produced no measurable change over three runs, with the run-to-run
+noise larger than the effect. Tuning the blur is not the lever; not running it
+is.
 
 To go back, reinstall without the flag: `./install.sh --full`.
 

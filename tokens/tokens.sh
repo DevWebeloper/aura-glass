@@ -91,8 +91,13 @@ TOKEN_RADIUS_OSD=12
 # Sigma changes here are design decisions with a measurable cost. Change one,
 # measure it in the preview harness, and record the number — do not batch them.
 
-TOKEN_SIGMA_PANEL=30            # continuous; see above. corner-radius=0 on the
-                                # panel means no shape constraint pins it.
+# Measured, not assumed: dropping this to 20 and back over three preview runs
+# moved the median not at all (22/22/22) and the p90 by less than the noise
+# between two identical runs (28/29/31). The panel being always-on makes it the
+# most expensive *pipeline*, but the cost that matters is Blur My Shell running
+# at all — which is what --no-blur removes and what actually measures. Do not
+# lower this expecting a GPU win; lower it only if you want a softer panel.
+TOKEN_SIGMA_PANEL=30
 TOKEN_SIGMA_APPFOLDER=50        # transient, but an outlier above every other
                                 # pipeline's ~30 ceiling for no recorded reason.
 TOKEN_SIGMA_POPUP=30
