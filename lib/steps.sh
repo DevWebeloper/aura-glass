@@ -1206,6 +1206,16 @@ flatpak_override() {
 install_panel_blur_unit() {
     step "Blur My Shell panel blur rebuild"
 
+    # This unit exists to toggle Blur My Shell's panel blur off and on once the
+    # session has settled, so the actor is rebuilt against correct geometry.
+    # With no Blur My Shell there is no actor and nothing to rebuild, so in
+    # solid mode it is a timer that waits twelve seconds after every login to
+    # do nothing. Checked here rather than in the flag parsing so that the flag
+    # order cannot defeat it: --no-blur --full would otherwise turn it back on.
+    if [ "${WANT_BLUR:-1}" != 1 ]; then
+        WANT_PANEL_BLUR_FIX=0
+    fi
+
     if [ "${WANT_PANEL_BLUR_FIX:-1}" != 1 ]; then
         # bms-panel-blur-rebuild is the name this carried before the project
         # was named, and is still enabled on machines set up by hand back then.
