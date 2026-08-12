@@ -113,6 +113,23 @@ TOKEN_SIGMA_DASH_TO_DOCK=4      # the cheap end of the range, kept as reference.
 #   css/gtk4-transparency.css     the alpha() values themselves
 TOKEN_APP_TRANSPARENCY_SHIPPED=0.92
 
+# How much of the theme's own colour survives in a translucent app window, as a
+# percentage; the rest is black. Darkening and thinning are opposite knobs —
+# --app-transparency decides how much shows through, this decides how dark what
+# remains is — and the second is what keeps text legible as the first goes up.
+#
+# It matters most with --no-blur, where what shows through is the wallpaper at
+# full brightness rather than a blur. At 100 the window is the theme's colour
+# and a bright wallpaper prints straight through it.
+#
+# Unlike the level above this is not rescaled per install — it is a design
+# decision, written literally in both spellings in the sheet and checked against
+# this token. Change it here, run tools/check-tokens.sh, and it names the lines
+# that still disagree. The mix() weight is the complement (100 - this).
+#
+#   css/gtk4-transparency.css   the @define-color and :root tint blocks
+TOKEN_APP_TINT=55
+
 # ---------- Not tokens, deliberately ----------
 #
 # The accent colour is already live-plumbed through GNOME's own machinery: the

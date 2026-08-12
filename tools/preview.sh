@@ -13,6 +13,8 @@
 #   tools/preview.sh --keep          leave the session up (see --keep below)
 #   tools/preview.sh --gpu           sample GPU busy% while the session runs
 #   tools/preview.sh --solid         render --no-blur mode instead of the glass one
+#   tools/preview.sh --transparency 0.85   translucent app windows at that level
+#   tools/preview.sh --tint 70             how much theme colour survives, vs black
 #
 # ---------------------------------------------------------------------------
 # What this is NOT
@@ -50,6 +52,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=../tokens/tokens.sh
+. "$REPO_ROOT/tokens/tokens.sh"
 PROFILE="${TAHOE_PREVIEW_DIR:-$HOME/.cache/tahoe-glass/preview}"
 SHOTS="${TAHOE_PREVIEW_SHOTS:-$REPO_ROOT/screenshots/preview}"
 DISPLAY_NAME="tahoe-preview"
@@ -63,6 +67,8 @@ MODE="shell"
 KEEP=0
 GPU=0
 SOLID=0
+TRANSPARENCY=""
+TINT=""
 GTK_APP="nautilus"
 
 while [ $# -gt 0 ]; do
@@ -71,6 +77,8 @@ while [ $# -gt 0 ]; do
         --keep)     KEEP=1; shift ;;
         --gpu)      GPU=1; shift ;;
         --solid)    SOLID=1; shift ;;
+        --transparency) TRANSPARENCY="$2"; shift 2 ;;
+        --tint)     TINT="$2"; shift 2 ;;
         --res)      RESOLUTION="$2"; shift 2 ;;
         -h|--help)  sed -n '2,30p' "$0" | sed 's/^# \?//'; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
@@ -110,6 +118,26 @@ build_profile() {
     [ -d "$HOME/.local/share/icons" ] && \
         ln -sfn "$HOME/.local/share/icons" "$home/.local/share/icons"
 
+    # The GTK4 targets are generated files that live outside the theme
+    # directory, so copying ~/.themes alone does not bring them and
+    # tahoe-glass-apply has nothing to append to — every gtk4-*.css sheet was
+    # silently skipped, and the GTK half of a preview was really stock
+    # libadwaita. Seed them from the installed copies with any previously
+    # applied block stripped, so apply starts from the theme's own output.
+    mkdir -p "$home/.config/gtk-4.0"
+    local t
+    for t in gtk.css gtk-dark.css; do
+        [ -f "$HOME/.config/gtk-4.0/$t" ] || continue
+        python3 - "$HOME/.config/gtk-4.0/$t" "$home/.config/gtk-4.0/$t" <<'STRIP'
+import re, sys
+css = open(sys.argv[1], encoding="utf-8").read()
+for name in ("tahoe-glass", "tahoe-tweaks"):
+    css = re.sub(r"/\* >>> %s BEGIN <<< \*/.*?/\* >>> %s END <<< \*/\n?" % (name, name),
+                 "", css, flags=re.S)
+open(sys.argv[2], "w", encoding="utf-8").write(css)
+STRIP
+    done
+
     cp "$REPO_ROOT"/css/shell-[0-9][0-9]-*.css "$REPO_ROOT"/css/gtk4-[0-9][0-9]-*.css "$conf/"
     cp "$REPO_ROOT/css/gtk3-tweaks.css" "$conf/"
     # Mirrors what install_css does with these two: solid mode gets the opaque
@@ -118,6 +146,29 @@ build_profile() {
         cp "$REPO_ROOT/css/shell-80-solid.css" "$conf/"
     else
         cp "$REPO_ROOT/css/shell-popup-blur.css" "$conf/"
+    fi
+
+    # The same sheet and the same rescale the installer applies, so what gets
+    # rendered is what --app-transparency N would actually produce.
+    if [ -n "$TRANSPARENCY" ]; then
+        cp "$REPO_ROOT/css/gtk4-transparency.css" "$conf/"
+        python3 "$REPO_ROOT/tools/rescale-transparency.py" \
+                "$conf/gtk4-transparency.css" "$TRANSPARENCY" \
+                "$TOKEN_APP_TRANSPARENCY_SHIPPED"
+        # Tuning only: rewrites the tint in the profile copy so combinations can
+        # be compared without editing the token and the sheet for each try.
+        # Whatever is settled on goes into TOKEN_APP_TINT for real.
+        if [ -n "$TINT" ]; then
+            python3 - "$conf/gtk4-transparency.css" "$TINT" <<'TINTPY'
+import re, sys
+path, pct = sys.argv[1], int(sys.argv[2])
+css = open(path, encoding="utf-8").read()
+css = re.sub(r"(var\(--[a-z-]+\)) \d+%, #000000", r"\1 %d%%, #000000" % pct, css)
+css = re.sub(r"(mix\(@[a-z_]+, #000000, )0?\.\d+\)",
+             lambda m: "%s%.2f)" % (m.group(1), (100 - pct) / 100.0), css)
+open(path, "w", encoding="utf-8").write(css)
+TINTPY
+        fi
     fi
 
     HOME="$home" TAHOE_GLASS_DIR="$conf" TAHOE_GLASS_THEME="$THEME" \

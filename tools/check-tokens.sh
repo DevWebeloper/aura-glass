@@ -21,7 +21,7 @@ export TOKEN_RADIUS_NOTIFICATION TOKEN_RADIUS_DIALOG TOKEN_RADIUS_POPUP
 export TOKEN_RADIUS_OSD
 export TOKEN_SIGMA_PANEL TOKEN_SIGMA_APPFOLDER TOKEN_SIGMA_POPUP
 export TOKEN_SIGMA_WINDOW_LIST TOKEN_SIGMA_APPLICATIONS TOKEN_SIGMA_DASH_TO_DOCK
-export TOKEN_APP_TRANSPARENCY_SHIPPED
+export TOKEN_APP_TRANSPARENCY_SHIPPED TOKEN_APP_TINT
 
 python3 - <<'PY'
 import os, re, sys
@@ -92,7 +92,10 @@ MANIFEST = [
      "blur-my-shell/dash-to-dock", "sigma"),
 
     ("TOKEN_APP_TRANSPARENCY_SHIPPED", "css", "css/gtk4-transparency.css",
-     r"alpha\(@window_bg_color, ([0-9.]+)\)"),
+     r"alpha\(@tg_tint_window, ([0-9.]+)\)"),
+    # Both spellings of the tint, and the mix() weight is the complement.
+    ("TOKEN_APP_TINT", "css", "css/gtk4-transparency.css",
+     r"var\(--window-bg-color\) (\d+)%, #000000"),
     # The prose in the sheet's own header states the baseline too. A stale
     # comment here is how the next person picks the wrong number by hand.
     ("TOKEN_APP_TRANSPARENCY_SHIPPED", "css", "css/gtk4-transparency.css",

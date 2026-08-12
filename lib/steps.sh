@@ -829,26 +829,14 @@ install_transparency_css() {
         return 0
     fi
 
-    python3 - "$CONF_DIR/gtk4-transparency.css" "$level" \
-             "$TOKEN_APP_TRANSPARENCY_SHIPPED" <<'PY'
-import re, sys
-path, want = sys.argv[1], float(sys.argv[2])
-SHIPPED = float(sys.argv[3])
-
-def scale(base):
-    # Keep each surface's distance from opaque in proportion, so the ladder
-    # written into the sheet survives being retuned.
-    if want >= 1.0:
-        return 1.0
-    return max(0.0, min(1.0, 1 - (1 - base) * (1 - want) / (1 - SHIPPED)))
-
-css = open(path, encoding="utf-8").read()
-css = re.sub(r"alpha\((@[a-z_]+), ([0-9.]+)\)",
-             lambda m: "alpha(%s, %.2f)" % (m.group(1), scale(float(m.group(2)))), css)
-css = re.sub(r"(var\(--[a-z-]+\)) ([0-9.]+)%",
-             lambda m: "%s %g%%" % (m.group(1), round(scale(float(m.group(2)) / 100) * 100, 1)), css)
-open(path, "w", encoding="utf-8").write(css)
-PY
+    # One implementation, shared with tools/preview.sh, so a preview is the
+    # same arithmetic as the install rather than a second copy of it that can
+    # drift. It also has to know the tint blocks from the level rules: both are
+    # written as `var(--x) N%`, and an earlier regex here matched either, which
+    # would have rescaled the tint itself at any level but the default.
+    run python3 "$REPO_ROOT/tools/rescale-transparency.py" \
+        "$CONF_DIR/gtk4-transparency.css" "$level" \
+        "$TOKEN_APP_TRANSPARENCY_SHIPPED"
 
     mkdir -p "$CONF_DIR"
     printf '%s\n' "$level" > "$CONF_DIR/app-transparency"

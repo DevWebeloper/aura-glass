@@ -52,6 +52,59 @@
   --dialog-bg-color: @dialog_bg_color;
 }
 
+/* ---------- Darkened grounds ----------
+ * A translucent window shows whatever is behind it. With Blur My Shell that is
+ * a blur, and the theme's own ground at 92% reads as glass over it. With
+ * --no-blur it is the wallpaper, at full brightness and full detail, and the
+ * same 92% reads as a washed-out window with the desktop printed through the
+ * text.
+ *
+ * So the ground is mixed toward black before the alpha is applied. Darkening
+ * and thinning are opposite knobs: --app-transparency sets how much shows
+ * through, and this sets how dark what remains is, which is what keeps text
+ * legible as the first one goes up.
+ *
+ * The percentage is the share of the theme's own colour that survives the mix;
+ * the rest is black. It is TOKEN_APP_TINT in tokens/tokens.sh, and
+ * tools/check-tokens.sh asserts both spellings here still agree with it.
+ *
+ * Written in both spellings for the same reason as everything below: the
+ * named-colour form for the libadwaita shim, the color-mix form for when that
+ * shim goes. mix()'s third argument is the weight of the *second* colour, so
+ * it is the complement of the color-mix percentage.
+ */
+@define-color tg_tint_window mix(@window_bg_color, #000000, 0.45);
+@define-color tg_tint_view mix(@view_bg_color, #000000, 0.45);
+@define-color tg_tint_sidebar mix(@sidebar_bg_color, #000000, 0.45);
+@define-color tg_tint_headerbar mix(@headerbar_bg_color, #000000, 0.45);
+@define-color tg_tint_headerbar_backdrop mix(@headerbar_backdrop_color, #000000, 0.45);
+
+:root {
+  --tg-tint-window: color-mix(in srgb, var(--window-bg-color) 55%, #000000);
+  --tg-tint-view: color-mix(in srgb, var(--view-bg-color) 55%, #000000);
+  --tg-tint-sidebar: color-mix(in srgb, var(--sidebar-bg-color) 55%, #000000);
+  --tg-tint-headerbar: color-mix(in srgb, var(--headerbar-bg-color) 55%, #000000);
+  --tg-tint-headerbar-backdrop: color-mix(in srgb, var(--headerbar-backdrop-color) 55%, #000000);
+}
+
+/* ---------- Why the inner panes are transparent ----------
+ * libadwaita paints the window, then the content pane inside it, then the view
+ * inside that. Giving each its own translucent ground stacks three of them, and
+ * alpha compounds: three surfaces at 0.8 leave about 0.008 of what is behind
+ * showing through, so the window reads as opaque however far the level is
+ * lowered. Lowering it far enough to see through all three would leave the
+ * headerbar and sidebar, which are single-layered, almost gone.
+ *
+ * So exactly one layer carries the material. The window is translucent and
+ * tinted, and the panes inside it paint nothing, which is what makes the level
+ * mean what it says: at 0.8 you are looking through one surface at 0.8, not
+ * through three.
+ *
+ * The sidebar and header bar keep their own values because neither sits on top
+ * of the window's ground — libadwaita gives them their own region — so they do
+ * not compound with it.
+ */
+
 /* ---------- The window itself ----------
  * libadwaita paints .background rather than window on most widgets, but
  * AdwWindow sets both and older dialogs only set window.
@@ -60,8 +113,8 @@ window,
 window.background,
 .background,
 windowhandle {
-  background-color: alpha(@window_bg_color, 0.92);
-  background-color: color-mix(in srgb, var(--window-bg-color) 92%, transparent);
+  background-color: alpha(@tg_tint_window, 0.92);
+  background-color: color-mix(in srgb, var(--tg-tint-window) 92%, transparent);
 }
 
 /* Server-side decorations paint an opaque frame around the window. Letting the
@@ -71,7 +124,7 @@ windowhandle {
 window.solid-csd,
 window.solid-csd .background {
   background-color: @window_bg_color;
-  background-color: var(--window-bg-color);
+  background-color: var(--tg-tint-window);
 }
 
 /* ---------- Header bars and toolbars ---------- */
@@ -82,14 +135,14 @@ toolbarview > .toolbar,
 .toolbar,
 searchbar > revealer > box,
 actionbar > revealer > box {
-  background-color: alpha(@headerbar_bg_color, 0.88);
-  background-color: color-mix(in srgb, var(--headerbar-bg-color) 88%, transparent);
+  background-color: alpha(@tg_tint_headerbar, 0.88);
+  background-color: color-mix(in srgb, var(--tg-tint-headerbar) 88%, transparent);
 }
 
 headerbar:backdrop,
 .titlebar:backdrop {
-  background-color: alpha(@headerbar_backdrop_color, 0.88);
-  background-color: color-mix(in srgb, var(--headerbar-backdrop-color) 88%, transparent);
+  background-color: alpha(@tg_tint_headerbar_backdrop, 0.88);
+  background-color: color-mix(in srgb, var(--tg-tint-headerbar-backdrop) 88%, transparent);
 }
 
 /* Decoration frames stay solid.
@@ -113,7 +166,7 @@ headerbar.default-decoration.titlebar,
 headerbar.default-decoration:backdrop,
 .titlebar.default-decoration:backdrop {
   background-color: @headerbar_bg_color;
-  background-color: var(--headerbar-bg-color);
+  background-color: var(--tg-tint-headerbar);
 }
 
 /* ---------- Split-view panes ----------
@@ -126,13 +179,12 @@ headerbar.default-decoration:backdrop,
 .sidebar-pane .navigation-sidebar,
 stacksidebar,
 placessidebar {
-  background-color: alpha(@sidebar_bg_color, 0.86);
-  background-color: color-mix(in srgb, var(--sidebar-bg-color) 86%, transparent);
+  background-color: alpha(@tg_tint_sidebar, 0.86);
+  background-color: color-mix(in srgb, var(--tg-tint-sidebar) 86%, transparent);
 }
 
 .content-pane {
-  background-color: alpha(@window_bg_color, 0.92);
-  background-color: color-mix(in srgb, var(--window-bg-color) 92%, transparent);
+  background-color: transparent;
 }
 
 /* ---------- Content views ----------
@@ -144,8 +196,7 @@ textview.view > text,
 columnview > listview,
 gridview,
 scrolledwindow > viewport > .view {
-  background-color: alpha(@view_bg_color, 0.94);
-  background-color: color-mix(in srgb, var(--view-bg-color) 94%, transparent);
+  background-color: transparent;
 }
 
 /* Popovers are deliberately absent from this sheet.
