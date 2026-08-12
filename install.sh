@@ -15,6 +15,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$REPO_ROOT/lib/distro.sh"
 # shellcheck source=lib/steps.sh
 . "$REPO_ROOT/lib/steps.sh"
+# Values written down in more than one place live here, so that the copy in a
+# stylesheet and the copy in a dconf key cannot drift apart unnoticed.
+# tools/check-tokens.sh asserts they still agree.
+# shellcheck source=tokens/tokens.sh
+. "$REPO_ROOT/tokens/tokens.sh"
 
 ACCENT="pink"
 WANT_EXTRAS=0
@@ -75,7 +80,7 @@ ${C_BLD}tahoe-glass${C_OFF} — a macOS Tahoe glass desktop for GNOME 48-50
                       implies --no-popup-blur
     --app-transparency N
                       make app windows translucent so the blur behind them
-                      shows through, N from 0.70 to 1.00 (default 0.92). Off
+                      shows through, N from 0.70 to 1.00 (default $TOKEN_APP_TRANSPARENCY_SHIPPED). Off
                       unless asked for, and not part of --full: apps that do
                       not use GTK's stylesheet — Electron, Steam, anything
                       drawing a video or GL surface — ignore it and stay
@@ -139,7 +144,7 @@ while [ $# -gt 0 ]; do
         --no-popup-blur) WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1; shift ;;
         --rounded-blur)      WANT_ROUNDED_BLUR=1; shift ;;
         --no-rounded-blur)   WANT_ROUNDED_BLUR=0; shift ;;
-        --app-transparency)  APP_TRANSPARENCY="${2:-0.92}"; shift 2 ;;
+        --app-transparency)  APP_TRANSPARENCY="${2:-$TOKEN_APP_TRANSPARENCY_SHIPPED}"; shift 2 ;;
         --app-transparency=*) APP_TRANSPARENCY="${1#*=}"; shift ;;
         --no-app-transparency) APP_TRANSPARENCY=0; shift ;;
         --no-icons)      WANT_ICONS=0; shift ;;

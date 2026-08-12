@@ -795,8 +795,10 @@ print(f"""
 PY
 }
 
-# css/gtk4-transparency.css is written at the shipped level (0.92) so that the
-# file is readable on its own. --app-transparency N rewrites both spellings of
+# css/gtk4-transparency.css is written at the shipped level — the sheet is
+# readable on its own that way. That level is TOKEN_APP_TRANSPARENCY_SHIPPED in
+# tokens/tokens.sh, which is also what the scaling below measures from, so the
+# two cannot disagree. --app-transparency N rewrites both spellings of
 # every value in the installed copy, scaling the whole ladder rather than
 # flattening it: the header bar is meant to stay a little more transparent than
 # the window and the content view a little less, at any setting.
@@ -816,10 +818,11 @@ install_transparency_css() {
         return 0
     fi
 
-    python3 - "$CONF_DIR/gtk4-transparency.css" "$level" <<'PY'
+    python3 - "$CONF_DIR/gtk4-transparency.css" "$level" \
+             "$TOKEN_APP_TRANSPARENCY_SHIPPED" <<'PY'
 import re, sys
 path, want = sys.argv[1], float(sys.argv[2])
-SHIPPED = 0.92
+SHIPPED = float(sys.argv[3])
 
 def scale(base):
     # Keep each surface's distance from opaque in proportion, so the ladder
