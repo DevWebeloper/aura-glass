@@ -26,9 +26,13 @@ cd tahoe-glass
 ./install.sh --full
 ```
 
-`--full` is the whole reference desktop — every extension and every preset —
-which is what you want on a fresh machine. Plain `./install.sh` installs the
-core look only and leaves the optional extensions out.
+`--full` turns on every optional piece at once. On a fresh machine that makes
+it identical to `--extras`, because the other things it asserts — icons,
+cursors, titlebar buttons, the OSD, the panel blur fix — are already on by
+default. What it is really for is a re-install: it undoes an earlier `--no-*`
+in one flag rather than making you remember which ones you turned off. Plain
+`./install.sh` installs the core look only and leaves the optional extensions
+out.
 
 Then **log out and back in**. Extensions cannot be loaded into a running shell
 on Wayland, so the top bar, the blur and the quick settings only appear on the
@@ -44,8 +48,8 @@ Have a look first if you like — nothing is written:
 
 | Flag | Effect |
 |---|---|
-| `--accent COLOR` | `blue teal green yellow orange red pink purple slate` (default `pink`) |
-| `--full` | the whole reference desktop — every extension and every preset |
+| `--accent COLOR` | `blue teal green yellow orange red pink purple slate` (default `pink`, and remembered for later runs) |
+| `--full` | every optional piece at once — `--extras`, plus re-asserting the icons, cursors, titlebar buttons, OSD and panel-blur-fix defaults |
 | `--extras` | also install the rest of the reference desktop — see below |
 | `--icons WHICH` | `colloid` (default, follows `--accent`) or `reversal-COLOUR` |
 | `--cursors WHICH` | `adwaita` (default) or `mactahoe` |
@@ -68,6 +72,11 @@ the GTK CSS uses `@accent_bg_color`, so switching accents in **Settings →
 Appearance** afterwards re-colours the toggles, sliders, focus rings and
 notification titles without touching a file. Only the icon theme is pinned at
 install time, and that is one flag away from being changed.
+
+The accent you install with is remembered, like `--icons` and `--grain` are.
+The installer rewrites `accent-color` on every run, so without that a flagless
+re-install would quietly re-theme a desktop running any other accent back to
+the default.
 
 ---
 
@@ -388,7 +397,12 @@ installer says so on its own if it detects that case.
 install.sh              entry point, flag parsing, step order
 lib/common.sh           output, prompting, pinned-clone and backup helpers
 lib/distro.sh           distro detection and dependency install per family
-lib/steps.sh            the steps themselves, with the upstream pins at the top
+lib/steps.sh            the upstream pins, the paths, preflight, the theme
+lib/steps-extensions.sh  every extension, and the rounded-blur library
+lib/steps-assets.sh      icon and cursor themes
+lib/steps-css.sh         the CSS tweaks and the display-density correction
+lib/steps-dconf.sh       the dconf preset, and the gsettings beside it
+lib/steps-integration.sh icon-sync agent, Flatpak override, panel blur unit
 css/shell-NN-*.css      the shell sheets, in cascade order — see below
 css/gtk4-NN-*.css       the GTK4 sheets, likewise
 css/gtk3-tweaks.css     GTK3, which is small enough to stay one file
@@ -400,6 +414,7 @@ patches/                the GNOME 50 patches for Open Bar and Custom OSD
 systemd/                the panel blur rebuild unit
 bin/tahoe-glass-apply   idempotent CSS re-apply
 tools/                  development only, never installed — see below
+tools/hooks/            the pre-commit hook, enabled by tools/install-hooks.sh
 ```
 
 **The numeric prefix on a sheet is its cascade position, not decoration.**
@@ -421,6 +436,9 @@ tools/preview.sh --solid      the same, in --no-blur mode
 tools/preview.sh --gpu        sample GPU busy% over the run
 tools/preview.sh --gtk-only nautilus    one GTK app + the inspector, no shell
 tools/check-tokens.sh         assert tokens/tokens.sh still matches every file
+tools/check-cascade.sh        assert every sheet in css/ is installed and applied
+tools/check-shots.py --accept adopt this preview run as the visual baseline
+tools/install-hooks.sh        run all of the above before every commit
 tools/gpu-sample.py --probe   say what this machine can measure
 ```
 
@@ -440,6 +458,32 @@ explains the rest.
 `check-tokens.sh` is the reason a radius in a stylesheet and the same radius in
 a dconf key cannot drift apart any more. Run it after changing either. It fails
 on a check that has stopped matching anything, not just on a wrong value.
+
+`check-cascade.sh` covers the other half of that problem. Which sheets get
+*installed* is a glob in `lib/steps-css.sh`; which sheets get *applied* is a
+hand-written array in `bin/tahoe-glass-apply`; and the two are edited at
+different moments. So a new sheet could be copied into `$CONF_DIR`, appear in a
+preview, and still never be applied, with nothing to say so. It also asserts
+the arrays run in ascending prefix order, since the prefix *is* the cascade
+position, and that no two sheets claim the same one.
+
+The arrays cannot just be replaced by a sorted glob, which is why they are
+checked instead: `shell-popup-blur.css` has to land after `shell-90-density.css`,
+and `9` sorts before `p`.
+
+`check-shots.py` compares a preview run against the last one you accepted, so
+"I changed one sheet, what else moved?" has an answer. Glass and solid keep
+separate baselines — they are *meant* to look different, and one baseline for
+both would flag every mode switch until you stopped reading it. Baselines live
+in `~/.cache/tahoe-glass/baseline`, not in the repository: they are 1080p PNGs
+that would need regenerating on most commits here. It needs Pillow, and says so
+rather than failing when that is missing.
+
+`install-hooks.sh` points `core.hooksPath` at `tools/hooks`, so both checks and
+a syntax pass run before every commit. It checks the **staged** tree rather than
+the working tree — this project stages explicitly rather than `git add -A`, so
+those are routinely different, and checking the working tree would block a good
+commit over an unrelated file being mid-edit.
 
 Upstream commits are pinned in `lib/steps.sh`. They are all moving targets, and
 a theme that changes under the CSS is how you get a half-applied look with no

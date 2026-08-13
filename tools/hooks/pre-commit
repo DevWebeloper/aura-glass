@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# tahoe-glass pre-commit hook.
+#
+# Enabled by tools/install-hooks.sh, which points core.hooksPath here so the
+# hook is versioned with everything else rather than living unversioned in
+# .git/hooks and having to be re-created after every clone.
+#
+# It checks the *staged* tree, not the working tree, and that distinction
+# matters here: this project stages explicitly rather than `git add -A`, so the
+# working tree routinely holds changes that are not part of the commit being
+# made. Checking the working tree would block a perfectly good css/ commit
+# because lib/ happened to be mid-edit.
+#
+# `git write-tree` turns the index into a real tree object and `git archive`
+# extracts it, so what gets checked is exactly the content the commit will
+# contain. Nothing is stashed and the working tree is never touched, which is
+# what makes this safe to fail in.
+set -euo pipefail
+
+TREE="$(git write-tree)"
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+git archive --format=tar "$TREE" | tar -x -C "$TMP"
+
+fail=0
+note() { printf '  %s\n' "$*"; }
+
+step() {
+    local label="$1"; shift
+    local out
+    if out="$("$@" 2>&1)"; then
+        printf '\033[0;32m  ok\033[0m   %s\n' "$label"
+    else
+        printf '\033[0;31m  FAIL\033[0m %s\n' "$label"
+        printf '%s\n' "$out" | sed 's/^/       /'
+        fail=1
+    fi
+}
+
+printf '\ntahoe-glass pre-commit — checking the staged tree\n\n'
+
+# ---- syntax -----------------------------------------------------------------
+#
+# Cheap, and it catches the one class of mistake that would otherwise reach a
+# machine that runs the installer: a script that cannot even be parsed.
+#
+# Paths are absolute into $TMP on purpose. Relative ones would resolve against
+# the hook's cwd, which git sets to the repository root — so every check would
+# quietly read the working tree it is the whole point of not reading.
+syntax_shell() {
+    local f rc=0
+    while IFS= read -r f; do
+        bash -n "$f" || rc=1
+    done < <(find "$TMP" -type f \
+                  \( -name '*.sh' -o -path "$TMP/bin/*" -o -path "$TMP/tools/hooks/*" \))
+    return "$rc"
+}
+step "shell syntax" syntax_shell
+
+syntax_python() {
+    local f rc=0
+    while IFS= read -r f; do
+        python3 -m py_compile "$f" || rc=1
+    done < <(find "$TMP" -type f -name '*.py')
+    return "$rc"
+}
+step "python syntax" syntax_python
+
+# node is not a dependency of this project, so the preview driver is only
+# checked where a node happens to be installed.
+if command -v node >/dev/null 2>&1; then
+    step "preview driver syntax" node --check "$TMP/tools/preview-driver/extension.js"
+fi
+
+# ---- the project's own checks -----------------------------------------------
+#
+# Both take their REPO_ROOT from their own location, so running the extracted
+# copies checks the extracted tree.
+step "tokens agree (tools/check-tokens.sh)"   bash "$TMP/tools/check-tokens.sh"
+step "cascade intact (tools/check-cascade.sh)" bash "$TMP/tools/check-cascade.sh"
+
+printf '\n'
+if [ "$fail" = 1 ]; then
+    note "commit refused. Fix the above, or pass --no-verify if you know better."
+    printf '\n'
+    exit 1
+fi
+exit 0

@@ -34,23 +34,32 @@ detect_distro() {
 # Commands the installer genuinely needs, mapped to the package that ships
 # them. sassc is the only one that is regularly missing — the Tahoe theme
 # compiles its SCSS at install time.
+#
+# python3 is here because it is load-bearing rather than incidental: every
+# extension's metadata is checked through it (ext_supports_shell), the display
+# density is measured and the correction emitted through it, enabled-extensions
+# is appended through it, and bin/tahoe-glass-apply does its whole block-replace
+# in it. Without it the install used to pass this check, report "all
+# dependencies present", and then die part-way through with a bare "command not
+# found" — which is the one failure mode this step exists to prevent. Arch
+# spells the package `python`; Fedora and Debian spell it `python3`.
 declare -A PKG_ARCH=(
     [git]=git [curl]=curl [unzip]=unzip [sassc]=sassc
     [gsettings]=glib2 [dconf]=dconf [gnome-extensions]=gnome-shell
-    [msgfmt]=gettext
+    [msgfmt]=gettext [python3]=python
 )
 declare -A PKG_FEDORA=(
     [git]=git [curl]=curl [unzip]=unzip [sassc]=sassc
     [gsettings]=glib2 [dconf]=dconf [gnome-extensions]=gnome-shell
-    [msgfmt]=gettext
+    [msgfmt]=gettext [python3]=python3
 )
 declare -A PKG_DEBIAN=(
     [git]=git [curl]=curl [unzip]=unzip [sassc]=sassc
     [gsettings]=libglib2.0-bin [dconf]=dconf-cli [gnome-extensions]=gnome-shell
-    [msgfmt]=gettext
+    [msgfmt]=gettext [python3]=python3
 )
 
-REQUIRED_CMDS=(git curl unzip sassc gsettings dconf gnome-extensions)
+REQUIRED_CMDS=(git curl unzip sassc gsettings dconf gnome-extensions python3)
 
 # Nice to have, never fatal. msgfmt compiles Blur My Shell's translations when
 # it is built from git; without it the extension works and its preferences are

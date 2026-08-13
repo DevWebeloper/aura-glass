@@ -13,15 +13,29 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$REPO_ROOT/lib/common.sh"
 # shellcheck source=lib/distro.sh
 . "$REPO_ROOT/lib/distro.sh"
+# The steps were one file until they were split by concern, the same way css/
+# was. steps.sh comes first because it defines CONF_DIR, which the flag parsing
+# below reads; the rest are definitions only and their order does not matter.
 # shellcheck source=lib/steps.sh
 . "$REPO_ROOT/lib/steps.sh"
+# shellcheck source=lib/steps-extensions.sh
+. "$REPO_ROOT/lib/steps-extensions.sh"
+# shellcheck source=lib/steps-assets.sh
+. "$REPO_ROOT/lib/steps-assets.sh"
+# shellcheck source=lib/steps-css.sh
+. "$REPO_ROOT/lib/steps-css.sh"
+# shellcheck source=lib/steps-dconf.sh
+. "$REPO_ROOT/lib/steps-dconf.sh"
+# shellcheck source=lib/steps-integration.sh
+. "$REPO_ROOT/lib/steps-integration.sh"
 # Values written down in more than one place live here, so that the copy in a
 # stylesheet and the copy in a dconf key cannot drift apart unnoticed.
 # tools/check-tokens.sh asserts they still agree.
 # shellcheck source=tokens/tokens.sh
 . "$REPO_ROOT/tokens/tokens.sh"
 
-ACCENT="pink"
+ACCENT=""          # empty = remembered choice, then $ACCENT_DEFAULT
+ACCENT_DEFAULT="pink"
 WANT_EXTRAS=0
 WANT_ICONS=1
 WANT_CURSORS=1
@@ -53,10 +67,13 @@ ${C_BLD}tahoe-glass${C_OFF} — a macOS Tahoe glass desktop for GNOME 48-50
     ./install.sh [options]
 
   ${C_BLD}options${C_OFF}
-    --accent COLOR    accent to build around (default: pink)
-                      one of: $VALID_ACCENTS
-    --full            the whole reference desktop: every extension and every
-                      preset. What you want on a fresh machine
+    --accent COLOR    accent to build around (default: $ACCENT_DEFAULT, and
+                      remembered for later runs). One of: $VALID_ACCENTS
+    --full            every optional piece at once: --extras, plus a re-assert
+                      of the icons, cursors, wm-buttons, OSD and panel-blur-fix
+                      defaults. All five are already on, so on a fresh machine
+                      this is exactly --extras; what it is really for is undoing
+                      an earlier --no-* on a re-install
     --extras          also install the optional extensions
                       (Just Perfection, GNOME UI Tune, Space Bar, Dash to Dock)
     --grain N         film grain over blurred surfaces, 0-1. The preset ships
@@ -223,10 +240,28 @@ case "$ICONS" in
     *) die "unknown --icons '$ICONS' — colloid, reversal, or reversal-COLOUR" ;;
 esac
 
+# Remembered per machine, for the same reason --icons and --grain are:
+# apply_gsettings rewrites accent-color on every run, so a flagless re-install
+# would silently re-theme a desktop deliberately running some other accent —
+# and because pink is the default, it would re-theme it to pink specifically.
+if [ -z "$ACCENT" ] && [ -r "$CONF_DIR/accent" ]; then
+    ACCENT="$(cat "$CONF_DIR/accent" 2>/dev/null || true)"
+fi
+ACCENT="${ACCENT:-$ACCENT_DEFAULT}"
+
 case " $VALID_ACCENTS " in
     *" $ACCENT "*) ;;
     *) die "unknown accent '$ACCENT' — pick one of: $VALID_ACCENTS" ;;
 esac
+
+# --no-blur does not install Blur My Shell at all, so asking it to blur behind
+# windows cannot be honoured. Rejected rather than silently resolved either way:
+# whichever of the two we picked would be the opposite of what half the users
+# writing that line meant, and apply_app_blur would otherwise write a dconf key
+# for an extension this mode deliberately leaves out.
+if [ "$WANT_BLUR" != 1 ] && [ "$WANT_WINDOW_BLUR" = 1 ]; then
+    die "--no-blur and --window-blur contradict each other — --no-blur leaves Blur My Shell out entirely, so there is nothing to blur behind a window. Pick one."
+fi
 
 printf '\n%s  tahoe-glass%s  %saccent %s%s\n' \
     "$C_BLD" "$C_OFF" "$C_DIM" "$ACCENT" "$C_OFF"

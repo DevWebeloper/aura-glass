@@ -210,27 +210,55 @@ shot 03-nautilus
 launch gnome-text-editor
 shot 04-text-editor
 
+# css/gtk3-tweaks.css is the one sheet nothing else here covers. Every app in
+# the roster above is GTK4, and the GTK3 half of Tahoe-Dark ships as a gresource
+# — so those rules can only be seen against a real GTK3 window, and until now
+# they were never seen at all.
+#
+# Which GTK3 apps a machine has varies, and none of them is worth making a
+# dependency for a screenshot, so this takes the first one that happens to be
+# installed and says so plainly when there is none.
+GTK3_APP=""
+for c in nm-connection-editor pavucontrol lxappearance gnome-disks \
+         transmission-gtk galculator; do
+    command -v "$c" >/dev/null 2>&1 && { GTK3_APP="$c"; break; }
+done
+if [ -n "$GTK3_APP" ]; then
+    launch "$GTK3_APP"
+    shot 05-gtk3
+else
+    echo "   no GTK3 app installed — css/gtk3-tweaks.css gets no shot this run"
+    echo "   (any one of: nm-connection-editor pavucontrol lxappearance gnome-disks)"
+fi
+
 if [ "$DRIVER" = 1 ]; then
     # Each of these is the only coverage a whole sheet gets:
     #   quick settings  -> css/shell-10-quick-settings.css, shell-40-quick-toggles.css
     #   date menu       -> css/shell-20-popup-menus.css (.datemenu-popover at 33)
+    #   dialog          -> css/shell-50-dialogs.css
     #   notification    -> css/shell-30-notifications.css
     #   OSD             -> the Custom OSD pill and its blur
-    driver OpenQuickSettings; sleep 2; shot 05-quick-settings
+    driver OpenQuickSettings; sleep 2; shot 06-quick-settings
     driver CloseMenus;        sleep 1
-    driver OpenDateMenu;      sleep 2; shot 06-date-menu
+    driver OpenDateMenu;      sleep 2; shot 07-date-menu
     driver CloseMenus;        sleep 1
+
+    # The dialog is modal and covers most of the screen, so it is opened and
+    # closed around its own shot rather than left standing like the app windows.
+    driver ShowDialog "Restart" "The system will restart automatically."
+    sleep 2; shot 08-dialog
+    driver HideDialog; sleep 1
 
     # The OSD goes before the notification, and not the other way round,
     # because the OSD can be dismissed on command and a notification banner
     # cannot — it sits there for several seconds and lands in whatever is shot
     # next. Doing the banner last means nothing has to wait for it.
     driver ShowOsd "audio-volume-high-symbolic" 0.65
-    sleep 1; shot 07-osd
+    sleep 1; shot 09-osd
     driver HideOsd; sleep 2
 
     driver Notify "tahoe-glass" "Notification banner, for the CSS under test."
-    sleep 1; shot 08-notification
+    sleep 1; shot 10-notification
 fi
 
 if [ "$TG_GPU" = 1 ] && [ -n "$GPU_CARD" ]; then

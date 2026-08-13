@@ -16,6 +16,10 @@
 #   tools/preview.sh --transparency 0.85   translucent app windows at that level
 #   tools/preview.sh --tint 70             how much theme colour survives, vs black
 #
+# Every run is compared against the last accepted run of the same mode, and
+# reports what moved. tools/check-shots.py --accept adopts the current run as
+# the baseline; --mode glass and --mode solid keep separate ones.
+#
 # ---------------------------------------------------------------------------
 # What this is NOT
 #
@@ -80,7 +84,7 @@ while [ $# -gt 0 ]; do
         --transparency) TRANSPARENCY="$2"; shift 2 ;;
         --tint)     TINT="$2"; shift 2 ;;
         --res)      RESOLUTION="$2"; shift 2 ;;
-        -h|--help)  sed -n '2,30p' "$0" | sed 's/^# \?//'; exit 0 ;;
+        -h|--help)  sed -n '2,34p' "$0" | sed 's/^# \?//'; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
 done
@@ -225,3 +229,12 @@ rm -rf "$PREVIEW_RUNTIME"
 
 say "screenshots in $SHOTS"
 ls -1 "$SHOTS" | sed 's/^/   /'
+
+# Glass and solid keep separate baselines on purpose: the two modes are meant to
+# differ, so a shared one would report every mode switch as a regression and be
+# ignored within a week. Exits non-zero when something moved, so this is usable
+# from a script and not only by eye.
+MODE_NAME=glass
+[ "$SOLID" = 1 ] && MODE_NAME=solid
+say "comparing against the '$MODE_NAME' baseline"
+python3 "$REPO_ROOT/tools/check-shots.py" --mode "$MODE_NAME" --shots "$SHOTS"
