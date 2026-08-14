@@ -70,3 +70,53 @@ headerbar button.titlebutton,
   background-color: transparent;
   border: none;
 }
+
+/* Screencast / screen-sharing display picker in xdg-desktop-portal-gnome.
+ * Its monitor tiles are buttons, so the theme's blanket
+ * `button { border-radius: 9999px }` rounded a wide rectangle into a capsule.
+ * These put the tile geometry back, nested: the tile, the container inside it,
+ * then the label, each a step tighter so the corners stay concentric.
+ */
+button.monitor,
+.monitor {
+  border-radius: 12px;
+}
+
+.monitor-selection-container {
+  border-radius: 9px;
+}
+
+button.monitor > .text,
+.monitor > .text {
+  border-radius: 7px;
+}
+
+/* ---------- Neighbouring buttons ----------
+ * The theme pulls three kinds of button leftwards with a negative right
+ * margin, and that is what closed the gap between adjacent buttons: in a
+ * header bar the view toggle and the menu button sat welded together, six
+ * pixels of box spacing against twelve of negative margin, so they overlapped
+ * rather than merely touched.
+ *
+ * The margins are the theme's layout hack for one arrangement and were never
+ * scoped to it. It zeroes them again itself inside `box.horizontal.start` and
+ * `box.horizontal.linked` — only `box.end`, the right-hand side of every
+ * header bar, was left pulled in. Zeroing them everywhere finishes what those
+ * two rules started.
+ *
+ * No gap is set here on purpose. GtkHeaderBar spaces its own children and so
+ * does every action area; an earlier pass added `button + button {
+ * margin-left: 8px }`, which stacked on top of that spacing where it already
+ * worked and pushed apart the segments of linked groups, which are meant to
+ * touch. Taking the negative margin off hands the container's own spacing
+ * back, which is the gap that was there before.
+ *
+ * Selectors mirror the theme's exactly, so appending is enough to win: equal
+ * specificity, later in the file. Only margin-right is touched, because that
+ * is the only side the theme sets.
+ */
+button.image-button.toggle,
+button.suggested-action.text-button,
+menubutton > button.image-button.toggle {
+  margin-right: 0;
+}

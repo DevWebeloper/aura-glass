@@ -24,7 +24,7 @@ combobox > box > button:hover {
 dropdown > button:focus-within,
 combobox > box > button:focus-within {
   border-color: alpha(@accent_bg_color, 0.9);
-  box-shadow: 0 0 0 2px alpha(@accent_bg_color, 0.30) !important;
+  box-shadow: 0 0 0 2px alpha(@accent_bg_color, 0.30);
 }
 
 /* Keep the chevron visible — it is the only cue that a row opens a list. */

@@ -49,7 +49,6 @@
   --sidebar-bg-color: @sidebar_bg_color;
   --headerbar-bg-color: @headerbar_bg_color;
   --headerbar-backdrop-color: @headerbar_backdrop_color;
-  --dialog-bg-color: @dialog_bg_color;
 }
 
 /* ---------- Darkened grounds ----------
@@ -173,14 +172,33 @@ headerbar.default-decoration:backdrop,
  * AdwNavigationSplitView and AdwOverlaySplitView paint their own opaque
  * grounds. Without these the window is translucent everywhere except the
  * sidebar, which looks worse than either extreme.
+ *
+ * .navigation-sidebar stays in this list even though gtk4-40-containers.css
+ * turns it transparent inside a .sidebar-pane. Not every app wraps one — an
+ * AdwNavigationSplitView provides the pane, a plain sidebar in a box does not —
+ * so dropping the bare selector left those apps with no tinted sidebar at all,
+ * just the window showing through where the sidebar should be. That scoped rule
+ * is two classes to this one's one, so it still wins wherever a pane is there.
  */
 .sidebar-pane,
 .navigation-sidebar,
-.sidebar-pane .navigation-sidebar,
 stacksidebar,
 placessidebar {
   background-color: alpha(@tg_tint_sidebar, 0.86);
   background-color: color-mix(in srgb, var(--tg-tint-sidebar) 86%, transparent);
+}
+
+/* The pane above carries the tint for this whole region, so everything
+ * libadwaita paints inside it paints nothing — otherwise the header bar's own
+ * 0.88 and the pane's 0.86 compound and the sidebar reads denser than the
+ * window it sits in. The navigation list inside the pane is handled in
+ * gtk4-40-containers.css, which is always installed.
+ */
+.sidebar-pane headerbar,
+.sidebar-pane toolbarview > .toolbar,
+toolbarview windowhandle,
+toolbarview > revealer.top-bar > windowhandle {
+  background-color: transparent;
 }
 
 .content-pane {
@@ -212,11 +230,15 @@ scrolledwindow > viewport > .view {
  * nothing for a popover to be translucent *against*.
  */
 
-/* Message dialogs stay opaque. They exist to be read and answered, and a
- * translucent one over a busy window is genuinely harder to read.
+/* Dialogs and in-app modal cards are deliberately absent from this sheet, for
+ * exactly the reason popovers are.
+ *
+ * They were here, and because this sheet is appended after the others they
+ * silently overrode the near-solid ground gtk4-70-surfaces.css sets — so the
+ * fill written there never painted, and a dialog looked one way with
+ * --app-transparency and another way without.
+ *
+ * gtk4-70-surfaces.css owns them, and the reasoning does not depend on this
+ * flag: a dialog exists to be read and answered, and a translucent one over a
+ * busy window is harder to read whatever the rest of the window is doing.
  */
-window.dialog.message .dialog-vbox,
-window.messagedialog .background {
-  background-color: @dialog_bg_color;
-  background-color: var(--dialog-bg-color);
-}

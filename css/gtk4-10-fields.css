@@ -22,7 +22,7 @@ entry:focus-within,
 spinbutton:not(.vertical):focus-within {
   background-color: rgba(255, 255, 255, 0.10);
   border-color: alpha(@accent_bg_color, 0.9);
-  box-shadow: 0 0 0 2px alpha(@accent_bg_color, 0.30) !important;
+  box-shadow: 0 0 0 2px alpha(@accent_bg_color, 0.30);
 }
 
 entry:disabled,
@@ -49,8 +49,11 @@ entry.search {
  */
 headerbar entry,
 headerbar entry.flat,
-.nautilus-path-bar,
-entry.nautilus-path-bar {
+headerbar entry.location-entry,
+entry.location-entry,
+.location-entry,
+entry.nautilus-path-bar,
+.nautilus-path-bar {
   min-height: 30px;
   border-radius: 9999px;
   padding-left: 14px;
@@ -58,22 +61,48 @@ entry.nautilus-path-bar {
 }
 
 /* The button that closes path-bar edit mode sits immediately after the entry.
- * The theme leaves it at the default rounded-rect, so next to a capsule field
- * it read as a lozenge rather than a matching control. Equal min-width and
- * min-height are what actually make a circle — border-radius alone only
- * rounds whatever rectangle the button already is.
+ * libadwaita's .linked containers flatten the corners the two share, which
+ * turns a round cancel button into a lozenge, so the radius is re-asserted on
+ * all four corners. Equal min-width and min-height with no padding are what
+ * actually make a circle — border-radius alone only rounds whatever rectangle
+ * the button already is.
  *
  * Matched to the entry's 30px so the two line up, with the gap on the button
  * rather than the entry, so the field's own width is not affected.
+ *
+ * Both spellings of the field are listed here and in the block above, and they
+ * have to stay in step: Nautilus tags its path bar .nautilus-path-bar, GTK tags
+ * a plain location entry .location-entry, and styling the entry as a capsule
+ * without matching its button is what produces the lozenge in the first place.
  */
-headerbar entry + button,
+headerbar entry.location-entry + button,
+entry.location-entry + button,
+.location-entry + button,
+entry.nautilus-path-bar + button,
 .nautilus-path-bar + button,
-entry.nautilus-path-bar + button {
+headerbar .linked > entry.location-entry + button,
+headerbar .linked > entry.nautilus-path-bar + button,
+box.linked > entry.location-entry + button,
+box.linked > entry.nautilus-path-bar + button {
   min-width: 30px;
   min-height: 30px;
   border-radius: 9999px;
   padding: 0;
   margin-left: 5px;
+}
+
+/* The icon inside it carries its own padding, which re-inflates the circle. */
+headerbar entry.location-entry + button > image,
+entry.location-entry + button > image,
+.location-entry + button > image,
+entry.nautilus-path-bar + button > image,
+.nautilus-path-bar + button > image,
+headerbar .linked > entry.location-entry + button > image,
+headerbar .linked > entry.nautilus-path-bar + button > image,
+box.linked > entry.location-entry + button > image,
+box.linked > entry.nautilus-path-bar + button > image {
+  padding: 0;
+  margin: 0;
 }
 
 /* Error / warning states keep the same shape, only the edge changes colour. */
@@ -82,7 +111,7 @@ entry.error {
 }
 
 entry.error:focus-within {
-  box-shadow: 0 0 0 2px alpha(@error_color, 0.30) !important;
+  box-shadow: 0 0 0 2px alpha(@error_color, 0.30);
 }
 
 entry.warning {
@@ -90,5 +119,5 @@ entry.warning {
 }
 
 entry.warning:focus-within {
-  box-shadow: 0 0 0 2px alpha(@warning_color, 0.30) !important;
+  box-shadow: 0 0 0 2px alpha(@warning_color, 0.30);
 }

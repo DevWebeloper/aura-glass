@@ -64,6 +64,58 @@ icon_variant() {
     return 1
 }
 
+# One flat 16x16 symbolic arrow. viewBox is not optional: without it the width
+# and height are the only size the file has, so the copy written into the @2x
+# directory cannot scale to the size that directory exists to serve.
+pan_svg() {
+    printf "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><path d='%s' fill='currentColor'/></svg>\n" "$1"
+}
+
+# Reversal's own pan-*.svg carry a group transform that was never baked into
+# the path data underneath it. librsvg applies the transform and draws them
+# correctly; GTK4's symbolic loader re-serialises the path and drops it, so
+# every chevron the theme draws — expander rows, dropdowns, the path bar —
+# came out rotated. These are the same four arrows with the transform already
+# applied, so there is nothing left for a loader to lose.
+#
+# The -rtl pair is mirrored on purpose: start points right and end points left
+# in a right-to-left locale, which is the reverse of the names above them.
+#
+# This overwrites files the Reversal installer laid down, and nothing here puts
+# them back. `uninstall.sh --assets` removes the icon theme whole, which is the
+# counterpart — the patched files go with it.
+patch_reversal_symbolics() {
+    local name="$1" dir sub found=0
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: rewrite pan-*.svg under $name"
+        return 0
+    fi
+    for dir in "$HOME/.local/share/icons/$name" "$HOME/.local/share/icons/$name-dark" \
+               "$HOME/.local/share/icons/$name-Light" "$HOME/.local/share/icons/$name-Dark"; do
+        [ -d "$dir" ] || continue
+        for sub in "actions/symbolic" "actions@2x/symbolic"; do
+            [ -d "$dir/$sub" ] || continue
+            found=$((found + 1))
+            pan_svg 'M 13,6 8,11 3,6 Z'  > "$dir/$sub/pan-down-symbolic.svg"
+            pan_svg 'M 13,10 8,5 3,10 Z' > "$dir/$sub/pan-up-symbolic.svg"
+            pan_svg 'M 10,13 5,8 10,3 Z' > "$dir/$sub/pan-start-symbolic.svg"
+            pan_svg 'M 6,13 11,8 6,3 Z'  > "$dir/$sub/pan-end-symbolic.svg"
+            pan_svg 'M 6,13 11,8 6,3 Z'  > "$dir/$sub/pan-start-symbolic-rtl.svg"
+            pan_svg 'M 10,13 5,8 10,3 Z' > "$dir/$sub/pan-end-symbolic-rtl.svg"
+        done
+        # GTK reads icon-theme.cache in preference to the directory it describes,
+        # so a theme that has one keeps serving the old arrows however many times
+        # the files above are rewritten. Reversal's installer leaves one behind.
+        if [ -f "$dir/icon-theme.cache" ] && command -v gtk-update-icon-cache >/dev/null 2>&1; then
+            gtk-update-icon-cache -qft "$dir" 2>/dev/null || true
+        fi
+    done
+    # A silent no-op is the failure mode that matters here: the pack reorganises
+    # its directories, every path misses, and the chevrons stay wrong with
+    # nothing said about it.
+    [ "$found" -gt 0 ] || warn "no symbolic directory found under $name — chevrons left unpatched"
+}
+
 install_reversal() {
     local color="${ICONS#reversal}"; color="${color#-}"
     [ -n "$color" ] || color=purple
@@ -72,6 +124,7 @@ install_reversal() {
     step "Installing the Reversal icon theme ($color)"
     if [ "${FORCE:-0}" != 1 ] \
        && { [ -d "$HOME/.local/share/icons/$name" ] || [ -d "/usr/share/icons/$name" ]; }; then
+        patch_reversal_symbolics "$name"
         skip "$name already installed"
         return 0
     fi
@@ -84,6 +137,7 @@ install_reversal() {
     else
         ( cd "$src" && ./install.sh -t "$color" ) >/dev/null \
             || die "the Reversal installer failed"
+        patch_reversal_symbolics "$name"
     fi
     ok "$name"
 }

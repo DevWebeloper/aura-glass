@@ -25,21 +25,42 @@
  * match, and any shadow arriving from an app's own CSS rather than the theme.
  * Unlike St, GTK4 has a universal selector, so one rule covers it.
  *
- * The accent focus ring is re-asserted where it belongs, with !important so it
- * survives this. It is a 0-offset, 0-blur ring, not a shadow: it says where the
- * keyboard is, which is information rather than decoration.
+ * The accent focus ring is re-asserted where it belongs and survives this on
+ * specificity alone: `entry:focus-within` is 0-1-1 against this rule's 0-0-0,
+ * and it is written later besides. It is a 0-offset, 0-blur ring, not a shadow:
+ * it says where the keyboard is, which is information rather than decoration.
+ *
+ * None of these carry !important, and none of them may. GTK4's parser has no
+ * such keyword — it reports `Junk at end of value` and drops the whole
+ * declaration, not merely the flag, so every rule here that once carried one
+ * did nothing at all. This rule never ran, and neither did the four focus rings
+ * that were relying on it not to. It is not needed either way: this file is
+ * loaded from ~/.config/gtk-4.0/gtk.css, which GTK reads at USER priority,
+ * above anything libadwaita or an application provides. Within the file the
+ * ordinary cascade decides, which is what the numeric prefixes are for.
+ *
+ * St is the exception and honours !important, so the shell sheets keep theirs.
  */
 * {
-  box-shadow: none !important;
+  box-shadow: none;
 }
 
-/* libadwaita draws the sidebar's inward shadow and hairline from two named
- * colours rather than from any rule, so they cannot be turned off by
+/* libadwaita draws the sidebar and popover inward shadows and hairlines from
+ * named colours rather than from any rule, so they cannot be turned off by
  * overriding a selector — the names have to be redefined. Appended after the
- * theme's own definitions, so these win. Both go fully transparent: the
- * sidebar is told apart by its fill, like every other surface here.
+ * theme's own definitions, so these win. They go fully transparent: surfaces
+ * are told apart by their fill and blur, eliminating black shading artifacts.
+ *
+ * shade_color is the widest of these and the one with a real cost: libadwaita
+ * uses it for scroll undershoot as well as for drop shadows, so the fade that
+ * says a list continues past its edge goes with it. Taken knowingly — the
+ * artifact it removes is visible on every surface, the undershoot on some — but
+ * it is the one define here that trades away information rather than
+ * decoration.
  */
 @define-color sidebar_shade_color transparent;
 @define-color secondary_sidebar_shade_color transparent;
 @define-color sidebar_border_color transparent;
 @define-color secondary_sidebar_border_color transparent;
+@define-color popover_shade_color transparent;
+@define-color shade_color transparent;

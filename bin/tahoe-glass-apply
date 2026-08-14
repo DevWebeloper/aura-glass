@@ -177,6 +177,36 @@ if flatten:
           % (target, n[0], "" if n[0] == 1 else "s", n[1], "" if n[1] == 1 else "s",
              n[2], "" if n[2] == 1 else "s"))
 
+# The theme pins its accent to a handful of hardcoded blues, so it shipped one
+# colour whatever Settings said. Rewriting the hex where it stands is the whole
+# job: `st-lighten(#0091ff, 20%)` becomes `st-lighten(-st-accent-color, 20%)`,
+# which is exactly the form GNOME Shell's own stylesheet writes, and the
+# lighten / darken steps survive.
+#
+# Substituting the enclosing call instead — matching `st-lighten(#0091ff, 20%)`
+# and emitting a bare `-st-accent-color` — is what the first version did, and it
+# flattened rest, hover and pressed to one colour, because those three states
+# differ by nothing but the lighten or darken step it discarded.
+#
+# One @define-color is left alone: the one defining the very name substituted
+# in. A GTK4 theme that pins its accent with `@define-color accent_bg_color
+# #3584e4;` would otherwise be rewritten to `@define-color accent_bg_color
+# @accent_bg_color;`, a definition naming itself. Skipping that line leaves
+# libadwaita's own dynamic definition standing, which is the value wanted here
+# anyway. Any other @define-color holding one of these blues is an ordinary
+# accent use and is rewritten like the rest. St has no @define-color at all, so
+# on the shell side the guard never fires.
+ACCENT_HEX = re.compile(r"#(?:0091ff|3584e4|3484e2|1c6bc7|619fe8)\b", re.I)
+accent = ("-st-accent-color" if "gnome-shell" in target else
+          "@accent_bg_color" if "gtk-4.0" in target else None)
+if accent:
+    selfref = (re.compile(r"^\s*@define-color\s+" + re.escape(accent[1:]) + r"\b")
+               if accent.startswith("@") else None)
+    css = "".join(
+        line if (selfref and selfref.match(line)) else ACCENT_HEX.sub(accent, line)
+        for line in css.splitlines(True)
+    )
+
 # Order is the order given: later sheets are overrides and must win on equal
 # specificity, so they are concatenated rather than merged.
 block = "\n\n".join(

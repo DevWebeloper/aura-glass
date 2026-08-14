@@ -34,3 +34,101 @@ list.boxed-list row:hover,
 list.content row:hover {
   background-color: rgba(255, 255, 255, 0.05);
 }
+
+/* ---------- Split-view container spacing ----------
+ * A gap between the sidebar pane and the content pane, so the two read as two
+ * surfaces rather than one surface with a line drawn on it.
+ *
+ * paned is scoped to .horizontal on purpose: a left margin on the second child
+ * of a vertical paned puts the gap on the wrong axis, and paned carries an
+ * orientation class precisely so this can be asked.
+ */
+navigation-split-view > .content-pane,
+overlay-split-view > .content-pane,
+paned.horizontal > :last-child {
+  margin-left: 5px;
+}
+
+/* Header bars and window handles square off and stay flat.
+ *
+ * This is deliberately not scoped to toolbarview: the theme rounds header bars
+ * everywhere, and a rounded header bar inside a square-cornered pane reads as a
+ * pill floating in the pane rather than as its top edge. Squaring every one of
+ * them is safe because the window, not the header bar, is what draws and clips
+ * the rounded window corners.
+ */
+toolbarview windowhandle,
+toolbarview > revealer.top-bar,
+toolbarview > revealer.top-bar > windowhandle,
+toolbarview > revealer.top-bar > windowhandle > box.vertical,
+toolbarview > revealer.top-bar headerbar,
+headerbar,
+headerbar.titlebar,
+.titlebar {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* The sidebar pane already carries the tint; the list inside it painting its
+ * own ground on top is what doubles it. Set here rather than in
+ * gtk4-transparency.css because it is true whether or not that optional sheet
+ * is installed.
+ */
+.sidebar-pane list.navigation-sidebar,
+.sidebar-pane .navigation-sidebar {
+  background-color: transparent;
+}
+
+/* ---------- Column views and list views ----------
+ * Cells sat flush against the container's rounded corner and against each
+ * other, so text in the first and last column was clipped and a checkbox in
+ * column one touched the label in column two.
+ *
+ * treeview takes the .view node: bare `treeview` is the GTK3 spelling and
+ * matches nothing here.
+ */
+columnview,
+listview,
+treeview.view {
+  padding: 4px;
+}
+
+columnview cell {
+  padding: 8px 10px;
+}
+
+columnview cell:first-child,
+columnview > header > button:first-child {
+  padding-left: 14px;
+}
+
+columnview cell:last-child,
+columnview > header > button:last-child {
+  padding-right: 14px;
+}
+
+/* ---------- Toasts ----------
+ * A toast lands in the bottom corner, where the window's own rounded corner
+ * cuts across it, so it needs to sit in from both edges.
+ *
+ * The margin goes on the outermost node only. These nest — the revealer holds
+ * the toast, the toast holds the card — and a margin on each would stack to
+ * three times the gap asked for here, which is what put the toast half a
+ * toast's height off the bottom edge.
+ */
+toast,
+.toast-revealer {
+  margin: 16px 20px;
+}
+
+.toast-revealer > toast,
+toast > .toast-card,
+.toast-revealer .toast-card {
+  margin: 0;
+}
+
+toast,
+.toast-card {
+  border-radius: 12px;
+  padding: 8px 16px;
+}

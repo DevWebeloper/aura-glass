@@ -28,7 +28,8 @@ ${C_BLD}tahoe-glass uninstall${C_OFF}
   ./uninstall.sh [options]
 
     --extensions   also remove the extensions this installed (and their settings)
-    --assets       also remove the Tahoe theme, Colloid icons and MacTahoe cursors
+    --assets       also remove the Tahoe theme, the icon pack (Colloid or
+                   Reversal) and MacTahoe cursors
     --all          both of the above (--full is accepted as the same thing)
     -y, --yes      answer yes to every prompt
     -n, --dry-run  print what would happen, change nothing
@@ -195,7 +196,11 @@ fi
 if [ "$REMOVE_ASSETS" = 1 ]; then
     step "Removing downloaded themes, icons and cursors"
     run rm -rf "$HOME/.themes/Tahoe-Dark" "$HOME/.themes/Tahoe-Light"
-    for d in "$HOME"/.local/share/icons/Colloid* "$HOME"/.local/share/icons/MacTahoe*; do
+    # Reversal is matched as well as Colloid: --icons reversal installs it, and
+    # install rewrites its pan-*.svg in place with no backup, so leaving the
+    # theme on disk leaves patched files behind with nothing to restore them.
+    for d in "$HOME"/.local/share/icons/Colloid* "$HOME"/.local/share/icons/Reversal* \
+             "$HOME"/.local/share/icons/MacTahoe*; do
         [ -e "$d" ] && { run rm -rf "$d"; ok "removed $(basename "$d")"; }
     done
     run rm -rf "$HOME/.cache/tahoe-glass"
