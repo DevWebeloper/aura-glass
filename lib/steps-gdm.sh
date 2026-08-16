@@ -212,6 +212,7 @@ install_gdm() {
     fi
 
     # 3. Compile and install GDM theme patched to link directly to file:///usr/share/backgrounds/tahoe-gdm.png
+    info "Preparing WhiteSur GDM resources..."
     local src="$SRC_CACHE/WhiteSur-gtk-theme"
     clone_pinned "$WHITESUR_REPO" "$WHITESUR_REF" "$src"
 
@@ -224,12 +225,25 @@ install_gdm() {
         sed -i 's|assets/background.png|file:///usr/share/backgrounds/tahoe-gdm.png|g' \
             "$src"/src/main/gnome-shell/gnome-shell-*.css 2>/dev/null || true
 
-        if sudo bash "$src/tweaks.sh" -g -b "$target_wall" -nb >/dev/null 2>&1; then
+        # Neutralize WhiteSur internal network & system package checks that can freeze/hang
+        sed -i 's/prepare_deps/true/g' "$src"/libs/*.sh 2>/dev/null || true
+        sed -i 's/get_utc_epoch_time/true/g' "$src"/libs/*.sh 2>/dev/null || true
+
+        info "Compiling and applying GDM theme..."
+        sudo -v || { warn "sudo authentication required for GDM installation"; return 1; }
+
+        local gdm_log="/tmp/tahoe-gdm-install.log"
+        if sudo bash "$src/tweaks.sh" -g -b "$target_wall" -nb -s >"$gdm_log" 2>&1; then
             mkdir -p "$CONF_DIR"
             printf '%s\n' "dynamic" > "$CONF_DIR/gdm-installed"
             ok "GDM login screen theme installed (dynamic wallpaper sync)"
         else
-            warn "GDM theme installation failed"
+            warn "GDM theme installation failed (log: $gdm_log)"
+            if [ -f "$gdm_log" ]; then
+                grep -E "ERROR|error|failed|fatal" "$gdm_log" | head -n 5 | while read -r err_line; do
+                    warn "  $err_line"
+                done
+            fi
             return 1
         fi
     fi
@@ -246,10 +260,13 @@ uninstall_gdm() {
 
     if [ -f "$src/tweaks.sh" ]; then
         if [ "${DRY_RUN:-0}" = 1 ]; then
-            info "dry-run: sudo bash $src/tweaks.sh -r -g"
+            info "dry-run: sudo bash $src/tweaks.sh -r -g -s"
             restored=1
         else
-            if sudo bash "$src/tweaks.sh" -r -g >/dev/null 2>&1; then
+            sudo -v 2>/dev/null || true
+            sed -i 's/prepare_deps/true/g' "$src"/libs/*.sh 2>/dev/null || true
+            sed -i 's/get_utc_epoch_time/true/g' "$src"/libs/*.sh 2>/dev/null || true
+            if sudo bash "$src/tweaks.sh" -r -g -s >/dev/null 2>&1; then
                 restored=1
             fi
         fi

@@ -46,26 +46,29 @@ detect_distro() {
 declare -A PKG_ARCH=(
     [git]=git [curl]=curl [unzip]=unzip [sassc]=sassc
     [gsettings]=glib2 [dconf]=dconf [gnome-extensions]=gnome-shell
-    [msgfmt]=gettext [python3]=python
+    [msgfmt]=gettext [python3]=python [glib-compile-resources]=glib2
+    [xmllint]=libxml2
 )
 declare -A PKG_FEDORA=(
     [git]=git [curl]=curl [unzip]=unzip [sassc]=sassc
     [gsettings]=glib2 [dconf]=dconf [gnome-extensions]=gnome-shell
-    [msgfmt]=gettext [python3]=python3
+    [msgfmt]=gettext [python3]=python3 [glib-compile-resources]=glib2-devel
+    [xmllint]=libxml2
 )
 declare -A PKG_DEBIAN=(
     [git]=git [curl]=curl [unzip]=unzip [sassc]=sassc
     [gsettings]=libglib2.0-bin [dconf]=dconf-cli [gnome-extensions]=gnome-shell
-    [msgfmt]=gettext [python3]=python3
+    [msgfmt]=gettext [python3]=python3 [glib-compile-resources]=libglib2.0-dev-bin
+    [xmllint]=libxml2-utils
 )
 
-REQUIRED_CMDS=(git curl unzip sassc gsettings dconf gnome-extensions python3)
+REQUIRED_CMDS=(git curl unzip sassc gsettings dconf gnome-extensions python3 glib-compile-resources)
 
 # Nice to have, never fatal. msgfmt compiles Blur My Shell's translations when
 # it is built from git; without it the extension works and its preferences are
 # simply untranslated. Kept out of REQUIRED_CMDS so a missing gettext cannot
 # block the whole install over a cosmetic loss.
-OPTIONAL_CMDS=(msgfmt)
+OPTIONAL_CMDS=(msgfmt xmllint)
 
 missing_cmds() {
     local c
