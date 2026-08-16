@@ -249,16 +249,23 @@ if [ "$DRIVER" = 1 ]; then
     sleep 2; shot 08-dialog
     driver HideDialog; sleep 1
 
+    # The app switcher (Alt+Tab / Super+Tab) exercises .switcher-list
+    # .item-box:selected, which this project paints with -st-accent-color.
+    # Needs at least two windows open to show a populated list.
+    driver ShowSwitcher
+    sleep 2; shot 09-switcher
+    driver HideSwitcher; sleep 1
+
     # The OSD goes before the notification, and not the other way round,
     # because the OSD can be dismissed on command and a notification banner
     # cannot — it sits there for several seconds and lands in whatever is shot
     # next. Doing the banner last means nothing has to wait for it.
     driver ShowOsd "audio-volume-high-symbolic" 0.65
-    sleep 1; shot 09-osd
+    sleep 1; shot 10-osd
     driver HideOsd; sleep 2
 
     driver Notify "tahoe-glass" "Notification banner, for the CSS under test."
-    sleep 1; shot 10-notification
+    sleep 1; shot 11-notification
 fi
 
 if [ "$TG_GPU" = 1 ] && [ -n "$GPU_CARD" ]; then

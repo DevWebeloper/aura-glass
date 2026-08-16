@@ -11,15 +11,22 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 . "$REPO_ROOT/lib/common.sh"
+# shellcheck source=lib/steps-gdm.sh
+. "$REPO_ROOT/lib/steps-gdm.sh"
 
 CONF_DIR="$HOME/.config/tahoe-glass"
 BACKUP_DIR="$CONF_DIR/backups"
 EXT_DIR="$HOME/.local/share/gnome-shell/extensions"
+SRC_CACHE="$HOME/.cache/tahoe-glass/src"
 
 ASSUME_YES=0
 DRY_RUN=0
 REMOVE_EXTENSIONS=0
 REMOVE_ASSETS=0
+REMOVE_GDM=0
+REMOVE_GDM_MONITORS=0
+EXPLICIT_FLAGS=0
+FORCE_INTERACTIVE=0
 
 usage() {
     cat <<EOF
@@ -27,37 +34,94 @@ ${C_BLD}tahoe-glass uninstall${C_OFF}
 
   ./uninstall.sh [options]
 
-    --extensions   also remove the extensions this installed (and their settings)
-    --assets       also remove the Tahoe theme, the icon pack (Colloid or
-                   Reversal) and MacTahoe cursors
-    --all          both of the above (--full is accepted as the same thing)
-    -y, --yes      answer yes to every prompt
-    -n, --dry-run  print what would happen, change nothing
-    -h, --help     this
+    --interactive   launch the interactive uninstall wizard explicitly
+    --extensions    also remove the extensions this installed (and their settings)
+    --assets        also remove the Tahoe theme, the icon pack (Colloid or
+                    Reversal) and MacTahoe cursors
+    --gdm           restore the stock GDM login screen (requires sudo)
+    --gdm-monitors  revert synced GDM monitor layout back to default (requires sudo)
+    --all           all of the above (--full is accepted as the same thing)
+    -y, --yes       answer yes to every prompt
+    -n, --dry-run   print what would happen, change nothing
+    -h, --help      this
 
-  With no options this removes the CSS tweaks, the dconf preset, the systemd
+  With no options or in interactive mode, you can select which components to remove.
+  By default, it removes the CSS tweaks, the dconf preset, the systemd
   unit and the theme settings, and leaves everything it downloaded in place.
 EOF
 }
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --extensions) REMOVE_EXTENSIONS=1; shift ;;
-        --assets)     REMOVE_ASSETS=1; shift ;;
-        # --full is install.sh's flag, not this one's. Accepted anyway: reaching
-        # for it here is the obvious mistake, and the cost of rejecting it is a
-        # run that looks like it uninstalled and did not — the arg parser dies
-        # before the first step, so nothing at all is removed.
-        --all|--full) REMOVE_EXTENSIONS=1; REMOVE_ASSETS=1; shift ;;
-        -y|--yes)     ASSUME_YES=1; shift ;;
-        -n|--dry-run) DRY_RUN=1; shift ;;
-        -h|--help)    usage; exit 0 ;;
-        *)            usage; die "unknown option: $1" ;;
+        --interactive)  FORCE_INTERACTIVE=1; shift ;;
+        --extensions)   REMOVE_EXTENSIONS=1; EXPLICIT_FLAGS=1; shift ;;
+        --assets)       REMOVE_ASSETS=1; EXPLICIT_FLAGS=1; shift ;;
+        --gdm)          REMOVE_GDM=1; EXPLICIT_FLAGS=1; shift ;;
+        --gdm-monitors) REMOVE_GDM_MONITORS=1; EXPLICIT_FLAGS=1; shift ;;
+        --all|--full)   REMOVE_EXTENSIONS=1; REMOVE_ASSETS=1; REMOVE_GDM=1; REMOVE_GDM_MONITORS=1; EXPLICIT_FLAGS=1; shift ;;
+        -y|--yes)       ASSUME_YES=1; EXPLICIT_FLAGS=1; shift ;;
+        -n|--dry-run)   DRY_RUN=1; EXPLICIT_FLAGS=1; shift ;;
+        -h|--help)      usage; exit 0 ;;
+        *)              usage; die "unknown option: $1" ;;
     esac
 done
 
 printf '\n%s  tahoe-glass uninstall%s\n' "$C_BLD" "$C_OFF"
 [ "$DRY_RUN" = 1 ] && printf '%s  dry run — nothing will be changed%s\n' "$C_DIM" "$C_OFF"
+
+# Interactive wizard when no explicit mode flag is given in an interactive terminal
+if { [ "$EXPLICIT_FLAGS" = 0 ] || [ "$FORCE_INTERACTIVE" = 1 ]; } && [ "$ASSUME_YES" = 0 ] && [ -t 0 ]; then
+    cat <<EOF
+
+${C_BLD}Choose uninstall scope:${C_OFF}
+  ${C_BLD}[1]${C_OFF} Revert styling only (keep downloaded extensions & icon assets) ${C_DIM}[Default]${C_OFF}
+  ${C_BLD}[2]${C_OFF} Revert styling + Remove Tahoe extensions
+  ${C_BLD}[3]${C_OFF} Full wipe (Revert styling, delete extensions, downloaded themes, icons & backups)
+  ${C_BLD}[4]${C_OFF} Cancel
+
+EOF
+    printf '  Choice [1-4, default 1]: '
+    read -r scope_choice || scope_choice=1
+    case "${scope_choice:-1}" in
+        1)
+            REMOVE_EXTENSIONS=0
+            REMOVE_ASSETS=0
+            ;;
+        2)
+            REMOVE_EXTENSIONS=1
+            REMOVE_ASSETS=0
+            ;;
+        3)
+            REMOVE_EXTENSIONS=1
+            REMOVE_ASSETS=1
+            REMOVE_GDM=1
+            REMOVE_GDM_MONITORS=1
+            ;;
+        4|q|quit)
+            printf '\n  Uninstall cancelled.\n\n'
+            exit 0
+            ;;
+        *)
+            warn "unrecognised choice '$scope_choice' — defaulting to revert styling only"
+            REMOVE_EXTENSIONS=0
+            REMOVE_ASSETS=0
+            ;;
+    esac
+
+    # If GDM theme is currently installed and not marked for removal by scope choice
+    if [ "$REMOVE_GDM" = 0 ] && [ -f "$CONF_DIR/gdm-installed" ]; then
+        if confirm "Restore stock GDM login screen & remove wallpaper sync (requires sudo)?" 0; then
+            REMOVE_GDM=1
+        fi
+    fi
+
+    # If GDM monitors were synced and not marked for removal by scope choice
+    if [ "$REMOVE_GDM_MONITORS" = 0 ] && { [ -f "$CONF_DIR/gdm-monitors-synced" ] || [ -f "/var/lib/gdm/.config/monitors.xml" ] || [ -f "/etc/xdg/monitors.xml" ]; }; then
+        if confirm "Revert GDM primary monitor sync back to system default (requires sudo)?" 0; then
+            REMOVE_GDM_MONITORS=1
+        fi
+    fi
+fi
 
 # ---------------------------------------------------------------------- css --
 
@@ -130,19 +194,23 @@ run gsettings reset org.gnome.desktop.interface gtk-theme
 run gsettings reset org.gnome.desktop.interface icon-theme
 run gsettings reset org.gnome.desktop.interface cursor-theme
 run gsettings reset org.gnome.desktop.interface accent-color
-run gsettings reset org.gnome.desktop.wm.preferences button-layout
-run dconf reset /org/gnome/shell/extensions/user-theme/name
-ok "back to the GNOME defaults"
+ok "back to the GNOME defaults (window buttons left intact)"
 
-step "Resetting the extension preset"
-if confirm "Reset Open Bar, Blur My Shell and Custom OSD to their defaults?" 1; then
-    run dconf reset -f /org/gnome/shell/extensions/openbar/
-    run dconf reset -f /org/gnome/shell/extensions/blur-my-shell/
-    run dconf reset -f /org/gnome/shell/extensions/custom-osd/
-    ok "reset"
-else
-    skip "kept"
-fi
+step "Resetting extension settings to GNOME defaults"
+# Core extensions (dconf/core.ini)
+run dconf reset -f /org/gnome/shell/extensions/openbar/
+run dconf reset -f /org/gnome/shell/extensions/blur-my-shell/
+run dconf reset -f /org/gnome/shell/extensions/custom-osd/
+run dconf reset -f /org/gnome/shell/extensions/user-theme/
+# Optional extensions (dconf/extras.ini)
+run dconf reset -f /org/gnome/shell/extensions/just-perfection/
+run dconf reset -f /org/gnome/shell/extensions/gnome-ui-tune/
+run dconf reset -f /org/gnome/shell/extensions/space-bar/
+run dconf reset -f /org/gnome/shell/extensions/vitals/
+run dconf reset -f /org/gnome/shell/extensions/clipboard-indicator/
+run dconf reset -f /org/gnome/shell/extensions/hotedge/
+run dconf reset -f /org/gnome/shell/extensions/appindicator/
+ok "all extension configs reset to their defaults"
 
 # ------------------------------------------------------------------- units --
 
@@ -203,6 +271,19 @@ if [ "$REMOVE_ASSETS" = 1 ]; then
              "$HOME"/.local/share/icons/MacTahoe*; do
         [ -e "$d" ] && { run rm -rf "$d"; ok "removed $(basename "$d")"; }
     done
+fi
+
+# GDM revert runs before the cache wipe so it can still reach WhiteSur's
+# tweaks.sh inside $SRC_CACHE.
+if [ "$REMOVE_GDM" = 1 ] || { [ "$REMOVE_ASSETS" = 1 ] && [ -f "$CONF_DIR/gdm-installed" ]; }; then
+    uninstall_gdm
+fi
+
+if [ "$REMOVE_GDM_MONITORS" = 1 ] || [ "$REMOVE_GDM" = 1 ]; then
+    unsync_gdm_monitors
+fi
+
+if [ "$REMOVE_ASSETS" = 1 ]; then
     run rm -rf "$HOME/.cache/tahoe-glass"
 fi
 
@@ -220,7 +301,7 @@ fi
 
 step "Removing tahoe-glass itself"
 run rm -f "$HOME/.local/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-icon-sync" \
-          "$HOME/.local/bin/tahoe-glass-panel-blur"
+          "$HOME/.local/bin/tahoe-glass-panel-blur" "$HOME/.local/bin/tahoe-glass-gdm-sync"
 # Stamps describing artifacts that have just been removed, rather than choices
 # the user made — so they go now instead of waiting on the $CONF_DIR prompt.
 #
@@ -234,8 +315,12 @@ run rm -f "$HOME/.local/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-ico
 run rm -f "$CONF_DIR"/shell-*.css "$CONF_DIR"/gtk3-*.css "$CONF_DIR"/gtk4-*.css
 run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/popup-blur" \
+          "$CONF_DIR/window-blur" \
           "$CONF_DIR/rounded-blur" \
           "$CONF_DIR/app-transparency" \
+          "$CONF_DIR/app-opacity" \
+          "$CONF_DIR/gdm-installed" \
+          "$CONF_DIR/gdm-monitors-synced" \
           "$CONF_DIR/openbar-patch" "$CONF_DIR/custom-osd-patch"
 if confirm "Delete $CONF_DIR (this also deletes the backups above)?" 0; then
     run rm -rf "$CONF_DIR"
@@ -246,3 +331,4 @@ fi
 
 step "Done"
 printf '\n    Log out and back in to finish.\n\n'
+prompt_logout

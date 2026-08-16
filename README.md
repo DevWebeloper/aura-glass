@@ -52,13 +52,15 @@ Have a look first if you like — nothing is written:
 | `--full` | every optional piece at once — `--extras`, plus re-asserting the icons, cursors, titlebar buttons, OSD and panel-blur-fix defaults |
 | `--extras` | also install the rest of the reference desktop — see below |
 | `--icons WHICH` | `colloid` (default, follows `--accent`) or `reversal-COLOUR` |
-| `--cursors WHICH` | `adwaita` (default) or `mactahoe` |
-| `--app-transparency N` | translucent app windows, `0.70`–`1.00` (default `0.92`). Off unless asked for |
+| `--app-transparency LEVEL` | translucent app windows with blur: `90%` (230, default), `82%` (210), `94%` (240), or custom fraction/percentage. Off by default |
+| `--window-opacity LEVEL` | alias for `--app-transparency` (e.g. `--window-opacity 90%` or `82%`) |
 | `--no-osd` | keep the stock volume/brightness popup |
 | `--no-blur` | no blur anywhere, opaque surfaces instead of translucent — see *Without blur* |
 | `--no-popup-blur` | keep flat translucent popups, no blur behind them |
 | `--no-rounded-blur` | skip `gnome-rounded-blur` — popup blur stays static |
 | `--no-bms-git` | use Blur My Shell's published build (no popup component) |
+| `--gdm` | theme the GDM login screen with blurred Tahoe style (requires `sudo`) |
+| `--gdm-background PATH` | set custom image for GDM login screen background (default: blurred wallpaper) |
 | `--no-icons` | keep your icon theme |
 | `--no-cursors` | keep your cursor theme |
 | `--no-wm-buttons` | keep your titlebar button layout |
@@ -200,10 +202,13 @@ To go back, reinstall without the flag: `./install.sh --full`.
 
 ### App transparency
 
-Blur My Shell can blur behind app windows, but libadwaita paints opaque
-backgrounds, so by default there is nothing to see through. `--app-transparency`
-makes the surfaces libadwaita actually paints translucent — the window, header
-bar, sidebar panes, content views and popovers.
+Blur My Shell can blur behind app windows. `--app-transparency` makes the desktop surfaces translucent with background blur, tuned across three curated presets (or any custom percentage):
+
+- **`90%` (230)** — Balanced frosted glass (recommended default)
+- **`82%` (210)** — Deep glass, high translucency
+- **`94%` (240)** — Subtle glass, light translucency
+
+This applies to both native GTK4 apps (via CSS surface rescaling) and Electron / Chromium / IDE apps such as Antigravity IDE and VS Code (via compositor window actor opacity).
 
 Blur My Shell's window blur follows this flag rather than being on by default,
 because it is the flag that gives it anything to reveal. That blur paints behind
@@ -213,17 +218,7 @@ Measured on the live session, overview toggled six times on a Radeon RX 7600:
 p90 GPU busy **99% with it on, 28% with it off**, and it is on only when you ask
 for transparency now.
 
-It is **off by default and not part of `--full`**, because it only works for
-apps that use GTK's stylesheet. These will ignore it and stay opaque:
-
-- Electron and Chromium apps — VS Code, Discord, Slack, Brave
-- Steam, Java/Swing apps, LibreOffice
-- anything drawing a GL or video surface — mpv, Totem's video widget
-- XWayland apps generally, and GTK3 apps
-
-Message dialogs and windows with server-side decorations are deliberately left
-opaque: a translucent dialog is harder to read, and a translucent window under
-an opaque frame reads as a rendering bug.
+It is **off by default and not part of `--full`**. Message dialogs and windows with server-side decorations are deliberately left opaque: a translucent dialog is harder to read, and a translucent window under an opaque frame reads as a rendering bug.
 
 Any app that looks wrong can be added to Blur My Shell's per-app blacklist.
 

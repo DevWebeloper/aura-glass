@@ -82,6 +82,14 @@ popover.menu modelbutton:active {
   background-color: rgba(255, 255, 255, 0.22);
 }
 
+popover modelbutton check,
+popover modelbutton radio,
+popover.menu modelbutton check,
+popover.menu modelbutton radio {
+  margin-right: 8px;
+}
+
+
 /* ---------- Dialogs and in-app modal cards ----------
  * Message dialogs, in-app confirmation prompts and the modal cards apps build
  * out of a frame over a scrim. A dialog exists to be read and answered, so it
@@ -138,3 +146,26 @@ tooltip label {
   background-image: none;
   box-shadow: none;
 }
+
+/* ---------- Server-side decoration frames (XWayland, Chrome, Electron) ----------
+ * XWayland windows do not draw their own titlebar — /usr/lib/mutter-x11-frames
+ * does, in a separate process that loads plain GTK4. Upstream Tahoe-Dark sets
+ * `window headerbar { background-color: transparent }`, which blanks the frame
+ * while the app's own content below stays opaque, making the window look sliced
+ * in two at the titlebar. Chrome's profile picker, Steam, and Discord are the
+ * clearest cases.
+ *
+ * Decoration frames must stay solid.
+ */
+headerbar.default-decoration,
+headerbar.default-decoration.titlebar,
+.titlebar.default-decoration,
+headerbar.default-decoration:backdrop,
+.titlebar.default-decoration:backdrop,
+window.solid-csd,
+window.solid-csd .background,
+window.solid-csd headerbar {
+  background-color: @headerbar_bg_color;
+  background-color: var(--headerbar-bg-color, @headerbar_bg_color);
+}
+

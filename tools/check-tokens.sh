@@ -50,7 +50,7 @@ MANIFEST = [
      "blur-my-shell/applications", "corner-radius"),
 
     ("TOKEN_RADIUS_MENU", "css", "css/shell-20-popup-menus.css",
-     r"^\.popup-menu-content \{[^}]*?border-radius: (\d+)px"),
+     r"^\.popup-menu-content(?:,[^{]*)? \{[^}]*?border-radius: (\d+)px"),
     ("TOKEN_RADIUS_MENU", "ini", "dconf/core.ini",
      "blur-my-shell/popup", "menu-corner-radius"),
 
@@ -62,14 +62,14 @@ MANIFEST = [
      "blur-my-shell/popup", "quick-settings-corner-radius"),
 
     ("TOKEN_RADIUS_NOTIFICATION", "css", "css/shell-30-notifications.css",
-     r"^\.message \{[^}]*?border-radius: (\d+)px"),
+     r"^(?:\.popup-menu \.message,\s*)?\.message \{[^}]*?border-radius: (\d+)px"),
     ("TOKEN_RADIUS_NOTIFICATION", "css", "css/shell-30-notifications.css",
      r"^\.notification-banner \{[^}]*?border-radius: (\d+)px"),
     ("TOKEN_RADIUS_NOTIFICATION", "ini", "dconf/core.ini",
      "blur-my-shell/popup", "notification-corner-radius"),
 
     ("TOKEN_RADIUS_DIALOG", "css", "css/shell-50-dialogs.css",
-     r"^\.modal-dialog,\n\.end-session-dialog \{[^}]*?border-radius: (\d+)px"),
+     r"^\.modal-dialog,[^}]*?border-radius: (\d+)px"),
     ("TOKEN_RADIUS_DIALOG", "ini", "dconf/core.ini",
      "blur-my-shell/popup", "dialog-corner-radius"),
 

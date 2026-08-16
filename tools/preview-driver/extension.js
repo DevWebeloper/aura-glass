@@ -20,6 +20,7 @@ import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
+import * as AltTab from 'resource:///org/gnome/shell/ui/altTab.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const IFACE = `
@@ -45,12 +46,15 @@ const IFACE = `
       <arg type="s" direction="in" name="body"/>
     </method>
     <method name="HideDialog"/>
+    <method name="ShowSwitcher"/>
+    <method name="HideSwitcher"/>
   </interface>
 </node>`;
 
 export default class PreviewDriverExtension extends Extension {
     enable() {
         this._dialog = null;
+        this._switcher = null;
         this._dbus = Gio.DBusExportedObject.wrapJSObject(IFACE, this);
         this._dbus.export(Gio.DBus.session, '/org/tahoeGlass/PreviewDriver');
         // Owning a name as well as exporting the object gives the harness
@@ -168,5 +172,21 @@ export default class PreviewDriverExtension extends Extension {
             dialog.destroy();
             return GLib.SOURCE_REMOVE;
         });
+    }
+
+    ShowSwitcher() {
+        this.HideSwitcher();
+        const popup = new AltTab.AppSwitcherPopup();
+        if (popup.show(false, 'switch-applications', 0)) {
+            this._switcher = popup;
+        }
+    }
+
+    HideSwitcher() {
+        if (!this._switcher)
+            return;
+        const switcher = this._switcher;
+        this._switcher = null;
+        switcher.fadeAndDestroy();
     }
 }

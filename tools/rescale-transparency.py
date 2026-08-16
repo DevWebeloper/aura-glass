@@ -41,7 +41,7 @@ def main():
     # The tint blocks use `var(--x) N%, #000000`; the transparency rules use
     # `var(--x) N%, transparent`. Only the second is a level, so the trailing
     # colour is matched too rather than just the percentage.
-    css = re.sub(r"(var\(--[a-z-]+\)) ([0-9.]+)%, transparent",
+    css = re.sub(r"(var\(--[a-z0-9_-]+\)) ([0-9.]+)%, transparent",
                  lambda m: "%s %g%%, transparent"
                  % (m.group(1), round(scale(float(m.group(2)) / 100) * 100, 1)),
                  css)

@@ -53,3 +53,22 @@ StDrawingArea {
   box-shadow: none !important;
   text-shadow: none !important;
 }
+
+/* ---------- Top bar (maximized / fullscreen alignment) ----------------
+ * When Open Bar floats on the desktop, the panel has 15px lateral margin plus
+ * 2.8px inner margin (~18px total). When a window is maximized, Open Bar's
+ * :windowmax collapses the outer panel margin to 0px, causing left and right
+ * icons to snap outwards toward the screen bezels.
+ *
+ * Open Bar does not provide a setting in its GUI for fullscreen lateral padding.
+ * Setting padding directly on the :windowmax panel keeps the left and right icons
+ * at the exact same horizontal position across both desktop and fullscreen.
+ */
+#panel:windowmax,
+#panel.openbar:windowmax {
+  padding: 0 15px !important;
+  padding-left: 15px !important;
+  padding-right: 15px !important;
+}
+
+

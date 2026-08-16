@@ -10,11 +10,20 @@
  * been shadowless since it got its own block below, which is why it looked
  * right while the tray menus next to it did not.
  */
-.popup-menu-content {
+.background-menu {
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+.popup-menu-content,
+.background-menu .popup-menu-content {
   background-color: rgba(0, 0, 0, 0.42);
   border: 1px solid transparent;
   border-radius: 26px;
   padding: 6px;
+  margin: 0 !important;
   box-shadow: none;
 }
 
@@ -59,6 +68,13 @@
   box-shadow: none;
 }
 
+.popup-menu .popup-menu-item {
+  padding: 6px 12px !important;
+  margin: 2px 4px !important;
+  border-radius: 12px !important;
+  spacing: 8px !important;
+}
+
 .popup-menu .popup-menu-item:focus,
 .popup-menu .popup-menu-item:hover,
 .popup-menu .popup-menu-item:selected {
@@ -80,7 +96,14 @@
 }
 
 /* Keep the separators from reading as hard black lines on a glass surface. */
+.popup-separator-menu-item,
+.popup-menu .popup-separator-menu-item {
+  margin: 4px 6px !important;
+  padding: 0 !important;
+}
+
 .popup-separator-menu-item .popup-separator-menu-item-separator,
 .popup-menu .popup-separator-menu-item .popup-separator-menu-item-separator {
   background-color: rgba(255, 255, 255, 0.12);
+  height: 1px;
 }

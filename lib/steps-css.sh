@@ -112,7 +112,7 @@ PY
 install_transparency_css() {
     local level="${APP_TRANSPARENCY:-0}"
 
-    if [ "$level" = 0 ]; then
+    if [ "$level" = 0 ] || [ "$level" = "0.0" ] || [ "$level" = "0.00" ]; then
         run rm -f "$CONF_DIR/gtk4-transparency.css"
         [ "${DRY_RUN:-0}" = 1 ] || { mkdir -p "$CONF_DIR"; printf '0\n' > "$CONF_DIR/app-transparency"; }
         return 0
@@ -136,7 +136,9 @@ install_transparency_css() {
 
     mkdir -p "$CONF_DIR"
     printf '%s\n' "$level" > "$CONF_DIR/app-transparency"
-    ok "app windows translucent at $level (remembered for later runs)"
+    local pct
+    pct="$(python3 -c "print(round(float('$level')*100))" 2>/dev/null || echo "$level")"
+    ok "app windows translucent at $level (${pct}% opacity, remembered for later runs)"
 }
 
 install_css() {

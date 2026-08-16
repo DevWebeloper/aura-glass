@@ -60,28 +60,76 @@ EXT_CORE=(
     user-theme@gnome-shell-extensions.gcampax.github.com
 )
 # The rest of the reference desktop, in the order the shell lays them out.
-# None of it is required, and --extras is what asks for it.
+# None of it is strictly required. Recommended pack is selected by default.
 #
 # Some of these may already be packaged by the distro. install_ext_ego checks
 # /usr/share/gnome-shell/extensions before downloading, so those are enabled in
 # place rather than shadowed by a second copy under $HOME that would then drift
 # from whatever the system ships.
-EXT_EXTRA=(
+EXT_EXTRA_RECOMMENDED=(
     just-perfection-desktop@just-perfection
     gnome-ui-tune@itstime.tech
     space-bar@luchrioh
-    auto-accent-colour@Wartybix
-    Vitals@CoreCoding.com
+    appindicatorsupport@rgcjonas.gmail.com
     clipboard-indicator@tudmotu.com
+    compiz-alike-magic-lamp-effect@hermes83.github.com
+)
+
+EXT_EXTRA_ALL=(
+    just-perfection-desktop@just-perfection
+    gnome-ui-tune@itstime.tech
+    space-bar@luchrioh
+    appindicatorsupport@rgcjonas.gmail.com
+    clipboard-indicator@tudmotu.com
+    compiz-alike-magic-lamp-effect@hermes83.github.com
+    Vitals@CoreCoding.com
+    auto-accent-colour@Wartybix
     ddterm@amezin.github.com
     kiwimenu@kemma
     hotedge@jonathan.jdoda.ca
     restartto@tiagoporsch.github.io
     xwayland-indicator@swsnr.de
-    appindicatorsupport@rgcjonas.gmail.com
-    compiz-alike-magic-lamp-effect@hermes83.github.com
     add-to-steam@pupper.space
 )
+
+# Active selection of extra extensions (defaults to recommended pack)
+EXT_EXTRA=("${EXT_EXTRA_RECOMMENDED[@]}")
+
+# Helper to describe an extension UUID
+ext_description() {
+    case "$1" in
+        just-perfection-desktop@just-perfection)
+            printf 'Just Perfection — GNOME UI tweaker & visibility manager' ;;
+        gnome-ui-tune@itstime.tech)
+            printf 'GNOME UI Tune — Overview 300%% thumbnail enlargement & tweaks' ;;
+        space-bar@luchrioh)
+            printf 'Space Bar — macOS/i3-style workspace pill indicator in panel' ;;
+        appindicatorsupport@rgcjonas.gmail.com)
+            printf 'AppIndicator Support — System tray icons (Steam, Discord, Slack, etc.)' ;;
+        clipboard-indicator@tudmotu.com)
+            printf 'Clipboard Indicator — Top-bar clipboard history with search & hotkey' ;;
+        compiz-alike-magic-lamp-effect@hermes83.github.com)
+            printf 'Magic Lamp Effect — macOS Genie window minimize animation' ;;
+        Vitals@CoreCoding.com)
+            printf 'Vitals — Live CPU, RAM, temp, load & network monitor in panel' ;;
+        auto-accent-colour@Wartybix)
+            printf 'Auto Accent Colour — Automatically syncs accent color with wallpaper' ;;
+        ddterm@amezin.github.com)
+            printf 'ddterm — Drop-down terminal toggleable with global hotkey' ;;
+        kiwimenu@kemma)
+            printf 'Kiwi Menu — macOS-style Applications menu on left of top bar' ;;
+        hotedge@jonathan.jdoda.ca)
+            printf 'Hot Edge — Triggers dock/overview by touching bottom screen edge' ;;
+        restartto@tiagoporsch.github.io)
+            printf 'Restart To — Adds UEFI/BIOS reboot entries in power menu' ;;
+        xwayland-indicator@swsnr.de)
+            printf 'XWayland Indicator — Indicator icon for legacy XWayland apps' ;;
+        add-to-steam@pupper.space)
+            printf 'Add to Steam — Shortcut to add non-Steam games/apps to Steam' ;;
+        *)
+            printf '%s' "$1" ;;
+    esac
+}
 
 preflight() {
     step "Checking the session"
@@ -170,4 +218,5 @@ finish() {
       export PATH="\$HOME/.local/bin:\$PATH"   # bash / zsh
 
 EOF
+    prompt_logout
 }

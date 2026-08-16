@@ -108,6 +108,9 @@ install_bms() {
 
     info "no release carries the popup component — building from $BMS_REF"
     local src="$SRC_CACHE/blur-my-shell"
+    if [ -d "$src/.git" ]; then
+        run git -C "$src" checkout --quiet -- . 2>/dev/null || true
+    fi
     clone_pinned "$BMS_REPO" "$BMS_REF" "$src"
 
     local podir=(--podir=../po)
@@ -384,8 +387,8 @@ install_extensions() {
     install_openbar
     install_custom_osd
 
-    if [ "${WANT_EXTRAS:-0}" = 1 ]; then
-        step "Installing optional extensions"
+    if [ "${WANT_EXTRAS:-0}" = 1 ] && [ "${#EXT_EXTRA[@]}" -gt 0 ]; then
+        step "Installing optional extensions (${#EXT_EXTRA[@]} selected)"
         for u in "${EXT_EXTRA[@]}"; do install_ext_ego "$u" || true; done
     fi
 }
@@ -400,7 +403,9 @@ enable_extensions() {
         want+=("$BMS_UUID")
     fi
     [ "${WANT_OSD:-1}" = 1 ] && want+=(custom-osd@neuromorph)
-    [ "${WANT_EXTRAS:-0}" = 1 ] && want+=("${EXT_EXTRA[@]}")
+    if [ "${WANT_EXTRAS:-0}" = 1 ] && [ "${#EXT_EXTRA[@]}" -gt 0 ]; then
+        want+=("${EXT_EXTRA[@]}")
+    fi
 
     for u in "${want[@]}"; do
         if [ ! -d "$EXT_DIR/$u" ] && [ ! -d "/usr/share/gnome-shell/extensions/$u" ]; then

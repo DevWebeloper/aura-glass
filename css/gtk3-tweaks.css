@@ -6,6 +6,9 @@
  * regardless of specificity.
  */
 
+@define-color headerbar_bg_color #2e2e32;
+@define-color headerbar_backdrop_color #242424;
+
 /* ---------- Flat, everywhere ----------
  * The same rule as gtk4-tweaks.css and shell-tweaks.css: this desktop is 2D,
  * and the blur behind a surface is the only depth it gets.
@@ -39,6 +42,14 @@
  */
 decoration {
   border-radius: 30px;
+  background-color: #242424;
+}
+
+window,
+window.background,
+window.background.csd,
+window.csd {
+  background-color: #242424;
 }
 
 .titlebar,
@@ -47,11 +58,58 @@ decoration {
   border-top-right-radius: 30px;
 }
 
+/* ---------- Window titlebars and decoration frames ----------
+ * Electron apps (Vesktop, Discord, Obsidian, Slack), Chrome, and standard GTK3
+ * apps render their titlebar through GTK3. Upstream Tahoe-Dark blanks them with
+ * `background: none`, leaving the top bar transparent so whatever is behind the
+ * window shows through. Keep all GTK3 titlebars and decoration frames solid.
+ */
+headerbar,
+headerbar.titlebar,
+.titlebar,
+.titlebar.background,
+windowhandle,
+headerbar.default-decoration,
+.titlebar.default-decoration,
+window.background > .titlebar,
+window.background > headerbar,
+window.background > windowhandle,
+window.csd > .titlebar,
+window.csd > headerbar,
+window.csd > windowhandle {
+  background-color: #2e2e32;
+  background-image: none;
+}
+
+headerbar:backdrop,
+.titlebar:backdrop,
+windowhandle:backdrop,
+headerbar.default-decoration:backdrop,
+.titlebar.default-decoration:backdrop,
+window.background:backdrop > .titlebar,
+window.background:backdrop > headerbar,
+window.background:backdrop > windowhandle,
+window.csd:backdrop > .titlebar,
+window.csd:backdrop > headerbar,
+window.csd:backdrop > windowhandle {
+  background-color: #242424;
+  background-image: none;
+}
+
+
 headerbar button.titlebutton,
 .titlebar button.titlebutton,
+headerbar.default-decoration button.titlebutton,
+.titlebar.default-decoration button.titlebutton,
 headerbar button.titlebutton.close,
 headerbar button.titlebutton.minimize,
-headerbar button.titlebutton.maximize {
+headerbar button.titlebutton.maximize,
+headerbar.default-decoration button.titlebutton.close,
+headerbar.default-decoration button.titlebutton.minimize,
+headerbar.default-decoration button.titlebutton.maximize,
+.titlebar.default-decoration button.titlebutton.close,
+.titlebar.default-decoration button.titlebutton.minimize,
+.titlebar.default-decoration button.titlebutton.maximize {
   min-width: 24px;
   min-height: 24px;
   padding: 0;
@@ -66,7 +124,15 @@ headerbar button.titlebutton.maximize {
 }
 
 headerbar button.titlebutton:hover,
-.titlebar button.titlebutton:hover {
+.titlebar button.titlebutton:hover,
+headerbar.default-decoration button.titlebutton:hover,
+.titlebar.default-decoration button.titlebutton:hover,
+headerbar button.titlebutton.minimize:hover,
+headerbar button.titlebutton.maximize:hover,
+headerbar.default-decoration button.titlebutton.minimize:hover,
+headerbar.default-decoration button.titlebutton.maximize:hover,
+.titlebar.default-decoration button.titlebutton.minimize:hover,
+.titlebar.default-decoration button.titlebutton.maximize:hover {
   background-color: rgba(255, 255, 255, 0.14);
   background-image: none;
   box-shadow: none;
@@ -74,13 +140,50 @@ headerbar button.titlebutton:hover,
 }
 
 headerbar button.titlebutton.close:hover,
-.titlebar button.titlebutton.close:hover {
+.titlebar button.titlebutton.close:hover,
+headerbar.default-decoration button.titlebutton.close:hover,
+.titlebar.default-decoration button.titlebutton.close:hover {
   background-color: #ff5f57;
+  background-image: none;
+  box-shadow: none;
+  color: #ffffff;
+}
+
+headerbar button.titlebutton:active,
+headerbar button.titlebutton:checked,
+.titlebar button.titlebutton:active,
+.titlebar button.titlebutton:checked,
+headerbar.default-decoration button.titlebutton:active,
+headerbar.default-decoration button.titlebutton:checked,
+.titlebar.default-decoration button.titlebutton:active,
+.titlebar.default-decoration button.titlebutton:checked {
+  background-color: rgba(255, 255, 255, 0.24);
+  background-image: none;
+  box-shadow: none;
+  color: #ffffff;
+}
+
+headerbar button.titlebutton.close:active,
+headerbar button.titlebutton.close:checked,
+.titlebar button.titlebutton.close:active,
+.titlebar button.titlebutton.close:checked,
+headerbar.default-decoration button.titlebutton.close:active,
+headerbar.default-decoration button.titlebutton.close:checked,
+.titlebar.default-decoration button.titlebutton.close:active,
+.titlebar.default-decoration button.titlebutton.close:checked {
+  background-color: #e0443e;
+  background-image: none;
+  box-shadow: none;
   color: #ffffff;
 }
 
 headerbar button.titlebutton:backdrop,
-.titlebar button.titlebutton:backdrop {
+.titlebar button.titlebutton:backdrop,
+headerbar.default-decoration button.titlebutton:backdrop,
+.titlebar.default-decoration button.titlebutton:backdrop {
   opacity: 0.45;
   background-color: transparent;
+  background-image: none;
+  box-shadow: none;
 }
+

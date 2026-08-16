@@ -63,6 +63,25 @@ confirm_always() {
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# prompt_logout — asks whether to log out now (default No).
+# If confirmed, logs out of the current desktop session.
+prompt_logout() {
+    if ! confirm_always "Log out now?"; then
+        return 0
+    fi
+    info "Logging out..."
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: gnome-session-quit --logout --no-prompt"
+        return 0
+    fi
+    if have gnome-session-quit; then
+        gnome-session-quit --logout --no-prompt
+    elif have loginctl; then
+        loginctl terminate-session "${XDG_SESSION_ID:-self}" 2>/dev/null \
+            || loginctl terminate-user "$USER"
+    fi
+}
+
 # patch_stamp NAME PATCHFILE — true when the installed build already came from
 # this exact patch. A patched extension is built once and then skipped forever
 # on the strength of the directory existing, so editing a patch used to change

@@ -43,8 +43,9 @@ load_dconf() {
         ok "optional extension settings loaded"
     fi
 
-    # Open Bar regenerates its stylesheet when this key changes, so writing it
-    # last is what makes the preset take effect without a restart.
+    # Open Bar regenerates its stylesheet when this key changes, so toggling it
+    # is what makes the preset take effect without a restart.
+    run dconf write /org/gnome/shell/extensions/openbar/trigger-reload false
     run dconf write /org/gnome/shell/extensions/openbar/trigger-reload true
 
     apply_grain
@@ -54,14 +55,37 @@ load_dconf() {
     sync_osd_profile
 }
 
-# [applications] opacity dims the whole window actor, text included. That is
-# the only transparency available while GTK paints an opaque background, but
-# once GTK is doing it properly the two multiply and the text goes muddy — so
-# the actor goes back to fully opaque and the stylesheet does the work alone.
+# [applications] opacity controls the compositor-level window actor opacity for
+# windows on top of the blur effect. For GTK4 apps, the stylesheet handles inner
+# translucency; for Electron/IDE/browser apps, this actor opacity allows the blur
+# to show through the window content.
 apply_app_opacity() {
-    [ "${APP_TRANSPARENCY:-0}" != 0 ] || return 0
-    run dconf write /org/gnome/shell/extensions/blur-my-shell/applications/opacity 255
-    ok "window actor opacity back to 255 — GTK is doing the transparency now"
+    local base=/org/gnome/shell/extensions/blur-my-shell
+    local opacity="${APP_OPACITY:-255}" memo="$CONF_DIR/app-opacity"
+
+    if [ "${WANT_BLUR:-1}" != 1 ] || [ "${WANT_WINDOW_BLUR:-1}" != 1 ]; then
+        run dconf write "$base/applications/opacity" 255
+        return 0
+    fi
+
+    if [ -z "${APP_OPACITY_EXPLICIT:-}" ] && [ -r "$memo" ]; then
+        opacity="$(cat "$memo" 2>/dev/null || true)"
+        opacity="${opacity:-255}"
+    fi
+
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$opacity" > "$memo"
+    fi
+
+    run dconf write "$base/applications/opacity" "$opacity"
+    if [ "$opacity" != 255 ]; then
+        local pct
+        pct="$(python3 -c "print(round($opacity / 255.0 * 100))" 2>/dev/null || echo "$opacity")"
+        ok "window actor opacity set to $opacity (${pct}% opacity, translucent blur for apps)"
+    else
+        ok "window actor opacity set to 255 (opaque actor)"
+    fi
 }
 
 # The popup keys themselves ship in dconf/core.ini so the whole preset stays
@@ -94,8 +118,25 @@ apply_app_opacity() {
 # after a return to glass.
 apply_app_blur() {
     local base=/org/gnome/shell/extensions/blur-my-shell
+    local want="${WANT_WINDOW_BLUR:-1}" memo="$CONF_DIR/window-blur"
 
-    if [ "${WANT_WINDOW_BLUR:-0}" != 1 ]; then
+    if [ "${WANT_BLUR:-1}" != 1 ]; then
+        run dconf write "$base/applications/blur" false
+        skip "window blur off with the rest of it (--no-blur)"
+        return 0
+    fi
+
+    if [ -z "${WINDOW_BLUR_EXPLICIT:-}" ] && [ -r "$memo" ]; then
+        want="$(cat "$memo" 2>/dev/null || true)"
+        want="${want:-1}"
+    fi
+
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$want" > "$memo"
+    fi
+
+    if [ "$want" != 1 ]; then
         run dconf write "$base/applications/blur" false
         skip "window blur off — pass --window-blur if you want it"
         return 0
@@ -275,13 +316,6 @@ apply_gsettings() {
         cursor='MacTahoe-dark'
     fi
     run gsettings set org.gnome.desktop.interface cursor-theme "$cursor"
-
-    # All three controls, minimise and maximise before close, appmenu on the
-    # left. The window controls themselves are restyled in gtk4-tweaks.css.
-    if [ "${WANT_WM_BUTTONS:-1}" = 1 ]; then
-        run gsettings set org.gnome.desktop.wm.preferences button-layout \
-            'appmenu:minimize,maximize,close'
-    fi
 
     ok "gtk-theme=Tahoe-Dark  icons=$icons  cursor=$cursor  accent=$ACCENT"
 }

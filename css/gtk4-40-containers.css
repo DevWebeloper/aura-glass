@@ -75,8 +75,17 @@ headerbar.titlebar,
  * is installed.
  */
 .sidebar-pane list.navigation-sidebar,
-.sidebar-pane .navigation-sidebar {
+.sidebar-pane .navigation-sidebar,
+.sidebar-pane placessidebar,
+.sidebar-pane stacksidebar,
+.sidebar-pane placesview,
+.sidebar-pane placesview list,
+.sidebar-pane listview,
+.sidebar-pane list,
+.sidebar-pane scrolledwindow,
+.sidebar-pane viewport {
   background-color: transparent;
+  background-image: none;
 }
 
 /* ---------- Column views and list views ----------

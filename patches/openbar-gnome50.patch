@@ -1,24 +1,3 @@
-From 58537c0ee92ba834875dd69313677822f30d06a7 Mon Sep 17 00:00:00 2001
-From: alienware <gheith.sy@gmail.com>
-Date: Thu, 30 Jul 2026 15:55:49 +0300
-Subject: [PATCH 1/2] GNOME 50 support: metadata, null guards, GTK4/libadwaita
- prefs layout
-
-Applies PR #169 (ykiryeyev:Gome50_update) with two deviations:
-- Skips autothemes.js, which changes auto-theme foreground selection
-  behaviour (forces autofg-bar/autofg-menu off) rather than fixing GNOME 50
-  compatibility, and whose getBestContrastColor fallback is unreachable
-  (contrast ratio can never be < 1.0).
-- Keeps the existing local 'position' variable in updatePanelStyle instead
-  of switching to 'this.position', which is undefined and would have pinned
-  notification banners to the top.
----
- openbar@neuromorph/extension.js  | 32 +++++++-----
- openbar@neuromorph/metadata.json |  3 +-
- openbar@neuromorph/prefs.css     | 10 ++++
- openbar@neuromorph/prefs.js      | 84 +++++++++++++++++++++-----------
- 4 files changed, 87 insertions(+), 42 deletions(-)
-
 diff --git a/openbar@neuromorph/extension.js b/openbar@neuromorph/extension.js
 index f716f91..a8b7163 100644
 --- a/openbar@neuromorph/extension.js
@@ -103,10 +82,10 @@ index 8f543f7..c43c704 100644
    "url": "https://github.com/neuromorph/openbar",
    "uuid": "openbar@neuromorph",
 diff --git a/openbar@neuromorph/prefs.css b/openbar@neuromorph/prefs.css
-index 268b47f..46e589a 100644
+index 268b47f..0d3a871 100644
 --- a/openbar@neuromorph/prefs.css
 +++ b/openbar@neuromorph/prefs.css
-@@ -52,7 +52,17 @@
+@@ -52,7 +52,13 @@
  .openbar-sidebar {
      border: 0px solid rgba(125, 125, 125, 0.1);
      border-right-width: 1px;
@@ -115,10 +94,6 @@ index 268b47f..46e589a 100644
 +
 +.openbar-sidebar row {
 +    min-width: 200px;
-+}
-+
-+.openbar-prefs-page clamp {
-+    max-width: 9999px;
 +}
 +
  .openbar-sidebar StBin {
@@ -256,37 +231,39 @@ index eeaa3e2..7396c69 100644
  
          /////////////////////////////////////////////////////////////////////
  
--- 
-2.55.0
-
-
-From 92964be2ff904a97145cdc877699124104ed1e80 Mon Sep 17 00:00:00 2001
-From: alienware <gheith.sy@gmail.com>
-Date: Thu, 30 Jul 2026 16:00:08 +0300
-Subject: [PATCH 2/2] prefs: drop invalid .openbar-prefs-page clamp rule
-
-GTK CSS has no max-width property, so this rule emitted a theme parser
-error on every prefs launch. The selector was also dead: the
-.openbar-prefs-page class went away with the Adw.PreferencesPage removal.
----
- openbar@neuromorph/prefs.css | 4 ----
- 1 file changed, 4 deletions(-)
-
-diff --git a/openbar@neuromorph/prefs.css b/openbar@neuromorph/prefs.css
-index 46e589a..0d3a871 100644
---- a/openbar@neuromorph/prefs.css
-+++ b/openbar@neuromorph/prefs.css
-@@ -59,10 +59,6 @@
-     min-width: 200px;
- }
+diff --git a/openbar@neuromorph/stylesheets.js b/openbar@neuromorph/stylesheets.js
+index 31d0ad8..d12480f 100644
+--- a/openbar@neuromorph/stylesheets.js
++++ b/openbar@neuromorph/stylesheets.js
+@@ -1739,7 +1739,7 @@ function getStylesheet(obar, Me) {
+           ${neonStyle} `;
  
--.openbar-prefs-page clamp {
--    max-width: 9999px;
--}
--
- .openbar-sidebar StBin {
-     padding: 14px;
-     text-shadow: 1px 1px rgba(0, 0, 0, 0.25);
--- 
-2.55.0
-
+         btnContainerStyle =
+-        ` padding: ${vPad}px ${hPad}px;
++        ` padding: ${vPad}px ${borderWidth+hPad}px;
+           margin: 0px 0px;
+           border-radius: ${borderRadius+borderWidth}px; `;
+     }
+@@ -2000,6 +2000,13 @@ function getStylesheet(obar, Me) {
+             margin-right: ${vPad}px;
+         }
+ 
++        #panel${openbarClass}:windowmax #panelLeft {
++            margin-left: ${vPad + (bartype == 'Floating' ? 3*margin : 0)}px !important;
++        }
++        #panel${openbarClass}:windowmax #panelRight {
++            margin-right: ${vPad + (bartype == 'Floating' ? 3*margin : 0)}px !important;
++        }
++
+         #panel${openbarClass} {
+             ${panelStyle}
+             ${unlockStyle}
+@@ -2025,7 +2032,7 @@ function getStylesheet(obar, Me) {
+         }
+         #panel${openbarClass}:windowmax .button-container {
+             margin: ${marginWMax}px 0px;
+-            padding: ${vPad}px ${hPad}px;
++            padding: ${vPad}px ${borderWidth+hPad}px;
+         }
+ 
+         #panel${openbarClass} .panel-button {

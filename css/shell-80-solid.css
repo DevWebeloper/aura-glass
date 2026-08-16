@@ -19,12 +19,21 @@
  * desktop agreeing with a decision this theme had already made.
  */
 
+.background-menu {
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
 /* Menus, and the Quick Settings panel that shares their class. */
 .popup-menu-content,
 .popup-menu-content.quick-settings,
+.background-menu .popup-menu-content,
 .quick-settings,
 .datemenu-popover {
   background-color: rgb(22, 23, 27);
+  margin: 0 !important;
 }
 
 /* Notifications, in the calendar popup and as arriving banners.
@@ -32,22 +41,48 @@
  * ground of its own, one step lighter than the popup it sits on so the card is
  * still legible as a separate surface.
  */
+.popup-menu .message,
 .message {
   background-color: rgb(35, 36, 41);
 }
 
+.popup-menu .message:hover,
+.popup-menu .message:focus,
 .message:hover,
 .message:focus {
   background-color: rgb(44, 45, 51);
+}
+
+.popup-menu .message:second-in-stack,
+.message:second-in-stack {
+  background-color: rgba(26, 27, 32, 0.90) !important;
+  background-image: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 20px;
+  box-shadow: none !important;
+}
+
+.popup-menu .message:lower-in-stack,
+.message:lower-in-stack {
+  background-color: rgba(20, 21, 25, 0.85) !important;
+  background-image: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.03) !important;
+  border-radius: 20px;
+  box-shadow: none !important;
 }
 
 .notification-banner {
   background-color: rgb(22, 23, 27);
 }
 
-/* Modal dialogs. */
+/* Modal dialogs, switcher, and floating popups. */
 .modal-dialog,
-.end-session-dialog {
+.end-session-dialog,
+.switcher-list,
+.workspace-switcher-container,
+.workspace-switcher,
+.resize-popup,
+.app-folder-dialog {
   background-color: rgb(22, 23, 27);
 }
 

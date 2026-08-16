@@ -1,49 +1,57 @@
 /* ---------- Notifications ----------
- * A dark translucent fill rather than the light lift this used to carry. The
- * light version was chosen on the theory that a dark fill would read as a hole
- * punched through the calendar popup behind it; with a real blur underneath it
- * reads as glass instead, and the light lift was the thing that looked grey and
- * flat. Text stays at full contrast because the surface is still translucent.
- *
- * Hover and active step *up* in opacity rather than lightening, so the whole
- * ladder moves in one direction.
+ * Sleek dark obsidian glass cards with subtle luminous edge highlights and high contrast.
+ * Designed to feel like native floating glass cards on the calendar/datemenu popover.
  */
+.popup-menu .message,
 .message {
-  background-color: rgba(0, 0, 0, 0.35);
-  border: 1px solid transparent;
+  background-color: rgba(20, 20, 26, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 20px;
-  box-shadow: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25) !important;
   color: #ffffff;
+  padding: 10px 14px;
 }
 
+.popup-menu .message:hover,
+.popup-menu .message:focus,
 .message:hover,
 .message:focus {
-  background-color: rgba(0, 0, 0, 0.45);
+  background-color: rgba(30, 30, 38, 0.68);
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
+.popup-menu .message:active,
 .message:active {
-  background-color: rgba(0, 0, 0, 0.55);
+  background-color: rgba(38, 38, 48, 0.78);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
-/* Stacked notifications step down the same ladder instead of switching to
- * flat greys (#404040 / #363636), which broke the material.
+/* Stacked notifications: when multiple notifications arrive from the same app,
+ * the lower cards peek out behind the top card with gentle translucent dark glass steps.
  */
+.popup-menu .message:second-in-stack,
 .message:second-in-stack {
-  background-color: rgba(0, 0, 0, 0.30);
-  box-shadow: none;
+  background-color: rgba(14, 14, 18, 0.40) !important;
+  background-image: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 20px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15) !important;
 }
 
+.popup-menu .message:lower-in-stack,
 .message:lower-in-stack {
-  background-color: rgba(0, 0, 0, 0.25);
-  box-shadow: none;
-  border-color: transparent;
+  background-color: rgba(10, 10, 14, 0.30) !important;
+  background-image: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.03) !important;
+  border-radius: 20px;
+  box-shadow: none !important;
 }
 
-/* Header was rgba(222, 222, 222, 0.35) — barely legible once the backdrop is
- * translucent.
- */
+/* Header typography and icons */
 .message .message-header {
   color: rgba(255, 255, 255, 0.7);
+  padding: 0 2px 4px 2px;
+  spacing: 6px;
 }
 
 .message .message-header .message-header-content .message-source-title {

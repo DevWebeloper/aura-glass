@@ -126,10 +126,38 @@ window.solid-csd .background {
   background-color: var(--tg-tint-window);
 }
 
-/* ---------- Header bars and toolbars ---------- */
+/* ---------- Header bars and decoration frames stay solid ----------
+ * The top bar must stay 100% solid across all applications (Chrome, Vesktop/Electron,
+ * GTK3, GTK4, XWayland). Translucent headerbars cause transparent gaps, middle-band
+ * see-through, and trailing smear ("tail") artifacts when dragging windows.
+ */
 headerbar,
 headerbar.titlebar,
 .titlebar,
+window > windowhandle,
+window > headerbar.titlebar,
+window.background > headerbar.titlebar,
+window.background > windowhandle,
+headerbar.default-decoration,
+headerbar.default-decoration.titlebar,
+.titlebar.default-decoration {
+  background-color: @headerbar_bg_color;
+  background-color: var(--headerbar-bg-color);
+}
+
+headerbar:backdrop,
+.titlebar:backdrop,
+window:backdrop > windowhandle,
+window:backdrop > headerbar.titlebar,
+window.background:backdrop > headerbar.titlebar,
+window.background:backdrop > windowhandle,
+headerbar.default-decoration:backdrop,
+.titlebar.default-decoration:backdrop {
+  background-color: @headerbar_backdrop_color;
+  background-color: var(--headerbar-backdrop-color);
+}
+
+/* ---------- In-window toolbars, searchbars, actionbars ---------- */
 toolbarview > .toolbar,
 .toolbar,
 searchbar > revealer > box,
@@ -138,32 +166,12 @@ actionbar > revealer > box {
   background-color: color-mix(in srgb, var(--tg-tint-headerbar) 88%, transparent);
 }
 
-headerbar:backdrop,
-.titlebar:backdrop {
+toolbarview > .toolbar:backdrop,
+.toolbar:backdrop,
+searchbar:backdrop > revealer > box,
+actionbar:backdrop > revealer > box {
   background-color: alpha(@tg_tint_headerbar_backdrop, 0.88);
   background-color: color-mix(in srgb, var(--tg-tint-headerbar-backdrop) 88%, transparent);
-}
-
-/* Decoration frames stay solid.
- *
- * XWayland windows do not draw their own titlebar — /usr/lib/mutter-x11-frames
- * does, in a separate process that loads libgtk-4 and therefore reads this
- * sheet. The headerbar rule above then made that frame translucent while the
- * app's own content below it stayed opaque, so the window looked sliced in two
- * exactly at the titlebar. Chrome's profile picker is the clearest case: Chrome
- * loads no GTK at all, so the only part of that window this sheet can reach is
- * the frame someone else drew for it.
- *
- * Same reasoning as window.solid-csd above — a frame is not part of the app's
- * surface, so there is nothing behind it for it to be translucent against.
- * .default-decoration is the node GTK uses for those frames; adw-gtk3 targets
- * the same one for its window controls.
- */
-headerbar.default-decoration:backdrop,
-headerbar.titlebar:backdrop,
-.titlebar:backdrop:not(headerbar) {
-  background-color: alpha(@tg_tint_headerbar_backdrop, 0.84);
-  background-color: color-mix(in srgb, var(--tg-tint-headerbar_backdrop) 84%, transparent);
 }
 
 /* The headerbar's bottom border goes transparent: the difference in opacity
@@ -191,21 +199,60 @@ headerbar.default-decoration {
 .navigation-sidebar,
 stacksidebar,
 placessidebar {
-  background-color: alpha(@tg_tint_sidebar, 0.86);
-  background-color: color-mix(in srgb, var(--tg-tint-sidebar) 86%, transparent);
+  background-color: alpha(@tg_tint_sidebar, 0.80);
+  background-color: color-mix(in srgb, var(--tg-tint-sidebar) 80%, transparent);
 }
 
 /* The pane above carries the tint for this whole region, so everything
  * libadwaita paints inside it paints nothing — otherwise the header bar's own
- * 0.88 and the pane's 0.86 compound and the sidebar reads denser than the
+ * 0.88 and the pane's 0.80 compound and the sidebar reads denser than the
  * window it sits in. The navigation list inside the pane is handled in
  * gtk4-40-containers.css, which is always installed.
+ *
+ * Scoped headerbars and toolbars in split-view panes (like Files/Nautilus)
+ * and toolbarviews stay transparent in both focused and backdrop/unfocused
+ * states, preventing a solid background from appearing when the window is unfocused.
  */
 .sidebar-pane headerbar,
+.sidebar-pane headerbar:backdrop,
+.sidebar-pane toolbarview,
+.sidebar-pane toolbarview:backdrop,
 .sidebar-pane toolbarview > .toolbar,
+.sidebar-pane toolbarview > .toolbar:backdrop,
+.sidebar-pane toolbarview > revealer.top-bar,
+.sidebar-pane toolbarview > revealer.top-bar:backdrop,
+.sidebar-pane toolbarview > revealer.bottom-bar,
+.sidebar-pane toolbarview > revealer.bottom-bar:backdrop,
+.sidebar-pane .navigation-sidebar,
+.sidebar-pane list.navigation-sidebar,
+.sidebar-pane placessidebar,
+.sidebar-pane stacksidebar,
+.sidebar-pane placesview,
+.sidebar-pane placesview list,
+.sidebar-pane listview,
+.sidebar-pane list,
+.sidebar-pane scrolledwindow,
+.sidebar-pane viewport,
+.content-pane headerbar,
+.content-pane headerbar:backdrop,
+.content-pane toolbarview > .toolbar,
+.content-pane toolbarview > .toolbar:backdrop,
+.content-pane toolbarview > revealer.top-bar,
+.content-pane toolbarview > revealer.top-bar:backdrop,
+navigation-split-view headerbar,
+navigation-split-view headerbar:backdrop,
+overlay-split-view headerbar,
+overlay-split-view headerbar:backdrop,
+toolbarview headerbar,
+toolbarview headerbar:backdrop,
+headerbar.flat,
+headerbar.flat:backdrop,
 toolbarview windowhandle,
-toolbarview > revealer.top-bar > windowhandle {
+toolbarview windowhandle:backdrop,
+toolbarview > revealer.top-bar > windowhandle,
+toolbarview > revealer.top-bar > windowhandle:backdrop {
   background-color: transparent;
+  background-image: none;
 }
 
 .content-pane {

@@ -6,9 +6,14 @@
  * .popup-menu-content so a dialog reads as the same glass as every menu.
  */
 .modal-dialog,
-.end-session-dialog {
+.end-session-dialog,
+.switcher-list,
+.workspace-switcher-container,
+.workspace-switcher,
+.resize-popup,
+.app-folder-dialog {
   background-color: rgba(0, 0, 0, 0.42);
-  border: 1px solid transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 20px;
   box-shadow: none;
 }
@@ -17,6 +22,28 @@
 .end-session-dialog .modal-dialog-content-box {
   background: none;
   background-color: transparent;
+}
+
+/* App / Window Switcher (Alt+Tab, Super+Tab, Super+Alt)
+ * The upstream theme used a hardcoded blue/cyan SVG gradient (gradient-bg.svg)
+ * on .item-box:selected which ignored the system accent color.
+ * Match -st-accent-color and -st-accent-fg-color so the focused item follows
+ * Settings → Appearance dynamically.
+ */
+.switcher-list .item-box:selected,
+.switcher-list .item-box:highlighted,
+.switcher-list .item-box:focus {
+  background-image: none !important;
+  background-color: -st-accent-color !important;
+  color: -st-accent-fg-color !important;
+}
+
+.switcher-list .item-box:selected:hover,
+.switcher-list .item-box:highlighted:hover,
+.switcher-list .item-box:focus:hover {
+  background-image: none !important;
+  background-color: -st-accent-color !important;
+  color: -st-accent-fg-color !important;
 }
 
 /* Dialog buttons follow the same control ladder as the rest of the desktop.

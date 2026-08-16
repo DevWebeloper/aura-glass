@@ -3,24 +3,49 @@
  * bevel and hid the glyph with `color: transparent`. Selectors below mirror
  * the theme's own specificity so that appending is enough to win.
  */
-.solid-csd headerbar:not(.default-decoration) button.titlebutton.close,
-.solid-csd headerbar:not(.default-decoration) button.titlebutton.minimize,
-.solid-csd headerbar:not(.default-decoration) button.titlebutton.maximize,
+button.titlebutton,
+button.titlebutton.close,
+button.titlebutton.minimize,
+button.titlebutton.maximize,
+headerbar button.titlebutton,
 headerbar button.titlebutton.close,
 headerbar button.titlebutton.minimize,
 headerbar button.titlebutton.maximize,
+.csd headerbar button.titlebutton,
 .csd headerbar button.titlebutton.close,
 .csd headerbar button.titlebutton.minimize,
 .csd headerbar button.titlebutton.maximize,
+headerbar.default-decoration button.titlebutton,
 headerbar.default-decoration button.titlebutton.close,
 headerbar.default-decoration button.titlebutton.minimize,
 headerbar.default-decoration button.titlebutton.maximize,
+.csd headerbar.default-decoration button.titlebutton,
+.csd headerbar.default-decoration button.titlebutton.close,
+.csd headerbar.default-decoration button.titlebutton.minimize,
+.csd headerbar.default-decoration button.titlebutton.maximize,
+.titlebar button.titlebutton,
 .titlebar button.titlebutton.close,
 .titlebar button.titlebutton.minimize,
 .titlebar button.titlebutton.maximize,
+.csd .titlebar button.titlebutton,
+.csd .titlebar button.titlebutton.close,
+.csd .titlebar button.titlebutton.minimize,
+.csd .titlebar button.titlebutton.maximize,
+.titlebar.default-decoration button.titlebutton,
 .titlebar.default-decoration button.titlebutton.close,
 .titlebar.default-decoration button.titlebutton.minimize,
-.titlebar.default-decoration button.titlebutton.maximize {
+.titlebar.default-decoration button.titlebutton.maximize,
+.csd .titlebar.default-decoration button.titlebutton,
+.csd .titlebar.default-decoration button.titlebutton.close,
+.csd .titlebar.default-decoration button.titlebutton.minimize,
+.csd .titlebar.default-decoration button.titlebutton.maximize,
+.solid-csd headerbar button.titlebutton,
+.solid-csd headerbar button.titlebutton.close,
+.solid-csd headerbar button.titlebutton.minimize,
+.solid-csd headerbar button.titlebutton.maximize,
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.close,
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.minimize,
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.maximize {
   min-width: 24px;
   min-height: 24px;
   padding: 0;
@@ -33,18 +58,49 @@ headerbar.default-decoration button.titlebutton.maximize,
   color: alpha(currentColor, 0.6);
 }
 
-.solid-csd headerbar:not(.default-decoration) button.titlebutton.close:hover,
-.solid-csd headerbar:not(.default-decoration) button.titlebutton.minimize:hover,
-.solid-csd headerbar:not(.default-decoration) button.titlebutton.maximize:hover,
+button.titlebutton:hover,
+button.titlebutton.close:hover,
+button.titlebutton.minimize:hover,
+button.titlebutton.maximize:hover,
+headerbar button.titlebutton:hover,
 headerbar button.titlebutton.close:hover,
 headerbar button.titlebutton.minimize:hover,
 headerbar button.titlebutton.maximize:hover,
+.csd headerbar button.titlebutton:hover,
 .csd headerbar button.titlebutton.close:hover,
 .csd headerbar button.titlebutton.minimize:hover,
 .csd headerbar button.titlebutton.maximize:hover,
+headerbar.default-decoration button.titlebutton:hover,
+headerbar.default-decoration button.titlebutton.close:hover,
+headerbar.default-decoration button.titlebutton.minimize:hover,
+headerbar.default-decoration button.titlebutton.maximize:hover,
+.csd headerbar.default-decoration button.titlebutton:hover,
+.csd headerbar.default-decoration button.titlebutton.close:hover,
+.csd headerbar.default-decoration button.titlebutton.minimize:hover,
+.csd headerbar.default-decoration button.titlebutton.maximize:hover,
+.titlebar button.titlebutton:hover,
 .titlebar button.titlebutton.close:hover,
 .titlebar button.titlebutton.minimize:hover,
-.titlebar button.titlebutton.maximize:hover {
+.titlebar button.titlebutton.maximize:hover,
+.csd .titlebar button.titlebutton:hover,
+.csd .titlebar button.titlebutton.close:hover,
+.csd .titlebar button.titlebutton.minimize:hover,
+.csd .titlebar button.titlebutton.maximize:hover,
+.titlebar.default-decoration button.titlebutton:hover,
+.titlebar.default-decoration button.titlebutton.close:hover,
+.titlebar.default-decoration button.titlebutton.minimize:hover,
+.titlebar.default-decoration button.titlebutton.maximize:hover,
+.csd .titlebar.default-decoration button.titlebutton:hover,
+.csd .titlebar.default-decoration button.titlebutton.close:hover,
+.csd .titlebar.default-decoration button.titlebutton.minimize:hover,
+.csd .titlebar.default-decoration button.titlebutton.maximize:hover,
+.solid-csd headerbar button.titlebutton:hover,
+.solid-csd headerbar button.titlebutton.close:hover,
+.solid-csd headerbar button.titlebutton.minimize:hover,
+.solid-csd headerbar button.titlebutton.maximize:hover,
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.close:hover,
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.minimize:hover,
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.maximize:hover {
   background-color: rgba(255, 255, 255, 0.14);
   background-image: none;
   box-shadow: none;
@@ -52,11 +108,57 @@ headerbar button.titlebutton.maximize:hover,
 }
 
 /* Close is the only control that earns colour, and only under the pointer. */
-.solid-csd headerbar:not(.default-decoration) button.titlebutton.close:hover,
+button.titlebutton.close:hover,
 headerbar button.titlebutton.close:hover,
 .csd headerbar button.titlebutton.close:hover,
-.titlebar button.titlebutton.close:hover {
+headerbar.default-decoration button.titlebutton.close:hover,
+.csd headerbar.default-decoration button.titlebutton.close:hover,
+.titlebar button.titlebutton.close:hover,
+.csd .titlebar button.titlebutton.close:hover,
+.titlebar.default-decoration button.titlebutton.close:hover,
+.csd .titlebar.default-decoration button.titlebutton.close:hover,
+.solid-csd headerbar button.titlebutton.close:hover,
+.solid-csd headerbar:not(.default-decoration) button.titlebutton.close:hover {
   background-color: #ff5f57;
+  background-image: none;
+  box-shadow: none;
+  color: #ffffff;
+}
+
+/* Active & Checked states */
+button.titlebutton:active,
+button.titlebutton:checked,
+headerbar button.titlebutton:active,
+headerbar button.titlebutton:checked,
+.titlebar button.titlebutton:active,
+.titlebar button.titlebutton:checked,
+headerbar.default-decoration button.titlebutton:active,
+headerbar.default-decoration button.titlebutton:checked,
+.titlebar.default-decoration button.titlebutton:active,
+.titlebar.default-decoration button.titlebutton:checked,
+.solid-csd headerbar button.titlebutton:active,
+.solid-csd headerbar button.titlebutton:checked {
+  background-color: rgba(255, 255, 255, 0.24);
+  background-image: none;
+  box-shadow: none;
+  color: #ffffff;
+}
+
+button.titlebutton.close:active,
+button.titlebutton.close:checked,
+headerbar button.titlebutton.close:active,
+headerbar button.titlebutton.close:checked,
+.titlebar button.titlebutton.close:active,
+.titlebar button.titlebutton.close:checked,
+headerbar.default-decoration button.titlebutton.close:active,
+headerbar.default-decoration button.titlebutton.close:checked,
+.titlebar.default-decoration button.titlebutton.close:active,
+.titlebar.default-decoration button.titlebutton.close:checked,
+.solid-csd headerbar button.titlebutton.close:active,
+.solid-csd headerbar button.titlebutton.close:checked {
+  background-color: #e0443e;
+  background-image: none;
+  box-shadow: none;
   color: #ffffff;
 }
 
@@ -69,29 +171,9 @@ headerbar button.titlebutton.close:hover,
  */
 headerbar button.titlebutton > image,
 .titlebar button.titlebutton > image,
-windowcontrols > button > image {
-  background-color: transparent;
-  background-image: none;
-  box-shadow: none;
-  margin: 0;
-  padding: 0;
-}
-
-/* The block above is not enough on its own, and for a long time it was the
- * whole rule — which is why GTK4 windows still showed the coloured discs while
- * the comment above said they did not.
- *
- * `windowcontrols > button > image` is three element selectors, 0-0-3. The
- * theme's are class-qualified on both ancestors —
- * `windowcontrols.end > button.minimize > image` is 0-2-3, and even the
- * unplaced `windowcontrols > button.close > image` is 0-1-3 — so every one of
- * them outranks it and appending changed nothing. Being appended only decides
- * ties, and these were not ties.
- *
- * So the qualified forms are matched exactly. Equal specificity now, and later
- * in the file, which is what makes the reset win. `.start` and `.end` both
- * appear because the theme swaps minimize and maximize between them.
- */
+headerbar.default-decoration button.titlebutton > image,
+.titlebar.default-decoration button.titlebutton > image,
+windowcontrols > button > image,
 windowcontrols > button.close > image,
 windowcontrols > button.minimize > image,
 windowcontrols > button.maximize > image,
@@ -104,20 +186,11 @@ windowcontrols.end > button.maximize > image {
   background-color: transparent;
   background-image: none;
   box-shadow: none;
-  /* The glyph is given back here rather than on the button. The theme hides it
-   * with `color: transparent` at 0-2-2, which outranks the button-level rules
-   * further up, so clearing the disc alone left three invisible controls. A
-   * literal is used rather than alpha(currentColor, …) because the colour
-   * being inherited at this point is the transparent one — taking 60% of it
-   * would still be transparent. */
+  margin: 0;
+  padding: 0;
   color: rgba(255, 255, 255, 0.6);
 }
 
-/* Hover is a separate fight: the theme tints the image on hover as well, at
- * 0-3-3. Left alone, a pointer over a control brought the disc back. The
- * hover colour this project does want — close, and only close — is painted on
- * the button underneath by the rule further up, so the image stays clear here.
- */
 windowcontrols > button.close > image:hover,
 windowcontrols > button.minimize > image:hover,
 windowcontrols > button.maximize > image:hover,
@@ -126,7 +199,16 @@ windowcontrols.start > button.minimize > image:hover,
 windowcontrols.start > button.maximize > image:hover,
 windowcontrols.end > button.close > image:hover,
 windowcontrols.end > button.minimize > image:hover,
-windowcontrols.end > button.maximize > image:hover {
+windowcontrols.end > button.maximize > image:hover,
+windowcontrols > button.close > image:active,
+windowcontrols > button.minimize > image:active,
+windowcontrols > button.maximize > image:active,
+windowcontrols.start > button.close > image:active,
+windowcontrols.start > button.minimize > image:active,
+windowcontrols.start > button.maximize > image:active,
+windowcontrols.end > button.close > image:active,
+windowcontrols.end > button.minimize > image:active,
+windowcontrols.end > button.maximize > image:active {
   background-color: transparent;
   background-image: none;
   box-shadow: none;
@@ -156,3 +238,4 @@ windowcontrols > button.titlebutton.maximize:hover {
 button.titlebutton:backdrop {
   opacity: 0.45;
 }
+

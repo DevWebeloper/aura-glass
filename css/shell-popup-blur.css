@@ -24,8 +24,18 @@
  * override-background is on, and the preset keeps it off.
  */
 
-.popup-menu-content {
+.background-menu {
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+.popup-menu-content,
+.background-menu .popup-menu-content {
   background-color: rgba(0, 0, 0, 0.26);
+  border-radius: 26px !important;
+  margin: 0 !important;
 }
 
 .popup-menu-content.quick-settings,
@@ -39,6 +49,16 @@
  */
 .notification-banner {
   background-color: rgba(22, 23, 27, 0.52);
+}
+
+.modal-dialog,
+.end-session-dialog,
+.switcher-list,
+.workspace-switcher-container,
+.workspace-switcher,
+.resize-popup,
+.app-folder-dialog {
+  background-color: rgba(0, 0, 0, 0.26);
 }
 
 /* .message is a light lift *inside* the calendar popup rather than a ground of
