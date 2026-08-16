@@ -116,6 +116,10 @@ patch_reversal_symbolics() {
             [ -d "$dir/$sub" ] || continue
             pan_svg 'M 8,1 C 5.8,1 4,2.8 4,5 v 2 C 2.9,7 2,7.9 2,9 v 5 c 0,0.6 0.4,1 1,1 h 10 c 0.6,0 1,-0.4 1,-1 V 9 C 14,7.9 13.1,7 12,7 V 5 C 12,2.8 10.2,1 8,1 Z m 0,2 c 1.1,0 2,0.9 2,2 v 2 H 6 V 5 C 6,3.9 6.9,3 8,3 Z' > "$dir/$sub/changes-prevent-symbolic.svg"
         done
+        # Remove any misplaced full-color scalable SVGs incorrectly named *-symbolic
+        rm -f "$dir/apps/scalable/system-lock-screen-symbolic.svg" \
+              "$dir/apps/scalable/applications-system-symbolic.svg" \
+              "$dir/apps/scalable/mark-location-symbolic.svg"
         # GTK reads icon-theme.cache in preference to the directory it describes,
         # so a theme that has one keeps serving the old arrows however many times
         # the files above are rewritten. Reversal's installer leaves one behind.
