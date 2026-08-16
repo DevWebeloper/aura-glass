@@ -87,7 +87,7 @@ pan_svg() {
 patch_reversal_symbolics() {
     local name="$1" dir sub found=0
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: rewrite pan-*.svg under $name"
+        info "dry-run: rewrite pan-*.svg and lock symbolics under $name"
         return 0
     fi
     for dir in "$HOME/.local/share/icons/$name" "$HOME/.local/share/icons/$name-dark" \
@@ -102,6 +102,19 @@ patch_reversal_symbolics() {
             pan_svg 'M 6,13 11,8 6,3 Z'  > "$dir/$sub/pan-end-symbolic.svg"
             pan_svg 'M 6,13 11,8 6,3 Z'  > "$dir/$sub/pan-start-symbolic-rtl.svg"
             pan_svg 'M 10,13 5,8 10,3 Z' > "$dir/$sub/pan-end-symbolic-rtl.svg"
+
+            # Solid lock icon (GNOME Shell quicksettings & lock screen)
+            pan_svg 'M 8,1 C 5.8,1 4,2.8 4,5 v 2 C 2.9,7 2,7.9 2,9 v 5 c 0,0.6 0.4,1 1,1 h 10 c 0.6,0 1,-0.4 1,-1 V 9 C 14,7.9 13.1,7 12,7 V 5 C 12,2.8 10.2,1 8,1 Z m 0,2 c 1.1,0 2,0.9 2,2 v 2 H 6 V 5 C 6,3.9 6.9,3 8,3 Z' > "$dir/$sub/system-lock-screen-symbolic.svg"
+            pan_svg 'M 8,1 C 5.8,1 4,2.8 4,5 v 2 C 2.9,7 2,7.9 2,9 v 5 c 0,0.6 0.4,1 1,1 h 10 c 0.6,0 1,-0.4 1,-1 V 9 C 14,7.9 13.1,7 12,7 V 5 C 12,2.8 10.2,1 8,1 Z m 0,2 c 1.1,0 2,0.9 2,2 v 2 H 6 V 5 C 6,3.9 6.9,3 8,3 Z' > "$dir/$sub/lock-symbolic.svg"
+            pan_svg 'M 8,1 C 5.8,1 4,2.8 4,5 v 2 C 2.9,7 2,7.9 2,9 v 5 c 0,0.6 0.4,1 1,1 h 10 c 0.6,0 1,-0.4 1,-1 V 9 C 14,7.9 13.1,7 12,7 V 5 C 12,2.8 10.2,1 8,1 Z m 0,2 c 1.1,0 2,0.9 2,2 v 2 H 6 V 5 C 6,3.9 6.9,3 8,3 Z' > "$dir/$sub/screen-lock-symbolic.svg"
+        done
+        for sub in "apps/symbolic" "apps@2x/symbolic"; do
+            [ -d "$dir/$sub" ] || continue
+            pan_svg 'M 8,1 C 5.8,1 4,2.8 4,5 v 2 C 2.9,7 2,7.9 2,9 v 5 c 0,0.6 0.4,1 1,1 h 10 c 0.6,0 1,-0.4 1,-1 V 9 C 14,7.9 13.1,7 12,7 V 5 C 12,2.8 10.2,1 8,1 Z m 0,2 c 1.1,0 2,0.9 2,2 v 2 H 6 V 5 C 6,3.9 6.9,3 8,3 Z' > "$dir/$sub/org.gnome.Settings-system-lock-screen-symbolic.svg"
+        done
+        for sub in "status/symbolic" "status@2x/symbolic"; do
+            [ -d "$dir/$sub" ] || continue
+            pan_svg 'M 8,1 C 5.8,1 4,2.8 4,5 v 2 C 2.9,7 2,7.9 2,9 v 5 c 0,0.6 0.4,1 1,1 h 10 c 0.6,0 1,-0.4 1,-1 V 9 C 14,7.9 13.1,7 12,7 V 5 C 12,2.8 10.2,1 8,1 Z m 0,2 c 1.1,0 2,0.9 2,2 v 2 H 6 V 5 C 6,3.9 6.9,3 8,3 Z' > "$dir/$sub/changes-prevent-symbolic.svg"
         done
         # GTK reads icon-theme.cache in preference to the directory it describes,
         # so a theme that has one keeps serving the old arrows however many times
