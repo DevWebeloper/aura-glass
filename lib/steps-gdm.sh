@@ -233,7 +233,7 @@ install_gdm() {
         sudo -v || { warn "sudo authentication required for GDM installation"; return 1; }
 
         local gdm_log="/tmp/tahoe-gdm-install.log"
-        if sudo bash "$src/tweaks.sh" -g -b "$target_wall" -nb -s >"$gdm_log" 2>&1; then
+        if sudo bash "$src/tweaks.sh" -g -b "$target_wall" -nb --silent-mode >"$gdm_log" 2>&1; then
             mkdir -p "$CONF_DIR"
             printf '%s\n' "dynamic" > "$CONF_DIR/gdm-installed"
             ok "GDM login screen theme installed (dynamic wallpaper sync)"
@@ -260,13 +260,13 @@ uninstall_gdm() {
 
     if [ -f "$src/tweaks.sh" ]; then
         if [ "${DRY_RUN:-0}" = 1 ]; then
-            info "dry-run: sudo bash $src/tweaks.sh -r -g -s"
+            info "dry-run: sudo bash $src/tweaks.sh -r -g --silent-mode"
             restored=1
         else
             sudo -v 2>/dev/null || true
             sed -i 's/prepare_deps/true/g' "$src"/libs/*.sh 2>/dev/null || true
             sed -i 's/get_utc_epoch_time/true/g' "$src"/libs/*.sh 2>/dev/null || true
-            if sudo bash "$src/tweaks.sh" -r -g -s >/dev/null 2>&1; then
+            if sudo bash "$src/tweaks.sh" -r -g --silent-mode >/dev/null 2>&1; then
                 restored=1
             fi
         fi
