@@ -40,27 +40,6 @@ scale.marks-after > trough > slider:active {
   box-shadow: none;
 }
 
-/* The row a check or radio sits in, sized so the indicator has room to breathe
- * without the row growing taller than the label beside it. 24px outer less the
- * 2px padding on each side leaves exactly the 20px the indicator occupies
- * below — 18px of box plus its 1px border on each side.
- */
-checkbutton {
-  min-height: 24px;
-  min-width: 24px;
-  padding: 2px;
-}
-
-/* The gap between indicator and label goes on the label, not on the indicator.
- * A checkbutton with no label — selection mode, a column-view cell — is common,
- * and a trailing margin on the indicator itself puts a phantom 8px there. It is
- * margin-left rather than a logical property because GTK CSS has none; RTL is
- * left as libadwaita mirrors it.
- */
-checkbutton > label {
-  margin-left: 8px;
-}
-
 check {
   border-radius: 6px;
   background-color: rgba(255, 255, 255, 0.14);
@@ -130,3 +109,34 @@ scale > trough > highlight {
   background-image: none;
   border: none;
 }
+
+/* Settings -> Appearance accent colour swatches and style preview buttons.
+ * The universal reset `* { box-shadow: none }` in gtk4-00-flat.css
+ * strips their selection ring; re-assert it so the active choice is visible.
+ */
+.accent-button:checked {
+  box-shadow: 0 0 0 3px @accent_bg_color;
+}
+
+.accent-button:focus:focus-visible {
+  box-shadow: 0 0 0 3px alpha(@accent_bg_color, 0.30);
+}
+
+.accent-button:checked:focus:focus-visible {
+  box-shadow: 0 0 0 3px @accent_bg_color,
+              0 0 0 6px alpha(@accent_bg_color, 0.30);
+}
+
+.background-preview-button:checked {
+  box-shadow: 0 0 0 3px @accent_bg_color;
+}
+
+.background-preview-button:focus:focus-visible {
+  box-shadow: 0 0 0 3px alpha(@accent_bg_color, 0.30);
+}
+
+.background-preview-button:checked:focus:focus-visible {
+  box-shadow: 0 0 0 3px @accent_bg_color,
+              0 0 0 6px alpha(@accent_bg_color, 0.30);
+}
+

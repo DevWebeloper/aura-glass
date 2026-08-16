@@ -159,13 +159,20 @@ headerbar:backdrop,
  * .default-decoration is the node GTK uses for those frames; adw-gtk3 targets
  * the same one for its window controls.
  */
-headerbar.default-decoration,
-headerbar.default-decoration.titlebar,
-.titlebar.default-decoration,
 headerbar.default-decoration:backdrop,
-.titlebar.default-decoration:backdrop {
-  background-color: @headerbar_bg_color;
-  background-color: var(--tg-tint-headerbar);
+headerbar.titlebar:backdrop,
+.titlebar:backdrop:not(headerbar) {
+  background-color: alpha(@tg_tint_headerbar_backdrop, 0.84);
+  background-color: color-mix(in srgb, var(--tg-tint-headerbar_backdrop) 84%, transparent);
+}
+
+/* The headerbar's bottom border goes transparent: the difference in opacity
+ * between header and window body is already enough to tell them apart, and a
+ * hard hairline across a translucent surface breaks the glass effect.
+ */
+headerbar,
+headerbar.default-decoration {
+  border-bottom-color: transparent;
 }
 
 /* ---------- Split-view panes ----------
