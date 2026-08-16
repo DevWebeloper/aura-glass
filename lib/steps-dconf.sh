@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# tahoe-glass — the dconf preset, and the gsettings that go with it.
+# aura-glass — the dconf preset, and the gsettings that go with it.
 #
 # dconf/core.ini holds the preset so it stays readable in one file. What cannot
 # live there is anything whose right value depends on the machine or on a flag,

@@ -22,7 +22,7 @@ KEY=/org/gnome/shell/extensions/blur-my-shell/panel/blur
 # Settle time between the layout changing and the actor being rebuilt. The
 # toggle is only correct once the new geometry is in place; 3s is comfortably
 # past mutter's own reconfiguration without being a noticeable wait.
-SETTLE="${TAHOE_GLASS_BLUR_SETTLE:-3}"
+SETTLE="${AURA_GLASS_BLUR_SETTLE:-${TAHOE_GLASS_BLUR_SETTLE:-3}}"
 
 rebuild() {
     # Only meaningful when the panel blur is actually on — otherwise this would

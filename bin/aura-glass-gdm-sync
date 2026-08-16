@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# tahoe-glass-gdm-sync — dynamically sync desktop wallpaper & primary monitor to GDM login screen
+# aura-glass-gdm-sync — dynamically sync desktop wallpaper & primary monitor to GDM login screen
 set -euo pipefail
 
-TARGET_WALL="/usr/share/backgrounds/tahoe-gdm.png"
+TARGET_WALL="/usr/share/backgrounds/aura-gdm.png"
+[ -w "$TARGET_WALL" ] || [ ! -w "/usr/share/backgrounds/tahoe-gdm.png" ] || TARGET_WALL="/usr/share/backgrounds/tahoe-gdm.png"
 USER_MONITORS="$HOME/.config/monitors.xml"
 
 get_wallpaper() {
@@ -25,7 +26,7 @@ sync_wallpaper() {
     local wall; wall="$(get_wallpaper)"
     [ -n "$wall" ] && [ -f "$wall" ] || return 0
 
-    local tmp="/tmp/tahoe-gdm-sync-$$.png"
+    local tmp="/tmp/aura-gdm-sync-$$.png"
     python3 - "$wall" "$tmp" <<'PY' || return 0
 import os, sys, urllib.parse, subprocess
 from PIL import Image, ImageFilter, ImageEnhance

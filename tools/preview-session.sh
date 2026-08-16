@@ -163,9 +163,9 @@ launch() {
 # cover the panel and nothing else.
 driver() {
     local method="$1"; shift
-    gdbus call --session --dest org.tahoeGlass.PreviewDriver \
-        --object-path /org/tahoeGlass/PreviewDriver \
-        --method "org.tahoeGlass.PreviewDriver.$method" "$@" >/dev/null 2>&1
+    gdbus call --session --dest org.auraGlass.PreviewDriver \
+        --object-path /org/auraGlass/PreviewDriver \
+        --method "org.auraGlass.PreviewDriver.$method" "$@" >/dev/null 2>&1
 }
 
 DRIVER=0
@@ -264,7 +264,7 @@ if [ "$DRIVER" = 1 ]; then
     sleep 1; shot 10-osd
     driver HideOsd; sleep 2
 
-    driver Notify "tahoe-glass" "Notification banner, for the CSS under test."
+    driver Notify "aura-glass" "Notification banner, for the CSS under test."
     sleep 1; shot 11-notification
 fi
 

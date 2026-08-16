@@ -39,8 +39,8 @@ DEFAULT_THRESHOLD = 0.40
 
 
 def baseline_dir(mode):
-    root = os.environ.get("TAHOE_SHOT_BASELINE") or os.path.join(
-        os.path.expanduser("~"), ".cache", "tahoe-glass", "baseline")
+    root = os.environ.get("AURA_SHOT_BASELINE") or os.environ.get("TAHOE_SHOT_BASELINE") or os.path.join(
+        os.path.expanduser("~"), ".cache", "aura-glass", "baseline")
     return os.path.join(root, mode)
 
 

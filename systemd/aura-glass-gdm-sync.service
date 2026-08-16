@@ -5,7 +5,7 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/tahoe-glass-gdm-sync
+ExecStart=%h/.local/bin/aura-glass-gdm-sync
 Restart=on-failure
 RestartSec=5
 

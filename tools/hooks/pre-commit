@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tahoe-glass pre-commit hook.
+# aura-glass pre-commit hook.
 #
 # Enabled by tools/install-hooks.sh, which points core.hooksPath here so the
 # hook is versioned with everything else rather than living unversioned in
@@ -37,7 +37,7 @@ step() {
     fi
 }
 
-printf '\ntahoe-glass pre-commit — checking the staged tree\n\n'
+printf '\naura-glass pre-commit — checking the staged tree\n\n'
 
 # ---- syntax -----------------------------------------------------------------
 #

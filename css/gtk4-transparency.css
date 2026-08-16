@@ -1,4 +1,4 @@
-/* tahoe-glass — translucent app windows, so the blur behind them is visible.
+/* aura-glass — translucent app windows, so the blur behind them is visible.
  *
  * Appended after gtk4-tweaks.css, and only installed when --app-transparency
  * asked for it.

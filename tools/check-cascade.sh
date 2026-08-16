@@ -8,13 +8,13 @@
 #   lib/steps*.sh     install_css copies css/shell-NN-*.css and css/gtk4-NN-*.css
 #                     by glob, plus four sheets named explicitly
 #   tools/preview.sh  build_profile copies the same set into the preview profile
-#   bin/tahoe-glass-apply
+#   bin/aura-glass-apply
 #                     concatenates SHELL_SNIPPETS and GTK4_SNIPPETS, which are
 #                     hand-written arrays naming every file
 #
 # So adding css/shell-25-whatever.css gets it installed into $CONF_DIR by the
 # glob and rendered in a preview, and then silently never applied, because the
-# array in tahoe-glass-apply was not updated. Nothing errors. The sheet is on
+# array in aura-glass-apply was not updated. Nothing errors. The sheet is on
 # disk, in the right place, with the right contents, and does nothing — which is
 # the same "half-applied look with no error to explain it" this project pins its
 # upstreams to avoid.
@@ -39,7 +39,7 @@ import sys
 
 ROOT = os.environ["REPO_ROOT"]
 
-APPLY = "bin/tahoe-glass-apply"
+APPLY = "bin/aura-glass-apply"
 PREVIEW = "tools/preview.sh"
 # Every steps file, not lib/steps-css.sh by name: install_css has moved between
 # files once already, when the steps were split by concern, and naming the file
@@ -48,7 +48,7 @@ PREVIEW = "tools/preview.sh"
 STEPS_GLOB = "lib/steps*.sh"
 STEPS = "lib/steps*.sh"
 
-# Sheets that tahoe-glass-apply names but css/ does not hold, because they are
+# Sheets that aura-glass-apply names but css/ does not hold, because they are
 # written at install time rather than kept in the tree. install_css generates
 # this one from the measured display density; it gets prefix 90 so it lands
 # after every hand-written shell sheet.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# tahoe-glass — put the desktop back.
+# aura-glass — put the desktop back.
 #
 # Everything here is reversible because the installer only ever appended to
 # generated files (inside a marked block) and kept a first-run copy of anything
@@ -14,10 +14,12 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/steps-gdm.sh
 . "$REPO_ROOT/lib/steps-gdm.sh"
 
-CONF_DIR="$HOME/.config/tahoe-glass"
+CONF_DIR="$HOME/.config/aura-glass"
+[ -d "$CONF_DIR" ] || [ ! -d "$HOME/.config/tahoe-glass" ] || CONF_DIR="$HOME/.config/tahoe-glass"
 BACKUP_DIR="$CONF_DIR/backups"
 EXT_DIR="$HOME/.local/share/gnome-shell/extensions"
-SRC_CACHE="$HOME/.cache/tahoe-glass/src"
+SRC_CACHE="$HOME/.cache/aura-glass/src"
+[ -d "$SRC_CACHE" ] || [ ! -d "$HOME/.cache/tahoe-glass/src" ] || SRC_CACHE="$HOME/.cache/tahoe-glass/src"
 
 ASSUME_YES=0
 DRY_RUN=0
@@ -30,7 +32,7 @@ FORCE_INTERACTIVE=0
 
 usage() {
     cat <<EOF
-${C_BLD}tahoe-glass uninstall${C_OFF}
+${C_BLD}aura-glass uninstall${C_OFF}
 
   ./uninstall.sh [options]
 
@@ -66,7 +68,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-printf '\n%s  tahoe-glass uninstall%s\n' "$C_BLD" "$C_OFF"
+printf '\n%s  aura-glass uninstall%s\n' "$C_BLD" "$C_OFF"
 [ "$DRY_RUN" = 1 ] && printf '%s  dry run — nothing will be changed%s\n' "$C_DIM" "$C_OFF"
 
 # Interactive wizard when no explicit mode flag is given in an interactive terminal
@@ -135,8 +137,8 @@ import sys, re
 target = sys.argv[1]
 css = open(target, encoding="utf-8").read()
 new = css
-# "tahoe-tweaks" is the marker this project used before it was named.
-for name in ("tahoe-glass", "tahoe-tweaks"):
+# "tahoe-tweaks" and "tahoe-glass" are prior markers.
+for name in ("aura-glass", "tahoe-glass", "tahoe-tweaks"):
     new = re.sub(
         r"/\* >>> %s BEGIN <<< \*/.*?/\* >>> %s END <<< \*/\n?" % (name, name),
         "", new, flags=re.S,
@@ -214,11 +216,11 @@ ok "all extension configs reset to their defaults"
 
 # ------------------------------------------------------------------- units --
 
-step "Removing the panel blur unit"
-# bms-panel-blur-rebuild is the name this unit had before the project was named.
+step "Removing systemd units"
 found=0
-for u in tahoe-glass-panel-blur.service bms-panel-blur-rebuild.service \
-         tahoe-glass-icon-sync.service; do
+for u in aura-glass-panel-blur.service tahoe-glass-panel-blur.service bms-panel-blur-rebuild.service \
+         aura-glass-icon-sync.service tahoe-glass-icon-sync.service \
+         aura-glass-gdm-sync.service tahoe-glass-gdm-sync.service; do
     [ -f "$HOME/.config/systemd/user/$u" ] || continue
     found=1
     run systemctl --user disable --now "$u" >/dev/null 2>&1 || true
@@ -284,7 +286,7 @@ if [ "$REMOVE_GDM_MONITORS" = 1 ] || [ "$REMOVE_GDM" = 1 ]; then
 fi
 
 if [ "$REMOVE_ASSETS" = 1 ]; then
-    run rm -rf "$HOME/.cache/tahoe-glass"
+    run rm -rf "$HOME/.cache/aura-glass" "$HOME/.cache/tahoe-glass"
 fi
 
 # ------------------------------------------------------------------ our own --
@@ -296,11 +298,13 @@ if [ -f "$CONF_DIR/rounded-blur" ]; then
     # that tells you what to run.
     info "installed into /usr by this project. To remove it:"
     info "    sudo pacman -Rs gnome-rounded-blur       # if it came from the AUR"
-    info "    sudo ninja -C ~/.cache/tahoe-glass/src/gnome-rounded-blur/build uninstall"
+    info "    sudo ninja -C ~/.cache/aura-glass/src/gnome-rounded-blur/build uninstall"
 fi
 
-step "Removing tahoe-glass itself"
-run rm -f "$HOME/.local/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-icon-sync" \
+step "Removing aura-glass itself"
+run rm -f "$HOME/.local/bin/aura-glass-apply" "$HOME/.local/bin/aura-glass-icon-sync" \
+          "$HOME/.local/bin/aura-glass-panel-blur" "$HOME/.local/bin/aura-glass-gdm-sync" \
+          "$HOME/.local/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-icon-sync" \
           "$HOME/.local/bin/tahoe-glass-panel-blur" "$HOME/.local/bin/tahoe-glass-gdm-sync"
 # Stamps describing artifacts that have just been removed, rather than choices
 # the user made — so they go now instead of waiting on the $CONF_DIR prompt.

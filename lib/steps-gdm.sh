@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# tahoe-glass — GDM login screen theme installation, wallpaper sync, and restoration.
+# aura-glass — GDM login screen theme installation, wallpaper sync, and restoration.
 #
 # Unlike user themes which live under $HOME, GDM runs as a separate system user
 # and loads its theme from /usr/share/gnome-shell/gnome-shell-theme.gresource.
@@ -152,26 +152,34 @@ unsync_gdm_monitors() {
 }
 
 install_gdm_sync_unit() {
-    run install -Dm755 "$REPO_ROOT/bin/tahoe-glass-gdm-sync" \
-        "$HOME/.local/bin/tahoe-glass-gdm-sync"
-    run install -Dm644 "$REPO_ROOT/systemd/tahoe-glass-gdm-sync.service" \
-        "$HOME/.config/systemd/user/tahoe-glass-gdm-sync.service"
+    if [ -f "$HOME/.config/systemd/user/tahoe-glass-gdm-sync.service" ]; then
+        run systemctl --user disable --now tahoe-glass-gdm-sync.service >/dev/null 2>&1 || true
+        run rm -f "$HOME/.config/systemd/user/tahoe-glass-gdm-sync.service"
+    fi
+
+    run install -Dm755 "$REPO_ROOT/bin/aura-glass-gdm-sync" \
+        "$HOME/.local/bin/aura-glass-gdm-sync"
+    ln -sf "$HOME/.local/bin/aura-glass-gdm-sync" "$HOME/.local/bin/tahoe-glass-gdm-sync" 2>/dev/null || true
+    run install -Dm644 "$REPO_ROOT/systemd/aura-glass-gdm-sync.service" \
+        "$HOME/.config/systemd/user/aura-glass-gdm-sync.service"
     run systemctl --user daemon-reload
-    run systemctl --user enable tahoe-glass-gdm-sync.service >/dev/null 2>&1 || true
+    run systemctl --user enable aura-glass-gdm-sync.service >/dev/null 2>&1 || true
 
     if systemctl --user is-active --quiet graphical-session.target 2>/dev/null; then
-        run systemctl --user restart tahoe-glass-gdm-sync.service 2>/dev/null || true
+        run systemctl --user restart aura-glass-gdm-sync.service 2>/dev/null || true
     fi
     ok "GDM dynamic wallpaper sync daemon enabled"
 }
 
 uninstall_gdm_sync_unit() {
-    if [ -f "$HOME/.config/systemd/user/tahoe-glass-gdm-sync.service" ]; then
-        run systemctl --user disable --now tahoe-glass-gdm-sync.service >/dev/null 2>&1 || true
-        run rm -f "$HOME/.config/systemd/user/tahoe-glass-gdm-sync.service"
-        run systemctl --user daemon-reload
-    fi
-    run rm -f "$HOME/.local/bin/tahoe-glass-gdm-sync"
+    for u in aura-glass-gdm-sync.service tahoe-glass-gdm-sync.service; do
+        if [ -f "$HOME/.config/systemd/user/$u" ]; then
+            run systemctl --user disable --now "$u" >/dev/null 2>&1 || true
+            run rm -f "$HOME/.config/systemd/user/$u"
+        fi
+    done
+    run systemctl --user daemon-reload
+    run rm -f "$HOME/.local/bin/aura-glass-gdm-sync" "$HOME/.local/bin/tahoe-glass-gdm-sync"
 }
 
 install_gdm() {
@@ -192,15 +200,15 @@ install_gdm() {
         sync_gdm_monitors
     fi
 
-    # 2. Prepare initial blurred desktop wallpaper in /usr/share/backgrounds/tahoe-gdm.png
-    local target_wall="/usr/share/backgrounds/tahoe-gdm.png"
+    # 2. Prepare initial blurred desktop wallpaper in /usr/share/backgrounds/aura-gdm.png
+    local target_wall="/usr/share/backgrounds/aura-gdm.png"
     local cur_wall; cur_wall="$(get_desktop_wallpaper)"
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
         info "dry-run: generate $target_wall from $cur_wall and make writable for live wallpaper sync"
     else
         sudo mkdir -p /usr/share/backgrounds
-        local tmp_init="/tmp/tahoe-gdm-init.png"
+        local tmp_init="/tmp/aura-gdm-init.png"
         if [ -n "$cur_wall" ] && generate_gdm_wallpaper "$cur_wall" "$tmp_init"; then
             sudo cp -f "$tmp_init" "$target_wall"
             rm -f "$tmp_init"
@@ -211,7 +219,7 @@ install_gdm() {
         ok "GDM background configured from desktop wallpaper ($target_wall)"
     fi
 
-    # 3. Compile and install GDM theme patched to link directly to file:///usr/share/backgrounds/tahoe-gdm.png
+    # 3. Compile and install GDM theme patched to link directly to file:///usr/share/backgrounds/aura-gdm.png
     info "Preparing WhiteSur GDM resources..."
     local src="$SRC_CACHE/WhiteSur-gtk-theme"
     clone_pinned "$WHITESUR_REPO" "$WHITESUR_REF" "$src"
@@ -219,10 +227,10 @@ install_gdm() {
     if [ "${DRY_RUN:-0}" = 1 ]; then
         info "dry-run: compile GDM theme with background linking to $target_wall"
     else
-        # Patch theme css so GDM directly loads file:///usr/share/backgrounds/tahoe-gdm.png
-        sed -i 's|resource:///org/gnome/shell/theme/background.png|file:///usr/share/backgrounds/tahoe-gdm.png|g' \
+        # Patch theme css so GDM directly loads file:///usr/share/backgrounds/aura-gdm.png
+        sed -i 's|resource:///org/gnome/shell/theme/background.png|file:///usr/share/backgrounds/aura-gdm.png|g' \
             "$src"/other/gdm/theme/gnome-shell-*.css 2>/dev/null || true
-        sed -i 's|assets/background.png|file:///usr/share/backgrounds/tahoe-gdm.png|g' \
+        sed -i 's|assets/background.png|file:///usr/share/backgrounds/aura-gdm.png|g' \
             "$src"/src/main/gnome-shell/gnome-shell-*.css 2>/dev/null || true
 
         # Neutralize WhiteSur internal network & system package checks that can freeze/hang
@@ -232,7 +240,7 @@ install_gdm() {
         info "Compiling and applying GDM theme..."
         sudo -v || { warn "sudo authentication required for GDM installation"; return 1; }
 
-        local gdm_log="/tmp/tahoe-gdm-install.log"
+        local gdm_log="/tmp/aura-gdm-install.log"
         if sudo bash "$src/tweaks.sh" -g -b "$target_wall" -nb --silent-mode >"$gdm_log" 2>&1; then
             mkdir -p "$CONF_DIR"
             printf '%s\n' "dynamic" > "$CONF_DIR/gdm-installed"
@@ -287,13 +295,15 @@ uninstall_gdm() {
     fi
 
     # Remove dynamic background file
-    if [ -f "/usr/share/backgrounds/tahoe-gdm.png" ]; then
-        if [ "${DRY_RUN:-0}" = 1 ]; then
-            info "dry-run: sudo rm -f /usr/share/backgrounds/tahoe-gdm.png"
-        else
-            sudo rm -f "/usr/share/backgrounds/tahoe-gdm.png" 2>/dev/null || true
+    for bg_file in "/usr/share/backgrounds/aura-gdm.png" "/usr/share/backgrounds/tahoe-gdm.png"; do
+        if [ -f "$bg_file" ]; then
+            if [ "${DRY_RUN:-0}" = 1 ]; then
+                info "dry-run: sudo rm -f $bg_file"
+            else
+                sudo rm -f "$bg_file" 2>/dev/null || true
+            fi
         fi
-    fi
+    done
 
     # Disable sync unit
     uninstall_gdm_sync_unit

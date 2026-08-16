@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# tahoe-glass — installing and enabling the shell extensions.
+# aura-glass — installing and enabling the shell extensions.
 #
 # Three of them cannot come from extensions.gnome.org as they are. Blur My Shell
 # is built from a pinned commit because no release carries the popup component;
@@ -314,7 +314,7 @@ install_rounded_blur() {
         cmd="meson setup --prefix=/usr build && sudo meson install -C build"
     fi
 
-    info "this is the one part of tahoe-glass that installs outside \$HOME:"
+    info "this is the one part of aura-glass that installs outside \$HOME:"
     info "    $cmd"
     if ! confirm_always "Install gnome-rounded-blur? It needs root."; then
         skip "not installed — popup blur stays static, and still rounded"

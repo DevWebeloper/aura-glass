@@ -11,9 +11,13 @@
 # current setting and exits.
 set -euo pipefail
 
-BASE="${TAHOE_GLASS_ICONS:-}"
-if [ -z "$BASE" ] && [ -r "$HOME/.config/tahoe-glass/icons" ]; then
-    BASE="$(cat "$HOME/.config/tahoe-glass/icons")"
+BASE="${AURA_GLASS_ICONS:-${TAHOE_GLASS_ICONS:-}}"
+if [ -z "$BASE" ]; then
+    if [ -r "$HOME/.config/aura-glass/icons" ]; then
+        BASE="$(cat "$HOME/.config/aura-glass/icons")"
+    elif [ -r "$HOME/.config/tahoe-glass/icons" ]; then
+        BASE="$(cat "$HOME/.config/tahoe-glass/icons")"
+    fi
 fi
 BASE="${BASE:-Colloid}"
 

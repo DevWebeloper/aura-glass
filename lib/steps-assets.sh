@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# tahoe-glass — icon and cursor themes.
+# aura-glass — icon and cursor themes.
 #
 # The accent drives the icon colour but is deliberately not the only thing that
 # can: --icons takes a pack and a colour of its own, because wanting purple

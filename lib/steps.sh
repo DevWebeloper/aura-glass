@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# tahoe-glass — the shared values every step works from, and the two steps that
+# aura-glass — the shared values every step works from, and the two steps that
 # bracket a run.
 #
 # The steps themselves were one 1300-line file until they were split by concern,
@@ -48,9 +48,9 @@ MACTAHOE_REPO="https://github.com/vinceliuice/MacTahoe-icon-theme.git"
 MACTAHOE_REF="b85923bb87f5"
 
 EXT_DIR="$HOME/.local/share/gnome-shell/extensions"
-CONF_DIR="$HOME/.config/tahoe-glass"
+CONF_DIR="$HOME/.config/aura-glass"
 BACKUP_DIR="$CONF_DIR/backups"
-SRC_CACHE="$HOME/.cache/tahoe-glass/src"
+SRC_CACHE="$HOME/.cache/aura-glass/src"
 
 # Everything the look actually needs that comes straight from the extensions
 # site. openbar, custom-osd and blur-my-shell are absent because each is built
@@ -210,7 +210,7 @@ finish() {
     right on the next session.
 
     Afterwards:
-      tahoe-glass-apply         re-apply the CSS (needed after any theme update)
+      aura-glass-apply          re-apply the CSS (needed after any theme update)
       ./uninstall.sh            put everything back
 
     If ~/.local/bin is not on your PATH, add it:

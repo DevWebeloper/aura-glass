@@ -1,4 +1,4 @@
-# tahoe-glass design tokens — the single source of truth for every value that
+# aura-glass design tokens — the single source of truth for every value that
 # is written down in more than one place.
 #
 # This file is sourced, not templated. GTK4's var() fails at computed-value

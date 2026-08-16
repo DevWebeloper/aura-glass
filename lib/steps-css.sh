@@ -1,8 +1,8 @@
 # shellcheck shell=bash
-# tahoe-glass — the CSS tweaks, and the display-density correction.
+# aura-glass — the CSS tweaks, and the display-density correction.
 #
 # install_css copies whatever css/ holds into $CONF_DIR and then runs
-# bin/tahoe-glass-apply, which concatenates the sheets in cascade order into one
+# bin/aura-glass-apply, which concatenates the sheets in cascade order into one
 # marked block. The numeric prefix on a sheet is its cascade position, not
 # decoration; tools/check-cascade.sh asserts the two agree.
 #
@@ -153,20 +153,21 @@ install_css() {
         run install -Dm644 "$sheet" "$CONF_DIR/$(basename "$sheet")"
     done
     run install -Dm644 "$REPO_ROOT/css/gtk3-tweaks.css"  "$CONF_DIR/gtk3-tweaks.css"
-    run install -Dm755 "$REPO_ROOT/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-apply"
+    run install -Dm755 "$REPO_ROOT/bin/aura-glass-apply" "$HOME/.local/bin/aura-glass-apply"
+    ln -sf "$HOME/.local/bin/aura-glass-apply" "$HOME/.local/bin/tahoe-glass-apply" 2>/dev/null || true
 
     # Upgrading from a version that shipped one sheet per target. Both names are
-    # gone from tahoe-glass-apply's lists, so leaving them would only be dead
+    # gone from aura-glass-apply's lists, so leaving them would only be dead
     # weight — but they were also the file the density block used to be appended
     # to, and that copy would still be found by an older apply script.
     run rm -f "$CONF_DIR/shell-tweaks.css" "$CONF_DIR/gtk4-tweaks.css"
 
-    # Installed or removed rather than switched on at read time: tahoe-glass-apply
+    # Installed or removed rather than switched on at read time: aura-glass-apply
     # concatenates whatever it finds in $CONF_DIR and has no way to know which
     # options this install was given.
     # --no-blur swaps the translucent ladder for opaque surfaces. Installed or
     # removed rather than switched on at read time, for the same reason as the
-    # sheets below: tahoe-glass-apply concatenates what it finds and cannot know
+    # sheets below: aura-glass-apply concatenates what it finds and cannot know
     # which options this install was given.
     if [ "${WANT_BLUR:-1}" = 1 ]; then
         run rm -f "$CONF_DIR/shell-80-solid.css"
@@ -181,7 +182,7 @@ install_css() {
     fi
     install_transparency_css
     ok "css -> $CONF_DIR"
-    ok "re-apply command -> ~/.local/bin/tahoe-glass-apply"
+    ok "re-apply command -> ~/.local/bin/aura-glass-apply"
 
     # Generated rather than kept in css/, so it is written for whatever screen
     # the installer is actually run on. It gets its own sheet — prefix 90, so it
@@ -207,8 +208,8 @@ install_css() {
     fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: tahoe-glass-apply"
+        info "dry-run: aura-glass-apply"
     else
-        "$HOME/.local/bin/tahoe-glass-apply" | sed 's/^/    /'
+        "$HOME/.local/bin/aura-glass-apply" | sed 's/^/    /'
     fi
 }

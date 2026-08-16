@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# tahoe-glass — distro detection and dependency installation.
+# aura-glass — distro detection and dependency installation.
 #
 # arch — CachyOS, Arch, EndeavourOS … — is the family this is built and tested
 # on. fedora and debian are handled on the same terms but are not exercised.
@@ -38,8 +38,8 @@ detect_distro() {
 # python3 is here because it is load-bearing rather than incidental: every
 # extension's metadata is checked through it (ext_supports_shell), the display
 # density is measured and the correction emitted through it, enabled-extensions
-# is appended through it, and bin/tahoe-glass-apply does its whole block-replace
-# in it. Without it the install used to pass this check, report "all
+# is appended through it, and bin/aura-glass-apply does its whole block-replace
+# in it. Without it the install used to pass this check, report "all"
 # dependencies present", and then die part-way through with a bare "command not
 # found" — which is the one failure mode this step exists to prevent. Arch
 # spells the package `python`; Fedora and Debian spell it `python3`.

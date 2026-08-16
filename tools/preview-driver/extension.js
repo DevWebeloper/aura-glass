@@ -1,4 +1,4 @@
-/* tahoe-glass preview driver
+/* aura-glass preview driver
  *
  * Most of this project's shell CSS paints surfaces you cannot see on an idle
  * desktop: quick settings, the date menu, notifications, dialogs, the OSD.
@@ -25,7 +25,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const IFACE = `
 <node>
-  <interface name="org.tahoeGlass.PreviewDriver">
+  <interface name="org.auraGlass.PreviewDriver">
     <method name="Ping">
       <arg type="s" direction="out" name="pong"/>
     </method>
@@ -56,12 +56,12 @@ export default class PreviewDriverExtension extends Extension {
         this._dialog = null;
         this._switcher = null;
         this._dbus = Gio.DBusExportedObject.wrapJSObject(IFACE, this);
-        this._dbus.export(Gio.DBus.session, '/org/tahoeGlass/PreviewDriver');
+        this._dbus.export(Gio.DBus.session, '/org/auraGlass/PreviewDriver');
         // Owning a name as well as exporting the object gives the harness
         // something to wait for: it can poll for the name instead of sleeping
         // and hoping the extension finished loading.
         this._nameId = Gio.bus_own_name(
-            Gio.BusType.SESSION, 'org.tahoeGlass.PreviewDriver',
+            Gio.BusType.SESSION, 'org.auraGlass.PreviewDriver',
             Gio.BusNameOwnerFlags.REPLACE, null, null, null);
     }
 
@@ -76,7 +76,7 @@ export default class PreviewDriverExtension extends Extension {
     }
 
     Ping() {
-        return 'tahoe-glass preview driver';
+        return 'aura-glass preview driver';
     }
 
     // Opened through the indicator's own menu object rather than by faking a

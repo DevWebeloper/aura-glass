@@ -1,4 +1,4 @@
-/* tahoe-glass — popup translucency, for when there is a real blur behind it.
+/* aura-glass — popup translucency, for when there is a real blur behind it.
  *
  * Appended after shell-tweaks.css, and only installed when Blur My Shell's
  * popup component is active (--no-popup-blur leaves it out entirely, which is

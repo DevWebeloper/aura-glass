@@ -10,7 +10,7 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/tahoe-glass-icon-sync
+ExecStart=%h/.local/bin/aura-glass-icon-sync
 Restart=on-failure
 RestartSec=5
 

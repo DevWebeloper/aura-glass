@@ -1,4 +1,4 @@
-/* tahoe-tweaks:shell — appended to Tahoe-Dark/gnome-shell/gnome-shell.css
+/* aura-glass:shell — appended to Tahoe-Dark/gnome-shell/gnome-shell.css
  *
  * Shared translucency ladder, so every shell surface reads as the same
  * material with only a shade of difference between levels:
@@ -27,7 +27,7 @@
  * This desktop is 2D. The blur behind a surface is the only depth it gets;
  * nothing is lifted off anything else, and nothing glows.
  *
- * The heavy lifting is not done here. tahoe-glass-apply rewrites the theme's
+ * The heavy lifting is not done here. aura-glass-apply rewrites the theme's
  * own shadow and gradient values to `none` where they are declared, so by the
  * time this sheet is read there is nothing left to out-rank. That replaced an
  * earlier approach that appended counter-rules and had to win a cascade fight

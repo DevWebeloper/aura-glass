@@ -79,7 +79,7 @@ overview() {
 TMP="$(mktemp -d)"
 # Results are also appended to a log, so a run can be read back afterwards
 # rather than depending on the terminal it was run in still being on screen.
-LOG="${TAHOE_GPU_LOG:-$HOME/.cache/tahoe-glass/gpu-live.log}"
+LOG="${AURA_GPU_LOG:-${TAHOE_GPU_LOG:-$HOME/.cache/aura-glass/gpu-live.log}}"
 mkdir -p "$(dirname "$LOG")"
 {
     echo

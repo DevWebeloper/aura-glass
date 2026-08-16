@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# tahoe-glass — a macOS Tahoe glass desktop for GNOME.
+# aura-glass — a fluid frosted-glass desktop for GNOME.
 #
-#   https://github.com/DevWebeloper/tahoe-glass
+#   https://github.com/DevWebeloper/aura-glass
 #
 # Nothing here needs root except the optional dependency install, the
 # optional rounded-blur library, and the optional GDM login screen theme:
@@ -71,7 +71,7 @@ VALID_ACCENTS="blue teal green yellow orange red pink purple slate"
 
 usage() {
     cat <<EOF
-${C_BLD}tahoe-glass${C_OFF} — a macOS Tahoe glass desktop for GNOME 48-50
+${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
 
   ${C_BLD}usage${C_OFF}
     ./install.sh [options]
@@ -130,7 +130,7 @@ ${C_BLD}tahoe-glass${C_OFF} — a macOS Tahoe glass desktop for GNOME 48-50
     -h, --help        this
 
   ${C_BLD}after installing${C_OFF}
-    log out and back in, then use  tahoe-glass-apply  to re-apply the CSS
+    log out and back in, then use  aura-glass-apply  to re-apply the CSS
     after any theme update, and  ./uninstall.sh  to undo everything.
 EOF
 }
@@ -208,7 +208,7 @@ if { [ "$EXPLICIT_FLAGS" = 0 ] || [ "$FORCE_INTERACTIVE" = 1 ]; } && [ "$ASSUME_
     cat <<EOF
 
 ${C_BLD}┌─────────────────────────────────────────────────────────────┐${C_OFF}
-${C_BLD}│  tahoe-glass — macOS Tahoe Glass Desktop for GNOME 48-50    │${C_OFF}
+${C_BLD}│  aura-glass — Fluid Frosted Glass Desktop for GNOME 48-50   │${C_OFF}
 ${C_BLD}└─────────────────────────────────────────────────────────────┘${C_OFF}
 
 EOF
@@ -619,7 +619,7 @@ if [ "$WANT_BLUR" != 1 ] && [ "$WANT_WINDOW_BLUR" = 1 ]; then
     die "--no-blur and --window-blur contradict each other — --no-blur leaves Blur My Shell out entirely, so there is nothing to blur behind a window. Pick one."
 fi
 
-printf '\n%s  tahoe-glass%s  %saccent %s%s\n' \
+printf '\n%s  aura-glass%s  %saccent %s%s\n' \
     "$C_BLD" "$C_OFF" "$C_DIM" "$ACCENT" "$C_OFF"
 [ "$DRY_RUN" = 1 ] && printf '%s  dry run — nothing will be changed%s\n' "$C_DIM" "$C_OFF"
 

@@ -1,4 +1,4 @@
-/* tahoe-tweaks:gtk4 — appended to ~/.config/gtk-4.0/gtk.css and gtk-dark.css
+/* aura-glass:gtk4 — appended to ~/.config/gtk-4.0/gtk.css and gtk-dark.css
  *
  * The theme styled `entry` with only a faint gradient and no metrics, so
  * fields inherited libadwaita's compact height and read as part of the
@@ -19,7 +19,7 @@
  * This desktop is 2D. The blur behind a surface is the only depth it gets;
  * nothing is lifted off anything else.
  *
- * tahoe-glass-apply has already rewritten the theme's own shadow and gradient
+ * aura-glass-apply has already rewritten the theme's own shadow and gradient
  * values to `none` before this sheet is read, so this is a safety net rather
  * than the mechanism — it catches anything written in a form that pass does not
  * match, and any shadow arriving from an app's own CSS rather than the theme.

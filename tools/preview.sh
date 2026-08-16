@@ -58,14 +58,14 @@ set -euo pipefail
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=../tokens/tokens.sh
 . "$REPO_ROOT/tokens/tokens.sh"
-PROFILE="${TAHOE_PREVIEW_DIR:-$HOME/.cache/tahoe-glass/preview}"
-SHOTS="${TAHOE_PREVIEW_SHOTS:-$REPO_ROOT/screenshots/preview}"
-DISPLAY_NAME="tahoe-preview"
-RESOLUTION="${TAHOE_PREVIEW_RES:-1920x1080}"
+PROFILE="${AURA_PREVIEW_DIR:-${TAHOE_PREVIEW_DIR:-$HOME/.cache/aura-glass/preview}}"
+SHOTS="${AURA_PREVIEW_SHOTS:-${TAHOE_PREVIEW_SHOTS:-$REPO_ROOT/screenshots/preview}}"
+DISPLAY_NAME="aura-preview"
+RESOLUTION="${AURA_PREVIEW_RES:-${TAHOE_PREVIEW_RES:-1920x1080}}"
 THEME="Tahoe-Dark"
 # Loaded only into the preview profile — see tools/preview-driver/extension.js
 # for why it must never reach a real session.
-DRIVER_UUID="tahoe-preview-driver@tahoe-glass.local"
+DRIVER_UUID="aura-preview-driver@aura-glass.local"
 
 MODE="shell"
 KEEP=0
@@ -95,11 +95,11 @@ die() { printf '\033[1;31m!!\033[0m %s\n' "$*" >&2; exit 1; }
 # --- the candidate profile -------------------------------------------------
 #
 # Built from the *installed* theme plus this tree's CSS, so what gets rendered
-# is the working copy rather than whatever was last installed. bin/tahoe-glass-
+# is the working copy rather than whatever was last installed. bin/aura-glass-
 # apply needs no special-casing for this: it already takes every path from
-# $HOME, $TAHOE_GLASS_DIR and $TAHOE_GLASS_THEME.
+# $HOME, $AURA_GLASS_DIR and $AURA_GLASS_THEME.
 build_profile() {
-    local home="$PROFILE/home" conf="$PROFILE/home/.config/tahoe-glass"
+    local home="$PROFILE/home" conf="$PROFILE/home/.config/aura-glass"
     rm -rf "$PROFILE"
     mkdir -p "$home/.themes" "$home/.config" "$home/.local/share" "$home/.cache" "$conf"
 
@@ -124,7 +124,7 @@ build_profile() {
 
     # The GTK4 targets are generated files that live outside the theme
     # directory, so copying ~/.themes alone does not bring them and
-    # tahoe-glass-apply has nothing to append to — every gtk4-*.css sheet was
+    # aura-glass-apply has nothing to append to — every gtk4-*.css sheet was
     # silently skipped, and the GTK half of a preview was really stock
     # libadwaita. Seed them from the installed copies with any previously
     # applied block stripped, so apply starts from the theme's own output.
@@ -135,7 +135,7 @@ build_profile() {
         python3 - "$HOME/.config/gtk-4.0/$t" "$home/.config/gtk-4.0/$t" <<'STRIP'
 import re, sys
 css = open(sys.argv[1], encoding="utf-8").read()
-for name in ("tahoe-glass", "tahoe-tweaks"):
+for name in ("aura-glass", "tahoe-glass", "tahoe-tweaks"):
     css = re.sub(r"/\* >>> %s BEGIN <<< \*/.*?/\* >>> %s END <<< \*/\n?" % (name, name),
                  "", css, flags=re.S)
 open(sys.argv[2], "w", encoding="utf-8").write(css)
@@ -175,8 +175,8 @@ TINTPY
         fi
     fi
 
-    HOME="$home" TAHOE_GLASS_DIR="$conf" TAHOE_GLASS_THEME="$THEME" \
-        bash "$REPO_ROOT/bin/tahoe-glass-apply" | sed 's/^/   /'
+    HOME="$home" AURA_GLASS_DIR="$conf" AURA_GLASS_THEME="$THEME" \
+        bash "$REPO_ROOT/bin/aura-glass-apply" | sed 's/^/   /'
 }
 
 # --- GTK-only tier ---------------------------------------------------------
@@ -211,7 +211,7 @@ export TG_DRIVER_UUID="$DRIVER_UUID" TG_SOLID="$SOLID"
 
 # Kept inside the real runtime dir so it is still tmpfs owned by this user,
 # which is what a runtime dir has to be; only the path differs.
-PREVIEW_RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/tahoe-glass-preview"
+PREVIEW_RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/aura-glass-preview"
 rm -rf "$PREVIEW_RUNTIME"
 mkdir -p -m 0700 "$PREVIEW_RUNTIME"
 

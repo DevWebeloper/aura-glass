@@ -7,7 +7,7 @@
 # built during either window gets clipped in the wrong place, and part of the
 # top bar shows a strip that does not line up with the wallpaper.
 #
-# tahoe-glass-panel-blur watches mutter for MonitorsChanged and rebuilds the
+# aura-glass-panel-blur watches mutter for MonitorsChanged and rebuilds the
 # actor after each one, plus once at login. That replaces a fixed `sleep 12`,
 # which guessed at the login case, waited when nothing was wrong, and did
 # nothing at all when the layout changed later in the session.
@@ -17,7 +17,7 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/tahoe-glass-panel-blur
+ExecStart=%h/.local/bin/aura-glass-panel-blur
 Restart=on-failure
 RestartSec=5
 

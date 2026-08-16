@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Re-apply the tahoe-glass CSS on top of the installed theme.
+# Re-apply the aura-glass CSS on top of the installed theme.
 #
 # All four targets are generated files: re-running the Tahoe theme's own
 # install.sh overwrites them and drops these changes. Run this afterwards.
 # It is idempotent — an existing block is replaced, never stacked.
 set -euo pipefail
 
-DIR="${TAHOE_GLASS_DIR:-$HOME/.config/tahoe-glass}"
-THEME="${TAHOE_GLASS_THEME:-Tahoe-Dark}"
+DIR="${AURA_GLASS_DIR:-${TAHOE_GLASS_DIR:-$HOME/.config/aura-glass}}"
+[ -d "$DIR" ] || [ ! -d "$HOME/.config/tahoe-glass" ] || DIR="$HOME/.config/tahoe-glass"
+THEME="${AURA_GLASS_THEME:-${TAHOE_GLASS_THEME:-Tahoe-Dark}}"
 
 SHELL_CSS="$HOME/.themes/$THEME/gnome-shell/gnome-shell.css"
 GTK4_CSS="$HOME/.config/gtk-4.0/gtk.css"
@@ -37,14 +38,13 @@ apply() {
     python3 - "$target" "$flatten" "${present[@]}" <<'PY'
 import sys, re
 target, flatten, snippets = sys.argv[1], sys.argv[2] == "1", sys.argv[3:]
-BEGIN = "/* >>> tahoe-glass BEGIN <<< */"
-END   = "/* >>> tahoe-glass END <<< */"
+BEGIN = "/* >>> aura-glass BEGIN <<< */"
+END   = "/* >>> aura-glass END <<< */"
 
 css = open(target, encoding="utf-8").read()
 # Drop any block appended previously so re-runs replace instead of stacking.
-# "tahoe-tweaks" is the marker this project used before it was named, and is
-# stripped too so an in-place upgrade doesn't leave two copies of the CSS.
-for name in ("tahoe-glass", "tahoe-tweaks"):
+# Strip previous project markers so in-place upgrades don't leave multiple copies.
+for name in ("aura-glass", "tahoe-glass", "tahoe-tweaks"):
     css = re.sub(
         r"/\* >>> %s BEGIN <<< \*/.*?/\* >>> %s END <<< \*/\n?" % (name, name),
         "", css, flags=re.S,

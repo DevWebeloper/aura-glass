@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# tahoe-glass — the pieces that wire the desktop up.
+# aura-glass — the pieces that wire the desktop up.
 #
 # None of these change how anything looks. They exist because GNOME will
 # otherwise undo, sandbox away, or mis-clip something the rest of the install
@@ -25,8 +25,16 @@ install_icon_sync() {
     # in order to find the light and dark halves of the pair.
     local base; base="$(icon_base)"
 
-    run install -Dm755 "$REPO_ROOT/bin/tahoe-glass-icon-sync" \
-        "$HOME/.local/bin/tahoe-glass-icon-sync"
+    # Clean legacy units if present
+    if [ -f "$HOME/.config/systemd/user/tahoe-glass-icon-sync.service" ]; then
+        run systemctl --user disable --now tahoe-glass-icon-sync.service >/dev/null 2>&1 || true
+        run rm -f "$HOME/.config/systemd/user/tahoe-glass-icon-sync.service"
+    fi
+
+    run install -Dm755 "$REPO_ROOT/bin/aura-glass-icon-sync" \
+        "$HOME/.local/bin/aura-glass-icon-sync"
+    ln -sf "$HOME/.local/bin/aura-glass-icon-sync" "$HOME/.local/bin/tahoe-glass-icon-sync" 2>/dev/null || true
+
     if [ "${DRY_RUN:-0}" = 1 ]; then
         info "dry-run: remember icon set $base"
     else
@@ -35,15 +43,15 @@ install_icon_sync() {
         printf '%s\n' "${ICONS:-colloid}" > "$CONF_DIR/icon-pack"
     fi
 
-    run install -Dm644 "$REPO_ROOT/systemd/tahoe-glass-icon-sync.service" \
-        "$HOME/.config/systemd/user/tahoe-glass-icon-sync.service"
+    run install -Dm644 "$REPO_ROOT/systemd/aura-glass-icon-sync.service" \
+        "$HOME/.config/systemd/user/aura-glass-icon-sync.service"
     run systemctl --user daemon-reload
-    run systemctl --user enable tahoe-glass-icon-sync.service >/dev/null 2>&1 || true
+    run systemctl --user enable aura-glass-icon-sync.service >/dev/null 2>&1 || true
 
     # enable alone only arms it for the next login, and there is no reason to
     # make the user log out to see their icons follow the theme.
     if systemctl --user is-active --quiet graphical-session.target 2>/dev/null; then
-        run systemctl --user restart tahoe-glass-icon-sync.service 2>/dev/null || true
+        run systemctl --user restart aura-glass-icon-sync.service 2>/dev/null || true
     fi
     ok "icons follow Settings > Appearance ($(icon_variant "$base" Dark || echo "$base") / $(icon_variant "$base" Light || echo "$base"))"
 }
@@ -79,10 +87,9 @@ install_panel_blur_unit() {
     fi
 
     if [ "${WANT_PANEL_BLUR_FIX:-1}" != 1 ]; then
-        # bms-panel-blur-rebuild is the name this carried before the project
-        # was named, and is still enabled on machines set up by hand back then.
+        # Clean up any previously installed panel blur units
         local found=0 u
-        for u in tahoe-glass-panel-blur.service bms-panel-blur-rebuild.service; do
+        for u in aura-glass-panel-blur.service tahoe-glass-panel-blur.service bms-panel-blur-rebuild.service; do
             [ -f "$HOME/.config/systemd/user/$u" ] || continue
             found=1
             run systemctl --user disable --now "$u" >/dev/null 2>&1 || true
@@ -94,21 +101,24 @@ install_panel_blur_unit() {
         return 0
     fi
 
-    if [ -f "$HOME/.config/systemd/user/bms-panel-blur-rebuild.service" ]; then
-        run systemctl --user disable --now bms-panel-blur-rebuild.service >/dev/null 2>&1 || true
-        run rm -f "$HOME/.config/systemd/user/bms-panel-blur-rebuild.service"
-    fi
+    for u in tahoe-glass-panel-blur.service bms-panel-blur-rebuild.service; do
+        if [ -f "$HOME/.config/systemd/user/$u" ]; then
+            run systemctl --user disable --now "$u" >/dev/null 2>&1 || true
+            run rm -f "$HOME/.config/systemd/user/$u"
+        fi
+    done
 
-    run install -Dm755 "$REPO_ROOT/bin/tahoe-glass-panel-blur" \
-        "$HOME/.local/bin/tahoe-glass-panel-blur"
-    run install -Dm644 "$REPO_ROOT/systemd/tahoe-glass-panel-blur.service" \
-        "$HOME/.config/systemd/user/tahoe-glass-panel-blur.service"
+    run install -Dm755 "$REPO_ROOT/bin/aura-glass-panel-blur" \
+        "$HOME/.local/bin/aura-glass-panel-blur"
+    ln -sf "$HOME/.local/bin/aura-glass-panel-blur" "$HOME/.local/bin/tahoe-glass-panel-blur" 2>/dev/null || true
+    run install -Dm644 "$REPO_ROOT/systemd/aura-glass-panel-blur.service" \
+        "$HOME/.config/systemd/user/aura-glass-panel-blur.service"
     run systemctl --user daemon-reload
-    run systemctl --user enable tahoe-glass-panel-blur.service >/dev/null 2>&1 || true
+    run systemctl --user enable aura-glass-panel-blur.service >/dev/null 2>&1 || true
 
     # enable only arms it for the next login, and the strip is on screen now.
     if systemctl --user is-active --quiet graphical-session.target 2>/dev/null; then
-        run systemctl --user restart tahoe-glass-panel-blur.service 2>/dev/null || true
+        run systemctl --user restart aura-glass-panel-blur.service 2>/dev/null || true
     fi
     ok "panel blur rebuilds on every monitor change, and once at login"
 }

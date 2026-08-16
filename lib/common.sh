@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# tahoe-glass — output, prompting and small shared helpers.
+# aura-glass — output, prompting and small shared helpers.
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     C_DIM=$'\033[2m'; C_RED=$'\033[0;31m'; C_GRN=$'\033[0;32m'
