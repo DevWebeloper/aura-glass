@@ -37,7 +37,7 @@ GNOME Shell extensions and compositor settings take effect on the next session. 
 ### 3. Quick Update / Re-Apply
 If you update your theme or GNOME packages later, re-apply the custom CSS fixes anytime with:
 ```bash
-aura-glass-apply   # (or tahoe-glass-apply)
+aura-glass-apply
 ```
 
 ---
