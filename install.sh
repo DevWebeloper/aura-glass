@@ -31,6 +31,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$REPO_ROOT/lib/steps-integration.sh"
 # shellcheck source=lib/steps-gdm.sh
 . "$REPO_ROOT/lib/steps-gdm.sh"
+# shellcheck source=lib/steps-gui.sh
+. "$REPO_ROOT/lib/steps-gui.sh"
 # Values written down in more than one place live here, so that the copy in a
 # stylesheet and the copy in a dconf key cannot drift apart unnoticed.
 # tools/check-tokens.sh asserts they still agree.
@@ -66,6 +68,8 @@ ICONS=""            # empty = remembered choice, then colloid
 GRAIN=""          # empty keeps the preset's value, or the remembered choice
 RADIUS_PRESET=""       # empty = remembered choice, then default
 RADIUS_PRESET_EXPLICIT=""
+SETTINGS_ONLY=0
+WANT_GUI=1
 ASSUME_YES=0
 DRY_RUN=0
 FORCE=0
@@ -131,8 +135,14 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
     --no-gdm          do not theme the GDM login screen (default)
     --gdm-monitors    sync primary monitor layout to GDM login screen (good for multi-monitor, requires sudo)
     --no-gdm-monitors keep default GDM monitor layout (default)
+    --no-gui          skip the aura-glass-settings window (installed by default
+                      where PyGObject and libadwaita are present)
     --no-icons        keep your current icon theme
     --no-cursors      keep your current cursor theme
+    --settings-only   retune an existing install and nothing else: reapply the
+                      dconf preset, the CSS and the gsettings, leaving the theme,
+                      the extensions, the icons and the cursors alone. Needs no
+                      network and no root. This is what aura-glass-settings runs
     --no-deps         never touch the package manager
     --force           reinstall things that are already present
     -y, --yes         answer yes to every prompt (non-interactive)
@@ -205,10 +215,13 @@ while [ $# -gt 0 ]; do
         --no-gdm-monitors) WANT_GDM_MONITORS=0; EXPLICIT_FLAGS=1; shift ;;
         --gdm-background) GDM_BG="${2:-default}"; WANT_GDM=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --gdm-background=*) GDM_BG="${1#*=}"; WANT_GDM=1; EXPLICIT_FLAGS=1; shift ;;
+        --gui)           WANT_GUI=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-gui)        WANT_GUI=0; EXPLICIT_FLAGS=1; shift ;;
         --no-icons)      WANT_ICONS=0; EXPLICIT_FLAGS=1; shift ;;
         --no-cursors)    WANT_CURSORS=0; EXPLICIT_FLAGS=1; shift ;;
         --no-wm-buttons|--wm-buttons) # Deprecated / window buttons kept at system default
                          EXPLICIT_FLAGS=1; shift ;;
+        --settings-only) SETTINGS_ONLY=1; WANT_DEPS=0; EXPLICIT_FLAGS=1; shift ;;
         --no-deps)       WANT_DEPS=0; EXPLICIT_FLAGS=1; shift ;;
         --force)         FORCE=1; EXPLICIT_FLAGS=1; shift ;;
         -y|--yes)        ASSUME_YES=1; EXPLICIT_FLAGS=1; shift ;;
@@ -684,6 +697,40 @@ printf '\n%s  aura-glass%s  %saccent %s%s\n' \
 
 preflight
 
+# Retuning an existing install is the three steps that read a flag and write a
+# setting. Everything skipped here either fetches something (the theme, the
+# extensions, the icon and cursor packs) or wants root (the rounded-blur library,
+# GDM), which is what makes this path fast, offline and unprivileged — and
+# therefore the one a GUI can drive without a terminal to answer prompts in.
+#
+# The three steps are the same functions a full install runs, in the same order,
+# rather than a settings-only reimplementation of them: the precedence between a
+# flag, a $CONF_DIR memo and a default lives in one place and is exercised the
+# same way by both paths.
+if [ "$SETTINGS_ONLY" = 1 ]; then
+    if [ ! -d "$CONF_DIR" ] || [ ! -d "$HOME/.themes/Tahoe-Dark" ]; then
+        die "--settings-only retunes an existing install, but there is nothing installed yet. Run ./install.sh first."
+    fi
+    load_dconf
+    install_css
+    apply_gsettings
+    # Included because it is local, quick and needs nothing: it also refreshes
+    # the installed copy of the window, so pulling the repo and pressing Apply
+    # is enough to be running the current one.
+    install_gui
+    step "Done"
+    cat <<EOF
+
+    The shell picked this up already — aura-glass-apply reloaded it. Restart any
+    GTK app that is open to get the GTK side.
+
+    Nothing else was touched: the theme, the extensions, the icons and the
+    cursors are exactly as they were.
+
+EOF
+    exit 0
+fi
+
 if [ "$WANT_DEPS" = 1 ]; then
     step "Checking dependencies"
     install_deps || die "dependencies are missing — re-run once they are installed, or pass --no-deps to try anyway"
@@ -714,6 +761,7 @@ load_dconf
 install_css
 apply_gsettings
 install_icon_sync
+install_gui
 flatpak_override
 install_panel_blur_unit
 enable_extensions

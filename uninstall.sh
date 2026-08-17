@@ -304,8 +304,14 @@ fi
 step "Removing aura-glass itself"
 run rm -f "$HOME/.local/bin/aura-glass-apply" "$HOME/.local/bin/aura-glass-icon-sync" \
           "$HOME/.local/bin/aura-glass-panel-blur" "$HOME/.local/bin/aura-glass-gdm-sync" \
+          "$HOME/.local/bin/aura-glass-settings" \
           "$HOME/.local/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-icon-sync" \
           "$HOME/.local/bin/tahoe-glass-panel-blur" "$HOME/.local/bin/tahoe-glass-gdm-sync"
+# The settings window: its Python, its launcher above, and the desktop entry that
+# puts it in the overview. The entry has to go with the launcher — one left
+# without the other is a search result that does nothing when clicked.
+run rm -rf "$HOME/.local/share/aura-glass"
+run rm -f "$HOME/.local/share/applications/io.github.DevWebeloper.AuraGlassSettings.desktop"
 # Stamps describing artifacts that have just been removed, rather than choices
 # the user made — so they go now instead of waiting on the $CONF_DIR prompt.
 #
@@ -326,6 +332,8 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/app-opacity" \
           "$CONF_DIR/gdm-installed" \
           "$CONF_DIR/gdm-monitors-synced" \
+          "$CONF_DIR/radius-preset" \
+          "$CONF_DIR/repo-path" \
           "$CONF_DIR/openbar-patch" "$CONF_DIR/custom-osd-patch"
 if confirm "Delete $CONF_DIR (this also deletes the backups above)?" 0; then
     run rm -rf "$CONF_DIR"

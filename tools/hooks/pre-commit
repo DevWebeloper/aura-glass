@@ -74,10 +74,19 @@ fi
 
 # ---- the project's own checks -----------------------------------------------
 #
-# Both take their REPO_ROOT from their own location, so running the extracted
-# copies checks the extracted tree.
+# All three take their REPO_ROOT from their own location, so running the
+# extracted copies checks the extracted tree.
 step "tokens agree (tools/check-tokens.sh)"   bash "$TMP/tools/check-tokens.sh"
 step "cascade intact (tools/check-cascade.sh)" bash "$TMP/tools/check-cascade.sh"
+# check-tokens asserts the repo is at the shipped radii; this asserts a preset
+# can move them and move nothing else. It writes only to a temporary directory.
+step "radius presets apply (tools/check-radius-preset.sh)" \
+    bash "$TMP/tools/check-radius-preset.sh"
+# Asserts the settings window's argument lists are ones install.sh accepts. Runs
+# install.sh --dry-run, so it writes nothing; skips itself where PyGObject is
+# absent, exactly as install_gui does.
+step "settings window flags (tools/check-gui-flags.py)" \
+    python3 "$TMP/tools/check-gui-flags.py"
 
 printf '\n'
 if [ "$fail" = 1 ]; then

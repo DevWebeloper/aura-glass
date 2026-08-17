@@ -64,6 +64,33 @@ declare -A PKG_DEBIAN=(
 
 REQUIRED_CMDS=(git curl unzip sassc gsettings dconf gnome-extensions python3 glib-compile-resources)
 
+# PyGObject and libadwaita's typelib, for the settings window. These are
+# imported rather than executed, so `command -v` cannot see them and they cannot
+# join REQUIRED_CMDS or the PKG_* maps above — hence a probe of their own.
+#
+# Non-fatal, the same tier as msgfmt below: what a missing GUI toolkit costs is
+# one optional window, and every setting it exposes is a flag that still works
+# from the command line. Failing an install of a *theme* over it would be absurd.
+gui_toolkit_present() {
+    python3 - >/dev/null 2>&1 <<'PY'
+import gi
+gi.require_version("Adw", "1")
+gi.require_version("Gtk", "4.0")
+from gi.repository import Adw, Gtk
+PY
+}
+
+# What to install to get it, per family. Printed as a suggestion — never run,
+# because unlike the dependency step this is not something the install needs.
+gui_toolkit_hint() {
+    case "$DISTRO_FAMILY" in
+        arch)   printf 'sudo pacman -S --needed python-gobject libadwaita' ;;
+        fedora) printf 'sudo dnf install python3-gobject libadwaita' ;;
+        debian) printf 'sudo apt install python3-gi gir1.2-adw-1' ;;
+        *)      printf 'install PyGObject and libadwaita 1 for your distro' ;;
+    esac
+}
+
 # Nice to have, never fatal. msgfmt compiles Blur My Shell's translations when
 # it is built from git; without it the extension works and its preferences are
 # simply untranslated. Kept out of REQUIRED_CMDS so a missing gettext cannot

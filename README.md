@@ -34,7 +34,18 @@ Running `./install.sh` launches an **interactive setup wizard** that lets you ea
 ### 2. Log Out & Back In
 GNOME Shell extensions and compositor settings take effect on the next session. Simply **log out and log back in** to enjoy your customized glass desktop!
 
-### 3. Quick Update / Re-Apply
+### 3. Change Your Mind Later — Without the Terminal
+Installing also puts an **Aura Glass** entry in your Activities overview (or run `aura-glass-settings`). It reads your current setup and lets you retune the parts worth revisiting:
+
+- 🎨 **Accent color**, with a shortcut to GNOME's own `Settings → Appearance`
+- ⬜ **Corner rounding** — `Sharp`, `Default`, `Rounded` or `Pill`, applied to windows, menus, dialogs, notifications and the blur behind each of them together
+- 🪟 **Frosted glass / solid mode**, window blur scope, transparency level, and popup blur
+
+Apply takes a few seconds, needs no password and no network: under the hood it runs `./install.sh --settings-only`, which reapplies the dconf preset, the CSS and the gsettings and leaves the theme, extensions, icons and cursors untouched.
+
+> The window is a front end for flags `install.sh` already has — nothing is exposed there that you cannot also script. It needs PyGObject and libadwaita; where those are missing the installer says so and skips it, and everything else installs as normal.
+
+### 4. Quick Update / Re-Apply
 If you update your theme or GNOME packages later, re-apply the custom CSS fixes anytime with:
 ```bash
 aura-glass-apply
@@ -63,6 +74,9 @@ For scripted setups or power users who prefer flags instead of the interactive w
 | `--interactive` | Force-launch the interactive setup wizard. |
 | `--full` | Install everything at once (core theme, icons, cursors, OSD, panel blur fix, and all reference extensions). |
 | `--accent COLOR` | Set accent: `blue`, `teal`, `green`, `yellow`, `orange`, `red`, `pink`, `purple`, `slate` *(default: `purple`, remembered across runs)*. |
+| `--radius-preset P` | Corner rounding: `sharp`, `default`, `rounded` or `pill`. Moves windows, menus, dialogs, notifications **and** the blur radius behind each of them together *(default: `default`, remembered across runs)*. |
+| `--settings-only` | Retune an existing install and nothing else — reapply the dconf preset, CSS and gsettings, leaving the theme, extensions, icons and cursors alone. No network, no root. This is what `aura-glass-settings` runs. |
+| `--no-gui` | Skip the `aura-glass-settings` window *(installed by default where PyGObject and libadwaita are present)*. |
 | `--app-transparency LEVEL` | Enable translucent app windows with blur: `90%` (balanced), `82%` (deep glass), `94%` (subtle glass), or custom percentage *(off by default)*. |
 | `--window-opacity LEVEL` | Alias for `--app-transparency` (e.g. `--window-opacity 90%`). |
 | `--gdm` | Theme the GDM login screen with matching blurred style *(requires `sudo`)*. |
@@ -92,6 +106,9 @@ For scripted setups or power users who prefer flags instead of the interactive w
 
 # 4. Apply GDM login screen theme
 sudo ./install.sh --gdm
+
+# 5. Sharper corners, without reinstalling anything else
+./install.sh --settings-only --radius-preset sharp -y
 ```
 
 ---
@@ -137,7 +154,9 @@ Replaces stock GNOME's bulky OSD with a clean, compact pill. Configurable via **
 ├── install.sh              # Main CLI entry point and orchestration
 ├── uninstall.sh            # Complete restoration & cleanup script
 ├── bin/
-│   └── aura-glass-apply    # Idempotent CSS patch & cascade re-apply script
+│   ├── aura-glass-apply    # Idempotent CSS patch & cascade re-apply script
+│   └── aura-glass-settings # Launcher for the settings window
+├── gui/                    # GTK4 / libadwaita settings window (optional)
 ├── css/                    # Modular CSS sheets applied in strict cascade order
 │   ├── shell-NN-*.css      # GNOME Shell styling overrides
 │   ├── gtk4-NN-*.css       # GTK4 & libadwaita overrides
@@ -145,7 +164,7 @@ Replaces stock GNOME's bulky OSD with a clean, compact pill. Configurable via **
 ├── dconf/                  # dconf presets (core, solid, extras)
 ├── lib/                    # Modular shell functions (distro, steps, GDM, assets)
 ├── patches/                # Upstream compatibility patches (GNOME 50, OpenBar, OSD)
-├── tokens/                 # Design tokens (radii, colors, padding)
+├── tokens/                 # Design tokens (radii, sigmas, transparency) + radius presets
 └── tools/                  # Developer testing, headless previews, & validation
 ```
 
