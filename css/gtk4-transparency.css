@@ -132,8 +132,11 @@ window.solid-csd .background {
  * see-through, and trailing smear ("tail") artifacts when dragging windows.
  */
 headerbar,
+headerbar windowhandle,
 headerbar.titlebar,
+headerbar.titlebar windowhandle,
 .titlebar,
+.titlebar windowhandle,
 window > windowhandle,
 window > headerbar.titlebar,
 window.background > headerbar.titlebar,
@@ -146,7 +149,9 @@ headerbar.default-decoration.titlebar,
 }
 
 headerbar:backdrop,
+headerbar:backdrop windowhandle,
 .titlebar:backdrop,
+.titlebar:backdrop windowhandle,
 window:backdrop > windowhandle,
 window:backdrop > headerbar.titlebar,
 window.background:backdrop > headerbar.titlebar,
@@ -214,7 +219,9 @@ placessidebar {
  * states, preventing a solid background from appearing when the window is unfocused.
  */
 .sidebar-pane headerbar,
+.sidebar-pane headerbar windowhandle,
 .sidebar-pane headerbar:backdrop,
+.sidebar-pane headerbar:backdrop windowhandle,
 .sidebar-pane toolbarview,
 .sidebar-pane toolbarview:backdrop,
 .sidebar-pane toolbarview > .toolbar,
@@ -234,19 +241,37 @@ placessidebar {
 .sidebar-pane scrolledwindow,
 .sidebar-pane viewport,
 .content-pane headerbar,
+.content-pane headerbar windowhandle,
 .content-pane headerbar:backdrop,
+.content-pane headerbar:backdrop windowhandle,
 .content-pane toolbarview > .toolbar,
 .content-pane toolbarview > .toolbar:backdrop,
 .content-pane toolbarview > revealer.top-bar,
 .content-pane toolbarview > revealer.top-bar:backdrop,
 navigation-split-view headerbar,
+navigation-split-view headerbar windowhandle,
 navigation-split-view headerbar:backdrop,
+navigation-split-view headerbar:backdrop windowhandle,
 overlay-split-view headerbar,
+overlay-split-view headerbar windowhandle,
 overlay-split-view headerbar:backdrop,
+overlay-split-view headerbar:backdrop windowhandle,
 toolbarview headerbar,
+toolbarview headerbar windowhandle,
 toolbarview headerbar:backdrop,
+toolbarview headerbar:backdrop windowhandle,
 headerbar.flat,
+headerbar.flat windowhandle,
 headerbar.flat:backdrop,
+headerbar.flat:backdrop windowhandle,
+headerbar.tweak-titlebar-left,
+headerbar.tweak-titlebar-left windowhandle,
+headerbar.tweak-titlebar-left:backdrop,
+headerbar.tweak-titlebar-left:backdrop windowhandle,
+headerbar.tweak-titlebar-right,
+headerbar.tweak-titlebar-right windowhandle,
+headerbar.tweak-titlebar-right:backdrop,
+headerbar.tweak-titlebar-right:backdrop windowhandle,
 toolbarview windowhandle,
 toolbarview windowhandle:backdrop,
 toolbarview > revealer.top-bar > windowhandle,
@@ -255,7 +280,14 @@ toolbarview > revealer.top-bar > windowhandle:backdrop {
   background-image: none;
 }
 
-.content-pane {
+.content-pane,
+#right_box,
+#right_box scrolledwindow,
+#right_box viewport,
+#right_box stack.background,
+#main_stack,
+#main_stack.background,
+.tweak-group {
   background-color: transparent;
 }
 

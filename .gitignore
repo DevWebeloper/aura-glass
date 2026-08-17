@@ -4,3 +4,8 @@ screenshots/preview/
 *.swp
 # tools/*.py leave one of these behind when run directly.
 __pycache__/
+# Local IDE and agent configurations
+.idea/
+.agents/
+*.code-workspace
+

@@ -63,8 +63,11 @@ toolbarview > revealer.top-bar > windowhandle,
 toolbarview > revealer.top-bar > windowhandle > box.vertical,
 toolbarview > revealer.top-bar headerbar,
 headerbar,
+headerbar windowhandle,
 headerbar.titlebar,
-.titlebar {
+headerbar.titlebar windowhandle,
+.titlebar,
+.titlebar windowhandle {
   border-radius: 0;
   box-shadow: none;
 }
@@ -83,7 +86,27 @@ headerbar.titlebar,
 .sidebar-pane listview,
 .sidebar-pane list,
 .sidebar-pane scrolledwindow,
-.sidebar-pane viewport {
+.sidebar-pane viewport,
+#left_box,
+#left_box scrolledwindow,
+#left_box viewport,
+#left_box searchbar,
+#left_box searchbar > revealer > box {
+  background-color: transparent;
+  background-image: none;
+}
+
+leaflet > separator.vertical,
+leaflet > separator.horizontal,
+leaflet.unfolded > separator.vertical,
+leaflet.unfolded > separator.horizontal {
+  opacity: 0;
+  background-color: transparent;
+}
+
+.tweak-startup,
+.tweak-startup:hover,
+.tweak-group-startup {
   background-color: transparent;
   background-image: none;
 }
