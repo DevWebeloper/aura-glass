@@ -49,6 +49,8 @@ def state(**kw):
     s.transparency = kw.get("transparency", "0.90")
     s.scope = kw.get("scope", "gtk")
     s.popup_blur = kw.get("popup_blur", True)
+    s.allow = list(kw.get("allow", ["org.gnome.Nautilus", "org.gnome.Console"]))
+    s.block = list(kw.get("block", ["*chrome*", "*electron*"]))
     return s
 
 
@@ -98,6 +100,29 @@ CASES = [
      ["--no-app-transparency"]),
 
     ("popup blur off", FROSTED, state(popup_blur=False), ["--no-popup-blur"]),
+
+    # The per-app lists. Only the one the chosen mode consults goes out: in gtk
+    # mode Blur My Shell reads the allow list and never looks at the block list,
+    # so sending a block list here would put something in the argument line that
+    # cannot affect the result.
+    ("allow list edited, in gtk mode", FROSTED,
+     state(allow=["org.gnome.Nautilus"]),
+     ["--app-blur-allow", "org.gnome.Nautilus"]),
+
+    ("block list edited in gtk mode is not sent", FROSTED,
+     state(block=["*chrome*"]), []),
+
+    ("block list edited, in all mode", FROSTED,
+     state(scope="all", block=["*chrome*", "*firefox*"]),
+     ["--all-apps-blur", "--app-transparency", "0.90",
+      "--app-blur-block", "*chrome*,*firefox*"]),
+
+    ("allow list edited in all mode is not sent", FROSTED,
+     state(scope="all", allow=["org.gnome.Nautilus"]),
+     ["--all-apps-blur", "--app-transparency", "0.90"]),
+
+    ("emptying the allow list is a real change", FROSTED,
+     state(allow=[]), ["--app-blur-allow", ""]),
 
     ("everything at once", FROSTED,
      state(accent="slate", radius="rounded", transparency="0.82", scope="all",

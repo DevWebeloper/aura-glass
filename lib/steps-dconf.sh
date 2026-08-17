@@ -138,6 +138,91 @@ apply_app_opacity() {
 # itself. So when the library is missing this falls back to static, and the
 # corners stay round instead of going square. It self-heals: install the
 # library, re-run, and it flips back to dynamic.
+# Which windows the applications component treats, as wm_class patterns.
+#
+# Blur My Shell compiles these and matches a window's wm_class against them
+# (components/applications.js, matchesAnyPattern), so `*chrome*` covers every
+# spelling Chrome uses. Which list is consulted depends on enable-all: with it
+# off only the allow list is blurred, with it on everything except the block
+# list is. That is the same choice --app-blur-scope makes, which is why gtk mode
+# reads one list and all mode reads the other.
+#
+# The same test decides the actor opacity in apply_app_opacity — Blur My Shell
+# applies both to whatever passes it — so these lists govern which windows go
+# translucent as much as which ones get a blur. There is no way to separate the
+# two, and no per-app control over the stylesheet's own alpha at all: GTK CSS
+# has no selector for "this application".
+#
+# Shipped as defaults rather than written into dconf/core.ini, because a user's
+# edited list has to survive the next install and dconf load rewrites whole
+# sections. $CONF_DIR/app-blur-allow and app-blur-block hold the edited copies,
+# one pattern per line, and are what the settings window writes.
+APP_BLUR_ALLOW_DEFAULT=(
+    org.gnome.Nautilus org.gnome.Settings gnome-control-center
+    org.gnome.TextEditor org.gnome.SystemMonitor org.gnome.Calculator
+    org.gnome.Extensions org.gnome.Tweaks org.gnome.Ptyxis org.gnome.Console
+    gnome-terminal org.gnome.DiskUtility org.gnome.Logs org.gnome.Calendar
+    org.gnome.Weather org.gnome.Clocks org.gnome.Characters
+    org.gnome.FontViewer org.gnome.Loupe org.gnome.Snapshot
+    io.bassi.Amberol com.raggesilver.BlackBox
+)
+
+# Only consulted in `all` mode. The wildcards are the expensive-to-blur or
+# self-compositing apps: browsers and Electron redraw constantly, so a blur
+# behind them is rebuilt constantly, and Plank and ding draw their own desktop
+# surfaces that a blur actor sits wrongly against.
+APP_BLUR_BLOCK_DEFAULT=(
+    '*chrome*' '*google-chrome*' '*chromium*' '*discord*' '*vesktop*'
+    '*brave*' '*firefox*' '*code*' '*antigravity*' '*steam*' '*spotify*'
+    '*electron*' Plank com.desktop.ding Conky
+)
+
+# The list to use, one pattern per line: an explicit flag wins, else the user's
+# memo, else the shipped default. Same precedence as every other remembered
+# choice here, so a flag is a one-run override that then becomes the memory.
+app_blur_lines() {
+    local given="$1" override="$2" memo="$3"; shift 3
+    # `given` rather than a non-empty override, because clearing a list is a
+    # thing a user does: --app-blur-allow "" and the settings window removing the
+    # last row both mean an empty list, and testing the value alone read that as
+    # "no flag" and quietly reinstated the previous one.
+    if [ -n "$given" ]; then
+        printf '%s\n' "$override" | tr ',' '\n'
+    elif [ -r "$memo" ]; then
+        cat "$memo"
+    else
+        printf '%s\n' "$@"
+    fi
+}
+
+# Lines on stdin -> a GVariant array literal for dconf write.
+#
+# By the time the settings window has been near it a pattern is arbitrary text,
+# and it is about to be spliced into a literal that dconf parses. Two characters
+# matter: an apostrophe ends the string early, which dconf rejects outright, and
+# a backslash escapes whatever follows it, which dconf accepts as a different
+# string than the one meant — 'weird\name' arrives carrying a newline. The first
+# is a failed install with a message about GVariant syntax; the second is an
+# entry that silently never matches.
+#
+# Escaped explicitly rather than by leaning on python's repr. repr does in fact
+# produce valid GVariant for every pattern anyone would type — it quotes and
+# escapes compatibly — but it is a function whose contract is "readable python",
+# and relying on the two staying in agreement is a bet with no upside.
+# tools/check-app-blur-lists.sh parses the result back with GLib's own parser.
+app_blur_literal() {
+    python3 -c '
+import sys
+
+
+def gvariant(s):
+    return "\x27" + s.replace("\\", "\\\\").replace("\x27", "\\\x27") + "\x27"
+
+
+lines = [l.strip() for l in sys.stdin]
+print("[%s]" % ", ".join(gvariant(l) for l in lines if l))'
+}
+
 # The window blur is its own opt-in, not a consequence of anything else.
 #
 # It is the most expensive thing this preset can switch on — a blur behind every
@@ -158,6 +243,7 @@ apply_app_blur() {
     local base=/org/gnome/shell/extensions/blur-my-shell
     local want="${WANT_WINDOW_BLUR:-1}" memo="$CONF_DIR/window-blur"
     local scope="${APP_BLUR_SCOPE:-gtk}" scope_memo="$CONF_DIR/app-blur-scope"
+    local allow_memo="$CONF_DIR/app-blur-allow" block_memo="$CONF_DIR/app-blur-block"
 
     if [ "${WANT_BLUR:-1}" != 1 ]; then
         run dconf write "$base/applications/blur" false
@@ -187,17 +273,37 @@ apply_app_blur() {
         return 0
     fi
 
+    # Both lists are written in both modes. Only one is consulted — enable-all
+    # decides which — but leaving the other at whatever a previous run or a
+    # previous version put there means switching modes later picks up a stale
+    # list, which reads as the mode switch having done something else as well.
+    local allow_lines block_lines allow block
+    allow_lines="$(app_blur_lines "${APP_BLUR_ALLOW_EXPLICIT:-}" "${APP_BLUR_ALLOW:-}" "$allow_memo" "${APP_BLUR_ALLOW_DEFAULT[@]}")"
+    block_lines="$(app_blur_lines "${APP_BLUR_BLOCK_EXPLICIT:-}" "${APP_BLUR_BLOCK:-}" "$block_memo" "${APP_BLUR_BLOCK_DEFAULT[@]}")"
+    allow="$(printf '%s\n' "$allow_lines" | app_blur_literal)"
+    block="$(printf '%s\n' "$block_lines" | app_blur_literal)"
+
+    # Written back every run, not only when a flag supplied them, so the memo is
+    # always what is installed. The settings window reads these files to show the
+    # lists, and a missing memo would have it show an empty list for a dconf key
+    # that is not empty at all.
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$allow_lines" > "$allow_memo"
+        printf '%s\n' "$block_lines" > "$block_memo"
+    fi
+
+    run dconf write "$base/applications/whitelist" "$allow"
+    run dconf write "$base/applications/blacklist" "$block"
+
     if [ "$scope" = "all" ]; then
         run dconf write "$base/applications/enable-all" true
-        run dconf write "$base/applications/blacklist" "['Plank', 'com.desktop.ding', 'Conky', 'Brave-browser', 'vesktop']"
         run dconf write "$base/applications/blur" true
-        ok "window blur on for ALL applications (enable-all: true)"
+        ok "window blur on for ALL applications except the block list (enable-all: true)"
     else
         run dconf write "$base/applications/enable-all" false
-        run dconf write "$base/applications/whitelist" "['org.gnome.Nautilus', 'org.gnome.Settings', 'gnome-control-center', 'org.gnome.TextEditor', 'org.gnome.SystemMonitor', 'org.gnome.Calculator', 'org.gnome.Extensions', 'org.gnome.Tweaks', 'org.gnome.Ptyxis', 'org.gnome.Console', 'gnome-terminal', 'org.gnome.DiskUtility', 'org.gnome.Logs', 'org.gnome.Calendar', 'org.gnome.Weather', 'org.gnome.Clocks', 'org.gnome.Characters', 'org.gnome.FontViewer', 'org.gnome.Loupe', 'org.gnome.Snapshot', 'io.bassi.Amberol', 'com.raggesilver.BlackBox']"
-        run dconf write "$base/applications/blacklist" "['*chrome*', '*google-chrome*', '*chromium*', '*discord*', '*vesktop*', '*brave*', '*firefox*', '*code*', '*antigravity*', '*steam*', '*spotify*', '*electron*', 'Plank', 'com.desktop.ding', 'Conky']"
         run dconf write "$base/applications/blur" true
-        ok "window blur on behind whitelisted GTK / GNOME applications (Nautilus, Settings, Terminal, etc.)"
+        ok "window blur on behind the allowed applications only (Nautilus, Settings, Terminal, etc.)"
     fi
     if [ -z "${APP_TRANSPARENCY:-}" ] || [ "${APP_TRANSPARENCY:-0}" = 0 ]; then
         warn "without --app-transparency the windows stay 94% opaque, so very"

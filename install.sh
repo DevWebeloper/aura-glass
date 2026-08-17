@@ -56,6 +56,10 @@ WANT_WINDOW_BLUR=1
 WINDOW_BLUR_EXPLICIT=""
 APP_BLUR_SCOPE="gtk"     # gtk (default, whitelisted GTK/GNOME apps) | all
 APP_BLUR_SCOPE_EXPLICIT=""
+APP_BLUR_ALLOW=""        # comma-separated wm_class patterns
+APP_BLUR_ALLOW_EXPLICIT=""
+APP_BLUR_BLOCK=""
+APP_BLUR_BLOCK_EXPLICIT=""
 WANT_POPUP_BLUR=1
 POPUP_BLUR_EXPLICIT=""
 WANT_ROUNDED_BLUR=1
@@ -122,6 +126,13 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
     --window-opacity LEVEL
                       alias for --app-transparency (e.g. 90%, 82%, 94%, 230, 210, 240)
     --no-app-transparency keep app windows opaque (default)
+    --app-blur-allow LIST
+                      comma-separated wm_class patterns to blur in GTK/GNOME mode,
+                      replacing the shipped list (e.g. 'org.gnome.Nautilus,*term*').
+                      Wildcards allowed. Remembered for later runs
+    --app-blur-block LIST
+                      comma-separated wm_class patterns to exclude in all-apps
+                      mode, replacing the shipped list. Remembered for later runs
     --window-blur     blur behind app windows (default: on behind GTK/GNOME apps)
     --gtk-apps-blur   blur behind GTK / GNOME applications only (Files, Settings, Terminal - default, low CPU)
     --all-apps-blur   blur behind all application windows (heavy on CPU/GPU)
@@ -196,6 +207,10 @@ while [ $# -gt 0 ]; do
                          APP_BLUR_SCOPE="${2:-gtk}"; APP_BLUR_SCOPE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --app-blur-scope=*)
                          APP_BLUR_SCOPE="${1#*=}"; APP_BLUR_SCOPE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --app-blur-allow) APP_BLUR_ALLOW="${2:-}"; APP_BLUR_ALLOW_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --app-blur-allow=*) APP_BLUR_ALLOW="${1#*=}"; APP_BLUR_ALLOW_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --app-blur-block) APP_BLUR_BLOCK="${2:-}"; APP_BLUR_BLOCK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --app-blur-block=*) APP_BLUR_BLOCK="${1#*=}"; APP_BLUR_BLOCK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --window-blur)   WANT_WINDOW_BLUR=1; WINDOW_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-window-blur) WANT_WINDOW_BLUR=0; WINDOW_BLUR_EXPLICIT=1; APP_BLUR_SCOPE="none"; APP_BLUR_SCOPE_EXPLICIT=1; [ -z "$APP_TRANSPARENCY_EXPLICIT" ] && APP_TRANSPARENCY=0.95; EXPLICIT_FLAGS=1; shift ;;
         --no-blur)       WANT_BLUR=0; WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1

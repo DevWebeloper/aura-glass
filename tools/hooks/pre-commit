@@ -87,6 +87,10 @@ step "radius presets apply (tools/check-radius-preset.sh)" \
 # absent, exactly as install_gui does.
 step "settings window flags (tools/check-gui-flags.py)" \
     python3 "$TMP/tools/check-gui-flags.py"
+# The per-app lists are the one place arbitrary user text reaches dconf. This
+# builds the literal and parses it back with GLib's own parser; no live dconf.
+step "app blur lists (tools/check-app-blur-lists.sh)" \
+    bash "$TMP/tools/check-app-blur-lists.sh"
 
 printf '\n'
 if [ "$fail" = 1 ]; then

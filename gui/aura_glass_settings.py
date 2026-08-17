@@ -91,6 +91,7 @@ def percent_to_level(percent):
     """A bar position (90) as the argument install.sh takes ("0.90")."""
     return "%.2f" % (percent / 100.0)
 
+
 BLUR_SCOPES = [
     ("gtk", "GTK / GNOME apps only", "Files, Settings, Terminal. Low cost"),
     ("all", "All apps", "Includes browsers and Electron. Heavy on the GPU"),
@@ -105,6 +106,28 @@ def read_memo(name, default=""):
             return fh.read().strip()
     except OSError:
         return default
+
+
+def read_memo_lines(name):
+    """A list memo — one wm_class pattern per line, blanks dropped."""
+    raw = read_memo(name)
+    return [line.strip() for line in raw.splitlines() if line.strip()]
+
+
+def wm_class_for(appinfo):
+    """The wm_class Blur My Shell will most likely see for an installed app.
+
+    StartupWMClass is the app telling us outright, and is right when it is there.
+    Otherwise the desktop id without its suffix is the convention GTK apps follow
+    — org.gnome.Nautilus.desktop announces itself as org.gnome.Nautilus — and is
+    a guess, which is why the picker shows it before it is added rather than
+    adding it silently.
+    """
+    wm = appinfo.get_string("StartupWMClass")
+    if wm:
+        return wm
+    ident = appinfo.get_id() or ""
+    return ident[:-len(".desktop")] if ident.endswith(".desktop") else ident
 
 
 def find_repo():
@@ -159,6 +182,14 @@ class Settings:
 
         self.popup_blur = read_memo("popup-blur", "1") != "0"
 
+        # Which windows the applications component treats. Blur My Shell reads
+        # one or the other depending on enable-all, which is the same choice
+        # `scope` makes — so the allow list belongs to gtk mode and the block
+        # list to all mode. apply_app_blur writes both memos every run, so an
+        # empty one here means an empty list rather than a missing file.
+        self.allow = read_memo_lines("app-blur-allow")
+        self.block = read_memo_lines("app-blur-block")
+
     def flags_against(self, other):
         """The install.sh arguments that turn `other` into `self`.
 
@@ -202,7 +233,127 @@ class Settings:
         if self.popup_blur != other.popup_blur or self.blur != other.blur:
             args.append("--popup-blur" if self.popup_blur else "--no-popup-blur")
 
+        # Only the list the chosen mode actually consults. Sending the other one
+        # too would be harmless — apply_app_blur writes both keys either way —
+        # but it would put a list the user never saw into an argument line they
+        # might read, which is the sort of thing that makes a GUI untrustworthy.
+        if self.allow != other.allow and self.scope == "gtk":
+            args += ["--app-blur-allow", ",".join(self.allow)]
+        if self.block != other.block and self.scope == "all":
+            args += ["--app-blur-block", ",".join(self.block)]
+
         return args
+
+
+class AppPickerDialog(Adw.Dialog):
+    """Pick an installed app, or type a pattern.
+
+    Two ways in, because neither covers the other. The list handles the common
+    case without anyone having to know what a wm_class is; the entry handles
+    wildcards, and apps that are not installed as desktop entries at all — which
+    is most of the ones the shipped block list names.
+    """
+
+    def __init__(self, existing, on_add):
+        super().__init__(title="Add an app", content_width=460,
+                         content_height=520)
+        self._existing = set(existing)
+        self._on_add = on_add
+
+        self._entry = Adw.EntryRow(title="Window class or pattern")
+        self._entry.connect("entry-activated", self._on_entry)
+        add_button = Gtk.Button(icon_name="list-add-symbolic",
+                                valign=Gtk.Align.CENTER,
+                                tooltip_text="Add this pattern")
+        add_button.add_css_class("flat")
+        add_button.connect("clicked", self._on_entry)
+        self._entry.add_suffix(add_button)
+
+        manual = Adw.PreferencesGroup(
+            description="Matched against a window's class, and * is a wildcard "
+                        "— *chrome* covers every spelling Chrome uses. Commas "
+                        "are not allowed, they separate entries.")
+        manual.add(self._entry)
+
+        self._search = Gtk.SearchEntry(placeholder_text="Search installed apps")
+        self._search.connect("search-changed", lambda _e: self._refill())
+
+        self._list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        self._list.add_css_class("boxed-list")
+        self._list.set_margin_start(12)
+        self._list.set_margin_end(12)
+        self._list.set_margin_bottom(12)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        manual.set_margin_top(12)
+        manual.set_margin_start(12)
+        manual.set_margin_end(12)
+        box.append(manual)
+        self._search.set_margin_start(12)
+        self._search.set_margin_end(12)
+        box.append(self._search)
+        box.append(self._list)
+
+        scroller = Gtk.ScrolledWindow(child=box, vexpand=True)
+        view = Adw.ToolbarView(content=scroller)
+        view.add_top_bar(Adw.HeaderBar())
+        self.set_child(view)
+
+        self._apps = self._installed_apps()
+        self._refill()
+
+    def _installed_apps(self):
+        """Every app with a visible desktop entry, by display name."""
+        seen = {}
+        for info in Gio.AppInfo.get_all():
+            if not info.should_show():
+                continue
+            wm = wm_class_for(info)
+            if not wm:
+                continue
+            # Several entries can resolve to one class (an app plus its actions).
+            # First one wins; the name shown is that entry's.
+            seen.setdefault(wm, info)
+        return sorted(seen.items(), key=lambda kv: (kv[1].get_display_name() or "").lower())
+
+    def _refill(self):
+        needle = self._search.get_text().strip().lower()
+        child = self._list.get_first_child()
+        while child is not None:
+            nxt = child.get_next_sibling()
+            self._list.remove(child)
+            child = nxt
+
+        shown = 0
+        for wm, info in self._apps:
+            name = info.get_display_name() or wm
+            if needle and needle not in name.lower() and needle not in wm.lower():
+                continue
+            if shown >= 60:      # the list is a picker, not a catalogue
+                break
+            row = Adw.ActionRow(title=name, subtitle=wm)
+            icon = info.get_icon()
+            if icon is not None:
+                row.add_prefix(Gtk.Image.new_from_gicon(icon))
+            if wm in self._existing:
+                row.add_suffix(Gtk.Image.new_from_icon_name("object-select-symbolic"))
+                row.set_sensitive(False)
+            else:
+                row.set_activatable(True)
+                row.connect("activated", self._on_pick, wm)
+            self._list.append(row)
+            shown += 1
+
+    def _on_pick(self, _row, wm):
+        self._on_add(wm)
+        self.close()
+
+    def _on_entry(self, *_a):
+        text = self._entry.get_text().strip().replace(",", "")
+        if not text or text in self._existing:
+            return
+        self._on_add(text)
+        self.close()
 
 
 class ApplyDialog(Adw.Dialog):
@@ -445,6 +596,24 @@ class Window(Adw.ApplicationWindow):
         glass.add(self._popup_row)
         page.add(glass)
 
+        # The per-app list. Which one is shown follows the mode above, because
+        # that is how Blur My Shell reads them: enable-all off consults the allow
+        # list, on consults the block list. Showing both at once would imply they
+        # combine, and they never do.
+        self._allow = list(self._applied.allow)
+        self._block = list(self._applied.block)
+
+        self._apps_add = Gtk.Button(icon_name="list-add-symbolic",
+                                    valign=Gtk.Align.CENTER,
+                                    tooltip_text="Add an app")
+        self._apps_add.add_css_class("flat")
+        self._apps_add.connect("clicked", self._on_add_app)
+
+        self._apps_group = Adw.PreferencesGroup()
+        self._apps_group.set_header_suffix(self._apps_add)
+        page.add(self._apps_group)
+        self._rebuild_app_list()
+
         cli = Adw.PreferencesGroup(
             title="Command line only",
             description="Icon and cursor packs download a theme, and the GDM "
@@ -455,6 +624,81 @@ class Window(Adw.ApplicationWindow):
 
         self._sync_sensitivity()
         return page
+
+    # ---- state ------------------------------------------------------------
+
+    # ---- the per-app list -------------------------------------------------
+
+    def _active_list(self):
+        """The list the chosen mode consults, and the label for it."""
+        if self._scope_row._ids[self._scope_row.get_selected()] == "all":
+            return self._block, "block"
+        return self._allow, "allow"
+
+    def _rebuild_app_list(self):
+        """Redraw the rows. Cheap, and the list is short by nature."""
+        entries, which = self._active_list()
+
+        if which == "block":
+            self._apps_group.set_title("Apps never blurred")
+            self._apps_group.set_description(
+                "Everything else gets the blur and the window opacity. These are "
+                "the exceptions — browsers and Electron apps redraw constantly, "
+                "so a blur behind them is rebuilt constantly.")
+        else:
+            self._apps_group.set_title("Apps to blur")
+            self._apps_group.set_description(
+                "Only these get the blur and the window opacity. The same list "
+                "governs both — Blur My Shell applies them together, so an app "
+                "cannot be translucent without also being blurred.")
+
+        for row in getattr(self, "_app_rows", []):
+            self._apps_group.remove(row)
+        self._app_rows = []
+
+        if not entries:
+            row = Adw.ActionRow(
+                title="Nothing listed",
+                subtitle=("No app will be blurred" if which == "allow"
+                          else "No app is excluded"))
+            row.set_sensitive(False)
+            self._apps_group.add(row)
+            self._app_rows.append(row)
+
+        for pattern in entries:
+            row = Adw.ActionRow(title=pattern)
+            if "*" in pattern:
+                row.set_subtitle("Pattern — matches any window class containing it")
+            remove = Gtk.Button(icon_name="user-trash-symbolic",
+                                valign=Gtk.Align.CENTER,
+                                tooltip_text="Remove")
+            remove.add_css_class("flat")
+            remove.connect("clicked", self._on_remove_app, pattern)
+            row.add_suffix(remove)
+            self._apps_group.add(row)
+            self._app_rows.append(row)
+
+        on = (self._blur_row.get_active()
+              and self._scope_row._ids[self._scope_row.get_selected()] != "none")
+        self._apps_group.set_sensitive(on)
+        self._apps_add.set_sensitive(on)
+
+    def _on_add_app(self, _button):
+        entries, _ = self._active_list()
+
+        def add(pattern):
+            entries.append(pattern)
+            self._rebuild_app_list()
+            self._mark_dirty()
+
+        AppPickerDialog(entries, add).present(self)
+
+    def _on_remove_app(self, _button, pattern):
+        entries, _ = self._active_list()
+        if pattern in entries:
+            entries.remove(pattern)
+            self._rebuild_app_list()
+            self._mark_dirty()
 
     # ---- state ------------------------------------------------------------
 
@@ -469,6 +713,8 @@ class Window(Adw.ApplicationWindow):
             percent_to_level(round(self._transparency_scale.get_value()))
             if self._transparency_on.get_active() else "0")
         s.popup_blur = self._popup_row.get_active()
+        s.allow = list(self._allow)
+        s.block = list(self._block)
         return s
 
     def _sync_sensitivity(self):
@@ -497,6 +743,9 @@ class Window(Adw.ApplicationWindow):
             self._sync_subtitle(row)
         if key in ("blur", "transparency"):
             self._sync_sensitivity()
+        # The mode decides which list is consulted, so it decides which is shown.
+        if key in ("scope", "blur"):
+            self._rebuild_app_list()
         self._mark_dirty()
 
     def _reload(self):
@@ -518,7 +767,10 @@ class Window(Adw.ApplicationWindow):
             self._transparency_scale.set_value(
                 level_to_percent(self._applied.transparency))
         self._popup_row.set_active(self._applied.popup_blur)
+        self._allow = list(self._applied.allow)
+        self._block = list(self._applied.block)
         self._loading = False
+        self._rebuild_app_list()
         self._sync_sensitivity()
         self._apply.set_sensitive(False)
 
