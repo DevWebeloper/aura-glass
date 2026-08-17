@@ -77,3 +77,66 @@ EOF
 
     ok "settings window -> aura-glass-settings (and the Activities overview)"
 }
+
+# The daily "is there a newer release" check.
+#
+# On by default, and the only thing in this project that talks to a network
+# without being asked to at that moment — so it is a plain systemd user timer
+# that can be turned off from the settings window or with --no-update-check, and
+# the script it runs is readable in bin/. It asks the git remote for its tags.
+# It does not fetch, does not touch the working tree, and never installs
+# anything: installing is a button someone presses.
+install_update_check() {
+    step "Update notifications"
+
+    local unit_dir="$HOME/.config/systemd/user"
+    local memo="$CONF_DIR/update-check"
+
+    # Remembered like every other choice here, so a flagless re-run does not turn
+    # it back on over a deliberate --no-update-check.
+    local want="${WANT_UPDATE_CHECK:-1}"
+    if [ -z "${UPDATE_CHECK_EXPLICIT:-}" ] && [ -r "$memo" ]; then
+        want="$(cat "$memo" 2>/dev/null || true)"
+        want="${want:-1}"
+    fi
+
+    # The check reads $CONF_DIR/repo-path and asks git about the checkout there,
+    # so it is meaningless without one. A tarball download rather than a clone is
+    # the ordinary way to end up here.
+    if [ ! -d "$REPO_ROOT/.git" ]; then
+        skip "not a git checkout — nothing to compare a release tag against"
+        return 0
+    fi
+
+    run install -Dm755 "$REPO_ROOT/bin/aura-glass-update-check" \
+        "$HOME/.local/bin/aura-glass-update-check"
+
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$want" > "$memo"
+    fi
+
+    if [ "$want" != 1 ]; then
+        run systemctl --user disable --now aura-glass-update-check.timer 2>/dev/null || true
+        skip "daily update check off — run aura-glass-update-check by hand, or turn it on in the settings window"
+        return 0
+    fi
+
+    run install -Dm644 "$REPO_ROOT/systemd/aura-glass-update-check.service" \
+        "$unit_dir/aura-glass-update-check.service"
+    run install -Dm644 "$REPO_ROOT/systemd/aura-glass-update-check.timer" \
+        "$unit_dir/aura-glass-update-check.timer"
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: systemctl --user enable --now aura-glass-update-check.timer"
+        return 0
+    fi
+
+    systemctl --user daemon-reload 2>/dev/null || true
+    if systemctl --user enable --now aura-glass-update-check.timer >/dev/null 2>&1; then
+        ok "daily update check on — you will get one notification per release"
+    else
+        warn "could not enable the update timer (no systemd user session?)"
+        info "aura-glass-update-check still works when run by hand"
+    fi
+}

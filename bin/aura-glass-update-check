@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Is there a newer aura-glass release than the one installed?
+#
+#   aura-glass-update-check [--notify]
+#
+# Prints the answer and exits 0 when up to date, 10 when an update is available,
+# and 1 when it could not tell. --notify also sends a desktop notification, and
+# is what the systemd timer passes; run without it to check by hand.
+#
+# "Released" means a tag, not a commit. The remote is asked for its tags with
+# git ls-remote, which is one cheap request, needs no API token, is not rate
+# limited, and works for any git remote rather than only for GitHub. Nothing is
+# fetched into the checkout — this never touches the working tree.
+#
+# The answer is left in $CONF_DIR/update-available, holding the version, so the
+# settings window can show it without going to the network itself. Absent means
+# up to date.
+set -euo pipefail
+
+CONF_DIR="${AURA_GLASS_CONF:-$HOME/.config/aura-glass}"
+STATE="$CONF_DIR/update-available"
+NOTIFY=0
+[ "${1:-}" = "--notify" ] && NOTIFY=1
+
+REPO="$(cat "$CONF_DIR/repo-path" 2>/dev/null || true)"
+if [ -z "$REPO" ] || [ ! -d "$REPO/.git" ]; then
+    echo "aura-glass-update-check: no git checkout recorded in $CONF_DIR/repo-path" >&2
+    exit 1
+fi
+
+# The tag at, or most recently before, what is checked out. --tags so lightweight
+# tags count; the trailing -N-gHASH when HEAD has moved past a release is cut off
+# by --abbrev=0, because "newer than v0.1.7" still installs from v0.1.7's tag.
+local_version="$(git -C "$REPO" describe --tags --abbrev=0 2>/dev/null || true)"
+if [ -z "$local_version" ]; then
+    echo "aura-glass-update-check: no tag reachable from HEAD — this checkout is not at a release" >&2
+    exit 1
+fi
+
+# Only vN.N.N tags. Anything else in refs/tags is not a release of this project,
+# and sort -V would happily rank it above one.
+remote_version="$(
+    git -C "$REPO" ls-remote --tags --refs origin 2>/dev/null \
+        | sed -n 's#.*refs/tags/\(v[0-9][0-9.]*\)$#\1#p' \
+        | sort -V | tail -n 1
+)"
+if [ -z "$remote_version" ]; then
+    echo "aura-glass-update-check: could not read tags from origin (offline?)" >&2
+    exit 1
+fi
+
+# sort -V puts them in order; the newest of the two being the remote one is the
+# only case that counts as an update. Equal, or a local tag somehow ahead of the
+# remote, are both "nothing to do" — the second happens while cutting a release.
+newest="$(printf '%s\n%s\n' "$local_version" "$remote_version" | sort -V | tail -n 1)"
+if [ "$local_version" = "$remote_version" ] || [ "$newest" = "$local_version" ]; then
+    rm -f "$STATE"
+    echo "up to date ($local_version)"
+    exit 0
+fi
+
+mkdir -p "$CONF_DIR"
+printf '%s\n' "$remote_version" > "$STATE"
+echo "update available: $local_version -> $remote_version"
+
+if [ "$NOTIFY" = 1 ] && command -v notify-send >/dev/null 2>&1; then
+    # --hint desktop-entry ties the notification to the settings window's desktop
+    # file, which is what makes GNOME show it as coming from Aura Glass and open
+    # the window when it is clicked.
+    #
+    # -h string:x-canonical-private-synchronous replaces an existing notification
+    # from this check rather than stacking a new one beside it. The timer runs
+    # daily and a release stays newer than the install until something is done
+    # about it, so without this a fortnight away from the machine would come back
+    # to fourteen identical notifications.
+    notify-send \
+        --app-name="Aura Glass" \
+        --icon=preferences-desktop-appearance \
+        --hint=string:desktop-entry:io.github.DevWebeloper.AuraGlassSettings \
+        --hint=string:x-canonical-private-synchronous:aura-glass-update \
+        "Aura Glass $remote_version is available" \
+        "You have $local_version. Open Aura Glass settings to install it." \
+        || true
+fi
+
+exit 10

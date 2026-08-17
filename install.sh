@@ -76,6 +76,8 @@ RADIUS_PRESET=""       # empty = remembered choice, then default
 RADIUS_PRESET_EXPLICIT=""
 SETTINGS_ONLY=0
 WANT_GUI=1
+WANT_UPDATE_CHECK=1
+UPDATE_CHECK_EXPLICIT=""
 ASSUME_YES=0
 DRY_RUN=0
 FORCE=0
@@ -150,6 +152,9 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
     --no-gdm-monitors keep default GDM monitor layout (default)
     --no-gui          skip the aura-glass-settings window (installed by default
                       where PyGObject and libadwaita are present)
+    --no-update-check skip the daily check for a newer release. The check asks
+                      the git remote for its tags and notifies once per release;
+                      it never installs anything on its own
     --no-icons        keep your current icon theme
     --no-cursors      keep your current cursor theme
     --settings-only   retune an existing install and nothing else: reapply the
@@ -234,6 +239,8 @@ while [ $# -gt 0 ]; do
         --gdm-background=*) GDM_BG="${1#*=}"; WANT_GDM=1; EXPLICIT_FLAGS=1; shift ;;
         --gui)           WANT_GUI=1; EXPLICIT_FLAGS=1; shift ;;
         --no-gui)        WANT_GUI=0; EXPLICIT_FLAGS=1; shift ;;
+        --update-check)  WANT_UPDATE_CHECK=1; UPDATE_CHECK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-update-check) WANT_UPDATE_CHECK=0; UPDATE_CHECK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-icons)      WANT_ICONS=0; EXPLICIT_FLAGS=1; shift ;;
         --no-cursors)    WANT_CURSORS=0; EXPLICIT_FLAGS=1; shift ;;
         --no-wm-buttons|--wm-buttons) # Deprecated / window buttons kept at system default
@@ -760,6 +767,7 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     # the installed copy of the window, so pulling the repo and pressing Apply
     # is enough to be running the current one.
     install_gui
+    install_update_check
     step "Done"
     cat <<EOF
 
@@ -804,6 +812,7 @@ install_css
 apply_gsettings
 install_icon_sync
 install_gui
+install_update_check
 flatpak_override
 install_panel_blur_unit
 enable_extensions

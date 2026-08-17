@@ -39,13 +39,27 @@ Installing also puts an **Aura Glass** entry in your Activities overview (or run
 
 - 🎨 **Accent color**, with a shortcut to GNOME's own `Settings → Appearance`
 - ⬜ **Corner rounding** — `Sharp`, `Default`, `Rounded` or `Pill`, applied to windows, menus, dialogs, notifications and the blur behind each of them together
-- 🪟 **Frosted glass / solid mode**, window blur scope, transparency level, and popup blur
+- 🪟 **Frosted glass / solid mode**, window blur scope, and popup blur
+- 🎚️ **Window transparency bar** — anywhere from 70% to 100%, with the three tuned levels marked
+- 📋 **Per-app blur list** — pick which apps get the blur (and the window translucency that comes with it), from your installed apps or by wildcard pattern
+- 🖱️ **Icon and pointer packs** — Colloid or Reversal, Adwaita or MacTahoe
+- 🔔 **Updates** — see your version, check for a new release, install it
 
-Apply takes a few seconds, needs no password and no network: under the hood it runs `./install.sh --settings-only`, which reapplies the dconf preset, the CSS and the gsettings and leaves the theme, extensions, icons and cursors untouched.
+Apply takes a few seconds and needs no password: under the hood it runs `./install.sh --settings-only`, which reapplies the dconf preset, the CSS and the gsettings and leaves the theme and extensions untouched. It stays off the network too, unless you pick an icon or pointer pack you have not downloaded yet — those two rows say so.
 
 > The window is a front end for flags `install.sh` already has — nothing is exposed there that you cannot also script. It needs PyGObject and libadwaita; where those are missing the installer says so and skips it, and everything else installs as normal.
 
-### 4. Quick Update / Re-Apply
+### 4. Update Notifications
+A `systemd --user` timer checks daily whether a newer release has been **tagged**, and notifies once per release — not once per day. Clicking the notification opens the settings window, where **Install** pulls the release and runs the full installer.
+
+```bash
+aura-glass-update-check      # check by hand, any time
+./install.sh --no-update-check   # turn the daily check off (or use the switch in the window)
+```
+
+It asks the git remote for its tags — one request, no API token, no rate limit. It never fetches into your checkout and never installs anything on its own. Installing refuses outright if the checkout has uncommitted changes, is on a detached HEAD, or is on a branch other than `main`, and tells you which.
+
+### 5. Quick Update / Re-Apply
 If you update your theme or GNOME packages later, re-apply the custom CSS fixes anytime with:
 ```bash
 aura-glass-apply
@@ -75,8 +89,11 @@ For scripted setups or power users who prefer flags instead of the interactive w
 | `--full` | Install everything at once (core theme, icons, cursors, OSD, panel blur fix, and all reference extensions). |
 | `--accent COLOR` | Set accent: `blue`, `teal`, `green`, `yellow`, `orange`, `red`, `pink`, `purple`, `slate` *(default: `purple`, remembered across runs)*. |
 | `--radius-preset P` | Corner rounding: `sharp`, `default`, `rounded` or `pill`. Moves windows, menus, dialogs, notifications **and** the blur radius behind each of them together *(default: `default`, remembered across runs)*. |
-| `--settings-only` | Retune an existing install and nothing else — reapply the dconf preset, CSS and gsettings, leaving the theme, extensions, icons and cursors alone. No network, no root. This is what `aura-glass-settings` runs. |
+| `--settings-only` | Retune an existing install and nothing else — reapply the dconf preset, CSS and gsettings, leaving the theme and extensions alone. No root, and no network unless `--icons`/`--cursors` ask for a pack you do not have. This is what `aura-glass-settings` runs. |
 | `--no-gui` | Skip the `aura-glass-settings` window *(installed by default where PyGObject and libadwaita are present)*. |
+| `--no-update-check` | Skip the daily release check. It asks the git remote for its tags and notifies once per release; it never installs anything on its own. |
+| `--app-blur-allow LIST` | Comma-separated `wm_class` patterns to blur in GTK/GNOME mode, replacing the shipped list. Wildcards allowed (`*chrome*`). Remembered across runs. |
+| `--app-blur-block LIST` | Comma-separated `wm_class` patterns to exclude in all-apps mode. Remembered across runs. |
 | `--app-transparency LEVEL` | Enable translucent app windows with blur: `90%` (balanced), `82%` (deep glass), `94%` (subtle glass), or custom percentage *(off by default)*. |
 | `--window-opacity LEVEL` | Alias for `--app-transparency` (e.g. `--window-opacity 90%`). |
 | `--gdm` | Theme the GDM login screen with matching blurred style *(requires `sudo`)*. |
@@ -155,7 +172,8 @@ Replaces stock GNOME's bulky OSD with a clean, compact pill. Configurable via **
 ├── uninstall.sh            # Complete restoration & cleanup script
 ├── bin/
 │   ├── aura-glass-apply    # Idempotent CSS patch & cascade re-apply script
-│   └── aura-glass-settings # Launcher for the settings window
+│   ├── aura-glass-settings # Launcher for the settings window
+│   └── aura-glass-update-check # Compares the local release tag against the remote
 ├── gui/                    # GTK4 / libadwaita settings window (optional)
 ├── css/                    # Modular CSS sheets applied in strict cascade order
 │   ├── shell-NN-*.css      # GNOME Shell styling overrides

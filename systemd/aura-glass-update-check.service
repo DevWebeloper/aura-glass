@@ -1,0 +1,21 @@
+[Unit]
+# Ask the remote whether there is a newer release tag than the one this checkout
+# sits on, and notify once if there is. One git ls-remote; nothing is fetched
+# into the working tree and nothing is installed — that is a button in the
+# settings window, never something a timer does on its own.
+Description=Check whether a newer aura-glass release has been tagged
+Documentation=https://github.com/DevWebeloper/aura-glass
+# Nothing to check without a network, and failing on a laptop that woke up
+# before its wifi did is noise rather than information.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/aura-glass-update-check --notify
+# The script exits 10 to mean "an update is available", which is a successful
+# check rather than a failure — without this systemd would log every available
+# update as a failed unit.
+SuccessExitStatus=10
+# A hung DNS lookup should not leave this sitting around until the next timer.
+TimeoutStartSec=60

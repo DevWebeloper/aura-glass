@@ -53,6 +53,8 @@ def state(**kw):
     s.block = list(kw.get("block", ["*chrome*", "*electron*"]))
     s.icons = kw.get("icons", "colloid")
     s.cursors = kw.get("cursors", "adwaita")
+    s.update_check = kw.get("update_check", True)
+    s.update_available = kw.get("update_available", None)
     return s
 
 
@@ -142,6 +144,15 @@ CASES = [
      ["--cursors", "mactahoe"]),
 
     ("keep the pointer", FROSTED, state(cursors="keep"), ["--no-cursors"]),
+
+    ("turn the daily update check off", FROSTED, state(update_check=False),
+     ["--no-update-check"]),
+
+    # A pending update is a fact about the remote, not a setting — it must never
+    # turn into a flag, or opening the window during a release would start
+    # sending arguments nobody chose.
+    ("a pending update is not a setting", FROSTED,
+     state(update_available="v9.9.9"), []),
 
     ("everything at once", FROSTED,
      state(accent="slate", radius="rounded", transparency="0.82", scope="all",

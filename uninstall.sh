@@ -220,7 +220,8 @@ step "Removing systemd units"
 found=0
 for u in aura-glass-panel-blur.service tahoe-glass-panel-blur.service bms-panel-blur-rebuild.service \
          aura-glass-icon-sync.service tahoe-glass-icon-sync.service \
-         aura-glass-gdm-sync.service tahoe-glass-gdm-sync.service; do
+         aura-glass-gdm-sync.service tahoe-glass-gdm-sync.service \
+         aura-glass-update-check.timer aura-glass-update-check.service; do
     [ -f "$HOME/.config/systemd/user/$u" ] || continue
     found=1
     run systemctl --user disable --now "$u" >/dev/null 2>&1 || true
@@ -310,6 +311,7 @@ run rm -f "$HOME/.local/bin/aura-glass-apply" "$HOME/.local/bin/aura-glass-icon-
 # The settings window: its Python, its launcher above, and the desktop entry that
 # puts it in the overview. The entry has to go with the launcher — one left
 # without the other is a search result that does nothing when clicked.
+run rm -f "$HOME/.local/bin/aura-glass-update-check"
 run rm -rf "$HOME/.local/share/aura-glass"
 run rm -f "$HOME/.local/share/applications/io.github.DevWebeloper.AuraGlassSettings.desktop"
 # Stamps describing artifacts that have just been removed, rather than choices
@@ -334,6 +336,11 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/gdm-monitors-synced" \
           "$CONF_DIR/radius-preset" \
           "$CONF_DIR/repo-path" \
+          "$CONF_DIR/update-check" \
+          "$CONF_DIR/update-available" \
+          "$CONF_DIR/app-blur-allow" \
+          "$CONF_DIR/app-blur-block" \
+          "$CONF_DIR/cursor-pack" \
           "$CONF_DIR/openbar-patch" "$CONF_DIR/custom-osd-patch"
 if confirm "Delete $CONF_DIR (this also deletes the backups above)?" 0; then
     run rm -rf "$CONF_DIR"

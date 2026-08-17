@@ -1,0 +1,18 @@
+[Unit]
+Description=Daily check for a newer aura-glass release
+Documentation=https://github.com/DevWebeloper/aura-glass
+
+[Timer]
+# Fifteen minutes after boot rather than immediately: logging in is the worst
+# moment to be handed a notification, and the network is often not up yet.
+OnStartupSec=15min
+OnCalendar=daily
+# A desktop is asleep or off at whatever hour daily fires, so without this the
+# check would run on servers and almost never on the machines it is for.
+Persistent=true
+# Every machine that installed this theme would otherwise ask GitHub at the same
+# instant. An hour of jitter costs nothing here — a release is not urgent.
+RandomizedDelaySec=1h
+
+[Install]
+WantedBy=timers.target

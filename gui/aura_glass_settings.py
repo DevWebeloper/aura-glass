@@ -37,6 +37,7 @@ GDM is deliberately absent. It needs root, and a window with no way to ask for a
 password has no business starting something that will silently decline.
 """
 import os
+import subprocess
 import sys
 
 import gi
@@ -170,6 +171,61 @@ def find_repo():
     return None
 
 
+def git_out(repo, *args):
+    """A git command's stdout, or None if it failed. Never raises."""
+    try:
+        res = subprocess.run(["git", "-C", repo] + list(args),
+                             capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return res.stdout.strip() if res.returncode == 0 else None
+
+
+def installed_version(repo):
+    """The release this checkout sits on, or None if it is not on one."""
+    if not repo:
+        return None
+    return git_out(repo, "describe", "--tags", "--abbrev=0")
+
+
+def update_blockers(repo):
+    """Why `git pull` here would be a bad idea. Empty list means go ahead.
+
+    Updating edits the user's working tree, which is the most destructive thing
+    this window can do. Every one of these is a case where pulling would either
+    fail confusingly or throw away work, so each is refused with the reason
+    rather than worked around — stashing on someone's behalf is not this
+    program's decision to make.
+    """
+    if not repo:
+        return ["The aura-glass checkout is gone."]
+
+    reasons = []
+    if git_out(repo, "rev-parse", "--is-inside-work-tree") != "true":
+        return ["%s is not a git checkout." % repo]
+
+    if git_out(repo, "status", "--porcelain"):
+        reasons.append("You have uncommitted changes there. Commit or stash "
+                       "them first — this will not do it for you.")
+
+    branch = git_out(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    if branch in (None, "HEAD"):
+        reasons.append("The checkout is on a detached HEAD rather than a branch.")
+    else:
+        upstream = git_out(repo, "rev-parse", "--abbrev-ref",
+                           "--symbolic-full-name", "@{upstream}")
+        if upstream is None:
+            reasons.append("The branch %s is not tracking a remote branch."
+                           % branch)
+        # A feature branch is someone working on the theme, not someone running
+        # it. Pulling would update the wrong line and quietly leave them there.
+        elif branch not in ("main", "master"):
+            reasons.append("The checkout is on the branch %s rather than main. "
+                           "Updating would pull that branch instead of the "
+                           "released one." % branch)
+    return reasons
+
+
 class Settings:
     """The state of the installed theme, as install.sh remembers it.
 
@@ -247,6 +303,10 @@ class Settings:
                 args.append("--no-cursors")
             else:
                 args += ["--cursors", self.cursors]
+
+        if self.update_check != other.update_check:
+            args.append("--update-check" if self.update_check
+                        else "--no-update-check")
         if self.radius != other.radius:
             args += ["--radius-preset", self.radius]
 
@@ -410,15 +470,16 @@ class ApplyDialog(Adw.Dialog):
     that has hung.
     """
 
-    def __init__(self, repo, args, on_done):
-        super().__init__(title="Applying", content_width=560,
+    def __init__(self, repo, args, on_done, title="Applying",
+                 description="Reapplying the dconf preset, the CSS and the gsettings.",
+                 argv=None):
+        super().__init__(title=title, content_width=560,
                          content_height=420, can_close=False)
         self._on_done = on_done
         self._failed = False
+        self._argv = argv
 
-        self._status = Adw.StatusPage(
-            title="Applying",
-            description="Reapplying the dconf preset, the CSS and the gsettings.")
+        self._status = Adw.StatusPage(title=title, description=description)
         spinner = Adw.Spinner(width_request=32, height_request=32)
         self._status.set_child(spinner)
 
@@ -454,8 +515,8 @@ class ApplyDialog(Adw.Dialog):
         self._log.scroll_to_mark(buf_end, 0, False, 0, 0)
 
     def _run(self, repo, args):
-        argv = ["bash", os.path.join(repo, "install.sh"),
-                "--settings-only", "--yes"] + args
+        argv = self._argv or ["bash", os.path.join(repo, "install.sh"),
+                              "--settings-only", "--yes"] + args
         self._append("$ " + " ".join(argv[1:]))
         try:
             proc = Gio.Subprocess.new(
@@ -492,7 +553,7 @@ class ApplyDialog(Adw.Dialog):
         except GLib.Error as exc:
             self._finish(False, "install.sh failed", exc.message)
             return
-        self._finish(True, "Applied",
+        self._finish(True, "Done" if self._argv else "Applied",
                      "The shell has already reloaded. Restart any open GTK app "
                      "to get the GTK side.")
 
@@ -665,10 +726,6 @@ class Window(Adw.ApplicationWindow):
         # combine, and they never do.
         self._allow = list(self._applied.allow)
         self._block = list(self._applied.block)
-        self._icons_row.set_selected(
-            self._icons_row._ids.index(self._applied.icons))
-        self._cursors_row.set_selected(
-            self._cursors_row._ids.index(self._applied.cursors))
 
         self._apps_add = Gtk.Button(icon_name="list-add-symbolic",
                                     valign=Gtk.Align.CENTER,
@@ -680,6 +737,38 @@ class Window(Adw.ApplicationWindow):
         self._apps_group.set_header_suffix(self._apps_add)
         page.add(self._apps_group)
         self._rebuild_app_list()
+
+        updates = Adw.PreferencesGroup(
+            title="Updates",
+            description="The check asks the git remote which release tags exist. "
+                        "It never installs anything on its own.")
+
+        self._version_row = Adw.ActionRow(title="Version")
+        self._check_button = Gtk.Button(label="Check now",
+                                        valign=Gtk.Align.CENTER)
+        self._check_button.connect("clicked", self._on_check_updates)
+        self._version_row.add_suffix(self._check_button)
+        updates.add(self._version_row)
+
+        self._update_button_row = Adw.ActionRow(
+            title="Install update",
+            subtitle="Pulls the new release and runs the full installer")
+        self._update_button = Gtk.Button(label="Install",
+                                         valign=Gtk.Align.CENTER)
+        self._update_button.add_css_class("suggested-action")
+        self._update_button.connect("clicked", self._on_install_update)
+        self._update_button_row.add_suffix(self._update_button)
+        updates.add(self._update_button_row)
+
+        self._update_check_row = Adw.SwitchRow(
+            title="Check daily",
+            subtitle="One notification per release, in the background",
+            active=self._applied.update_check)
+        self._update_check_row.connect("notify::active", self._on_changed,
+                                       "update_check")
+        updates.add(self._update_check_row)
+        page.add(updates)
+        self._sync_updates()
 
         cli = Adw.PreferencesGroup(
             title="Command line only",
@@ -783,6 +872,10 @@ class Window(Adw.ApplicationWindow):
         s.block = list(self._block)
         s.icons = self._icons_row._ids[self._icons_row.get_selected()]
         s.cursors = self._cursors_row._ids[self._cursors_row.get_selected()]
+        s.update_check = self._update_check_row.get_active()
+        # Not settings, so they never differ and never produce a flag. Carried so
+        # flags_against sees a complete object either way.
+        s.update_available = self._applied.update_available
         return s
 
     def _sync_sensitivity(self):
@@ -841,10 +934,114 @@ class Window(Adw.ApplicationWindow):
             self._icons_row._ids.index(self._applied.icons))
         self._cursors_row.set_selected(
             self._cursors_row._ids.index(self._applied.cursors))
+        self._update_check_row.set_active(self._applied.update_check)
         self._loading = False
         self._rebuild_app_list()
         self._sync_sensitivity()
         self._apply.set_sensitive(False)
+
+    # ---- updates ----------------------------------------------------------
+
+    def _sync_updates(self):
+        """Put the version row and the Install button in step with the disk."""
+        version = installed_version(self._repo)
+        pending = self._applied.update_available
+        blockers = update_blockers(self._repo) if pending else []
+
+        if version is None:
+            self._version_row.set_subtitle(
+                "This checkout is not on a release tag")
+        elif pending:
+            self._version_row.set_subtitle("%s — %s is available"
+                                           % (version, pending))
+        else:
+            self._version_row.set_subtitle("%s — up to date" % version)
+
+        self._check_button.set_sensitive(self._repo is not None)
+        self._update_button_row.set_visible(bool(pending))
+
+        if pending and blockers:
+            # Shown rather than hidden. Someone who edited the checkout should
+            # find out why the button is off, not wonder whether the update
+            # notification was wrong.
+            self._update_button_row.set_subtitle(blockers[0])
+            self._update_button.set_sensitive(False)
+        elif pending:
+            self._update_button_row.set_subtitle(
+                "Pulls %s and runs the full installer" % pending)
+            self._update_button.set_sensitive(True)
+
+    def _on_check_updates(self, _button):
+        self._check_button.set_sensitive(False)
+        self._check_button.set_label("Checking…")
+
+        checker = os.path.join(os.path.expanduser("~/.local/bin"),
+                               "aura-glass-update-check")
+        if not os.path.exists(checker):
+            checker = os.path.join(self._repo or "", "bin",
+                                   "aura-glass-update-check")
+
+        def done(proc, res):
+            try:
+                proc.wait_finish(res)
+            except GLib.Error:
+                pass
+            self._check_button.set_label("Check now")
+            # Re-read rather than trust an exit code: the checker's whole output
+            # for the window is the state file it leaves behind.
+            self._applied = Settings()
+            self._sync_updates()
+            self._check_button.set_sensitive(True)
+            self._toasts.add_toast(Adw.Toast(
+                title=("%s is available" % self._applied.update_available)
+                if self._applied.update_available else "Up to date"))
+
+        try:
+            proc = Gio.Subprocess.new(
+                ["bash", checker],
+                Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE)
+        except GLib.Error as exc:
+            self._check_button.set_label("Check now")
+            self._check_button.set_sensitive(True)
+            self._toasts.add_toast(Adw.Toast(title="Could not check: %s"
+                                             % exc.message))
+            return
+        proc.wait_async(None, done)
+
+    def _on_install_update(self, _button):
+        blockers = update_blockers(self._repo)
+        if blockers:
+            self._sync_updates()
+            self._toasts.add_toast(Adw.Toast(title=blockers[0]))
+            return
+
+        # --ff-only so an update can never create a merge commit in someone's
+        # checkout, and never rewrites anything: if the branch has diverged this
+        # stops with git's own message rather than trying to be clever.
+        #
+        # The full installer, not --settings-only: a release can bump the
+        # upstream theme ref, add an extension or add a stylesheet, and none of
+        # those reach the desktop through the settings-only path.
+        script = ("set -e\n"
+                  "git -C %s pull --ff-only\n"
+                  "bash %s --yes\n"
+                  % (GLib.shell_quote(self._repo),
+                     GLib.shell_quote(os.path.join(self._repo, "install.sh"))))
+
+        def done(ok):
+            if ok:
+                self._applied = Settings()
+                self._reload()
+                self._sync_updates()
+                self._toasts.add_toast(Adw.Toast(
+                    title="Updated — log out and back in to finish"))
+
+        ApplyDialog(
+            self._repo, [], done,
+            title="Updating",
+            description="Pulling the new release, then running the installer.",
+            argv=["bash", "-c", script],
+        ).present(self)
 
     # ---- actions ----------------------------------------------------------
 

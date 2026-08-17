@@ -91,6 +91,10 @@ step "settings window flags (tools/check-gui-flags.py)" \
 # builds the literal and parses it back with GLib's own parser; no live dconf.
 step "app blur lists (tools/check-app-blur-lists.sh)" \
     bash "$TMP/tools/check-app-blur-lists.sh"
+# Version ordering and tag filtering for the update check, against throwaway git
+# repositories. No network, and never the user's own checkout.
+step "update check (tools/check-update-check.sh)" \
+    bash "$TMP/tools/check-update-check.sh"
 
 printf '\n'
 if [ "$fail" = 1 ]; then
