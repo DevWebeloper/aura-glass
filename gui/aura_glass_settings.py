@@ -119,6 +119,20 @@ BLUR_SCOPES = [
     ("none", "No window blur", "Windows stay translucent without a blur behind"),
 ]
 
+# The sidebar: (id, title, icon, builder method), in the order shown.
+#
+# Order is not only presentation — the builders run in it, and a page whose
+# widgets another page's builder reads has to come first. Glass before Apps is
+# the live case: the per-app list asks the blur rows which list is active.
+NAV_SECTIONS = [
+    ("look", "Look", "applications-graphics-symbolic", "_build_look_page"),
+    ("glass", "Glass", "weather-fog-symbolic", "_build_glass_page"),
+    ("apps", "Per-app blur", "view-list-symbolic", "_build_apps_page"),
+    ("icons", "Icons and pointer", "folder-symbolic", "_build_icons_page"),
+    ("updates", "Updates", "software-update-available-symbolic",
+     "_build_updates_page"),
+]
+
 
 def read_memo(name, default=""):
     """One value from one file, the way install.sh remembers things."""
@@ -580,7 +594,7 @@ class ApplyDialog(Adw.Dialog):
 class Window(Adw.ApplicationWindow):
     def __init__(self, app, repo):
         super().__init__(application=app, title="Aura Glass",
-                         default_width=580, default_height=720)
+                         default_width=920, default_height=740)
         self._repo = repo
         self._applied = Settings()   # what is on disk
         self._loading = True
@@ -589,18 +603,57 @@ class Window(Adw.ApplicationWindow):
         self._apply.add_css_class("suggested-action")
         self._apply.connect("clicked", self._on_apply)
 
-        header = Adw.HeaderBar()
-        header.pack_end(self._apply)
+        # Every page is built up front rather than on first visit. _reload and
+        # _mark_dirty both read every widget in the window — a page built later
+        # would be a page whose rows do not exist when they run.
+        self._stack = Gtk.Stack(
+            transition_type=Gtk.StackTransitionType.CROSSFADE)
+        self._sidebar = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
+        self._sidebar.add_css_class("navigation-sidebar")
+        for ident, title, icon, builder in NAV_SECTIONS:
+            self._stack.add_named(getattr(self, builder)(), ident)
+            row = Adw.ActionRow(title=title)
+            row.add_prefix(Gtk.Image.new_from_icon_name(icon))
+            row._section = ident
+            self._sidebar.append(row)
+        self._sidebar.connect("row-selected", self._on_section)
 
-        self._toasts = Adw.ToastOverlay(child=self._build_page())
-        view = Adw.ToolbarView(content=self._toasts)
-        view.add_top_bar(header)
-        self.set_content(view)
+        self._toasts = Adw.ToastOverlay(child=self._stack)
+
+        # Apply lives on the content pane, not the sidebar: it applies whatever
+        # changed anywhere in the window, and a header that scrolls away with
+        # one page would hide it from the others.
+        content_header = Adw.HeaderBar()
+        content_header.pack_end(self._apply)
+        content_view = Adw.ToolbarView(content=self._toasts)
+        content_view.add_top_bar(content_header)
+        self._content_page = Adw.NavigationPage(child=content_view,
+                                                title=NAV_SECTIONS[0][1])
+
+        sidebar_view = Adw.ToolbarView(
+            content=Gtk.ScrolledWindow(child=self._sidebar, vexpand=True))
+        sidebar_view.add_top_bar(Adw.HeaderBar())
+        sidebar_page = Adw.NavigationPage(child=sidebar_view,
+                                          title="Aura Glass")
+
+        split = Adw.NavigationSplitView(
+            sidebar=sidebar_page, content=self._content_page,
+            min_sidebar_width=210, max_sidebar_width=260)
+        self.set_content(split)
+
+        self._sidebar.select_row(self._sidebar.get_row_at_index(0))
+        self._sync_sensitivity()
 
         self._loading = False
         if repo is None:
             self._apply.set_sensitive(False)
             self._banner_missing_repo()
+
+    def _on_section(self, _list, row):
+        if row is None:
+            return
+        self._stack.set_visible_child_name(row._section)
+        self._content_page.set_title(row.get_title())
 
     # ---- construction -----------------------------------------------------
 
@@ -627,7 +680,7 @@ class Window(Adw.ApplicationWindow):
         if 0 <= i < len(row._subs):
             row.set_subtitle(row._subs[i])
 
-    def _build_page(self):
+    def _build_look_page(self):
         page = Adw.PreferencesPage()
 
         look = Adw.PreferencesGroup(
@@ -649,8 +702,12 @@ class Window(Adw.ApplicationWindow):
             "Corner rounding", "", RADIUS_PRESETS, self._applied.radius, "radius")
         look.add(self._radius_row)
         page.add(look)
+        return page
 
-        # Separate group, because these two are the only settings in the window
+    def _build_icons_page(self):
+        page = Adw.PreferencesPage()
+
+        # Their own page, because these two are the only settings in the window
         # that can reach the network. Switching to a pack already on disk is
         # instant — install_icons and install_cursors both skip when the theme is
         # there — and a pack that is not gets fetched, which the Apply log shows.
@@ -666,6 +723,10 @@ class Window(Adw.ApplicationWindow):
             "Pointer", "", CURSOR_PACKS, self._applied.cursors, "cursors")
         packs.add(self._cursors_row)
         page.add(packs)
+        return page
+
+    def _build_glass_page(self):
+        page = Adw.PreferencesPage()
 
         glass = Adw.PreferencesGroup(
             title="Glass",
@@ -724,6 +785,10 @@ class Window(Adw.ApplicationWindow):
         self._popup_row.connect("notify::active", self._on_changed, "popup_blur")
         glass.add(self._popup_row)
         page.add(glass)
+        return page
+
+    def _build_apps_page(self):
+        page = Adw.PreferencesPage()
 
         # The per-app list. Which one is shown follows the mode above, because
         # that is how Blur My Shell reads them: enable-all off consults the allow
@@ -742,6 +807,10 @@ class Window(Adw.ApplicationWindow):
         self._apps_group.set_header_suffix(self._apps_add)
         page.add(self._apps_group)
         self._rebuild_app_list()
+        return page
+
+    def _build_updates_page(self):
+        page = Adw.PreferencesPage()
 
         updates = Adw.PreferencesGroup(
             title="Updates",
@@ -781,8 +850,6 @@ class Window(Adw.ApplicationWindow):
                         "has no way to ask for a password — a run started here "
                         "would decline it silently. Use ./install.sh --gdm.")
         page.add(cli)
-
-        self._sync_sensitivity()
         return page
 
     # ---- state ------------------------------------------------------------

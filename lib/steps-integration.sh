@@ -35,13 +35,9 @@ install_icon_sync() {
         "$HOME/.local/bin/aura-glass-icon-sync"
     ln -sf "$HOME/.local/bin/aura-glass-icon-sync" "$HOME/.local/bin/tahoe-glass-icon-sync" 2>/dev/null || true
 
-    if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: remember icon set $base"
-    else
-        mkdir -p "$CONF_DIR"
-        printf '%s\n' "$base" > "$CONF_DIR/icons"
-        printf '%s\n' "${ICONS:-colloid}" > "$CONF_DIR/icon-pack"
-    fi
+    # The two memos this used to write live in remember_icon_pack now, called
+    # from install_icons — this step does not run in the --settings-only path,
+    # so a pack chosen from the window was never getting recorded here.
 
     run install -Dm644 "$REPO_ROOT/systemd/aura-glass-icon-sync.service" \
         "$HOME/.config/systemd/user/aura-glass-icon-sync.service"

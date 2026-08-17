@@ -180,7 +180,25 @@ install_reversal() {
     ok "$name"
 }
 
+# Which pack is on, and under which name. Both are read back by the window and
+# by install_icon_sync, so they are written here rather than there: the sync
+# step is not in the --settings-only path, and a pack switched from the window
+# has to leave the same trail behind as one switched from the command line.
+#
+# Called before the "already installed" early returns on purpose. Choosing a
+# pack that happens to be on disk already is still choosing it.
+remember_icon_pack() {
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: remember icon pack ${ICONS:-colloid}"
+        return 0
+    fi
+    mkdir -p "$CONF_DIR"
+    printf '%s\n' "$(icon_base)" > "$CONF_DIR/icons"
+    printf '%s\n' "${ICONS:-colloid}" > "$CONF_DIR/icon-pack"
+}
+
 install_icons() {
+    remember_icon_pack
     case "${ICONS:-colloid}" in
         reversal|reversal-*) install_reversal; return ;;
     esac
