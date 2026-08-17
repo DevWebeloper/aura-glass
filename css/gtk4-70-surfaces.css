@@ -147,6 +147,31 @@ tooltip label {
   box-shadow: none;
 }
 
+/* ---------- Window corners ----------
+ * Upstream Tahoe-Dark already paints `window { border-radius: 30px }`, so at the
+ * shipped radius this block changes nothing — it is a duplicate on purpose.
+ *
+ * It exists because --radius-preset has to be able to move this corner, and the
+ * theme's own rule is not ours to edit: the theme's installer regenerates
+ * gtk.css, and bin/aura-glass-apply deliberately only ever appends a marked
+ * block rather than rewriting rules outside it. Appended after the theme at
+ * equal specificity, this wins — which is the whole mechanism.
+ *
+ * Deliberately not restated for the maximized case. The theme's
+ * `.maximized window` and `window.maximized` rules are more specific than this
+ * one and square the corners of a maximized window, which is correct at every
+ * preset: a rounded corner on a window filling the screen cuts a notch out of
+ * the display, and no radius preset should be able to ask for that.
+ *
+ * 30 also has to equal the blur behind it — see TOKEN_RADIUS_WINDOW in
+ * tokens/tokens.sh, and the same note in css/gtk3-tweaks.css.
+ */
+window,
+window.background,
+window.csd {
+  border-radius: 30px;
+}
+
 /* ---------- Server-side decoration frames (XWayland, Chrome, Electron) ----------
  * XWayland windows do not draw their own titlebar — /usr/lib/mutter-x11-frames
  * does, in a separate process that loads plain GTK4. Upstream Tahoe-Dark sets

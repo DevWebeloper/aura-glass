@@ -23,84 +23,28 @@ export TOKEN_SIGMA_PANEL TOKEN_SIGMA_APPFOLDER TOKEN_SIGMA_POPUP
 export TOKEN_SIGMA_WINDOW_LIST TOKEN_SIGMA_APPLICATIONS TOKEN_SIGMA_DASH_TO_DOCK
 export TOKEN_APP_TRANSPARENCY_SHIPPED TOKEN_APP_TINT
 
+# The shipped values and radius_preset_values()'s `default` row are the same
+# seven numbers written twice, so they get the same treatment as every other
+# duplicated value here.
+if ! radius_preset_matches_shipped; then
+    echo "token check FAILED"
+    echo
+    echo "  tokens/tokens.sh: the TOKEN_RADIUS_* values and the 'default' row of"
+    echo "  radius_preset_values() disagree. The default row must be the shipped"
+    echo "  values, or --radius-preset default would install something else."
+    exit 1
+fi
+
 python3 - <<'PY'
 import os, re, sys
 
 ROOT = os.environ["REPO_ROOT"]
 
-# Each entry is (token name, kind, *args).
-#
-#   css: (file, regex) — every capture group of every match must equal the
-#        token. The regex MUST match at least once; a regex that has stopped
-#        matching because a selector was renamed is a silently-passing check,
-#        which is worse than no check, so that is a failure too.
-#   ini: (file, section, key) — the key's value in that section must equal the
-#        token. Section-scoped because corner-radius and sigma both appear
-#        under several Blur My Shell components with different values.
-#
-# The `[^}]*?` in the CSS patterns cannot cross a closing brace, so each one
-# stays inside the rule its selector opened.
-MANIFEST = [
-    ("TOKEN_RADIUS_WINDOW", "css", "css/gtk3-tweaks.css",
-     r"^decoration \{[^}]*?border-radius: (\d+)px"),
-    ("TOKEN_RADIUS_WINDOW", "css", "css/gtk3-tweaks.css",
-     r"^\.titlebar,\n\.titlebar\.background \{[^}]*?"
-     r"border-top-left-radius: (\d+)px;\s*border-top-right-radius: (\d+)px"),
-    ("TOKEN_RADIUS_WINDOW", "ini", "dconf/core.ini",
-     "blur-my-shell/applications", "corner-radius"),
-
-    ("TOKEN_RADIUS_MENU", "css", "css/shell-20-popup-menus.css",
-     r"^\.popup-menu-content(?:,[^{]*)? \{[^}]*?border-radius: (\d+)px"),
-    ("TOKEN_RADIUS_MENU", "ini", "dconf/core.ini",
-     "blur-my-shell/popup", "menu-corner-radius"),
-
-    ("TOKEN_RADIUS_QUICK_SETTINGS", "css", "css/shell-20-popup-menus.css",
-     r"^\.datemenu-popover \{[^}]*?border-radius: (\d+)px"),
-    ("TOKEN_RADIUS_QUICK_SETTINGS", "css", "css/shell-20-popup-menus.css",
-     r"^\.popup-menu-content\.quick-settings,[^}]*?border-radius: (\d+)px"),
-    ("TOKEN_RADIUS_QUICK_SETTINGS", "ini", "dconf/core.ini",
-     "blur-my-shell/popup", "quick-settings-corner-radius"),
-
-    ("TOKEN_RADIUS_NOTIFICATION", "css", "css/shell-30-notifications.css",
-     r"^(?:\.popup-menu \.message,\s*)?\.message \{[^}]*?border-radius: (\d+)px"),
-    ("TOKEN_RADIUS_NOTIFICATION", "css", "css/shell-30-notifications.css",
-     r"^\.notification-banner \{[^}]*?border-radius: (\d+)px"),
-    ("TOKEN_RADIUS_NOTIFICATION", "ini", "dconf/core.ini",
-     "blur-my-shell/popup", "notification-corner-radius"),
-
-    ("TOKEN_RADIUS_DIALOG", "css", "css/shell-50-dialogs.css",
-     r"^\.modal-dialog,[^}]*?border-radius: (\d+)px"),
-    ("TOKEN_RADIUS_DIALOG", "ini", "dconf/core.ini",
-     "blur-my-shell/popup", "dialog-corner-radius"),
-
-    ("TOKEN_RADIUS_POPUP", "ini", "dconf/core.ini",
-     "blur-my-shell/popup", "corner-radius"),
-    ("TOKEN_RADIUS_OSD", "ini", "dconf/core.ini",
-     "blur-my-shell/popup", "osd-corner-radius"),
-
-    ("TOKEN_SIGMA_PANEL", "ini", "dconf/core.ini",
-     "blur-my-shell/panel", "sigma"),
-    ("TOKEN_SIGMA_APPFOLDER", "ini", "dconf/core.ini",
-     "blur-my-shell/appfolder", "sigma"),
-    ("TOKEN_SIGMA_POPUP", "ini", "dconf/core.ini",
-     "blur-my-shell/popup", "sigma"),
-    ("TOKEN_SIGMA_WINDOW_LIST", "ini", "dconf/core.ini",
-     "blur-my-shell/window-list", "sigma"),
-    ("TOKEN_SIGMA_APPLICATIONS", "ini", "dconf/core.ini",
-     "blur-my-shell/applications", "sigma"),
-    ("TOKEN_SIGMA_DASH_TO_DOCK", "ini", "dconf/core.ini",
-     "blur-my-shell/dash-to-dock", "sigma"),
-
-    ("TOKEN_APP_TRANSPARENCY_SHIPPED", "css", "css/gtk4-transparency.css",
-     r"alpha\(@tg_tint_window, ([0-9.]+)\)"),
-    # Both spellings of the tint, and the mix() weight is the complement.
-    ("TOKEN_APP_TINT", "css", "css/gtk4-transparency.css",
-     r"var\(--window-bg-color\) (\d+)%, #000000"),
-    # The prose in the sheet's own header states the baseline too. A stale
-    # comment here is how the next person picks the wrong number by hand.
-    ("TOKEN_APP_TRANSPARENCY_SHIPPED", "css", "css/gtk4-transparency.css",
-     r"the shipped level, ([0-9.]+)\."),
-]
+# The pairing list lives in tools/token_manifest.py, because
+# tools/apply-radius-preset.py needs the same one to know which radii to rewrite
+# in an installed copy. See that file for the entry format.
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+from token_manifest import MANIFEST
 
 failures = []
 checks = 0

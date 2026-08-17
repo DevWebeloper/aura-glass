@@ -52,7 +52,45 @@ load_dconf() {
     apply_popup_blur
     apply_app_blur
     apply_app_opacity
+    apply_radius_dconf
     sync_osd_profile
+}
+
+# The seven corner radii Blur My Shell rounds its blur actors at. dconf/core.ini
+# ships them at the `default` row of radius_preset_values in tokens/tokens.sh,
+# and dconf load has just written that row — so like every other apply_* here,
+# this runs afterwards to put a flag's or a remembered choice's value back over
+# the preset's.
+#
+# The project rule these exist to keep: a painted radius must equal the blur
+# radius behind it. apply_radius_css moved the painted half in $CONF_DIR; this is
+# the blur half, and the two read the same TOKEN_RADIUS_* variables from the same
+# call to radius_preset_values so they cannot disagree.
+#
+# Two of these have no painted counterpart at all. `corner-radius` under popup is
+# the generic fallback for surfaces the specific keys do not claim, and
+# `osd-corner-radius` belongs to a pill Custom OSD draws rather than to any
+# stylesheet — see TOKEN_RADIUS_OSD for why that one does not simply scale with
+# the rest.
+apply_radius_dconf() {
+    local base=/org/gnome/shell/extensions/blur-my-shell
+
+    # Nothing here is Blur My Shell's to round when Blur My Shell is not
+    # installed. The painted radii still moved: apply_radius_css runs
+    # regardless, because in solid mode the corner is all there is.
+    if [ "${WANT_BLUR:-1}" != 1 ]; then
+        skip "blur corner radii left alone (--no-blur — no blur to round)"
+        return 0
+    fi
+
+    run dconf write "$base/applications/corner-radius" "$TOKEN_RADIUS_WINDOW"
+    run dconf write "$base/popup/menu-corner-radius" "$TOKEN_RADIUS_MENU"
+    run dconf write "$base/popup/quick-settings-corner-radius" "$TOKEN_RADIUS_QUICK_SETTINGS"
+    run dconf write "$base/popup/notification-corner-radius" "$TOKEN_RADIUS_NOTIFICATION"
+    run dconf write "$base/popup/dialog-corner-radius" "$TOKEN_RADIUS_DIALOG"
+    run dconf write "$base/popup/corner-radius" "$TOKEN_RADIUS_POPUP"
+    run dconf write "$base/popup/osd-corner-radius" "$TOKEN_RADIUS_OSD"
+    ok "blur corner radii follow the '${RADIUS_PRESET:-default}' preset"
 }
 
 # [applications] opacity controls the compositor-level window actor opacity for

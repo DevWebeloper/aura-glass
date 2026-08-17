@@ -14,11 +14,16 @@
  *   quick settings .................... 0.46 -> 0.30
  *   arriving banner ................... 0.86 -> 0.52
  *
- * Nothing else moves. Radii, hairlines, the control ladder and every accent
- * rule carry over from shell-tweaks.css untouched, and this file deliberately
- * sets no border-radius: the shape is already agreed between that sheet and
- * the *-corner-radius keys in dconf/core.ini, and repeating it here would be a
- * third place to keep in sync.
+ * Hairlines, the control ladder and every accent rule carry over from
+ * shell-20-popup-menus.css untouched.
+ *
+ * The menu radius does not. This sheet restates it at !important, which the
+ * header here denied for a while: the claim that it "deliberately sets no
+ * border-radius" was written when that was true and was not revisited when
+ * 4790bfc added one alongside `margin: 0 !important`. It is a third place the
+ * same number is written down, exactly as the old comment feared, and it is now
+ * a checked one — TOKEN_RADIUS_MENU in tokens/tokens.sh lists it, and
+ * tools/check-tokens.sh fails if this line and dconf disagree.
  *
  * Nothing here fights Blur My Shell. Its popup stylesheet only applies when
  * override-background is on, and the preset keeps it off.

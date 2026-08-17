@@ -64,6 +64,8 @@ APP_OPACITY_EXPLICIT=""
 CURSORS="adwaita"   # adwaita | mactahoe
 ICONS=""            # empty = remembered choice, then colloid
 GRAIN=""          # empty keeps the preset's value, or the remembered choice
+RADIUS_PRESET=""       # empty = remembered choice, then default
+RADIUS_PRESET_EXPLICIT=""
 ASSUME_YES=0
 DRY_RUN=0
 FORCE=0
@@ -98,6 +100,9 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
     --minimal         same as --no-extras
     --grain N         film grain over blurred surfaces, 0-1. Default is 0
     --no-grain        no grain at all (same as --grain 0, and the default)
+    --radius-preset P corner rounding for windows, menus, dialogs and
+                      notifications. One of: $RADIUS_PRESETS (default: default,
+                      and remembered for later runs)
     --panel-blur-fix  agent that rebuilds Blur My Shell's panel blur on layout change (default: on)
     --no-panel-blur-fix skip the panel blur rebuild agent
     --icons WHICH     colloid (default, follows --accent) or reversal-COLOUR,
@@ -155,6 +160,9 @@ while [ $# -gt 0 ]; do
         --grain)         GRAIN="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --grain=*)       GRAIN="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --no-grain)      GRAIN=0; EXPLICIT_FLAGS=1; shift ;;
+        --radius-preset) RADIUS_PRESET="${2:-}"; RADIUS_PRESET_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --radius-preset=*)
+                         RADIUS_PRESET="${1#*=}"; RADIUS_PRESET_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --panel-blur-fix)    WANT_PANEL_BLUR_FIX=1; EXPLICIT_FLAGS=1; shift ;;
         --no-panel-blur-fix) WANT_PANEL_BLUR_FIX=0; EXPLICIT_FLAGS=1; shift ;;
         --cursors)       CURSORS="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
@@ -576,6 +584,18 @@ if [ -z "$APP_BLUR_SCOPE_EXPLICIT" ] && [ -r "$CONF_DIR/app-blur-scope" ]; then
     APP_BLUR_SCOPE="$(cat "$CONF_DIR/app-blur-scope" 2>/dev/null || true)"
 fi
 APP_BLUR_SCOPE="${APP_BLUR_SCOPE:-gtk}"
+
+if [ -z "$RADIUS_PRESET_EXPLICIT" ] && [ -r "$CONF_DIR/radius-preset" ]; then
+    RADIUS_PRESET="$(cat "$CONF_DIR/radius-preset" 2>/dev/null || true)"
+fi
+RADIUS_PRESET="${RADIUS_PRESET:-default}"
+# Sets the seven TOKEN_RADIUS_* values for this run, which is what
+# apply_radius_css and apply_radius_dconf both read. Validated here rather than
+# at the point of use so a typo fails before anything has been written, and
+# rejected rather than defaulted: a --radius-preset that silently installed the
+# shipped look would be indistinguishable from the flag working.
+radius_preset_values "$RADIUS_PRESET" \
+    || die "unknown --radius-preset '$RADIUS_PRESET' — pick one of: $RADIUS_PRESETS"
 
 if [ -n "$APP_TRANSPARENCY" ]; then
     norm_res="$(python3 - "${APP_TRANSPARENCY:-0}" "${APP_OPACITY:-}" <<'PY'

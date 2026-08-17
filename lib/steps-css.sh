@@ -141,6 +141,41 @@ install_transparency_css() {
     ok "app windows translucent at $level (${pct}% opacity, remembered for later runs)"
 }
 
+# The sheets in css/ are written at the `default` row of radius_preset_values in
+# tokens/tokens.sh, and install_css has just copied them into $CONF_DIR at that
+# value. A different preset is applied to those copies rather than to css/, for
+# the same reason install_transparency_css rescales the installed
+# gtk4-transparency.css instead of the repo's: css/ stays at one known state
+# that tools/check-tokens.sh can keep checking, and what gets rewritten is only
+# ever what is actually loaded.
+#
+# Which sites move is tools/token_manifest.py's answer — the same list the
+# checker asserts against — so a radius the checker watches is a radius a preset
+# can move, and neither can quietly fall out of step with the other.
+#
+# The OSD radius is passed but has no stylesheet to rewrite: Custom OSD draws the
+# pill and Blur My Shell rounds the blur, so apply_radius_dconf writes it as a
+# dconf key. It stays in the argument list so that one preset is one argument
+# vector everywhere rather than two shapes to keep in step.
+apply_radius_css() {
+    local preset="${RADIUS_PRESET:-default}"
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: rewrite the installed radii to the '$preset' preset"
+        return 0
+    fi
+
+    python3 "$REPO_ROOT/tools/apply-radius-preset.py" "$CONF_DIR" \
+        "$TOKEN_RADIUS_WINDOW" "$TOKEN_RADIUS_MENU" \
+        "$TOKEN_RADIUS_QUICK_SETTINGS" "$TOKEN_RADIUS_NOTIFICATION" \
+        "$TOKEN_RADIUS_DIALOG" "$TOKEN_RADIUS_POPUP" "$TOKEN_RADIUS_OSD" \
+        | sed 's/^/    /'
+
+    mkdir -p "$CONF_DIR"
+    printf '%s\n' "$preset" > "$CONF_DIR/radius-preset"
+    ok "corner radii at the '$preset' preset (remembered for later runs)"
+}
+
 install_css() {
     step "Installing the CSS tweaks"
 
@@ -181,6 +216,10 @@ install_css() {
         run rm -f "$CONF_DIR/shell-popup-blur.css"
     fi
     install_transparency_css
+    # After the copies are all in place, and before aura-glass-apply splices
+    # them: both rewriters edit what install_css just laid down, so neither can
+    # run before the file it edits exists.
+    apply_radius_css
     ok "css -> $CONF_DIR"
     ok "re-apply command -> ~/.local/bin/aura-glass-apply"
 
