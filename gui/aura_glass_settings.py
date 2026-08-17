@@ -244,6 +244,9 @@ NAV_SECTIONS = [
     ("system", "System", "emblem-system-symbolic", "_build_system_page"),
     ("updates", "Updates", "software-update-available-symbolic",
      "_build_updates_page"),
+    # Last, and on its own, because everything above it is a less drastic
+    # answer to "I do not want this bit".
+    ("uninstall", "Uninstall", "user-trash-symbolic", "_build_uninstall_page"),
 ]
 
 
@@ -646,6 +649,10 @@ class Settings:
         if self.window_buttons not in [w[0] for w in WINDOW_BUTTON_LAYOUTS]:
             self.window_buttons = ""
 
+        # A user systemd unit rather than a look, but a remembered setting like
+        # any other, so it rides on Apply.
+        self.panel_blur_fix = read_memo("panel-blur-fix", "1") != "0"
+
         self.update_check = read_memo("update-check", "1") != "0"
         # Written by bin/aura-glass-update-check, so the window can say what is
         # waiting without going to the network itself. None means up to date.
@@ -684,6 +691,9 @@ class Settings:
         if self.update_check != other.update_check:
             args.append("--update-check" if self.update_check
                         else "--no-update-check")
+        if self.panel_blur_fix != other.panel_blur_fix:
+            args.append("--panel-blur-fix" if self.panel_blur_fix
+                        else "--no-panel-blur-fix")
 
         # Only ever on the way to a layout, never back to none. There is no flag
         # for "stop having an opinion" because there is nothing to restore to:
@@ -1674,6 +1684,12 @@ class Window(Adw.ApplicationWindow):
                         "so this window opens a terminal for them rather than "
                         "starting something that would silently decline. "
                         "Nothing here is applied by the Apply button.")
+        reread = Gtk.Button(icon_name="view-refresh-symbolic",
+                            valign=Gtk.Align.CENTER,
+                            tooltip_text="Re-read after a terminal has closed")
+        reread.add_css_class("flat")
+        reread.connect("clicked", lambda _b: self._refresh_system())
+        group.set_header_suffix(reread)
 
         self._deps_row = Adw.ActionRow(
             title="Command line dependencies",
@@ -1701,14 +1717,117 @@ class Window(Adw.ApplicationWindow):
         self._rounded_button.connect("clicked", self._on_install_rounded_blur)
         self._rounded_row.add_suffix(self._rounded_button)
         group.add(self._rounded_row)
+
+        # Two separate things, despite both being "multi-monitor". This one is
+        # a user systemd unit and rides on Apply with everything else; the sync
+        # below copies into /etc and GDM's own home, and cannot.
+        self._gdm_monitors_row = Adw.ActionRow(
+            title="Sync the monitor layout to the login screen",
+            subtitle="Copies ~/.config/monitors.xml where GDM will read it, so "
+                     "the login screen comes up on the same monitor your "
+                     "session does")
+        self._gdm_monitors_button = Gtk.Button(valign=Gtk.Align.CENTER)
+        self._gdm_monitors_button.connect("clicked", self._on_gdm_monitors)
+        self._gdm_monitors_row.add_suffix(self._gdm_monitors_button)
+        group.add(self._gdm_monitors_row)
+
+        self._gdm_row = Adw.ActionRow(title="Theme the login screen")
+        self._gdm_button = Gtk.Button(valign=Gtk.Align.CENTER)
+        self._gdm_button.connect("clicked", self._on_gdm)
+        self._gdm_row.add_suffix(self._gdm_button)
+        group.add(self._gdm_row)
         page.add(group)
+
+        local = Adw.PreferencesGroup(
+            title="Runs without a password",
+            description="A user systemd unit, so this one rides on Apply with "
+                        "the rest of the window.")
+        self._panel_blur_row = Adw.SwitchRow(
+            title="Rebuild the panel blur after a monitor change",
+            subtitle="Blur My Shell clips the panel blur to a geometry that is "
+                     "not settled yet at login, which leaves a strip of it "
+                     "wrong until something disturbs it. This puts it back",
+            active=self._applied.panel_blur_fix)
+        self._panel_blur_row.connect("notify::active", self._on_changed,
+                                     "panel_blur_fix")
+        local.add(self._panel_blur_row)
+        page.add(local)
 
         self._sync_system()
         self._check_deps()
         return page
 
+    def _refresh_system(self):
+        """Re-read the stamp files, for after a spawned terminal has been and
+        gone. There is no signal that it finished — that is the price of it
+        having a keyboard — so this is on a button."""
+        self._sync_system()
+        self._toasts.add_toast(Adw.Toast(title="Re-read"))
+
+    def _on_gdm_monitors(self, _button):
+        synced = os.path.exists(os.path.join(CONF_DIR, "gdm-monitors-synced"))
+        if synced:
+            self.run_in_terminal(
+                "bash %s --gdm-monitors --yes"
+                % GLib.shell_quote(os.path.join(self._repo, "uninstall.sh")),
+                "Removing the login screen monitor layout")
+            return
+        self._confirm_root(
+            "Sync the monitor layout to the login screen?",
+            "This copies ~/.config/monitors.xml into /etc/xdg and into GDM's "
+            "own home directory, so it needs your password. A terminal will "
+            "open and ask for it.",
+            "Sync",
+            self._install_cmd("--gdm-monitors --yes"),
+            "Syncing the monitor layout")
+
+    def _on_gdm(self, _button):
+        installed = read_memo("gdm-installed")
+        if installed:
+            self._confirm_root(
+                "Remove the login screen theme?",
+                "This puts GNOME's own login screen back. It modifies files "
+                "under /usr, so it needs your password — a terminal will open "
+                "and ask for it.",
+                "Remove",
+                "bash %s --gdm --yes"
+                % GLib.shell_quote(os.path.join(self._repo, "uninstall.sh")),
+                "Removing the login screen theme")
+            return
+        self._confirm_root(
+            "Theme the login screen?",
+            "This modifies system files under /usr and needs your password — a "
+            "terminal will open and ask for it. The first run also clones and "
+            "patches a copy of the WhiteSur theme, which takes a minute.\n\n"
+            "The login screen keeps GNOME's accent colour rather than this "
+            "theme's: it is compiled separately and does not read the desktop's "
+            "stylesheets.",
+            "Theme it",
+            self._install_cmd("--gdm --yes"),
+            "Theming the login screen")
+
+    def _confirm_root(self, heading, body, verb, command, what):
+        dialog = Adw.AlertDialog(heading=heading, body=body)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("go", verb)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
+        def response(_d, answer):
+            if answer == "go":
+                self.run_in_terminal(command, what)
+
+        dialog.connect("response", response)
+        dialog.present(self)
+
     def _sync_system(self):
-        """Read the stamp files these buttons act on."""
+        """Read the stamp files these buttons act on.
+
+        Every one of them is "last known" rather than live. A spawned terminal
+        is not waited on — the whole point is that it is answering prompts this
+        window cannot see — so nothing here can know the moment one finishes.
+        The rows say so rather than implying otherwise.
+        """
         installed = os.path.exists(os.path.join(CONF_DIR, "rounded-blur"))
         self._rounded_row.set_subtitle(
             "Installed. Reinstall if a mutter update stopped it loading"
@@ -1716,7 +1835,25 @@ class Window(Adw.ApplicationWindow):
             "Lets the blur behind popups follow their rounded corners instead "
             "of falling back to a static one")
         self._rounded_button.set_label("Reinstall" if installed else "Install")
-        for widget in (self._rounded_button,):
+
+        synced = os.path.exists(os.path.join(CONF_DIR, "gdm-monitors-synced"))
+        self._gdm_monitors_button.set_label("Remove" if synced else "Sync")
+        self._gdm_monitors_row.set_subtitle(
+            "Synced, as of the last time this window looked. Use Re-read after "
+            "the terminal closes" if synced else
+            "Copies ~/.config/monitors.xml where GDM will read it, so the login "
+            "screen comes up on the same monitor your session does")
+
+        gdm = read_memo("gdm-installed")
+        self._gdm_button.set_label("Remove" if gdm else "Theme it")
+        self._gdm_row.set_subtitle(
+            "Themed, as of the last time this window looked. Use Re-read after "
+            "the terminal closes" if gdm else
+            "Blurs and darkens your wallpaper behind the login screen. Needs "
+            "your password, and keeps GNOME's accent rather than this theme's")
+
+        for widget in (self._rounded_button, self._gdm_monitors_button,
+                       self._gdm_button):
             widget.set_sensitive(self._repo is not None)
 
     def _check_deps(self):
@@ -1756,6 +1893,79 @@ class Window(Adw.ApplicationWindow):
         # rather than pre-answered on the user's behalf.
         self.run_in_terminal(self._install_cmd("--rounded-blur --force"),
                              "Installing the rounded blur library")
+
+    # The three scopes uninstall.sh already has, in the order it offers them.
+    # Each is its own row and its own confirmation rather than a dropdown with
+    # one button: the difference between them is the difference between undoing
+    # the styling and deleting the packs, and a control where that difference is
+    # a selection you might mis-read is the wrong control.
+    UNINSTALL_SCOPES = [
+        ("", "Revert the styling", "Undo",
+         "Puts the stylesheets, the gsettings and the extensions' settings "
+         "back. Leaves the extensions and the icon packs installed.",
+         "This strips the aura-glass block out of your GTK and shell "
+         "stylesheets, restores the files it backed up, resets the accent, "
+         "theme, icon and pointer keys, and removes the agents it installed.\n\n"
+         "The extensions and the icon packs stay."),
+        ("--extensions", "Revert, and remove the extensions", "Remove",
+         "Everything above, and deletes the extensions this installed along "
+         "with their settings.",
+         "Everything the first scope does, and deletes the sixteen extensions "
+         "this installed, with their settings.\n\n"
+         "Extensions your distribution packaged are left alone."),
+        ("--all", "Remove everything", "Remove everything",
+         "Everything above, plus the theme, the icon and pointer packs, the "
+         "source cache, the login screen theme and its monitor layout.",
+         "Everything the other two do, and deletes the Tahoe theme, every "
+         "Colloid, Reversal and MacTahoe pack under your home directory, and "
+         "the download cache. It also puts GNOME's own login screen back and "
+         "undoes the monitor layout sync.\n\n"
+         "This is the whole of it. There is nothing left to undo afterwards."),
+    ]
+
+    def _build_uninstall_page(self):
+        page = Adw.PreferencesPage()
+
+        group = Adw.PreferencesGroup(
+            title="Uninstall",
+            description="These run uninstall.sh in a terminal. Parts of each "
+                        "need your password, and all of it is easier to watch "
+                        "than to read back afterwards. None of it can be "
+                        "undone from here — reinstalling is the way back.")
+
+        for flags, title, verb, subtitle, body in self.UNINSTALL_SCOPES:
+            row = Adw.ActionRow(title=title, subtitle=subtitle)
+            button = Gtk.Button(label=verb, valign=Gtk.Align.CENTER)
+            button.add_css_class("destructive-action")
+            button.connect("clicked", self._on_uninstall, flags, title, verb,
+                           body)
+            button.set_sensitive(self._repo is not None)
+            row.add_suffix(button)
+            group.add(row)
+        page.add(group)
+        return page
+
+    def _on_uninstall(self, _button, flags, title, verb, body):
+        dialog = Adw.AlertDialog(heading=title + "?", body=body)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("go", verb)
+        # Destructive rather than suggested, and Cancel is what Escape and the
+        # default land on. Nothing on this page should be one stray Return away.
+        dialog.set_response_appearance("go",
+                                       Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
+        def response(_d, answer):
+            if answer != "go":
+                return
+            command = "bash %s %s --yes" % (
+                GLib.shell_quote(os.path.join(self._repo, "uninstall.sh")),
+                flags)
+            self.run_in_terminal(command.replace("  ", " "), title)
+
+        dialog.connect("response", response)
+        dialog.present(self)
 
     def _build_packages_page(self):
         page = Adw.PreferencesPage()
@@ -1995,12 +2205,6 @@ class Window(Adw.ApplicationWindow):
         page.add(updates)
         self._sync_updates()
 
-        cli = Adw.PreferencesGroup(
-            title="Command line only",
-            description="The GDM login screen theme needs root, and this window "
-                        "has no way to ask for a password — a run started here "
-                        "would decline it silently. Use ./install.sh --gdm.")
-        page.add(cli)
         return page
 
     # ---- state ------------------------------------------------------------
@@ -2088,6 +2292,7 @@ class Window(Adw.ApplicationWindow):
         s.cursors = self._cursors_row._ids[self._cursors_row.get_selected()]
         s.window_buttons = self._window_buttons_row._ids[
             self._window_buttons_row.get_selected()]
+        s.panel_blur_fix = self._panel_blur_row.get_active()
         s.update_check = self._update_check_row.get_active()
         # Not settings, so they never differ and never produce a flag. Carried so
         # flags_against sees a complete object either way.
@@ -2182,6 +2387,7 @@ class Window(Adw.ApplicationWindow):
             self._cursors_row._ids.index(self._applied.cursors))
         self._window_buttons_row.set_selected(
             self._window_buttons_row._ids.index(self._applied.window_buttons))
+        self._panel_blur_row.set_active(self._applied.panel_blur_fix)
         self._update_check_row.set_active(self._applied.update_check)
         self._loading = False
         self._rebuild_app_list()

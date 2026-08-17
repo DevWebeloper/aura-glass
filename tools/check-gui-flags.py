@@ -55,6 +55,7 @@ def state(**kw):
     s.icons = kw.get("icons", "colloid")
     s.cursors = kw.get("cursors", "adwaita")
     s.window_buttons = kw.get("window_buttons", "")
+    s.panel_blur_fix = kw.get("panel_blur_fix", True)
     s.update_check = kw.get("update_check", True)
     s.update_available = kw.get("update_available", None)
     return s
@@ -171,6 +172,15 @@ CASES = [
 
     ("window buttons back to leaving it alone sends nothing",
      state(window_buttons="close"), state(window_buttons=""), []),
+
+    # A user systemd unit rather than a look, but a remembered setting like any
+    # other — it was neither memoized nor reachable from --settings-only until
+    # the window needed a switch for it.
+    ("panel blur rebuild off", FROSTED, state(panel_blur_fix=False),
+     ["--no-panel-blur-fix"]),
+
+    ("panel blur rebuild back on",
+     state(panel_blur_fix=False), state(), ["--panel-blur-fix"]),
 
     ("window buttons alongside an accent", FROSTED,
      state(window_buttons="all", accent="teal"),

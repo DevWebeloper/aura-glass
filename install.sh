@@ -47,6 +47,7 @@ WANT_CURSORS=1
 WANT_DEPS=1
 WANT_OSD=1
 WANT_PANEL_BLUR_FIX=1
+PANEL_BLUR_FIX_EXPLICIT=""
 WANT_GDM=0
 WANT_GDM_MONITORS=0
 GDM_BG="default"
@@ -214,8 +215,8 @@ while [ $# -gt 0 ]; do
         --radius-preset) RADIUS_PRESET="${2:-}"; RADIUS_PRESET_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --radius-preset=*)
                          RADIUS_PRESET="${1#*=}"; RADIUS_PRESET_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --panel-blur-fix)    WANT_PANEL_BLUR_FIX=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-panel-blur-fix) WANT_PANEL_BLUR_FIX=0; EXPLICIT_FLAGS=1; shift ;;
+        --panel-blur-fix)    WANT_PANEL_BLUR_FIX=1; PANEL_BLUR_FIX_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-panel-blur-fix) WANT_PANEL_BLUR_FIX=0; PANEL_BLUR_FIX_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --cursors)       CURSORS="${2:-}"; CURSORS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --cursors=*)     CURSORS="${1#*=}"; CURSORS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --icons)         ICONS="${2:-}"; ICONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
@@ -683,6 +684,11 @@ fi
 # One flag decides both so they cannot be remembered disagreeing with each other.
 [ -n "$RADIUS_CUSTOM_EXPLICIT" ] && { RADIUS_PRESET="custom"; RADIUS_PRESET_EXPLICIT=1; }
 
+if [ -z "$PANEL_BLUR_FIX_EXPLICIT" ] && [ -r "$CONF_DIR/panel-blur-fix" ]; then
+    WANT_PANEL_BLUR_FIX="$(cat "$CONF_DIR/panel-blur-fix" 2>/dev/null || true)"
+fi
+WANT_PANEL_BLUR_FIX="${WANT_PANEL_BLUR_FIX:-1}"
+
 if [ -z "$RADIUS_PRESET_EXPLICIT" ] && [ -r "$CONF_DIR/radius-preset" ]; then
     RADIUS_PRESET="$(cat "$CONF_DIR/radius-preset" 2>/dev/null || true)"
 fi
@@ -864,6 +870,10 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     # is enough to be running the current one.
     install_gui
     install_update_check
+    # Local, quick, needs nothing and is a plain user systemd unit — the same
+    # grounds install_gui is here on. Without it the window's switch for it
+    # would write a memo that nothing acted on until the next full install.
+    install_panel_blur_unit
     step "Done"
     cat <<EOF
 

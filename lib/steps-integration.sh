@@ -82,6 +82,15 @@ install_panel_blur_unit() {
         WANT_PANEL_BLUR_FIX=0
     fi
 
+    # Remembered like every other setting, so a later flagless run — and the
+    # settings window, which reads the memo to draw the switch — comes back to
+    # this answer rather than to the default. Written before the branch so it
+    # records the choice whichever way it went.
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "${WANT_PANEL_BLUR_FIX:-1}" > "$CONF_DIR/panel-blur-fix"
+    fi
+
     if [ "${WANT_PANEL_BLUR_FIX:-1}" != 1 ]; then
         # Clean up any previously installed panel blur units
         local found=0 u
