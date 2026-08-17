@@ -113,10 +113,22 @@ CURSOR_PACKS = [
     ("keep", "Keep current", "Leave the cursor theme alone"),
 ]
 
-BLUR_SCOPES = [
-    ("gtk", "GTK / GNOME apps only", "Files, Settings, Terminal. Low cost"),
-    ("all", "All apps", "Includes browsers and Electron. Heavy on the GPU"),
-    ("none", "No window blur", "Windows stay translucent without a blur behind"),
+# What install.sh calls the three answers. It was a dropdown once; it is two
+# switches now, because it was never really one question — whether windows get a
+# blur behind them at all, and whether that reaches past GTK and GNOME apps, are
+# separate settings in install.sh (WANT_WINDOW_BLUR and APP_BLUR_SCOPE) and were
+# only ever folded together here. This stays as the set of values Settings.scope
+# is allowed to hold.
+BLUR_SCOPES = ("gtk", "all", "none")
+
+# Titlebar buttons. Two answers rather than the free string the key takes: see
+# apply_window_buttons in lib/steps-dconf.sh for why the rest of what
+# button-layout can express is not offered.
+WINDOW_BUTTON_LAYOUTS = [
+    ("", "Leave as it is", "Whatever GNOME or Tweaks has set. Not touched"),
+    ("close", "Close only", "One button. The other two go to the right-click "
+                            "menu and the keyboard"),
+    ("all", "Minimize, maximize and close", "All three, the way GNOME ships"),
 ]
 
 # The sidebar: (id, title, icon, builder method), in the order shown.
@@ -128,6 +140,8 @@ NAV_SECTIONS = [
     ("look", "Look", "applications-graphics-symbolic", "_build_look_page"),
     ("glass", "Glass", "weather-fog-symbolic", "_build_glass_page"),
     ("apps", "Per-app blur", "view-list-symbolic", "_build_apps_page"),
+    ("windows", "Window controls", "window-new-symbolic",
+     "_build_window_controls_page"),
     ("icons", "Icons and pointer", "folder-symbolic", "_build_icons_page"),
     ("updates", "Updates", "software-update-available-symbolic",
      "_build_updates_page"),
@@ -311,7 +325,7 @@ class Settings:
         self.scope = read_memo("app-blur-scope", "gtk") or "gtk"
         if read_memo("window-blur", "1") == "0":
             self.scope = "none"
-        if self.scope not in [s[0] for s in BLUR_SCOPES]:
+        if self.scope not in BLUR_SCOPES:
             self.scope = "gtk"
 
         self.popup_blur = read_memo("popup-blur", "1") != "0"
@@ -333,6 +347,13 @@ class Settings:
         self.cursors = read_memo("cursor-pack", "adwaita") or "adwaita"
         if self.cursors not in [c[0] for c in CURSOR_PACKS]:
             self.cursors = "adwaita"
+
+        # Empty is a real answer here, and the default one: the key is shared
+        # with GNOME Tweaks and with anyone who set it by hand, so until this
+        # window is asked to have an opinion it does not have one.
+        self.window_buttons = read_memo("window-buttons", "")
+        if self.window_buttons not in [w[0] for w in WINDOW_BUTTON_LAYOUTS]:
+            self.window_buttons = ""
 
         self.update_check = read_memo("update-check", "1") != "0"
         # Written by bin/aura-glass-update-check, so the window can say what is
@@ -370,6 +391,15 @@ class Settings:
         if self.update_check != other.update_check:
             args.append("--update-check" if self.update_check
                         else "--no-update-check")
+
+        # Only ever on the way to a layout, never back to none. There is no flag
+        # for "stop having an opinion" because there is nothing to restore to:
+        # the value this overwrote was not recorded, and inventing GNOME's
+        # default as the way back would assert a layout over whatever the user
+        # actually had. Going back to "Leave as it is" leaves the last applied
+        # layout standing, which the row says.
+        if self.window_buttons != other.window_buttons and self.window_buttons:
+            args += ["--window-buttons", self.window_buttons]
         if self.radius != other.radius:
             args += ["--radius-preset", self.radius]
 
@@ -904,9 +934,26 @@ class Window(Adw.ApplicationWindow):
         self._blur_row.connect("notify::active", self._on_changed, "blur")
         glass.add(self._blur_row)
 
-        self._scope_row = self._combo(
-            "Blur behind windows", "", BLUR_SCOPES, self._applied.scope, "scope")
-        glass.add(self._scope_row)
+        # Two switches, not the dropdown this was. They are two settings in
+        # install.sh — WANT_WINDOW_BLUR and APP_BLUR_SCOPE — and the dropdown
+        # was the only thing that ever made them one question. Asking for the
+        # blur to reach every window is now a switch you can find, rather than
+        # the middle entry of a list called something else.
+        self._window_blur_row = Adw.SwitchRow(
+            title="Blur behind app windows",
+            subtitle="Off leaves windows translucent with no blur behind them",
+            active=self._applied.scope != "none")
+        self._window_blur_row.connect("notify::active", self._on_changed,
+                                      "scope")
+        glass.add(self._window_blur_row)
+
+        self._blur_all_row = Adw.SwitchRow(
+            title="Blur behind all application windows",
+            subtitle="On covers browsers and Electron apps too, and is heavy on "
+                     "the GPU. Off keeps it to GTK and GNOME apps",
+            active=self._applied.scope == "all")
+        self._blur_all_row.connect("notify::active", self._on_changed, "scope")
+        glass.add(self._blur_all_row)
 
         # Off is its own switch rather than the bottom of the bar. They are not
         # the same thing: 100% leaves the transparency sheet installed and fully
@@ -951,6 +998,23 @@ class Window(Adw.ApplicationWindow):
         self._popup_row.connect("notify::active", self._on_changed, "popup_blur")
         glass.add(self._popup_row)
         page.add(glass)
+        return page
+
+    def _build_window_controls_page(self):
+        page = Adw.PreferencesPage()
+
+        group = Adw.PreferencesGroup(
+            title="Titlebar buttons",
+            description="A GNOME setting rather than one of the theme's, shared "
+                        "with Tweaks — so it is left alone until you pick one "
+                        "here, and picking Leave as it is again leaves the last "
+                        "one you applied standing rather than guessing a way "
+                        "back.")
+        self._window_buttons_row = self._combo(
+            "Buttons", "", WINDOW_BUTTON_LAYOUTS,
+            self._applied.window_buttons, "window_buttons")
+        group.add(self._window_buttons_row)
+        page.add(group)
         return page
 
     def _build_apps_page(self):
@@ -1054,9 +1118,15 @@ class Window(Adw.ApplicationWindow):
 
     # ---- the per-app list -------------------------------------------------
 
+    def _scope(self):
+        """The three-way install.sh value, from the two switches that make it."""
+        if not self._window_blur_row.get_active():
+            return "none"
+        return "all" if self._blur_all_row.get_active() else "gtk"
+
     def _list_is_consulted(self, which):
         """Whether the blur mode as set right now reads this list."""
-        scope = self._scope_row._ids[self._scope_row.get_selected()]
+        scope = self._scope()
         if not self._blur_row.get_active() or scope == "none":
             return False
         return (scope == "all") == (which == "block")
@@ -1115,7 +1185,7 @@ class Window(Adw.ApplicationWindow):
         s.accent = self._accent_row._ids[self._accent_row.get_selected()]
         s.radius = self._radius_row._ids[self._radius_row.get_selected()]
         s.blur = self._blur_row.get_active()
-        s.scope = self._scope_row._ids[self._scope_row.get_selected()]
+        s.scope = self._scope()
         s.transparency = (
             percent_to_level(round(self._transparency_scale.get_value()))
             if self._transparency_on.get_active() else "0")
@@ -1124,6 +1194,8 @@ class Window(Adw.ApplicationWindow):
         s.block = list(self._block)
         s.icons = self._icons_row._ids[self._icons_row.get_selected()]
         s.cursors = self._cursors_row._ids[self._cursors_row.get_selected()]
+        s.window_buttons = self._window_buttons_row._ids[
+            self._window_buttons_row.get_selected()]
         s.update_check = self._update_check_row.get_active()
         # Not settings, so they never differ and never produce a flag. Carried so
         # flags_against sees a complete object either way.
@@ -1133,8 +1205,12 @@ class Window(Adw.ApplicationWindow):
     def _sync_sensitivity(self):
         """Solid mode is the absence of all of it, so the blur rows go dim."""
         on = self._blur_row.get_active()
-        for row in (self._scope_row, self._transparency_on, self._popup_row):
+        for row in (self._window_blur_row, self._transparency_on,
+                    self._popup_row):
             row.set_sensitive(on)
+        # Nothing to widen when there is no window blur to widen.
+        self._blur_all_row.set_sensitive(
+            on and self._window_blur_row.get_active())
         # The bar needs both: there is nothing to set a level on in solid mode,
         # and nothing to set it on when translucency itself is off.
         self._transparency_row.set_sensitive(
@@ -1154,7 +1230,7 @@ class Window(Adw.ApplicationWindow):
             return
         if isinstance(row, Adw.ComboRow):
             self._sync_subtitle(row)
-        if key in ("blur", "transparency"):
+        if key in ("blur", "transparency", "scope"):
             self._sync_sensitivity()
         # The mode decides which list is consulted, so it decides which is shown.
         if key in ("scope", "blur"):
@@ -1170,9 +1246,8 @@ class Window(Adw.ApplicationWindow):
         self._radius_row.set_selected(
             self._radius_row._ids.index(self._applied.radius))
         self._blur_row.set_active(self._applied.blur)
-        if self._applied.scope in self._scope_row._ids:
-            self._scope_row.set_selected(
-                self._scope_row._ids.index(self._applied.scope))
+        self._window_blur_row.set_active(self._applied.scope != "none")
+        self._blur_all_row.set_active(self._applied.scope == "all")
         self._transparency_on.set_active(self._applied.transparency != "0")
         # Only when it is on: off is stored as a flat "0", and moving the bar to
         # 70% because of that would lose the level to come back to.
@@ -1186,6 +1261,8 @@ class Window(Adw.ApplicationWindow):
             self._icons_row._ids.index(self._applied.icons))
         self._cursors_row.set_selected(
             self._cursors_row._ids.index(self._applied.cursors))
+        self._window_buttons_row.set_selected(
+            self._window_buttons_row._ids.index(self._applied.window_buttons))
         self._update_check_row.set_active(self._applied.update_check)
         self._loading = False
         self._rebuild_app_list()

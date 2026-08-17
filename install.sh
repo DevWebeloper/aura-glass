@@ -62,6 +62,8 @@ APP_BLUR_BLOCK=""
 APP_BLUR_BLOCK_EXPLICIT=""
 WANT_POPUP_BLUR=1
 POPUP_BLUR_EXPLICIT=""
+WINDOW_BUTTONS=""        # empty = leave the titlebar as the system has it
+WINDOW_BUTTONS_EXPLICIT=""
 WANT_ROUNDED_BLUR=1
 APP_TRANSPARENCY=""   # empty = remembered choice, then off (e.g. 0.90 / 90%)
 APP_TRANSPARENCY_EXPLICIT=""
@@ -137,6 +139,9 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
     --app-blur-block LIST
                       comma-separated wm_class patterns to exclude in all-apps
                       mode, replacing the shipped list. Remembered for later runs
+    --window-buttons WHICH
+                      titlebar buttons: close (close alone) or all (minimize,
+                      maximize and close). Left as the system has it unless given
     --window-blur     blur behind app windows (default: on behind GTK/GNOME apps)
     --gtk-apps-blur   blur behind GTK / GNOME applications only (Files, Settings, Terminal - default, low CPU)
     --all-apps-blur   blur behind all application windows (heavy on CPU/GPU)
@@ -243,8 +248,12 @@ while [ $# -gt 0 ]; do
         --no-update-check) WANT_UPDATE_CHECK=0; UPDATE_CHECK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-icons)      WANT_ICONS=0; EXPLICIT_FLAGS=1; shift ;;
         --no-cursors)    WANT_CURSORS=0; EXPLICIT_FLAGS=1; shift ;;
-        --no-wm-buttons|--wm-buttons) # Deprecated / window buttons kept at system default
+        --no-wm-buttons|--wm-buttons) # Deprecated, and a no-op. --window-buttons
+                         # replaces both: these two never said which layout they
+                         # meant, so there was nothing to keep them doing.
                          EXPLICIT_FLAGS=1; shift ;;
+        --window-buttons) WINDOW_BUTTONS="${2:-}"; WINDOW_BUTTONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --window-buttons=*) WINDOW_BUTTONS="${1#*=}"; WINDOW_BUTTONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --settings-only) SETTINGS_ONLY=1; WANT_DEPS=0; EXPLICIT_FLAGS=1; shift ;;
         --no-deps)       WANT_DEPS=0; EXPLICIT_FLAGS=1; shift ;;
         --force)         FORCE=1; EXPLICIT_FLAGS=1; shift ;;
@@ -639,6 +648,17 @@ if [ -z "$APP_BLUR_SCOPE_EXPLICIT" ] && [ -r "$CONF_DIR/app-blur-scope" ]; then
     APP_BLUR_SCOPE="$(cat "$CONF_DIR/app-blur-scope" 2>/dev/null || true)"
 fi
 APP_BLUR_SCOPE="${APP_BLUR_SCOPE:-gtk}"
+
+# No default: empty means the key is not ours to write. apply_window_buttons
+# reads the memo itself, so this only has to validate what a flag asked for —
+# and validating here rather than there means a typo fails before the install
+# has written anything, like --radius-preset below.
+if [ -n "$WINDOW_BUTTONS_EXPLICIT" ]; then
+    case "$WINDOW_BUTTONS" in
+        close|all) ;;
+        *) die "unknown --window-buttons '$WINDOW_BUTTONS' — pick close or all" ;;
+    esac
+fi
 
 if [ -z "$RADIUS_PRESET_EXPLICIT" ] && [ -r "$CONF_DIR/radius-preset" ]; then
     RADIUS_PRESET="$(cat "$CONF_DIR/radius-preset" 2>/dev/null || true)"

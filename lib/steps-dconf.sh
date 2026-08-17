@@ -446,6 +446,40 @@ PY
     ok "blur grain set to $want (remembered for future installs)"
 }
 
+# Which of the titlebar buttons a window gets. Two answers rather than the free
+# string the key takes: close alone, or all three. The rest of what
+# button-layout can express — reordering, moving them to the left, the spacer —
+# is not a thing this theme has an opinion about, and a text field that let
+# someone type a layout Mutter silently ignores would be worse than no control.
+#
+# Does nothing at all unless asked, like apply_grain and unlike the theme keys
+# in apply_gsettings. This one is shared with GNOME Tweaks and with anyone who
+# set it by hand years ago, so a flagless install has no business asserting a
+# value over theirs.
+apply_window_buttons() {
+    local want="${WINDOW_BUTTONS:-}" memo="$CONF_DIR/window-buttons" layout
+    if [ -z "$want" ] && [ -f "$memo" ]; then
+        want="$(cat "$memo" 2>/dev/null || true)"
+    fi
+    [ -n "$want" ] || return 0
+
+    # appmenu is a dead token — the shell dropped the app menu in 3.32 — but it
+    # is what the shipped default still says, so keeping it means the "all"
+    # answer restores byte-for-byte what GNOME had before anyone touched this.
+    case "$want" in
+        close) layout="appmenu:close" ;;
+        all)   layout="appmenu:minimize,maximize,close" ;;
+        *)     warn "unknown window button layout '$want' — leaving it alone"
+               return 0 ;;
+    esac
+
+    run gsettings set org.gnome.desktop.wm.preferences button-layout "$layout"
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$want" > "$memo"
+    fi
+}
+
 apply_gsettings() {
     step "Setting themes and accent"
 
@@ -484,6 +518,10 @@ apply_gsettings() {
     if [ "${DRY_RUN:-0}" != 1 ]; then
         printf '%s\n' "${CURSORS:-adwaita}" > "$CONF_DIR/cursor-pack"
     fi
+
+    # Here rather than in load_dconf: it is a gsettings key like the four above,
+    # and this is the step that runs in the --settings-only path with them.
+    apply_window_buttons
 
     ok "gtk-theme=Tahoe-Dark  icons=$icons  cursor=$cursor  accent=$ACCENT"
 }

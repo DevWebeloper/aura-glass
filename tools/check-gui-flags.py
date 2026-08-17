@@ -53,6 +53,7 @@ def state(**kw):
     s.block = list(kw.get("block", ["*chrome*", "*electron*"]))
     s.icons = kw.get("icons", "colloid")
     s.cursors = kw.get("cursors", "adwaita")
+    s.window_buttons = kw.get("window_buttons", "")
     s.update_check = kw.get("update_check", True)
     s.update_available = kw.get("update_available", None)
     return s
@@ -134,6 +135,24 @@ CASES = [
 
     ("emptying the allow list is a real change", FROSTED,
      state(allow=[]), ["--app-blur-allow", ""]),
+
+    # The titlebar buttons. Empty is the default and means the key is not ours
+    # to write, so it is the one value that never produces a flag — there is no
+    # way back to "no opinion" once one has been applied, and inventing GNOME's
+    # own default as the way back would assert a layout over whatever the user
+    # had before.
+    ("window buttons to close only", FROSTED, state(window_buttons="close"),
+     ["--window-buttons", "close"]),
+
+    ("window buttons to all three", FROSTED, state(window_buttons="all"),
+     ["--window-buttons", "all"]),
+
+    ("window buttons back to leaving it alone sends nothing",
+     state(window_buttons="close"), state(window_buttons=""), []),
+
+    ("window buttons alongside an accent", FROSTED,
+     state(window_buttons="all", accent="teal"),
+     ["--accent", "teal", "--window-buttons", "all"]),
 
     # The family goes out bare, so install.sh maps it to a colour Reversal
     # ships. Naming the colour here would need a second copy of that mapping —
