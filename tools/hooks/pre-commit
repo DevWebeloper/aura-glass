@@ -98,6 +98,11 @@ step "settings window radii (tools/check-gui-radius.py)" \
 # malformed argv and the wrapper that will not parse. It launches nothing.
 step "terminal spawn (tools/check-terminal-spawn.py)" \
     python3 "$TMP/tools/check-terminal-spawn.py"
+# The window builds its Extensions page from bin/aura-glass-ext list rather than
+# from a copy of the arrays, so that command is the catalogue as far as it is
+# concerned. This asserts it describes everything the install path can reach.
+step "extension catalogue (tools/check-ext-catalogue.sh)" \
+    bash "$TMP/tools/check-ext-catalogue.sh"
 # The per-app lists are the one place arbitrary user text reaches dconf. This
 # builds the literal and parses it back with GLib's own parser; no live dconf.
 step "app blur lists (tools/check-app-blur-lists.sh)" \

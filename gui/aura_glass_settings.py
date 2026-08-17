@@ -36,6 +36,7 @@ the remembered value in step; the button beside it goes to the real thing.
 GDM is deliberately absent. It needs root, and a window with no way to ask for a
 password has no business starting something that will silently decline.
 """
+import json
 import os
 import shutil
 import subprocess
@@ -238,6 +239,8 @@ NAV_SECTIONS = [
     ("icons", "Icons and pointer", "folder-symbolic", "_build_icons_page"),
     ("packages", "Packages", "package-x-generic-symbolic",
      "_build_packages_page"),
+    ("extensions", "Extensions", "application-x-addon-symbolic",
+     "_build_extensions_page"),
     ("system", "System", "emblem-system-symbolic", "_build_system_page"),
     ("updates", "Updates", "software-update-available-symbolic",
      "_build_updates_page"),
@@ -460,6 +463,26 @@ PATTERN_EXAMPLES = [
     ("code",
      "VS Code, which announces itself under that bare name and no other"),
 ]
+
+
+def plain_row(row, title, subtitle=None):
+    """Set a row's text as text rather than as Pango markup.
+
+    Every title in this window that is not a literal written here is somebody
+    else's — an app's display name, a wm_class the user typed, a directory on
+    disk, an extension description. An & in any of them is ordinary, and
+    "Vitals — CPU, RAM & network monitor" is one of ours; with markup on, Pango
+    rejects the whole string and the row renders empty.
+
+    The title has to be set through this rather than at construction, because
+    the markup is parsed when the title is set — turning it off afterwards is
+    too late for a title the constructor already took.
+    """
+    row.set_use_markup(False)
+    row.set_title(title)
+    if subtitle is not None:
+        row.set_subtitle(subtitle)
+    return row
 
 
 def wm_class_for(appinfo):
@@ -839,7 +862,7 @@ class AppPickerDialog(Adw.Dialog):
                 continue
             if shown >= 60:      # the list is a picker, not a catalogue
                 break
-            row = Adw.ActionRow(title=name, subtitle=wm)
+            row = plain_row(Adw.ActionRow(), name, wm)
             icon = info.get_icon()
             if icon is not None:
                 row.add_prefix(Gtk.Image.new_from_gicon(icon))
@@ -930,8 +953,8 @@ class AppListDialog(Adw.Dialog):
             self._rows.append(row)
 
         for pattern in self._entries:
-            row = Adw.ActionRow(title=pattern,
-                                subtitle=describe_pattern(pattern))
+            row = plain_row(Adw.ActionRow(), pattern,
+                            describe_pattern(pattern))
             remove = Gtk.Button(icon_name="user-trash-symbolic",
                                 valign=Gtk.Align.CENTER,
                                 tooltip_text="Remove")
@@ -1420,6 +1443,162 @@ class Window(Adw.ApplicationWindow):
         page.add(group)
         return page
 
+    # ---- extensions ---------------------------------------------------------
+
+    EXT_TIERS = [
+        ("core", "Core",
+         "What the desktop is built out of. Turning one off changes the look "
+         "rather than trimming it, and none of them can be removed from here."),
+        ("recommended", "Recommended",
+         "The pack install.sh fits by default. None of it is required."),
+        ("full", "Everything else",
+         "The rest of --all-extras. Installed on request, one at a time."),
+    ]
+
+    def _ext_catalogue(self):
+        """The catalogue, from bin/aura-glass-ext rather than a second copy.
+
+        The arrays and their descriptions change more often than anything else
+        in this project, and a hand-maintained Python copy would be wrong within
+        a release. Unlike the radius numbers, which are small, stable and have a
+        checker, this is a list of other people's UUIDs.
+        """
+        if self._repo is None:
+            return []
+        script = os.path.join(self._repo, "bin", "aura-glass-ext")
+        try:
+            res = subprocess.run(["bash", script, "list"],
+                                 capture_output=True, text=True, timeout=30)
+            if res.returncode != 0:
+                return []
+            return json.loads(res.stdout)
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return []
+
+    def _build_extensions_page(self):
+        page = Adw.PreferencesPage()
+
+        actions = Adw.PreferencesGroup(
+            title="Extensions",
+            description="These apply as you click them rather than waiting for "
+                        "Apply. Enabling an extension is a gsettings key and "
+                        "installing one lands under your home directory, so "
+                        "none of it needs a password — and none of it is a "
+                        "setting install.sh would resolve, so there is nothing "
+                        "for Apply to collect.")
+        row = Adw.ActionRow(
+            title="Fit a pack",
+            subtitle="Installs and enables everything in it, leaving the rest "
+                     "alone")
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6,
+                      valign=Gtk.Align.CENTER)
+        for pack, label in (("recommended", "Recommended"), ("full", "All")):
+            button = Gtk.Button(label=label)
+            button.connect("clicked", self._on_ext_pack, pack)
+            box.append(button)
+        refresh = Gtk.Button(icon_name="view-refresh-symbolic",
+                             tooltip_text="Re-read what is installed")
+        refresh.add_css_class("flat")
+        refresh.connect("clicked", lambda _b: self._rebuild_extensions())
+        box.append(refresh)
+        row.add_suffix(box)
+        actions.add(row)
+        page.add(actions)
+
+        self._ext_groups = {}
+        for tier, title, description in self.EXT_TIERS:
+            group = Adw.PreferencesGroup(title=title, description=description)
+            self._ext_groups[tier] = group
+            page.add(group)
+
+        self._ext_rows = []
+        self._rebuild_extensions()
+        return page
+
+    def _rebuild_extensions(self):
+        for group, row in self._ext_rows:
+            group.remove(row)
+        self._ext_rows = []
+
+        catalogue = self._ext_catalogue()
+        if not catalogue:
+            for tier, _t, _d in self.EXT_TIERS[:1]:
+                row = Adw.ActionRow(
+                    title="Could not read the extension list",
+                    subtitle="bin/aura-glass-ext did not answer — is the "
+                             "checkout still there?",
+                    sensitive=False)
+                self._ext_groups[tier].add(row)
+                self._ext_rows.append((self._ext_groups[tier], row))
+            return
+
+        for entry in catalogue:
+            group = self._ext_groups.get(entry["tier"])
+            if group is None:
+                continue
+
+            row = plain_row(Adw.SwitchRow(active=entry["enabled"]),
+                            entry["description"])
+            # The UUID under the description: the description is what it does,
+            # the UUID is what it is, and only one of them is searchable.
+            row.set_subtitle(entry["uuid"] + (
+                "" if entry["installed"] else " — not installed"))
+            row.set_sensitive(entry["installed"])
+            row._uuid = entry["uuid"]
+            row._handler = row.connect("notify::active", self._on_ext_toggled)
+
+            if not entry["installed"]:
+                button = Gtk.Button(label="Install", valign=Gtk.Align.CENTER)
+                button.connect("clicked", self._on_ext_action, entry["uuid"],
+                               "install")
+                row.add_prefix(button)
+            elif entry["tier"] != "core" and not entry["system"]:
+                # Core stays: removing what the theme is built out of from a
+                # page listing optional extras is a footgun, and turning it off
+                # is already the reversible way to get the same look.
+                button = Gtk.Button(icon_name="user-trash-symbolic",
+                                    valign=Gtk.Align.CENTER,
+                                    tooltip_text="Remove this extension")
+                button.add_css_class("flat")
+                button.connect("clicked", self._on_ext_action, entry["uuid"],
+                               "remove")
+                row.add_prefix(button)
+
+            group.add(row)
+            self._ext_rows.append((group, row))
+
+    def _on_ext_toggled(self, row, _param):
+        self._run_ext("enable" if row.get_active() else "disable", row._uuid,
+                      title="Enabling" if row.get_active() else "Disabling")
+
+    def _on_ext_action(self, _button, uuid, action):
+        self._run_ext(action, uuid,
+                      title="Installing" if action == "install" else "Removing")
+
+    def _on_ext_pack(self, _button, pack):
+        self._run_ext(pack, None, title="Fitting the %s pack" % pack)
+
+    def _run_ext(self, action, uuid, title):
+        if self._repo is None:
+            self._toasts.add_toast(Adw.Toast(
+                title="The aura-glass checkout is gone"))
+            return
+        argv = ["bash", os.path.join(self._repo, "bin", "aura-glass-ext"),
+                action]
+        if uuid:
+            argv.append(uuid)
+
+        def done(_ok):
+            # Re-read rather than assume: an extension can install and still
+            # decline to enable until the next login, and the row should say
+            # which of those happened.
+            self._rebuild_extensions()
+
+        ApplyDialog(self._repo, [], done, title=title,
+                    description="gnome-extensions is doing this, under your "
+                                "home directory. No password needed.",
+                    argv=argv).present(self)
+
     # ---- things that need root ---------------------------------------------
 
     def run_in_terminal(self, command, what):
@@ -1648,7 +1827,7 @@ class Window(Adw.ApplicationWindow):
                 # The shortest name in the pair reads as the pack's own name:
                 # Reversal-purple rather than Reversal-purple-dark.
                 title = min(entry["names"], key=len)
-                row = Adw.ActionRow(title=title)
+                row = plain_row(Adw.ActionRow(), title)
                 row._paths = entry["paths"]
                 row._in_use = entry["in_use"]
                 row._sized = False

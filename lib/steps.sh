@@ -98,6 +98,17 @@ EXT_EXTRA=("${EXT_EXTRA_RECOMMENDED[@]}")
 # Helper to describe an extension UUID
 ext_description() {
     case "$1" in
+        # The four the theme is built out of. They had no entry here while this
+        # was only read for the optional tiers; the settings window lists them
+        # too, and a row titled with a bare UUID is not a description.
+        user-theme@gnome-shell-extensions.gcampax.github.com)
+            printf 'User Themes — lets the shell load a theme from your home directory' ;;
+        openbar@neuromorph)
+            printf 'Open Bar — paints the panel, menus and popups this theme styles' ;;
+        blur-my-shell@aunetx)
+            printf 'Blur My Shell — the blur behind windows, popups and the panel' ;;
+        custom-osd@neuromorph)
+            printf 'Custom OSD — the volume and brightness pill' ;;
         just-perfection-desktop@just-perfection)
             printf 'Just Perfection — GNOME UI tweaker & visibility manager' ;;
         gnome-ui-tune@itstime.tech)
