@@ -129,9 +129,11 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
     --icons WHICH     colloid (default) or reversal, either bare to follow
                       --accent or with a colour of its own: colloid-teal,
                       reversal-purple. Colloid takes accent names, Reversal its
-                      own ($VALID_REVERSAL).
+                      own ($VALID_REVERSAL). Or original, for whatever was set
+                      before aura-glass first ran here.
                       Remembered for later runs
-    --cursors WHICH   adwaita (default, ships with GNOME) or mactahoe
+    --cursors WHICH   adwaita (default, ships with GNOME), mactahoe, or original
+                      (whatever was set before aura-glass first ran here)
     --osd             minimal pill OSD for volume & brightness (default: on)
     --no-osd          keep stock volume and brightness popup
     --no-popup-blur   keep flat translucent popups and skip blur behind menus
@@ -620,8 +622,8 @@ if [ -z "$CURSORS" ] && [ -r "$CONF_DIR/cursor-pack" ]; then
 fi
 CURSORS="${CURSORS:-adwaita}"
 case "$CURSORS" in
-    adwaita|mactahoe) ;;
-    *) die "unknown --cursors '$CURSORS' — pick adwaita or mactahoe" ;;
+    adwaita|mactahoe|original) ;;
+    *) die "unknown --cursors '$CURSORS' — pick adwaita, mactahoe or original" ;;
 esac
 
 if [ -z "$ICONS" ] && [ -r "$CONF_DIR/icon-pack" ]; then
@@ -783,7 +785,7 @@ VALID_REVERSAL="default black blue brown cyan green grey lightblue orange pink p
 # already knows that. Asking for colloid-blue and letting that function do the
 # translation keeps one copy of the mapping instead of two.
 case "$ICONS" in
-    colloid|reversal) ;;
+    colloid|reversal|original) ;;
     colloid-*)
         case " $VALID_ACCENTS " in
             *" ${ICONS#colloid-} "*) ;;
@@ -794,7 +796,7 @@ case "$ICONS" in
             *" ${ICONS#reversal-} "*) ;;
             *) die "unknown Reversal colour '${ICONS#reversal-}' — pick one of: $VALID_REVERSAL" ;;
         esac ;;
-    *) die "unknown --icons '$ICONS' — colloid, reversal, or either with -COLOUR" ;;
+    *) die "unknown --icons '$ICONS' — colloid, reversal, original, or a pack with -COLOUR" ;;
 esac
 
 case " $VALID_ACCENTS " in

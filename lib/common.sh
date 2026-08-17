@@ -146,6 +146,45 @@ backup_once() {
     fi
 }
 
+# The same idea as backup_once, for a gsettings key rather than a file: record
+# what was there the first time and never touch the record again.
+#
+# It exists so that --icons original and --cursors original have something to
+# mean. "Keep current" is a choice not to touch whatever is set right now, which
+# after one install is this theme's own pack — there was no way back to what the
+# machine looked like before, because nothing had written it down.
+#
+# The honest limit, and the row in the window says it: this can only capture the
+# first time *this code* runs. On a machine that already has aura-glass on it,
+# the first run after upgrading records the pack aura-glass installed, and
+# "original" means that rather than something older. Nothing can recover a state
+# nobody recorded.
+gsettings_backup_once() {
+    local schema="$1" key="$2" name="$3"
+    local dst="$BACKUP_DIR/$name.gsettings-orig"
+    [ -e "$dst" ] && return 0
+
+    local current
+    current="$(gsettings get "$schema" "$key" 2>/dev/null || true)"
+    [ -n "$current" ] || return 0
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        printf '    %sdry-run:%s remember %s %s = %s\n' \
+            "$C_DIM" "$C_OFF" "$schema" "$key" "$current"
+        return 0
+    fi
+    mkdir -p "$BACKUP_DIR"
+    # Unquoted: gsettings prints strings as 'Adwaita', and every reader of this
+    # wants the name rather than the GVariant spelling of it.
+    current="${current#\'}"; current="${current%\'}"
+    printf '%s\n' "$current" > "$dst"
+}
+
+# What gsettings_backup_once recorded, or nothing if it never ran.
+gsettings_original() {
+    cat "$BACKUP_DIR/$1.gsettings-orig" 2>/dev/null || true
+}
+
 gnome_major() {
     local v
     v="$(gnome-shell --version 2>/dev/null | grep -oE '[0-9]+' | head -1)" || return 1

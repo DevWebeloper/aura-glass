@@ -203,6 +203,18 @@ CASES = [
      state(icons="colloid-teal", accent="pink"),
      ["--accent", "pink", "--icons", "colloid-teal"]),
 
+    # "Keep current" and "Original" are different answers: keep is --no-icons,
+    # a choice not to touch whatever is set now, and original goes back to the
+    # snapshot preflight took before aura-glass first ran.
+    ("icons back to the ones from before aura-glass", FROSTED,
+     state(icons="original"), ["--icons", "original"]),
+
+    ("pointer back to the one from before aura-glass", FROSTED,
+     state(cursors="original"), ["--cursors", "original"]),
+
+    ("original is not the same as keeping the current one",
+     state(icons="original"), state(icons="keep"), ["--no-icons"]),
+
     ("keep the icons as they are", FROSTED, state(icons="keep"), ["--no-icons"]),
 
     ("mactahoe pointer", FROSTED, state(cursors="mactahoe"),

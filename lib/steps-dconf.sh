@@ -509,6 +509,12 @@ apply_gsettings() {
        && { [ -d "$HOME/.local/share/icons/MacTahoe-dark" ] \
             || [ -d "/usr/share/icons/MacTahoe-dark" ]; }; then
         cursor='MacTahoe-dark'
+    elif [ "${CURSORS:-adwaita}" = original ]; then
+        # Adwaita if nothing was recorded, which is also GNOME's own default —
+        # so the fallback is the same answer uninstall.sh's gsettings reset
+        # would give.
+        local o; o="$(gsettings_original cursor-theme)"
+        cursor="${o:-Adwaita}"
     fi
     run gsettings set org.gnome.desktop.interface cursor-theme "$cursor"
 

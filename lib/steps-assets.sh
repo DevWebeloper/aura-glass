@@ -64,6 +64,12 @@ icon_base() {
             local n; n="$(accent_to_colloid_name "$(colloid_color)")"
             n="${n%-Dark}"; n="${n%-Light}"
             printf '%s\n' "$n" ;;
+        # Whatever was set before aura-glass first ran here. Falls back to
+        # Adwaita rather than to this theme's own pack: "original" that
+        # quietly resolved to Colloid would be the opposite of what it says.
+        original)
+            local o; o="$(gsettings_original icon-theme)"
+            printf '%s\n' "${o:-Adwaita}" ;;
         reversal)        printf 'Reversal\n' ;;
         reversal-*)      printf 'Reversal-%s\n' "${ICONS#reversal-}" ;;
         *)               printf '%s\n' "$ICONS" ;;
@@ -211,6 +217,18 @@ install_icons() {
     remember_icon_pack
     case "${ICONS:-colloid}" in
         reversal|reversal-*) install_reversal; return ;;
+        original)
+            # Nothing to fetch — the theme being restored to was already on the
+            # machine before this one was. apply_gsettings reads icon_base and
+            # points the key back at it.
+            step "Icons"
+            local o; o="$(gsettings_original icon-theme)"
+            if [ -n "$o" ]; then
+                ok "restoring $o, the icon theme from before aura-glass"
+            else
+                warn "no icon theme was recorded before aura-glass — using Adwaita"
+            fi
+            return 0 ;;
     esac
 
     local color; color="$(colloid_color)"
@@ -244,6 +262,18 @@ install_cursors() {
     if [ "${CURSORS:-adwaita}" = adwaita ]; then
         step "Cursors"
         skip "using the stock Adwaita cursors (--cursors mactahoe for the macOS set)"
+        return 0
+    fi
+
+    # Same as the icons: the pointer being restored to was already here.
+    if [ "${CURSORS:-adwaita}" = original ]; then
+        step "Cursors"
+        local o; o="$(gsettings_original cursor-theme)"
+        if [ -n "$o" ]; then
+            ok "restoring $o, the pointer from before aura-glass"
+        else
+            warn "no pointer was recorded before aura-glass — using Adwaita"
+        fi
         return 0
     fi
 

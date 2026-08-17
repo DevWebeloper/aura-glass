@@ -141,10 +141,17 @@ def percent_to_level(percent):
 # entry rather than nine; Reversal ships a colour per accent and is named for the
 # one it is built with. "Keep current" is --no-icons: the pack on the system now,
 # whatever it is, left alone.
+# "Keep current" and "Original" are different answers and both are worth having.
+# Keep is a choice not to touch whatever is set right now, whatever that is —
+# which after one install is this theme's own pack. Original goes back to what
+# the machine had before aura-glass first ran on it, from the snapshot
+# gsettings_backup_once takes in preflight.
 ICON_PACKS = [
     ("colloid", "Colloid", "Folder icons in a colour of their own"),
     ("reversal", "Reversal", "macOS-style circular icons"),
-    ("keep", "Keep current", "Leave the icon theme alone"),
+    ("keep", "Keep current", "Leave the icon theme alone, whatever it is now"),
+    ("original", "Original", "Back to the icon theme from before aura-glass, "
+                             "captured the first time this version ran here"),
 ]
 
 # The colour the icons are built in, which is not the accent. install.sh has
@@ -164,14 +171,16 @@ ICON_COLORS = {
         (c, c.capitalize(), "") for c in
         ("default", "black", "blue", "brown", "cyan", "green", "grey",
          "lightblue", "orange", "pink", "purple", "red")],
+    # Neither of these is a pack with colours to pick from.
     "keep": [ICON_COLOR_FOLLOW],
+    "original": [ICON_COLOR_FOLLOW],
 }
 
 
 def split_icons(value):
     """"colloid-teal" as ("colloid", "teal"). A bare family follows the accent."""
-    if value == "keep":
-        return "keep", ""
+    if value in ("keep", "original"):
+        return value, ""
     family, _, color = value.partition("-")
     if family not in ("colloid", "reversal"):
         return "colloid", ""
@@ -182,14 +191,16 @@ def split_icons(value):
 
 def join_icons(family, color):
     """The other way, and the spelling install.sh's --icons takes."""
-    if family == "keep" or not color:
+    if family in ("keep", "original") or not color:
         return family
     return "%s-%s" % (family, color)
 
 CURSOR_PACKS = [
     ("adwaita", "Adwaita", "Ships with GNOME. Crisper at every size"),
     ("mactahoe", "MacTahoe", "The macOS pointer set"),
-    ("keep", "Keep current", "Leave the cursor theme alone"),
+    ("keep", "Keep current", "Leave the cursor theme alone, whatever it is now"),
+    ("original", "Original", "Back to the pointer from before aura-glass, "
+                             "captured the first time this version ran here"),
 ]
 
 # What install.sh calls the three answers. It was a dropdown once; it is two
@@ -1469,9 +1480,10 @@ class Window(Adw.ApplicationWindow):
         self._transparency_row.set_sensitive(live)
         self._transparency_bar.set_sensitive(live)
 
-        # Nothing to colour when the icon theme is being left alone.
+        # Neither "keep" nor "original" is a pack with colours to pick from.
         self._icon_color_row.set_sensitive(
-            self._icons_row._ids[self._icons_row.get_selected()] != "keep")
+            self._icons_row._ids[self._icons_row.get_selected()]
+            not in ("keep", "original"))
 
     def _mark_dirty(self):
         dirty = bool(self._current().flags_against(self._applied))

@@ -162,6 +162,12 @@ preflight() {
     esac
 
     run mkdir -p "$CONF_DIR" "$BACKUP_DIR" "$SRC_CACHE" "$EXT_DIR"
+
+    # Before anything is applied, and only ever the first time: this is what
+    # --icons original and --cursors original restore to. Idempotent after that,
+    # like the backup_once calls in install_theme.
+    gsettings_backup_once org.gnome.desktop.interface icon-theme icon-theme
+    gsettings_backup_once org.gnome.desktop.interface cursor-theme cursor-theme
 }
 
 # ------------------------------------------------------------------- theme --
