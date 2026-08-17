@@ -119,3 +119,54 @@ entry.warning {
 entry.warning:focus-within {
   box-shadow: 0 0 0 2px alpha(@warning_color, 0.30);
 }
+
+/* ---------- The number pickers in a preferences list ----------
+ * AdwSpinRow is not a row with a field in it. It puts a real `spinbutton` node
+ * in its suffix box, hexpanding, and libadwaita paints that node with nothing
+ * at all — `row.spin spinbutton { background: none }`. The row is the surface;
+ * the number and its two buttons sit directly on it.
+ *
+ * The field material above matched that node anyway. A spin row is horizontal,
+ * so `:not(.vertical)` does not exclude it, and every metric in that rule
+ * landed on it: a 34px pill with 12px of side padding, stretched across
+ * whatever width the row's title and subtitle left over — which is why no two
+ * of them were the same width — plus a second focus ring drawn inside the
+ * row's own accent outline.
+ *
+ * libadwaita's rule is the more specific of the two and still loses, because
+ * this sheet is read from ~/.config/gtk-4.0/gtk.css at USER priority, above any
+ * theme provider. Specificity only decides between rules at the same priority,
+ * so the field material has to be handed back here rather than left to the
+ * theme to reclaim.
+ *
+ * Scoped to `row.spin`, which is the class libadwaita puts on AdwSpinRow alone.
+ * A plain GtkSpinButton dropped into an ordinary action row is still a field
+ * and still wants the material above.
+ */
+row.spin spinbutton {
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  background-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* The state rules above are separate declarations and outlive the reset, so
+ * each one needs answering. `row.spin spinbutton:hover` carries two classes to
+ * `spinbutton:not(.vertical):hover`'s two and one more element, so these win on
+ * specificity as well as on order.
+ */
+row.spin spinbutton:hover,
+row.spin spinbutton:focus-within {
+  background-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* libadwaita dims the whole row when it is insensitive. Dimming the spinbutton
+ * again on top of that would only make the number fainter than its own title.
+ */
+row.spin spinbutton:disabled {
+  opacity: 1;
+}
