@@ -77,7 +77,7 @@ if { [ "$EXPLICIT_FLAGS" = 0 ] || [ "$FORCE_INTERACTIVE" = 1 ]; } && [ "$ASSUME_
 
 ${C_BLD}Choose uninstall scope:${C_OFF}
   ${C_BLD}[1]${C_OFF} Revert styling only (keep downloaded extensions & icon assets) ${C_DIM}[Default]${C_OFF}
-  ${C_BLD}[2]${C_OFF} Revert styling + Remove Tahoe extensions
+  ${C_BLD}[2]${C_OFF} Revert styling + Remove Aura Glass extensions
   ${C_BLD}[3]${C_OFF} Full wipe (Revert styling, delete extensions, downloaded themes, icons & backups)
   ${C_BLD}[4]${C_OFF} Cancel
 

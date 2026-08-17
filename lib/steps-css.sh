@@ -145,7 +145,7 @@ install_css() {
     step "Installing the CSS tweaks"
 
     # The shell and gtk4 sheets are split by concern, and the numeric prefix is
-    # the cascade order tahoe-glass-apply concatenates them in. Copy whatever
+    # the cascade order aura-glass-apply concatenates them in. Copy whatever
     # css/ actually holds rather than naming each one twice.
     local sheet
     for sheet in "$REPO_ROOT"/css/shell-[0-9][0-9]-*.css \

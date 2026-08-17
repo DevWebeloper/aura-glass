@@ -120,7 +120,7 @@ clone_pinned() {
     run git -C "$dest" clean --quiet -fdx
 }
 
-# Back up a file once, keeping the first (pre-tahoe-glass) copy forever.
+# Back up a file once, keeping the first (pre-aura-glass) copy forever.
 # The third argument names the backup, because several of the files we touch
 # are called gtk.css and would otherwise overwrite each other.
 backup_once() {

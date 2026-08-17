@@ -115,7 +115,7 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
     --no-blur         solid mode: no blur anywhere, opaque surfaces instead of
                       translucent ones (best for low-end GPUs or battery saver)
     --no-rounded-blur skip gnome-rounded-blur library (popup blur falls back to static)
-    --gdm             theme the GDM login screen with blurred Tahoe style (requires sudo)
+    --gdm             theme the GDM login screen with blurred Aura Glass style (requires sudo)
     --gdm-background PATH
                       set custom background image for GDM (default: blurred wallpaper)
     --no-gdm          do not theme the GDM login screen (default)
@@ -432,7 +432,7 @@ EOF
     # 5. GDM Login Screen Theme
     if have gdm || have gdm3 || [ -e /usr/sbin/gdm3 ]; then
         printf '%sStep 5: GDM Login Screen Theme%s\n' "$C_BLD" "$C_OFF"
-        printf '  Theme GDM login screen with Tahoe glass (dynamic desktop wallpaper sync, requires sudo)? [y/N]: '
+        printf '  Theme GDM login screen with Aura Glass (dynamic desktop wallpaper sync, requires sudo)? [y/N]: '
         read -r ans_gdm || ans_gdm="n"
         case "${ans_gdm,,}" in
             y|yes)
@@ -476,7 +476,7 @@ EOF
     osd_desc="Pill OSD"
     [ "$WANT_OSD" = 0 ] && osd_desc="Stock GNOME"
     gdm_desc="Stock (Untouched)"
-    [ "$WANT_GDM" = 1 ] && gdm_desc="Tahoe Glass (syncs desktop wallpaper)"
+    [ "$WANT_GDM" = 1 ] && gdm_desc="Aura Glass (syncs desktop wallpaper)"
     mon_desc="System default"
     [ "$WANT_GDM_MONITORS" = 1 ] && mon_desc="Synced from ~/.config/monitors.xml (multi-monitor fix)"
 
