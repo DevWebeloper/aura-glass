@@ -119,6 +119,7 @@ apply_app_opacity() {
 apply_app_blur() {
     local base=/org/gnome/shell/extensions/blur-my-shell
     local want="${WANT_WINDOW_BLUR:-1}" memo="$CONF_DIR/window-blur"
+    local scope="${APP_BLUR_SCOPE:-gtk}" scope_memo="$CONF_DIR/app-blur-scope"
 
     if [ "${WANT_BLUR:-1}" != 1 ]; then
         run dconf write "$base/applications/blur" false
@@ -131,9 +132,15 @@ apply_app_blur() {
         want="${want:-1}"
     fi
 
+    if [ -z "${APP_BLUR_SCOPE_EXPLICIT:-}" ] && [ -r "$scope_memo" ]; then
+        scope="$(cat "$scope_memo" 2>/dev/null || true)"
+        scope="${scope:-gtk}"
+    fi
+
     if [ "${DRY_RUN:-0}" != 1 ]; then
         mkdir -p "$CONF_DIR"
         printf '%s\n' "$want" > "$memo"
+        printf '%s\n' "$scope" > "$scope_memo"
     fi
 
     if [ "$want" != 1 ]; then
@@ -142,8 +149,18 @@ apply_app_blur() {
         return 0
     fi
 
-    run dconf write "$base/applications/blur" true
-    ok "window blur on behind app windows"
+    if [ "$scope" = "all" ]; then
+        run dconf write "$base/applications/enable-all" true
+        run dconf write "$base/applications/blacklist" "['Plank', 'com.desktop.ding', 'Conky', 'Brave-browser', 'vesktop']"
+        run dconf write "$base/applications/blur" true
+        ok "window blur on for ALL applications (enable-all: true)"
+    else
+        run dconf write "$base/applications/enable-all" false
+        run dconf write "$base/applications/whitelist" "['org.gnome.Nautilus', 'org.gnome.Settings', 'gnome-control-center', 'org.gnome.TextEditor', 'org.gnome.SystemMonitor', 'org.gnome.Calculator', 'org.gnome.Extensions', 'org.gnome.Tweaks', 'org.gnome.Ptyxis', 'org.gnome.Console', 'gnome-terminal', 'org.gnome.DiskUtility', 'org.gnome.Logs', 'org.gnome.Calendar', 'org.gnome.Weather', 'org.gnome.Clocks', 'org.gnome.Characters', 'org.gnome.FontViewer', 'org.gnome.Loupe', 'org.gnome.Snapshot', 'io.bassi.Amberol', 'com.raggesilver.BlackBox']"
+        run dconf write "$base/applications/blacklist" "['*chrome*', '*google-chrome*', '*chromium*', '*discord*', '*vesktop*', '*brave*', '*firefox*', '*code*', '*antigravity*', '*steam*', '*spotify*', '*electron*', 'Plank', 'com.desktop.ding', 'Conky']"
+        run dconf write "$base/applications/blur" true
+        ok "window blur on behind whitelisted GTK / GNOME applications (Nautilus, Settings, Terminal, etc.)"
+    fi
     if [ -z "${APP_TRANSPARENCY:-}" ] || [ "${APP_TRANSPARENCY:-0}" = 0 ]; then
         warn "without --app-transparency the windows stay 94% opaque, so very"
         warn "little of that blur will be visible for what it costs"

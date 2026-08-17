@@ -52,10 +52,13 @@ WANT_BMS_GIT=1
 WANT_BLUR=1
 WANT_WINDOW_BLUR=1
 WINDOW_BLUR_EXPLICIT=""
+APP_BLUR_SCOPE="gtk"     # gtk (default, whitelisted GTK/GNOME apps) | all
+APP_BLUR_SCOPE_EXPLICIT=""
 WANT_POPUP_BLUR=1
 POPUP_BLUR_EXPLICIT=""
 WANT_ROUNDED_BLUR=1
 APP_TRANSPARENCY=""   # empty = remembered choice, then off (e.g. 0.90 / 90%)
+APP_TRANSPARENCY_EXPLICIT=""
 APP_OPACITY=""        # empty = remembered choice, then 255 (e.g. 230)
 APP_OPACITY_EXPLICIT=""
 CURSORS="adwaita"   # adwaita | mactahoe
@@ -110,8 +113,10 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
     --window-opacity LEVEL
                       alias for --app-transparency (e.g. 90%, 82%, 94%, 230, 210, 240)
     --no-app-transparency keep app windows opaque (default)
-    --window-blur     blur behind app windows (heavy on GPU, off by default)
-    --no-window-blur  keep window blur off (default)
+    --window-blur     blur behind app windows (default: on behind GTK/GNOME apps)
+    --gtk-apps-blur   blur behind GTK / GNOME applications only (Files, Settings, Terminal - default, low CPU)
+    --all-apps-blur   blur behind all application windows (heavy on CPU/GPU)
+    --no-window-blur  keep window blur off (opaque windows)
     --no-blur         solid mode: no blur anywhere, opaque surfaces instead of
                       translucent ones (best for low-end GPUs or battery saver)
     --no-rounded-blur skip gnome-rounded-blur library (popup blur falls back to static)
@@ -165,19 +170,27 @@ while [ $# -gt 0 ]; do
                          POPUP_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-popup-blur) WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --blur)          WANT_BLUR=1; EXPLICIT_FLAGS=1; shift ;;
+        --all-apps-blur|--all-app-blur)
+                         WANT_WINDOW_BLUR=1; WINDOW_BLUR_EXPLICIT=1; APP_BLUR_SCOPE="all"; APP_BLUR_SCOPE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --gtk-apps-blur|--gtk-app-blur)
+                         WANT_WINDOW_BLUR=1; WINDOW_BLUR_EXPLICIT=1; APP_BLUR_SCOPE="gtk"; APP_BLUR_SCOPE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --app-blur-scope)
+                         APP_BLUR_SCOPE="${2:-gtk}"; APP_BLUR_SCOPE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --app-blur-scope=*)
+                         APP_BLUR_SCOPE="${1#*=}"; APP_BLUR_SCOPE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --window-blur)   WANT_WINDOW_BLUR=1; WINDOW_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-window-blur) WANT_WINDOW_BLUR=0; WINDOW_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-window-blur) WANT_WINDOW_BLUR=0; WINDOW_BLUR_EXPLICIT=1; APP_BLUR_SCOPE="none"; APP_BLUR_SCOPE_EXPLICIT=1; [ -z "$APP_TRANSPARENCY_EXPLICIT" ] && APP_TRANSPARENCY=0.95; EXPLICIT_FLAGS=1; shift ;;
         --no-blur)       WANT_BLUR=0; WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1
                          WANT_WINDOW_BLUR=0; WINDOW_BLUR_EXPLICIT=1
                          WANT_ROUNDED_BLUR=0; EXPLICIT_FLAGS=1; shift ;;
         --rounded-blur)      WANT_ROUNDED_BLUR=1; EXPLICIT_FLAGS=1; shift ;;
         --no-rounded-blur)   WANT_ROUNDED_BLUR=0; EXPLICIT_FLAGS=1; shift ;;
         --app-transparency|--window-opacity|--window-transparency)
-                         APP_TRANSPARENCY="${2:-$TOKEN_APP_TRANSPARENCY_SHIPPED}"; EXPLICIT_FLAGS=1; APP_OPACITY_EXPLICIT=1; shift 2 ;;
+                         APP_TRANSPARENCY="${2:-$TOKEN_APP_TRANSPARENCY_SHIPPED}"; APP_TRANSPARENCY_EXPLICIT=1; EXPLICIT_FLAGS=1; APP_OPACITY_EXPLICIT=1; shift 2 ;;
         --app-transparency=*|--window-opacity=*|--window-transparency=*)
-                         APP_TRANSPARENCY="${1#*=}"; EXPLICIT_FLAGS=1; APP_OPACITY_EXPLICIT=1; shift ;;
+                         APP_TRANSPARENCY="${1#*=}"; APP_TRANSPARENCY_EXPLICIT=1; EXPLICIT_FLAGS=1; APP_OPACITY_EXPLICIT=1; shift ;;
         --no-app-transparency|--no-window-opacity|--no-window-transparency)
-                         APP_TRANSPARENCY=0; APP_OPACITY=255; EXPLICIT_FLAGS=1; APP_OPACITY_EXPLICIT=1; shift ;;
+                         APP_TRANSPARENCY=0; APP_TRANSPARENCY_EXPLICIT=1; APP_OPACITY=255; EXPLICIT_FLAGS=1; APP_OPACITY_EXPLICIT=1; shift ;;
         --gdm)           WANT_GDM=1; EXPLICIT_FLAGS=1; shift ;;
         --no-gdm)        WANT_GDM=0; EXPLICIT_FLAGS=1; shift ;;
         --gdm-monitors|--sync-monitors) WANT_GDM_MONITORS=1; EXPLICIT_FLAGS=1; shift ;;
@@ -278,45 +291,64 @@ EOF
                     ;;
             esac
 
-            # Question 2: Window blur & transparency (default: Yes)
-            printf '  Enable blur & transparency for app windows (IDE, editor, files)? %s[Y/n, default: Y]%s: ' "$C_DIM" "$C_OFF"
-            read -r ans_win || ans_win="y"
-            case "${ans_win,,}" in
-                n|no)
+            # Question 2: App window blur target scope
+            printf '\n  App Window Blur Target:\n'
+            printf '    %s[1]%s GTK / GNOME Applications only %s[Default — Files, Settings, Terminal (Low CPU)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+            printf '    %s[2]%s All Applications %s[Heavy — blurs browsers, Electron, Discord]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+            printf '    %s[3]%s No blur on windows %s[95%% subtle translucency, crisp text, 0 CPU overhead]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+            printf '  Choice [1-3, default: 1]: '
+            read -r ans_scope || ans_scope="1"
+            case "$ans_scope" in
+                3|disabled|off|none|no|n|no-blur)
                     WANT_WINDOW_BLUR=0
                     WINDOW_BLUR_EXPLICIT=1
-                    APP_TRANSPARENCY=0
+                    APP_BLUR_SCOPE="none"
+                    APP_BLUR_SCOPE_EXPLICIT=1
+                    APP_TRANSPARENCY=0.95
                     APP_OPACITY=255
-                    printf '  %s✓%s App window blur disabled (opaque windows)\n\n' "$C_GRN" "$C_OFF"
+                    printf '  %s✓%s Window blur disabled; app transparency set to 95%% (readable text)\n\n' "$C_GRN" "$C_OFF"
+                    ;;
+                2|all|every)
+                    WANT_WINDOW_BLUR=1
+                    WINDOW_BLUR_EXPLICIT=1
+                    APP_BLUR_SCOPE="all"
+                    APP_BLUR_SCOPE_EXPLICIT=1
+                    printf '  %s✓%s Window blur enabled for ALL applications (Heavy CPU/GPU)\n' "$C_GRN" "$C_OFF"
                     ;;
                 *)
                     WANT_WINDOW_BLUR=1
                     WINDOW_BLUR_EXPLICIT=1
-                    printf '\n  Choose Window Transparency Level:\n'
-                    printf '    %s[1]%s 90%% Opacity %s[Default — balanced frosted glass (230)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-                    printf '    %s[2]%s 82%% Opacity %s[Deep glass, more transparent (210)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-                    printf '    %s[3]%s 94%% Opacity %s[Subtle glass, light translucency (240)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-                    printf '  Choice [1-3 or %%, default: 1 (90%%)]: '
-                    read -r ans_trans || ans_trans="1"
-                    case "$ans_trans" in
-                        2|82|82%|0.82|210)
-                            APP_TRANSPARENCY=0.82
-                            APP_OPACITY=210
-                            printf '  %s✓%s Window transparency set to 82%% (Deep Glass, 210)\n\n' "$C_GRN" "$C_OFF"
-                            ;;
-                        3|94|94%|0.94|240)
-                            APP_TRANSPARENCY=0.94
-                            APP_OPACITY=240
-                            printf '  %s✓%s Window transparency set to 94%% (Subtle Glass, 240)\n\n' "$C_GRN" "$C_OFF"
-                            ;;
-                        *)
-                            APP_TRANSPARENCY=0.90
-                            APP_OPACITY=230
-                            printf '  %s✓%s Window transparency set to 90%% (Balanced Glass, 230)\n\n' "$C_GRN" "$C_OFF"
-                            ;;
-                    esac
+                    APP_BLUR_SCOPE="gtk"
+                    APP_BLUR_SCOPE_EXPLICIT=1
+                    printf '  %s✓%s Window blur enabled for GTK / GNOME applications only\n' "$C_GRN" "$C_OFF"
                     ;;
             esac
+
+            if [ "$WANT_WINDOW_BLUR" = 1 ]; then
+                printf '\n  Choose Window Transparency Level:\n'
+                printf '    %s[1]%s 90%% Opacity %s[Default — balanced frosted glass (230)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+                printf '    %s[2]%s 82%% Opacity %s[Deep glass, more transparent (210)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+                printf '    %s[3]%s 95%% Opacity %s[Subtle glass, crisp and readable text (242)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+                printf '  Choice [1-3 or %%, default: 1 (90%%)]: '
+                read -r ans_trans || ans_trans="1"
+                case "$ans_trans" in
+                    2|82|82%|0.82|210)
+                        APP_TRANSPARENCY=0.82
+                        APP_OPACITY=210
+                        printf '  %s✓%s Window transparency set to 82%% (Deep Glass, 210)\n\n' "$C_GRN" "$C_OFF"
+                        ;;
+                    3|95|95%|0.95|242|94|94%|0.94|240)
+                        APP_TRANSPARENCY=0.95
+                        APP_OPACITY=242
+                        printf '  %s✓%s Window transparency set to 95%% (Subtle Glass, 242)\n\n' "$C_GRN" "$C_OFF"
+                        ;;
+                    *)
+                        APP_TRANSPARENCY=0.90
+                        APP_OPACITY=230
+                        printf '  %s✓%s Window transparency set to 90%% (Balanced Glass, 230)\n\n' "$C_GRN" "$C_OFF"
+                        ;;
+                esac
+            fi
             ;;
     esac
 
@@ -466,8 +498,9 @@ EOF
     [ "$WANT_BLUR" = 0 ] && blur_desc="Solid (No blur)"
     popup_desc="Enabled"
     [ "$WANT_POPUP_BLUR" = 0 ] && popup_desc="Disabled (Flat)"
-    win_desc="Enabled"
-    [ "$WANT_WINDOW_BLUR" = 0 ] && win_desc="Disabled"
+    win_desc="GTK / GNOME Applications only (Low CPU)"
+    [ "$APP_BLUR_SCOPE" = "all" ] && win_desc="All Applications (Heavy)"
+    [ "$WANT_WINDOW_BLUR" = 0 ] && win_desc="Disabled (Opaque)"
     icon_desc="Colloid ($ACCENT)"
     [ "$WANT_ICONS" = 0 ] && icon_desc="Keep current"
     [[ "$ICONS" =~ ^reversal ]] && icon_desc="$ICONS"
@@ -524,12 +557,14 @@ if [ -z "$ICONS" ] && [ -r "$CONF_DIR/icon-pack" ]; then
 fi
 ICONS="${ICONS:-colloid}"
 
-if [ "${WANT_BLUR:-1}" = 0 ] || [ "${WANT_WINDOW_BLUR:-1}" = 0 ]; then
+if [ "${WANT_BLUR:-1}" = 0 ]; then
     APP_TRANSPARENCY=0
     APP_OPACITY=255
 elif [ -z "$APP_TRANSPARENCY" ]; then
     if [ -r "$CONF_DIR/app-transparency" ]; then
         APP_TRANSPARENCY="$(cat "$CONF_DIR/app-transparency" 2>/dev/null || true)"
+    elif [ "${WANT_WINDOW_BLUR:-1}" = 0 ]; then
+        APP_TRANSPARENCY=0.95
     else
         APP_TRANSPARENCY=0.90
     fi
@@ -537,6 +572,10 @@ fi
 if [ -z "$APP_OPACITY" ] && [ -r "$CONF_DIR/app-opacity" ]; then
     APP_OPACITY="$(cat "$CONF_DIR/app-opacity" 2>/dev/null || true)"
 fi
+if [ -z "$APP_BLUR_SCOPE_EXPLICIT" ] && [ -r "$CONF_DIR/app-blur-scope" ]; then
+    APP_BLUR_SCOPE="$(cat "$CONF_DIR/app-blur-scope" 2>/dev/null || true)"
+fi
+APP_BLUR_SCOPE="${APP_BLUR_SCOPE:-gtk}"
 
 if [ -n "$APP_TRANSPARENCY" ]; then
     norm_res="$(python3 - "${APP_TRANSPARENCY:-0}" "${APP_OPACITY:-}" <<'PY'
@@ -571,8 +610,8 @@ if op in (209, 210) or frac == 0.82:
     op, frac = 210, 0.82
 elif op in (229, 230) or frac == 0.90:
     op, frac = 230, 0.90
-elif op in (239, 240) or frac == 0.94:
-    op, frac = 240, 0.94
+elif op in (239, 240, 241, 242, 243) or frac in (0.94, 0.95):
+    op, frac = 242, 0.95
 
 if raw_o:
     try:

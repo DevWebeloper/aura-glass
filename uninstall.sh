@@ -320,6 +320,7 @@ run rm -f "$CONF_DIR"/shell-*.css "$CONF_DIR"/gtk3-*.css "$CONF_DIR"/gtk4-*.css
 run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/popup-blur" \
           "$CONF_DIR/window-blur" \
+          "$CONF_DIR/app-blur-scope" \
           "$CONF_DIR/rounded-blur" \
           "$CONF_DIR/app-transparency" \
           "$CONF_DIR/app-opacity" \
