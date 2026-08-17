@@ -23,6 +23,7 @@ Run it after changing flags_against, and after changing any flag in install.sh
 that the window sends.
 """
 import os
+import re
 import subprocess
 import sys
 
@@ -140,6 +141,38 @@ if os.path.isdir(os.path.join(os.path.expanduser("~"), ".themes", "Tahoe-Dark"))
 else:
     print("check-gui-flags: no ~/.themes/Tahoe-Dark — composition only, "
           "skipping the install.sh acceptance half")
+
+# The transparency bar can land on any whole percent, and each one has to reach
+# both halves of the same setting: the alpha inside a GTK4 window, and the
+# compositor opacity that is all an Electron or browser window has. They drifted
+# apart for every value outside the three buckets until the memo read in
+# install.sh was guarded — the stylesheet moved and the actor stayed where it was
+# last remembered. Nothing in the window could show that; only a window that is
+# half one level and half another, on a machine with both kinds of app open.
+if os.path.isdir(os.path.join(os.path.expanduser("~"), ".themes", "Tahoe-Dark")):
+    LEVEL = re.compile(r"rewrite the transparency sheet to ([0-9.]+)")
+    ACTOR = re.compile(r"actor opacity set to (\d+)")
+    for percent in (70, 75, 82, 88, 90, 93, 95, 100):
+        level = "%.2f" % (percent / 100.0)
+        res = subprocess.run(
+            ["bash", os.path.join(ROOT, "install.sh"), "--settings-only",
+             "--dry-run", "--yes", "--app-transparency", level],
+            capture_output=True, text=True)
+        out = res.stdout + res.stderr
+        got_level, got_actor = LEVEL.search(out), ACTOR.search(out)
+        if not (got_level and got_actor):
+            failures.append("ladder: install.sh reported no level or no actor "
+                            "opacity for %s%%" % percent)
+            continue
+        # install.sh snaps a value that rounds onto a bucket's actor opacity, so
+        # allow the bucket's own number as well as the exact arithmetic one.
+        want = round(float(got_level.group(1)) * 255)
+        if abs(int(got_actor.group(1)) - want) > 1:
+            failures.append(
+                "ladder: at %s%% the stylesheet is %s but the actor opacity is "
+                "%s, which is %s rather than the %s that level means"
+                % (percent, got_level.group(1), got_actor.group(1),
+                   round(int(got_actor.group(1)) / 255 * 100), percent))
 
 if failures:
     print("gui flag check FAILED\n")

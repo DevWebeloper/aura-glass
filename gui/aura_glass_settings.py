@@ -60,14 +60,36 @@ RADIUS_PRESETS = [
     ("pill", "Pill", "As round as the blur behind it allows — 46px windows"),
 ]
 
-# install.sh normalises --app-transparency into exactly these three buckets, plus
-# 0 for off. A memo holding anything else is shown as Custom and left alone.
-TRANSPARENCY = [
-    ("0", "Off", "Opaque app windows"),
-    ("0.82", "82% — deep glass", "Most transparent, softest text"),
-    ("0.90", "90% — balanced", "The default when blur is on"),
-    ("0.95", "95% — subtle", "Crispest text, least see-through"),
+# --app-transparency takes anything from 70% to 100%; install.sh clamps below 70
+# because past that the text stops being readable over a bright wallpaper. The
+# bar covers that whole range rather than offering the three buckets alone.
+TRANSPARENCY_MIN = 70
+TRANSPARENCY_MAX = 100
+
+# The three levels that have been looked at on a screen, marked on the bar so
+# they can be found again. install.sh snaps to them: a value that rounds to
+# their actor opacity is pulled onto the bucket, so 94% installs as 95% and the
+# bar shows 95 after Apply re-reads the memo. That is the truth rather than a
+# rounding error, which is why nothing here tries to hide it.
+TRANSPARENCY_MARKS = [
+    (82, "82%\ndeep"),
+    (90, "90%\nbalanced"),
+    (95, "95%\nsubtle"),
 ]
+
+
+def level_to_percent(level):
+    """A memo value ("0.90") as a bar position (90)."""
+    try:
+        pct = round(float(level) * 100)
+    except (TypeError, ValueError):
+        return 90
+    return max(TRANSPARENCY_MIN, min(TRANSPARENCY_MAX, pct))
+
+
+def percent_to_level(percent):
+    """A bar position (90) as the argument install.sh takes ("0.90")."""
+    return "%.2f" % (percent / 100.0)
 
 BLUR_SCOPES = [
     ("gtk", "GTK / GNOME apps only", "Files, Settings, Terminal. Low cost"),
@@ -379,18 +401,40 @@ class Window(Adw.ApplicationWindow):
             "Blur behind windows", "", BLUR_SCOPES, self._applied.scope, "scope")
         glass.add(self._scope_row)
 
-        transparency = list(TRANSPARENCY)
-        if self._applied.transparency not in [t[0] for t in transparency]:
-            # A level set from the CLI that is not one of the buckets. Shown so
-            # it can be read, and kept selectable so that opening this window
-            # and pressing Apply cannot quietly round it to something else.
-            pct = round(float(self._applied.transparency) * 100)
-            transparency.append((self._applied.transparency,
-                                 "Custom — %d%%" % pct,
-                                 "Set from the command line"))
-        self._transparency_row = self._combo(
-            "Window transparency", "", transparency,
-            self._applied.transparency, "transparency")
+        # Off is its own switch rather than the bottom of the bar. They are not
+        # the same thing: 100% leaves the transparency sheet installed and fully
+        # opaque, while off removes it, and install_transparency_css treats those
+        # differently. A single control would have to pretend otherwise.
+        self._transparency_on = Adw.SwitchRow(
+            title="Translucent app windows",
+            subtitle="Let the blur and the wallpaper through GTK app windows",
+            active=self._applied.transparency != "0")
+        self._transparency_on.connect("notify::active", self._on_changed,
+                                      "transparency")
+        glass.add(self._transparency_on)
+
+        self._transparency_scale = Gtk.Scale.new_with_range(
+            Gtk.Orientation.HORIZONTAL, TRANSPARENCY_MIN, TRANSPARENCY_MAX, 1)
+        self._transparency_scale.set_hexpand(True)
+        self._transparency_scale.set_draw_value(True)
+        self._transparency_scale.set_value_pos(Gtk.PositionType.LEFT)
+        for at, label in TRANSPARENCY_MARKS:
+            self._transparency_scale.add_mark(at, Gtk.PositionType.BOTTOM, label)
+        # Percent, not the 0-255 actor opacity install.sh also understands: the
+        # window is what the user is looking at, and 90% opaque is a thing you
+        # can picture in a way that 230 is not.
+        self._transparency_scale.set_format_value_func(
+            lambda _s, value: "%d%%" % round(value))
+        self._transparency_scale.set_value(
+            level_to_percent(self._applied.transparency))
+        self._transparency_scale.connect("value-changed", self._on_scale_changed)
+
+        self._transparency_row = Adw.ActionRow(
+            title="Opacity",
+            subtitle="Lower is more see-through. Below 70% the text stops "
+                     "holding up over a bright wallpaper, so that is the floor")
+        self._transparency_row.add_suffix(self._transparency_scale)
+        self._transparency_row.set_activatable_widget(self._transparency_scale)
         glass.add(self._transparency_row)
 
         self._popup_row = Adw.SwitchRow(
@@ -421,26 +465,39 @@ class Window(Adw.ApplicationWindow):
         s.radius = self._radius_row._ids[self._radius_row.get_selected()]
         s.blur = self._blur_row.get_active()
         s.scope = self._scope_row._ids[self._scope_row.get_selected()]
-        s.transparency = \
-            self._transparency_row._ids[self._transparency_row.get_selected()]
+        s.transparency = (
+            percent_to_level(round(self._transparency_scale.get_value()))
+            if self._transparency_on.get_active() else "0")
         s.popup_blur = self._popup_row.get_active()
         return s
 
     def _sync_sensitivity(self):
         """Solid mode is the absence of all of it, so the blur rows go dim."""
         on = self._blur_row.get_active()
-        for row in (self._scope_row, self._transparency_row, self._popup_row):
+        for row in (self._scope_row, self._transparency_on, self._popup_row):
             row.set_sensitive(on)
+        # The bar needs both: there is nothing to set a level on in solid mode,
+        # and nothing to set it on when translucency itself is off.
+        self._transparency_row.set_sensitive(
+            on and self._transparency_on.get_active())
+
+    def _mark_dirty(self):
+        dirty = bool(self._current().flags_against(self._applied))
+        self._apply.set_sensitive(dirty and self._repo is not None)
+
+    def _on_scale_changed(self, _scale):
+        if self._loading:
+            return
+        self._mark_dirty()
 
     def _on_changed(self, row, _param, key):
         if self._loading:
             return
         if isinstance(row, Adw.ComboRow):
             self._sync_subtitle(row)
-        if key == "blur":
+        if key in ("blur", "transparency"):
             self._sync_sensitivity()
-        dirty = bool(self._current().flags_against(self._applied))
-        self._apply.set_sensitive(dirty and self._repo is not None)
+        self._mark_dirty()
 
     def _reload(self):
         """Re-read the disk and put the widgets back in step with it."""
@@ -454,9 +511,12 @@ class Window(Adw.ApplicationWindow):
         if self._applied.scope in self._scope_row._ids:
             self._scope_row.set_selected(
                 self._scope_row._ids.index(self._applied.scope))
-        if self._applied.transparency in self._transparency_row._ids:
-            self._transparency_row.set_selected(
-                self._transparency_row._ids.index(self._applied.transparency))
+        self._transparency_on.set_active(self._applied.transparency != "0")
+        # Only when it is on: off is stored as a flat "0", and moving the bar to
+        # 70% because of that would lose the level to come back to.
+        if self._applied.transparency != "0":
+            self._transparency_scale.set_value(
+                level_to_percent(self._applied.transparency))
         self._popup_row.set_active(self._applied.popup_blur)
         self._loading = False
         self._sync_sensitivity()

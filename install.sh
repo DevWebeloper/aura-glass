@@ -590,7 +590,19 @@ elif [ -z "$APP_TRANSPARENCY" ]; then
         APP_TRANSPARENCY=0.90
     fi
 fi
-if [ -z "$APP_OPACITY" ] && [ -r "$CONF_DIR/app-opacity" ]; then
+# Only when this run is not itself deciding the level. --app-transparency sets
+# APP_OPACITY_EXPLICIT precisely so that the actor opacity follows the level it
+# was given, and reading the memo here defeated that: the normalisation below
+# takes a non-empty $APP_OPACITY as final, so `--app-transparency 0.88` rewrote
+# the stylesheet to 0.88 while leaving the actor at the remembered 230.
+#
+# The two are the same setting seen twice — the alpha inside a GTK4 window, and
+# the compositor-level opacity that is all an Electron or browser window has —
+# so they drifting apart means one kind of window is more transparent than the
+# other for no reason a user could see. It went unnoticed while the only levels
+# anyone passed were the three buckets, whose remembered opacity already matched.
+if [ -z "$APP_OPACITY" ] && [ -z "$APP_OPACITY_EXPLICIT" ] \
+   && [ -r "$CONF_DIR/app-opacity" ]; then
     APP_OPACITY="$(cat "$CONF_DIR/app-opacity" 2>/dev/null || true)"
 fi
 if [ -z "$APP_BLUR_SCOPE_EXPLICIT" ] && [ -r "$CONF_DIR/app-blur-scope" ]; then
