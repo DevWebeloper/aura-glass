@@ -76,10 +76,15 @@ TRANSPARENCY_MAX = 100
 # their actor opacity is pulled onto the bucket, so 94% installs as 95% and the
 # bar shows 95 after Apply re-reads the memo. That is the truth rather than a
 # rounding error, which is why nothing here tries to hide it.
+#
+# One word each, and no percentage. They used to read "82%\ndeep" over two
+# lines, which put three numbers along a bar that was already drawing a fourth —
+# the live readout — on top of them. The number moved to the row's own suffix,
+# where it has somewhere to be, and these say the thing the number does not.
 TRANSPARENCY_MARKS = [
-    (82, "82%\ndeep"),
-    (90, "90%\nbalanced"),
-    (95, "95%\nsubtle"),
+    (82, "deep"),
+    (90, "balanced"),
+    (95, "subtle"),
 ]
 
 
@@ -967,29 +972,44 @@ class Window(Adw.ApplicationWindow):
                                       "transparency")
         glass.add(self._transparency_on)
 
+        # The bar gets a row to itself, under the one that names it.
+        #
+        # It used to be a suffix on that row, which left it a few hundred pixels
+        # wide with three two-line mark labels under it and GtkScale's own value
+        # readout drawn over the top — four numbers competing for the same strip
+        # of pixels, and on a narrow window they overlapped into an unreadable
+        # smear. So: the readout moves to the row's suffix as an ordinary label,
+        # the marks lose their percentages, and the bar gets the full width to
+        # spread the three remaining words across.
         self._transparency_scale = Gtk.Scale.new_with_range(
             Gtk.Orientation.HORIZONTAL, TRANSPARENCY_MIN, TRANSPARENCY_MAX, 1)
         self._transparency_scale.set_hexpand(True)
-        self._transparency_scale.set_draw_value(True)
-        self._transparency_scale.set_value_pos(Gtk.PositionType.LEFT)
+        self._transparency_scale.set_draw_value(False)
         for at, label in TRANSPARENCY_MARKS:
             self._transparency_scale.add_mark(at, Gtk.PositionType.BOTTOM, label)
-        # Percent, not the 0-255 actor opacity install.sh also understands: the
-        # window is what the user is looking at, and 90% opaque is a thing you
-        # can picture in a way that 230 is not.
-        self._transparency_scale.set_format_value_func(
-            lambda _s, value: "%d%%" % round(value))
         self._transparency_scale.set_value(
             level_to_percent(self._applied.transparency))
         self._transparency_scale.connect("value-changed", self._on_scale_changed)
+
+        # Percent, not the 0-255 actor opacity install.sh also understands: the
+        # window is what the user is looking at, and 90% opaque is a thing you
+        # can picture in a way that 230 is not.
+        self._transparency_value = Gtk.Label(valign=Gtk.Align.CENTER)
+        self._transparency_value.add_css_class("numeric")
+        self._transparency_value.add_css_class("dim-label")
+        self._sync_transparency_value()
 
         self._transparency_row = Adw.ActionRow(
             title="Opacity",
             subtitle="Lower is more see-through. Below 70% the text stops "
                      "holding up over a bright wallpaper, so that is the floor")
-        self._transparency_row.add_suffix(self._transparency_scale)
-        self._transparency_row.set_activatable_widget(self._transparency_scale)
+        self._transparency_row.add_suffix(self._transparency_value)
         glass.add(self._transparency_row)
+
+        self._transparency_bar = Gtk.Box(margin_start=12, margin_end=12,
+                                         margin_top=4, margin_bottom=4)
+        self._transparency_bar.append(self._transparency_scale)
+        glass.add(self._transparency_bar)
 
         self._popup_row = Adw.SwitchRow(
             title="Blur behind menus and the top bar",
@@ -1213,14 +1233,22 @@ class Window(Adw.ApplicationWindow):
             on and self._window_blur_row.get_active())
         # The bar needs both: there is nothing to set a level on in solid mode,
         # and nothing to set it on when translucency itself is off.
-        self._transparency_row.set_sensitive(
-            on and self._transparency_on.get_active())
+        live = on and self._transparency_on.get_active()
+        self._transparency_row.set_sensitive(live)
+        self._transparency_bar.set_sensitive(live)
 
     def _mark_dirty(self):
         dirty = bool(self._current().flags_against(self._applied))
         self._apply.set_sensitive(dirty and self._repo is not None)
 
+    def _sync_transparency_value(self):
+        self._transparency_value.set_label(
+            "%d%%" % round(self._transparency_scale.get_value()))
+
     def _on_scale_changed(self, _scale):
+        # Outside the loading guard: the readout has to follow the bar even when
+        # the bar was moved by _reload rather than by a hand.
+        self._sync_transparency_value()
         if self._loading:
             return
         self._mark_dirty()
