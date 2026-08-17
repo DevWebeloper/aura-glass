@@ -149,6 +149,50 @@ def read_memo_lines(name):
     return [line.strip() for line in raw.splitlines() if line.strip()]
 
 
+# Typed into the picker's entry, and read back under it as you type. The entry
+# is the only place in the window that asks anyone to know what a wm_class is,
+# so it is the one place worth spending a sentence of prose on.
+#
+# Written from the text as typed rather than from a real parse. What is wanted
+# here is an intention read back — someone who typed "chrome" meaning "anything
+# Chrome" needs to be told it will match only that exact class, and a matcher
+# that agreed with Blur My Shell down to the last case fold would still not tell
+# them that.
+def describe_pattern(text):
+    text = text.strip()
+    if not text:
+        return ""
+    if "," in text:
+        return ("Commas separate entries, so they cannot be part of one. This "
+                "will be added with them dropped.")
+    core = text.strip("*")
+    if not core:
+        return "Only wildcards — that matches every window. Add something to it."
+    lead, trail = text.startswith("*"), text.endswith("*")
+    if lead and trail:
+        return 'Matches any window whose class contains "%s".' % core
+    if trail:
+        return 'Matches any window whose class starts with "%s".' % core
+    if lead:
+        return 'Matches any window whose class ends with "%s".' % core
+    return ('Matches only windows whose class is exactly "%s" — put a * on '
+            'either side to widen it.' % text)
+
+
+# Shown in the picker above the entry. Three, because they are the three shapes
+# the entry takes: one app named outright, a wildcard covering an app that
+# spells itself several ways, and a bare lowercase name that looks like a typo
+# until you know it is not.
+PATTERN_EXAMPLES = [
+    ("org.gnome.Nautilus",
+     "One app, exactly. This is what picking from the list below writes"),
+    ("*chrome*",
+     "Every spelling Chrome uses — google-chrome, Google-chrome, chromium"),
+    ("code",
+     "VS Code, which announces itself under that bare name and no other"),
+]
+
+
 def wm_class_for(appinfo):
     """The wm_class Blur My Shell will most likely see for an installed app.
 
@@ -358,13 +402,18 @@ class Settings:
         if self.popup_blur != other.popup_blur or self.blur != other.blur:
             args.append("--popup-blur" if self.popup_blur else "--no-popup-blur")
 
-        # Only the list the chosen mode actually consults. Sending the other one
-        # too would be harmless — apply_app_blur writes both keys either way —
-        # but it would put a list the user never saw into an argument line they
-        # might read, which is the sort of thing that makes a GUI untrustworthy.
-        if self.allow != other.allow and self.scope == "gtk":
+        # Whichever list changed, consulted by the mode in force or not.
+        #
+        # This used to send only the consulted one, on the grounds that a list
+        # the user had never seen had no business appearing in the argument
+        # line. That held while the window showed one list at a time. It edits
+        # both now — they are two memos that survive every mode switch, and
+        # apply_app_blur writes both keys every run — so the idle list is one
+        # the user did see and did change, and dropping it here would throw the
+        # edit away at the next reload without saying so.
+        if self.allow != other.allow:
             args += ["--app-blur-allow", ",".join(self.allow)]
-        if self.block != other.block and self.scope == "all":
+        if self.block != other.block:
             args += ["--app-blur-block", ",".join(self.block)]
 
         return args
@@ -387,6 +436,7 @@ class AppPickerDialog(Adw.Dialog):
 
         self._entry = Adw.EntryRow(title="Window class or pattern")
         self._entry.connect("entry-activated", self._on_entry)
+        self._entry.connect("changed", self._on_entry_changed)
         add_button = Gtk.Button(icon_name="list-add-symbolic",
                                 valign=Gtk.Align.CENTER,
                                 tooltip_text="Add this pattern")
@@ -395,10 +445,31 @@ class AppPickerDialog(Adw.Dialog):
         self._entry.add_suffix(add_button)
 
         manual = Adw.PreferencesGroup(
-            description="Matched against a window's class, and * is a wildcard "
-                        "— *chrome* covers every spelling Chrome uses. Commas "
-                        "are not allowed, they separate entries.")
+            title="Type it",
+            description="A window's class is the name it gives itself, which is "
+                        "usually not the name on its title bar. * stands for any "
+                        "amount of anything.")
         manual.add(self._entry)
+
+        # Under the entry rather than in the group's description: it answers
+        # what was just typed, so it has to be next to it and has to move.
+        self._preview = Gtk.Label(
+            xalign=0, wrap=True, margin_start=24, margin_end=24, margin_top=2)
+        self._preview.add_css_class("dim-label")
+        self._preview.add_css_class("caption")
+
+        # Fill the entry rather than add outright: the point is to show the
+        # shape, and the preview under it then explains the shape.
+        examples = Adw.PreferencesGroup(title="Or start from one of these")
+        for pattern, what in PATTERN_EXAMPLES:
+            row = Adw.ActionRow(title=pattern, subtitle=what)
+            use = Gtk.Button(label="Use", valign=Gtk.Align.CENTER)
+            use.add_css_class("flat")
+            use.connect("clicked",
+                        lambda _b, p=pattern: self._entry.set_text(p))
+            row.add_suffix(use)
+            row.set_activatable_widget(use)
+            examples.add(row)
 
         self._search = Gtk.SearchEntry(placeholder_text="Search installed apps")
         self._search.connect("search-changed", lambda _e: self._refill())
@@ -410,10 +481,13 @@ class AppPickerDialog(Adw.Dialog):
         self._list.set_margin_bottom(12)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        for widget in (manual, examples):
+            widget.set_margin_start(12)
+            widget.set_margin_end(12)
         manual.set_margin_top(12)
-        manual.set_margin_start(12)
-        manual.set_margin_end(12)
         box.append(manual)
+        box.append(self._preview)
+        box.append(examples)
         self._search.set_margin_start(12)
         self._search.set_margin_end(12)
         box.append(self._search)
@@ -473,12 +547,104 @@ class AppPickerDialog(Adw.Dialog):
         self._on_add(wm)
         self.close()
 
+    def _on_entry_changed(self, _entry):
+        text = self._entry.get_text().strip().replace(",", "")
+        if text and text in self._existing:
+            self._preview.set_label("Already on this list.")
+        else:
+            self._preview.set_label(describe_pattern(self._entry.get_text()))
+
     def _on_entry(self, *_a):
         text = self._entry.get_text().strip().replace(",", "")
         if not text or text in self._existing:
             return
         self._on_add(text)
         self.close()
+
+
+class AppListDialog(Adw.Dialog):
+    """One of the two per-app lists, on its own.
+
+    They used to share a single group in the main window that swapped which
+    list it showed as the blur mode changed. That made the mode look like it
+    owned the lists: switching modes read as the other list having been
+    emptied, when in fact both are separate memos that survive every switch and
+    are editable whatever the mode is. A window each says that instead.
+
+    The list is mutated in place — it is the same object the main window keeps
+    — and on_change is called after every edit so the summary behind this
+    window and the Apply button stay in step with it.
+    """
+
+    def __init__(self, title, description, entries, on_change, active_note):
+        super().__init__(title=title, content_width=480, content_height=560)
+        self._entries = entries
+        self._on_change = on_change
+
+        self._group = Adw.PreferencesGroup(description=description)
+        add = Gtk.Button(icon_name="list-add-symbolic",
+                         valign=Gtk.Align.CENTER, tooltip_text="Add an app")
+        add.add_css_class("flat")
+        add.connect("clicked", self._on_add)
+        self._group.set_header_suffix(add)
+        self._group.set_margin_top(12)
+        self._group.set_margin_start(12)
+        self._group.set_margin_end(12)
+        self._group.set_margin_bottom(12)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        # Shown rather than the window being refused: an inactive list is still
+        # worth editing, and the note is the difference between "not consulted
+        # at the moment" and "does not work".
+        if active_note:
+            box.append(Adw.Banner(title=active_note, revealed=True))
+        box.append(self._group)
+
+        scroller = Gtk.ScrolledWindow(child=box, vexpand=True)
+        view = Adw.ToolbarView(content=scroller)
+        view.add_top_bar(Adw.HeaderBar())
+        self.set_child(view)
+
+        self._rows = []
+        self._rebuild()
+
+    def _rebuild(self):
+        for row in self._rows:
+            self._group.remove(row)
+        self._rows = []
+
+        if not self._entries:
+            row = Adw.ActionRow(title="Nothing listed",
+                                subtitle="Use + to add an app or a pattern")
+            row.set_sensitive(False)
+            self._group.add(row)
+            self._rows.append(row)
+
+        for pattern in self._entries:
+            row = Adw.ActionRow(title=pattern,
+                                subtitle=describe_pattern(pattern))
+            remove = Gtk.Button(icon_name="user-trash-symbolic",
+                                valign=Gtk.Align.CENTER,
+                                tooltip_text="Remove")
+            remove.add_css_class("flat")
+            remove.connect("clicked", self._on_remove, pattern)
+            row.add_suffix(remove)
+            self._group.add(row)
+            self._rows.append(row)
+
+    def _on_add(self, _button):
+        def add(pattern):
+            self._entries.append(pattern)
+            self._rebuild()
+            self._on_change()
+
+        AppPickerDialog(self._entries, add).present(self)
+
+    def _on_remove(self, _button, pattern):
+        if pattern in self._entries:
+            self._entries.remove(pattern)
+            self._rebuild()
+            self._on_change()
 
 
 class ApplyDialog(Adw.Dialog):
@@ -790,24 +956,56 @@ class Window(Adw.ApplicationWindow):
     def _build_apps_page(self):
         page = Adw.PreferencesPage()
 
-        # The per-app list. Which one is shown follows the mode above, because
-        # that is how Blur My Shell reads them: enable-all off consults the allow
-        # list, on consults the block list. Showing both at once would imply they
-        # combine, and they never do.
+        # Both lists, always. Blur My Shell consults one or the other depending
+        # on enable-all, which is the same choice the blur mode makes — but they
+        # are separate memos, apply_app_blur writes both every run, and neither
+        # is emptied by a mode switch. Showing only the active one said the
+        # opposite, which is what made the other look lost.
         self._allow = list(self._applied.allow)
         self._block = list(self._applied.block)
 
-        self._apps_add = Gtk.Button(icon_name="list-add-symbolic",
-                                    valign=Gtk.Align.CENTER,
-                                    tooltip_text="Add an app")
-        self._apps_add.add_css_class("flat")
-        self._apps_add.connect("clicked", self._on_add_app)
-
-        self._apps_group = Adw.PreferencesGroup()
-        self._apps_group.set_header_suffix(self._apps_add)
-        page.add(self._apps_group)
+        self._allow_row = self._list_summary_row(page, "allow")
+        self._block_row = self._list_summary_row(page, "block")
         self._rebuild_app_list()
         return page
+
+    # Title, description and empty-state wording for each list, in one place:
+    # the summary row, the window it opens and the banner in that window all
+    # need them to agree, and three copies of a sentence is how they stop.
+    LIST_TEXT = {
+        "allow": (
+            "Apps to blur",
+            "Consulted while the blur is limited to GTK and GNOME apps. Only "
+            "what is listed gets the blur and the window opacity — Blur My "
+            "Shell applies those together, so an app cannot be translucent "
+            "without also being blurred.",
+            "Empty — nothing would be blurred",
+        ),
+        "block": (
+            "Apps never blurred",
+            "Consulted while every app is blurred. Everything not listed gets "
+            "the blur and the window opacity; these are the exceptions, and "
+            "they are worth having — browsers and Electron apps redraw "
+            "constantly, so a blur behind them is rebuilt constantly.",
+            "Empty — nothing is excluded",
+        ),
+    }
+
+    def _list_summary_row(self, page, which):
+        title, description, _empty = self.LIST_TEXT[which]
+        group = Adw.PreferencesGroup(title=title, description=description)
+        row = Adw.ActionRow(title="Listed apps")
+        row._badge = Gtk.Label(valign=Gtk.Align.CENTER)
+        row._badge.add_css_class("dim-label")
+        row._badge.add_css_class("caption")
+        row.add_suffix(row._badge)
+        edit = Gtk.Button(label="Edit", valign=Gtk.Align.CENTER)
+        edit.connect("clicked", self._on_edit_list, which)
+        row.add_suffix(edit)
+        row.set_activatable_widget(edit)
+        group.add(row)
+        page.add(group)
+        return row
 
     def _build_updates_page(self):
         page = Adw.PreferencesPage()
@@ -856,76 +1054,58 @@ class Window(Adw.ApplicationWindow):
 
     # ---- the per-app list -------------------------------------------------
 
-    def _active_list(self):
-        """The list the chosen mode consults, and the label for it."""
-        if self._scope_row._ids[self._scope_row.get_selected()] == "all":
-            return self._block, "block"
-        return self._allow, "allow"
+    def _list_is_consulted(self, which):
+        """Whether the blur mode as set right now reads this list."""
+        scope = self._scope_row._ids[self._scope_row.get_selected()]
+        if not self._blur_row.get_active() or scope == "none":
+            return False
+        return (scope == "all") == (which == "block")
 
     def _rebuild_app_list(self):
-        """Redraw the rows. Cheap, and the list is short by nature."""
-        entries, which = self._active_list()
+        """Put both summaries back in step with the two lists."""
+        for which, row in (("allow", self._allow_row),
+                           ("block", self._block_row)):
+            entries = self._allow if which == "allow" else self._block
+            _title, _desc, empty = self.LIST_TEXT[which]
 
-        if which == "block":
-            self._apps_group.set_title("Apps never blurred")
-            self._apps_group.set_description(
-                "Everything else gets the blur and the window opacity. These are "
-                "the exceptions — browsers and Electron apps redraw constantly, "
-                "so a blur behind them is rebuilt constantly.")
-        else:
-            self._apps_group.set_title("Apps to blur")
-            self._apps_group.set_description(
-                "Only these get the blur and the window opacity. The same list "
-                "governs both — Blur My Shell applies them together, so an app "
-                "cannot be translucent without also being blurred.")
+            if entries:
+                shown = ", ".join(entries[:3])
+                if len(entries) > 3:
+                    shown += " and %d more" % (len(entries) - 3)
+            else:
+                shown = empty
+            row.set_subtitle(shown)
 
-        for row in getattr(self, "_app_rows", []):
-            self._apps_group.remove(row)
-        self._app_rows = []
+            # A mode switch changes the badge and nothing else: dimming the idle
+            # list would put back the "your list is gone" reading the two groups
+            # exist to fix. Solid mode is the one case that does dim them, and
+            # it is not the same case — there is no blur at all to list apps
+            # for, and flags_against sends nothing past --no-blur, so an edit
+            # made there would be dropped rather than stored.
+            if not self._blur_row.get_active():
+                row.set_sensitive(False)
+                row._badge.set_label("Solid mode — nothing is blurred")
+                continue
+            row.set_sensitive(True)
+            row._badge.set_label("In use" if self._list_is_consulted(which)
+                                 else "Not in use right now")
 
-        if not entries:
-            row = Adw.ActionRow(
-                title="Nothing listed",
-                subtitle=("No app will be blurred" if which == "allow"
-                          else "No app is excluded"))
-            row.set_sensitive(False)
-            self._apps_group.add(row)
-            self._app_rows.append(row)
+    def _on_edit_list(self, _button, which):
+        title, description, _empty = self.LIST_TEXT[which]
+        entries = self._allow if which == "allow" else self._block
 
-        for pattern in entries:
-            row = Adw.ActionRow(title=pattern)
-            if "*" in pattern:
-                row.set_subtitle("Pattern — matches any window class containing it")
-            remove = Gtk.Button(icon_name="user-trash-symbolic",
-                                valign=Gtk.Align.CENTER,
-                                tooltip_text="Remove")
-            remove.add_css_class("flat")
-            remove.connect("clicked", self._on_remove_app, pattern)
-            row.add_suffix(remove)
-            self._apps_group.add(row)
-            self._app_rows.append(row)
-
-        on = (self._blur_row.get_active()
-              and self._scope_row._ids[self._scope_row.get_selected()] != "none")
-        self._apps_group.set_sensitive(on)
-        self._apps_add.set_sensitive(on)
-
-    def _on_add_app(self, _button):
-        entries, _ = self._active_list()
-
-        def add(pattern):
-            entries.append(pattern)
+        def changed():
             self._rebuild_app_list()
             self._mark_dirty()
 
-        AppPickerDialog(entries, add).present(self)
+        note = None
+        if not self._list_is_consulted(which):
+            other = "every app is blurred" if which == "allow" \
+                else "the blur is limited to GTK and GNOME apps"
+            note = ("Kept, but not consulted while %s. Edits are saved either "
+                    "way." % other)
 
-    def _on_remove_app(self, _button, pattern):
-        entries, _ = self._active_list()
-        if pattern in entries:
-            entries.remove(pattern)
-            self._rebuild_app_list()
-            self._mark_dirty()
+        AppListDialog(title, description, entries, changed, note).present(self)
 
     # ---- state ------------------------------------------------------------
 

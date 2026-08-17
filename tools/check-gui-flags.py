@@ -105,25 +105,32 @@ CASES = [
 
     ("popup blur off", FROSTED, state(popup_blur=False), ["--no-popup-blur"]),
 
-    # The per-app lists. Only the one the chosen mode consults goes out: in gtk
-    # mode Blur My Shell reads the allow list and never looks at the block list,
-    # so sending a block list here would put something in the argument line that
-    # cannot affect the result.
+    # The per-app lists. Whichever one changed goes out, whether or not the mode
+    # in force consults it. The window edits both at all times — they are two
+    # memos that survive every mode switch — and apply_app_blur writes both keys
+    # every run, so an edit to the list that is idle right now has a real place
+    # to be stored. Dropping it here would lose it at the next reload instead.
     ("allow list edited, in gtk mode", FROSTED,
      state(allow=["org.gnome.Nautilus"]),
      ["--app-blur-allow", "org.gnome.Nautilus"]),
 
-    ("block list edited in gtk mode is not sent", FROSTED,
-     state(block=["*chrome*"]), []),
+    ("block list edited in gtk mode is still sent", FROSTED,
+     state(block=["*chrome*"]), ["--app-blur-block", "*chrome*"]),
 
     ("block list edited, in all mode", FROSTED,
      state(scope="all", block=["*chrome*", "*firefox*"]),
      ["--all-apps-blur", "--app-transparency", "0.90",
       "--app-blur-block", "*chrome*,*firefox*"]),
 
-    ("allow list edited in all mode is not sent", FROSTED,
+    ("allow list edited in all mode is still sent", FROSTED,
      state(scope="all", allow=["org.gnome.Nautilus"]),
-     ["--all-apps-blur", "--app-transparency", "0.90"]),
+     ["--all-apps-blur", "--app-transparency", "0.90",
+      "--app-blur-allow", "org.gnome.Nautilus"]),
+
+    ("both lists edited at once", FROSTED,
+     state(allow=["org.gnome.Nautilus"], block=["*chrome*"]),
+     ["--app-blur-allow", "org.gnome.Nautilus",
+      "--app-blur-block", "*chrome*"]),
 
     ("emptying the allow list is a real change", FROSTED,
      state(allow=[]), ["--app-blur-allow", ""]),
