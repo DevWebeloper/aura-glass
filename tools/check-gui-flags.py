@@ -163,6 +163,51 @@ CASES = [
 
 failures = []
 
+# Every case above builds a Settings with __new__ and fills it in by hand, which
+# is what makes them fast and independent of the machine — and is exactly why
+# they cannot see a field that Settings.__init__ forgets to set. Two shipped
+# crashes came through that gap: the window read self._applied.update_check on a
+# Settings whose __init__ never assigned it, and py_compile cannot see an
+# attribute that is only ever set at runtime.
+#
+# So build one for real, against a $CONF_DIR that holds nothing, and require it
+# to carry every field the hand-built ones do. An empty directory is the strict
+# case: every value has to come from a default rather than from a memo.
+def check_real_settings():
+    import tempfile
+
+    import aura_glass_settings as mod
+
+    expected = set(vars(state()))
+    original = mod.CONF_DIR
+    try:
+        with tempfile.TemporaryDirectory() as empty:
+            mod.CONF_DIR = empty
+            try:
+                real = mod.Settings()
+            except Exception as exc:                     # noqa: BLE001
+                failures.append("real Settings: __init__ raised on an empty "
+                                "config directory: %r" % exc)
+                return
+            missing = expected - set(vars(real))
+            if missing:
+                failures.append(
+                    "real Settings: __init__ never sets %s — the window reads "
+                    "these, so opening it would raise AttributeError"
+                    % ", ".join(sorted(missing)))
+            # flags_against touches every field; against itself it must be empty
+            # rather than raising.
+            try:
+                if real.flags_against(real):
+                    failures.append("real Settings: differs from itself")
+            except AttributeError as exc:
+                failures.append("real Settings: flags_against raised %r" % exc)
+    finally:
+        mod.CONF_DIR = original
+
+
+check_real_settings()
+
 for label, base, target, want in CASES:
     got = target.flags_against(base)
     if got != want:

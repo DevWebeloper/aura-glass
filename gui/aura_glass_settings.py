@@ -276,6 +276,11 @@ class Settings:
         if self.cursors not in [c[0] for c in CURSOR_PACKS]:
             self.cursors = "adwaita"
 
+        self.update_check = read_memo("update-check", "1") != "0"
+        # Written by bin/aura-glass-update-check, so the window can say what is
+        # waiting without going to the network itself. None means up to date.
+        self.update_available = read_memo("update-available") or None
+
     def flags_against(self, other):
         """The install.sh arguments that turn `other` into `self`.
 
