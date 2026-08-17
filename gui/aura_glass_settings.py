@@ -238,6 +238,7 @@ NAV_SECTIONS = [
     ("icons", "Icons and pointer", "folder-symbolic", "_build_icons_page"),
     ("packages", "Packages", "package-x-generic-symbolic",
      "_build_packages_page"),
+    ("system", "System", "emblem-system-symbolic", "_build_system_page"),
     ("updates", "Updates", "software-update-available-symbolic",
      "_build_updates_page"),
 ]
@@ -321,6 +322,65 @@ def human_size(count):
             return "%.0f %s" % (count, unit) if unit != "GB" \
                 else "%.1f GB" % count
         count /= 1024.0
+
+
+# Terminals, and how each takes a command.
+#
+# They do not agree. gnome-terminal and the two GNOME terminals that followed it
+# take everything after --, konsole and xterm take -e, and kitty and foot take
+# the command as their own trailing arguments. Verified for ptyxis against its
+# own --help on the machine this was written on; the rest are long-settled
+# conventions.
+#
+# Order is "what this desktop most likely has", not preference: $TERMINAL first
+# because someone who set it meant it, then GNOME's own, then the rest.
+TERMINALS = [
+    ("ptyxis",             lambda c: ["ptyxis", "--", "bash", "-c", c]),
+    ("kgx",                lambda c: ["kgx", "--", "bash", "-c", c]),
+    ("gnome-terminal",     lambda c: ["gnome-terminal", "--", "bash", "-c", c]),
+    ("konsole",            lambda c: ["konsole", "-e", "bash", "-c", c]),
+    ("alacritty",          lambda c: ["alacritty", "-e", "bash", "-c", c]),
+    ("kitty",              lambda c: ["kitty", "bash", "-c", c]),
+    ("foot",               lambda c: ["foot", "bash", "-c", c]),
+    ("wezterm",            lambda c: ["wezterm", "start", "--",
+                                      "bash", "-c", c]),
+    ("x-terminal-emulator", lambda c: ["x-terminal-emulator", "-e",
+                                       "bash", "-c", c]),
+    ("xterm",              lambda c: ["xterm", "-e", "bash", "-c", c]),
+]
+
+
+def find_terminal():
+    """(name, argv builder) for a terminal on this machine, or (None, None)."""
+    preferred = os.environ.get("TERMINAL", "").strip()
+    if preferred and shutil.which(preferred):
+        for name, build in TERMINALS:
+            if os.path.basename(preferred) == name:
+                return preferred, build
+        # Something we have no table entry for. -- is the commonest spelling and
+        # the one every GNOME terminal takes, so it is the better guess than -e.
+        return preferred, (lambda c, p=preferred: [p, "--", "bash", "-c", c])
+
+    for name, build in TERMINALS:
+        if shutil.which(name):
+            return name, build
+    return None, None
+
+
+def keep_open(command):
+    """A command, wrapped so the window stays up with its output on screen.
+
+    A terminal that closes the instant the command ends is no better than the
+    in-window log for anything that failed — and these are the runs that ask for
+    a password, so the output is the whole point of using a terminal at all.
+    """
+    return (
+        '%s\n'
+        'status=$?\n'
+        'printf "\\n"\n'
+        'if [ "$status" -eq 0 ]; then printf "Finished.\\n"; '
+        'else printf "Exited with status %%s.\\n" "$status"; fi\n'
+        'read -r -p "Press Enter to close this window. " _\n' % command)
 
 
 def parse_radius_custom(raw):
@@ -1359,6 +1419,164 @@ class Window(Adw.ApplicationWindow):
         group.add(self._window_buttons_row)
         page.add(group)
         return page
+
+    # ---- things that need root ---------------------------------------------
+
+    def run_in_terminal(self, command, what):
+        """Run a command in a real terminal window, and do not wait for it.
+
+        For everything that needs a password. Apply runs install.sh in-window
+        and reads its output down a pipe, which works precisely because
+        --settings-only never asks for anything — sudo down that pipe would
+        block forever on a prompt nobody can see. So these get a terminal with a
+        keyboard attached, which is also what the project already tells people
+        to do rather than running sudo on their behalf.
+
+        Not waited on: the point is that the terminal is answering prompts this
+        window cannot see, so there is nothing useful to wait for. Callers
+        refresh their state from disk afterwards instead.
+        """
+        name, build = find_terminal()
+        if name is None:
+            self._no_terminal_dialog(command, what)
+            return False
+        try:
+            Gio.Subprocess.new(build(keep_open(command)),
+                               Gio.SubprocessFlags.NONE)
+        except GLib.Error as exc:
+            self._no_terminal_dialog(command, what, exc.message)
+            return False
+        self._toasts.add_toast(Adw.Toast(
+            title="%s is running in %s" % (what, name)))
+        return True
+
+    def _no_terminal_dialog(self, command, what, why=None):
+        """No terminal to be found — hand over the command rather than fail.
+
+        A window that quietly did nothing here would be the worst outcome, and
+        running the command itself is the one thing it must not do: it would
+        need the password it has no way to ask for.
+        """
+        dialog = Adw.AlertDialog(
+            heading="Run this in a terminal",
+            body=("%s needs a terminal, and none of the ones this knows about "
+                  "are installed%s. Copy the command and run it yourself — it "
+                  "will ask for your password."
+                  % (what, "" if why is None else " (%s)" % why)))
+
+        entry = Gtk.Entry(text=command, editable=False, hexpand=True)
+        entry.add_css_class("monospace")
+        dialog.set_extra_child(entry)
+
+        dialog.add_response("copy", "Copy")
+        dialog.add_response("close", "Close")
+        dialog.set_default_response("copy")
+        dialog.set_close_response("close")
+
+        def response(_d, answer):
+            if answer == "copy":
+                self.get_clipboard().set(command)
+                self._toasts.add_toast(Adw.Toast(title="Command copied"))
+
+        dialog.connect("response", response)
+        dialog.present(self)
+
+    def _install_cmd(self, args):
+        """`bash <repo>/install.sh <args>`, quoted for a shell."""
+        return "bash %s %s" % (
+            GLib.shell_quote(os.path.join(self._repo, "install.sh")), args)
+
+    def _build_system_page(self):
+        page = Adw.PreferencesPage()
+
+        group = Adw.PreferencesGroup(
+            title="Needs a password",
+            description="These are the steps install.sh cannot do without root, "
+                        "so this window opens a terminal for them rather than "
+                        "starting something that would silently decline. "
+                        "Nothing here is applied by the Apply button.")
+
+        self._deps_row = Adw.ActionRow(
+            title="Command line dependencies",
+            subtitle="Checking…")
+        deps_check = Gtk.Button(label="Check", valign=Gtk.Align.CENTER)
+        deps_check.connect("clicked", lambda _b: self._check_deps())
+        self._deps_install = Gtk.Button(label="Install",
+                                        valign=Gtk.Align.CENTER,
+                                        sensitive=False)
+        self._deps_install.add_css_class("suggested-action")
+        self._deps_install.connect("clicked", self._on_install_deps)
+        self._deps_row.add_suffix(deps_check)
+        self._deps_row.add_suffix(self._deps_install)
+        group.add(self._deps_row)
+
+        # Its state is a stamp file rather than a setting, so it is a button
+        # that acts rather than a switch Apply would collect. Nothing here goes
+        # through Settings or flags_against.
+        self._rounded_row = Adw.ActionRow(
+            title="Rounded blur library",
+            subtitle="Lets the blur behind popups follow their rounded corners "
+                     "instead of falling back to a static one")
+        self._rounded_button = Gtk.Button(label="Install",
+                                          valign=Gtk.Align.CENTER)
+        self._rounded_button.connect("clicked", self._on_install_rounded_blur)
+        self._rounded_row.add_suffix(self._rounded_button)
+        group.add(self._rounded_row)
+        page.add(group)
+
+        self._sync_system()
+        self._check_deps()
+        return page
+
+    def _sync_system(self):
+        """Read the stamp files these buttons act on."""
+        installed = os.path.exists(os.path.join(CONF_DIR, "rounded-blur"))
+        self._rounded_row.set_subtitle(
+            "Installed. Reinstall if a mutter update stopped it loading"
+            if installed else
+            "Lets the blur behind popups follow their rounded corners instead "
+            "of falling back to a static one")
+        self._rounded_button.set_label("Reinstall" if installed else "Install")
+        for widget in (self._rounded_button,):
+            widget.set_sensitive(self._repo is not None)
+
+    def _check_deps(self):
+        """Ask install.sh's own missing_cmds, which needs no root to answer."""
+        self._deps_row.set_subtitle("Checking…")
+        if self._repo is None:
+            self._deps_row.set_subtitle("The aura-glass checkout is gone")
+            return
+
+        script = (". %s/lib/common.sh; . %s/lib/distro.sh; "
+                  "detect_distro >/dev/null 2>&1; missing_cmds"
+                  % (GLib.shell_quote(self._repo), GLib.shell_quote(self._repo)))
+        try:
+            res = subprocess.run(["bash", "-c", script], capture_output=True,
+                                 text=True, timeout=20)
+        except (OSError, subprocess.SubprocessError) as exc:
+            self._deps_row.set_subtitle("Could not check: %s" % exc)
+            return
+
+        missing = [line.strip() for line in res.stdout.splitlines()
+                   if line.strip()]
+        if missing:
+            self._deps_row.set_subtitle(
+                "Missing: %s" % ", ".join(missing))
+        else:
+            self._deps_row.set_subtitle("All present")
+        self._deps_install.set_sensitive(bool(missing) and self._repo is not None)
+
+    def _on_install_deps(self, _button):
+        self.run_in_terminal(self._install_cmd("--deps-only"),
+                             "Installing dependencies")
+
+    def _on_install_rounded_blur(self, _button):
+        # No --yes. install_rounded_blur asks with confirm_always, which asks
+        # even under --yes because it is a root package — and a real terminal is
+        # exactly where that question can be answered, so it is left to ask
+        # rather than pre-answered on the user's behalf.
+        self.run_in_terminal(self._install_cmd("--rounded-blur --force"),
+                             "Installing the rounded blur library")
 
     def _build_packages_page(self):
         page = Adw.PreferencesPage()

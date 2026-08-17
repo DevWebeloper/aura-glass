@@ -79,6 +79,7 @@ RADIUS_PRESET_EXPLICIT=""
 RADIUS_CUSTOM=""       # seven comma-separated pixel values, in RADIUS_TOKENS order
 RADIUS_CUSTOM_EXPLICIT=""
 SETTINGS_ONLY=0
+DEPS_ONLY=0
 WANT_GUI=1
 WANT_UPDATE_CHECK=1
 UPDATE_CHECK_EXPLICIT=""
@@ -151,6 +152,9 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
     --app-blur-block LIST
                       comma-separated wm_class patterns to exclude in all-apps
                       mode, replacing the shipped list. Remembered for later runs
+    --deps-only       install the missing command-line dependencies and stop.
+                      Needs root, so it is the one step the settings window
+                      hands to a terminal rather than running itself
     --window-buttons WHICH
                       titlebar buttons: close (close alone) or all (minimize,
                       maximize and close). Left as the system has it unless given
@@ -269,6 +273,7 @@ while [ $# -gt 0 ]; do
         --window-buttons) WINDOW_BUTTONS="${2:-}"; WINDOW_BUTTONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --window-buttons=*) WINDOW_BUTTONS="${1#*=}"; WINDOW_BUTTONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --settings-only) SETTINGS_ONLY=1; WANT_DEPS=0; EXPLICIT_FLAGS=1; shift ;;
+        --deps-only)     DEPS_ONLY=1; EXPLICIT_FLAGS=1; shift ;;
         --no-deps)       WANT_DEPS=0; EXPLICIT_FLAGS=1; shift ;;
         --force)         FORCE=1; EXPLICIT_FLAGS=1; shift ;;
         -y|--yes)        ASSUME_YES=1; EXPLICIT_FLAGS=1; shift ;;
@@ -829,6 +834,17 @@ preflight
 # rather than a settings-only reimplementation of them: the precedence between a
 # flag, a $CONF_DIR memo and a default lives in one place and is exercised the
 # same way by both paths.
+# The dependency check on its own, for the settings window to hand to a terminal.
+# install_deps runs sudo, which is why the window cannot run it: there is no
+# password prompt in a GTK dialog reading a pipe. A narrow entry point rather
+# than telling someone to run the whole installer, so the command in the
+# terminal says exactly what it is about to do.
+if [ "$DEPS_ONLY" = 1 ]; then
+    install_deps || die "dependencies are still missing"
+    step "Done"
+    exit 0
+fi
+
 if [ "$SETTINGS_ONLY" = 1 ]; then
     if [ ! -d "$CONF_DIR" ] || [ ! -d "$HOME/.themes/Tahoe-Dark" ]; then
         die "--settings-only retunes an existing install, but there is nothing installed yet. Run ./install.sh first."

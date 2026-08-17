@@ -93,6 +93,11 @@ step "settings window flags (tools/check-gui-flags.py)" \
 # treatment: the duplication is checked rather than trusted.
 step "settings window radii (tools/check-gui-radius.py)" \
     python3 "$TMP/tools/check-gui-radius.py"
+# The root-requiring steps get a real terminal rather than the in-window log.
+# Whether one stays open is a thing only a desktop can answer; this catches the
+# malformed argv and the wrapper that will not parse. It launches nothing.
+step "terminal spawn (tools/check-terminal-spawn.py)" \
+    python3 "$TMP/tools/check-terminal-spawn.py"
 # The per-app lists are the one place arbitrary user text reaches dconf. This
 # builds the literal and parses it back with GLib's own parser; no live dconf.
 step "app blur lists (tools/check-app-blur-lists.sh)" \
