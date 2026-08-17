@@ -60,8 +60,8 @@ accent_to_reversal() {
 # want, and tying them together would make it unsayable.
 icon_base() {
     case "${ICONS:-colloid}" in
-        colloid)
-            local n; n="$(accent_to_colloid_name "$ACCENT")"
+        colloid|colloid-*)
+            local n; n="$(accent_to_colloid_name "$(colloid_color)")"
             n="${n%-Dark}"; n="${n%-Light}"
             printf '%s\n' "$n" ;;
         reversal)        printf 'Reversal\n' ;;
@@ -197,15 +197,26 @@ remember_icon_pack() {
     printf '%s\n' "${ICONS:-colloid}" > "$CONF_DIR/icon-pack"
 }
 
+# The colour a Colloid install should use: the one named on --icons if there is
+# one, the accent otherwise. Bare `colloid` follows the accent the way bare
+# `reversal` does, which is what makes "purple folders under a pink accent"
+# sayable without making it the default.
+colloid_color() {
+    local color="${ICONS#colloid}"; color="${color#-}"
+    [ -n "$color" ] || color="$ACCENT"
+    printf '%s\n' "$color"
+}
+
 install_icons() {
     remember_icon_pack
     case "${ICONS:-colloid}" in
         reversal|reversal-*) install_reversal; return ;;
     esac
 
-    step "Installing the Colloid icon theme ($ACCENT)"
+    local color; color="$(colloid_color)"
+    step "Installing the Colloid icon theme ($color)"
 
-    local name; name="$(accent_to_colloid_name "$ACCENT")"
+    local name; name="$(accent_to_colloid_name "$color")"
     if [ "${FORCE:-0}" != 1 ] \
        && { [ -d "$HOME/.local/share/icons/$name" ] || [ -d "/usr/share/icons/$name" ]; }; then
         skip "$name already installed"
@@ -218,9 +229,9 @@ install_icons() {
     # No -d: unprivileged runs default to ~/.local/share/icons, which keeps
     # this step out of /usr like every other one.
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: $src/install.sh -t $(accent_to_colloid_arg "$ACCENT")"
+        info "dry-run: $src/install.sh -t $(accent_to_colloid_arg "$color")"
     else
-        ( cd "$src" && ./install.sh -t "$(accent_to_colloid_arg "$ACCENT")" ) >/dev/null \
+        ( cd "$src" && ./install.sh -t "$(accent_to_colloid_arg "$color")" ) >/dev/null \
             || die "the Colloid installer failed"
     fi
     ok "$name"

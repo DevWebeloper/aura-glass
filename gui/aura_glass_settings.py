@@ -107,10 +107,49 @@ def percent_to_level(percent):
 # one it is built with. "Keep current" is --no-icons: the pack on the system now,
 # whatever it is, left alone.
 ICON_PACKS = [
-    ("colloid", "Colloid", "Follows your accent colour"),
-    ("reversal", "Reversal", "macOS-style circular icons, in your accent"),
+    ("colloid", "Colloid", "Folder icons in a colour of their own"),
+    ("reversal", "Reversal", "macOS-style circular icons"),
     ("keep", "Keep current", "Leave the icon theme alone"),
 ]
+
+# The colour the icons are built in, which is not the accent. install.sh has
+# always taken it as part of --icons (reversal-purple), and takes it for Colloid
+# now too — so this is one flag with two halves rather than a second setting.
+#
+# Each pack names its own colours. Colloid's are given in accent terms because
+# accent_to_colloid_arg already translates them into Colloid's own spelling,
+# where blue is "default" and slate is "grey"; naming them Colloid's way here
+# would be a second copy of that mapping. Reversal's are its own, and are not
+# the accent list — it ships browns and greys the accents do not, and no teal,
+# yellow or slate.
+ICON_COLOR_FOLLOW = ("", "Match the accent", "Whatever the accent is set to")
+ICON_COLORS = {
+    "colloid": [ICON_COLOR_FOLLOW] + [(a, a.capitalize(), "") for a in ACCENTS],
+    "reversal": [ICON_COLOR_FOLLOW] + [
+        (c, c.capitalize(), "") for c in
+        ("default", "black", "blue", "brown", "cyan", "green", "grey",
+         "lightblue", "orange", "pink", "purple", "red")],
+    "keep": [ICON_COLOR_FOLLOW],
+}
+
+
+def split_icons(value):
+    """"colloid-teal" as ("colloid", "teal"). A bare family follows the accent."""
+    if value == "keep":
+        return "keep", ""
+    family, _, color = value.partition("-")
+    if family not in ("colloid", "reversal"):
+        return "colloid", ""
+    if color not in [c[0] for c in ICON_COLORS[family]]:
+        color = ""
+    return family, color
+
+
+def join_icons(family, color):
+    """The other way, and the spelling install.sh's --icons takes."""
+    if family == "keep" or not color:
+        return family
+    return "%s-%s" % (family, color)
 
 CURSOR_PACKS = [
     ("adwaita", "Adwaita", "Ships with GNOME. Crisper at every size"),
@@ -343,12 +382,17 @@ class Settings:
         self.allow = read_memo_lines("app-blur-allow")
         self.block = read_memo_lines("app-blur-block")
 
-        # Reversal is remembered as reversal-<colour>; the row offers the family
-        # and install.sh pairs it with the accent, so only the family is kept
-        # here. There is no memo for "keep" — --no-icons is a choice not to have
+        # Kept whole, family and colour together, because that is what --icons
+        # takes and what the memo holds: "colloid", "colloid-teal", "reversal",
+        # "reversal-cyan". The window splits it across two rows and joins it
+        # back. A bare family still means "follow the accent" — the mapping from
+        # accent to each pack's own colour names lives in lib/steps-assets.sh
+        # and is not copied here.
+        #
+        # There is no memo for "keep" — --no-icons is a choice not to have
         # touched anything, which leaves nothing behind to read.
         icons = read_memo("icon-pack", "colloid") or "colloid"
-        self.icons = "reversal" if icons.startswith("reversal") else "colloid"
+        self.icons = join_icons(*split_icons(icons))
         self.cursors = read_memo("cursor-pack", "adwaita") or "adwaita"
         if self.cursors not in [c[0] for c in CURSOR_PACKS]:
             self.cursors = "adwaita"
@@ -377,11 +421,13 @@ class Settings:
         if self.accent != other.accent:
             args += ["--accent", self.accent]
 
-        # The family, bare. accent_to_reversal in lib/steps-assets.sh turns it
-        # into a colour Reversal actually ships, which is not the accent's own
-        # name for three of the nine — there is no teal, yellow or slate. Naming
-        # the colour here would mean keeping a second copy of that mapping, and
-        # the copy that used to exist in the wizard was wrong.
+        # Whole, family and colour together, which is the spelling --icons
+        # takes. A bare family goes out bare: accent_to_reversal and
+        # colloid_color in lib/steps-assets.sh turn that into each pack's own
+        # colour name, which is not the accent's for several of them — Reversal
+        # has no teal, yellow or slate, and Colloid calls blue "default".
+        # Resolving it here would be a second copy of those mappings, and the
+        # copy that used to exist in the wizard was wrong.
         if self.icons != other.icons:
             if self.icons == "keep":
                 args.append("--no-icons")
@@ -864,17 +910,27 @@ class Window(Adw.ApplicationWindow):
         The ids are kept beside the row rather than derived from the position, so
         reordering a list here cannot silently change which flag a row sends.
         """
+        row = Adw.ComboRow(title=title, subtitle=subtitle)
+        row.connect("notify::selected", self._on_changed, key)
+        self._refill_combo(row, options, current)
+        return row
+
+    def _refill_combo(self, row, options, current):
+        """Give a ComboRow a different set of options.
+
+        Used at build time and again whenever one row decides what another may
+        offer — the icon colour list, which each pack names differently. A
+        selection the new list does not have falls back to its first entry
+        rather than being kept and sent as something install.sh would reject.
+        """
         model = Gtk.StringList()
         for _, label, _sub in options:
             model.append(label)
-        row = Adw.ComboRow(title=title, subtitle=subtitle, model=model)
-        ids = [o[0] for o in options]
-        row.set_selected(ids.index(current) if current in ids else 0)
-        row._ids = ids
+        row._ids = [o[0] for o in options]
         row._subs = [o[2] for o in options]
-        row.connect("notify::selected", self._on_changed, key)
+        row.set_model(model)
+        row.set_selected(row._ids.index(current) if current in row._ids else 0)
         self._sync_subtitle(row)
-        return row
 
     def _sync_subtitle(self, row):
         i = row.get_selected()
@@ -917,9 +973,17 @@ class Window(Adw.ApplicationWindow):
             description="A pack you have already installed applies instantly. "
                         "One you have not is downloaded first, so Apply can take "
                         "a minute and needs the network.")
+        family, color = split_icons(self._applied.icons)
         self._icons_row = self._combo(
-            "Icon pack", "", ICON_PACKS, self._applied.icons, "icons")
+            "Icon pack", "", ICON_PACKS, family, "icons")
         packs.add(self._icons_row)
+
+        # Its own row rather than nine entries folded into the pack list: the
+        # colour is not the accent, and a pack list that spelled out every
+        # colour would say it was.
+        self._icon_color_row = self._combo(
+            "Icon colour", "", ICON_COLORS[family], color, "icon_color")
+        packs.add(self._icon_color_row)
         self._cursors_row = self._combo(
             "Pointer", "", CURSOR_PACKS, self._applied.cursors, "cursors")
         packs.add(self._cursors_row)
@@ -1212,7 +1276,9 @@ class Window(Adw.ApplicationWindow):
         s.popup_blur = self._popup_row.get_active()
         s.allow = list(self._allow)
         s.block = list(self._block)
-        s.icons = self._icons_row._ids[self._icons_row.get_selected()]
+        s.icons = join_icons(
+            self._icons_row._ids[self._icons_row.get_selected()],
+            self._icon_color_row._ids[self._icon_color_row.get_selected()])
         s.cursors = self._cursors_row._ids[self._cursors_row.get_selected()]
         s.window_buttons = self._window_buttons_row._ids[
             self._window_buttons_row.get_selected()]
@@ -1237,6 +1303,10 @@ class Window(Adw.ApplicationWindow):
         self._transparency_row.set_sensitive(live)
         self._transparency_bar.set_sensitive(live)
 
+        # Nothing to colour when the icon theme is being left alone.
+        self._icon_color_row.set_sensitive(
+            self._icons_row._ids[self._icons_row.get_selected()] != "keep")
+
     def _mark_dirty(self):
         dirty = bool(self._current().flags_against(self._applied))
         self._apply.set_sensitive(dirty and self._repo is not None)
@@ -1258,7 +1328,18 @@ class Window(Adw.ApplicationWindow):
             return
         if isinstance(row, Adw.ComboRow):
             self._sync_subtitle(row)
-        if key in ("blur", "transparency", "scope"):
+        # Each pack names its own colours, so choosing one changes what the
+        # colour row may offer. Guarded, because refilling moves that row's
+        # selection and would otherwise re-enter here.
+        if key == "icons":
+            family = self._icons_row._ids[self._icons_row.get_selected()]
+            color = self._icon_color_row._ids[
+                self._icon_color_row.get_selected()]
+            self._loading = True
+            self._refill_combo(self._icon_color_row, ICON_COLORS[family], color)
+            self._loading = False
+
+        if key in ("blur", "transparency", "scope", "icons"):
             self._sync_sensitivity()
         # The mode decides which list is consulted, so it decides which is shown.
         if key in ("scope", "blur"):
@@ -1285,8 +1366,9 @@ class Window(Adw.ApplicationWindow):
         self._popup_row.set_active(self._applied.popup_blur)
         self._allow = list(self._applied.allow)
         self._block = list(self._applied.block)
-        self._icons_row.set_selected(
-            self._icons_row._ids.index(self._applied.icons))
+        family, color = split_icons(self._applied.icons)
+        self._icons_row.set_selected(self._icons_row._ids.index(family))
+        self._refill_combo(self._icon_color_row, ICON_COLORS[family], color)
         self._cursors_row.set_selected(
             self._cursors_row._ids.index(self._applied.cursors))
         self._window_buttons_row.set_selected(

@@ -164,6 +164,23 @@ CASES = [
      state(icons="reversal", accent="teal"),
      ["--accent", "teal", "--icons", "reversal"]),
 
+    # Family and colour are one value, because --icons is one flag. A colour
+    # named here is one the user picked; a bare family still means "follow the
+    # accent" and leaves that mapping to lib/steps-assets.sh.
+    ("colloid in a colour of its own", FROSTED, state(icons="colloid-teal"),
+     ["--icons", "colloid-teal"]),
+
+    ("a colour Reversal has and the accents do not", FROSTED,
+     state(icons="reversal-brown"), ["--icons", "reversal-brown"]),
+
+    ("icon colour back to following the accent",
+     state(icons="colloid-teal"), state(icons="colloid"),
+     ["--icons", "colloid"]),
+
+    ("an icon colour that is not the accent", FROSTED,
+     state(icons="colloid-teal", accent="pink"),
+     ["--accent", "pink", "--icons", "colloid-teal"]),
+
     ("keep the icons as they are", FROSTED, state(icons="keep"), ["--no-icons"]),
 
     ("mactahoe pointer", FROSTED, state(cursors="mactahoe"),

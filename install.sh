@@ -119,8 +119,11 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
                       and remembered for later runs)
     --panel-blur-fix  agent that rebuilds Blur My Shell's panel blur on layout change (default: on)
     --no-panel-blur-fix skip the panel blur rebuild agent
-    --icons WHICH     colloid (default, follows --accent) or reversal-COLOUR,
-                      e.g. reversal-purple. Remembered for later runs
+    --icons WHICH     colloid (default) or reversal, either bare to follow
+                      --accent or with a colour of its own: colloid-teal,
+                      reversal-purple. Colloid takes accent names, Reversal its
+                      own ($VALID_REVERSAL).
+                      Remembered for later runs
     --cursors WHICH   adwaita (default, ships with GNOME) or mactahoe
     --osd             minimal pill OSD for volume & brightness (default: on)
     --no-osd          keep stock volume and brightness popup
@@ -729,14 +732,23 @@ APP_TRANSPARENCY="${APP_TRANSPARENCY:-0}"
 APP_OPACITY="${APP_OPACITY:-255}"
 
 VALID_REVERSAL="default black blue brown cyan green grey lightblue orange pink purple red"
+# Colloid is named in accent terms rather than in its own: it calls blue
+# "default" and slate "grey" on the command line, and accent_to_colloid_arg
+# already knows that. Asking for colloid-blue and letting that function do the
+# translation keeps one copy of the mapping instead of two.
 case "$ICONS" in
     colloid|reversal) ;;
+    colloid-*)
+        case " $VALID_ACCENTS " in
+            *" ${ICONS#colloid-} "*) ;;
+            *) die "unknown Colloid colour '${ICONS#colloid-}' — pick one of: $VALID_ACCENTS" ;;
+        esac ;;
     reversal-*)
         case " $VALID_REVERSAL " in
             *" ${ICONS#reversal-} "*) ;;
             *) die "unknown Reversal colour '${ICONS#reversal-}' — pick one of: $VALID_REVERSAL" ;;
         esac ;;
-    *) die "unknown --icons '$ICONS' — colloid, reversal, or reversal-COLOUR" ;;
+    *) die "unknown --icons '$ICONS' — colloid, reversal, or either with -COLOUR" ;;
 esac
 
 case " $VALID_ACCENTS " in
