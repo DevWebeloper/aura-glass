@@ -37,6 +37,7 @@ GDM is deliberately absent. It needs root, and a window with no way to ask for a
 password has no business starting something that will silently decline.
 """
 import os
+import shutil
 import subprocess
 import sys
 
@@ -235,9 +236,91 @@ NAV_SECTIONS = [
     ("windows", "Window controls", "window-new-symbolic",
      "_build_window_controls_page"),
     ("icons", "Icons and pointer", "folder-symbolic", "_build_icons_page"),
+    ("packages", "Packages", "package-x-generic-symbolic",
+     "_build_packages_page"),
     ("updates", "Updates", "software-update-available-symbolic",
      "_build_updates_page"),
 ]
+
+
+# The three families install.sh fetches, and the ones uninstall.sh --assets
+# already knows to remove. Anything else under an icon directory belongs to the
+# distribution or to the user and is not this window's to offer up.
+ICON_PACK_FAMILIES = ("Colloid", "Reversal", "MacTahoe")
+
+# Where a pack can be. The first two are ours to delete from; the rest are the
+# package manager's, and a window that offered to rm -rf out of /usr would be
+# picking a fight with pacman on the user's behalf.
+PACK_DIRS_MINE = (os.path.join(GLib.get_user_data_dir(), "icons"),
+                  os.path.expanduser("~/.icons"))
+PACK_DIRS_SYSTEM = ("/usr/share/icons", "/usr/local/share/icons")
+
+
+def pack_family(name):
+    """Which family a directory belongs to, or None."""
+    for family in ICON_PACK_FAMILIES:
+        if name.lower().startswith(family.lower()):
+            return family
+    return None
+
+
+def theme_stem(name):
+    """A theme name with any light/dark half stripped.
+
+    Colloid ships -Light and -Dark, Reversal ships the bare name plus -dark, and
+    the icon-sync agent swaps between them as the desktop's colour scheme
+    changes. So the halves of a pair are both in use when either is set, and
+    saying otherwise would offer to delete half of the theme in the screenshot.
+    """
+    stem = name
+    for suffix in ("-Dark", "-Light", "-dark", "-light"):
+        if stem.endswith(suffix):
+            stem = stem[:-len(suffix)]
+    return stem.lower()
+
+
+def installed_packs():
+    """Every aura-glass icon or cursor pack on disk.
+
+    Yields (name, path, mine) with mine saying whether it is under $HOME and so
+    removable without root.
+    """
+    seen = set()
+    for mine, roots in ((True, PACK_DIRS_MINE), (False, PACK_DIRS_SYSTEM)):
+        for root in roots:
+            try:
+                names = sorted(os.listdir(root))
+            except OSError:
+                continue
+            for name in names:
+                path = os.path.join(root, name)
+                if name in seen or not pack_family(name):
+                    continue
+                if not os.path.isdir(path):
+                    continue
+                seen.add(name)
+                yield name, path, mine
+
+
+def dir_size(path):
+    """Bytes under a directory. Best effort — an unreadable corner counts as 0."""
+    total = 0
+    for root, _dirs, files in os.walk(path, onerror=lambda _e: None):
+        for name in files:
+            try:
+                st = os.lstat(os.path.join(root, name))
+            except OSError:
+                continue
+            total += st.st_size
+    return total
+
+
+def human_size(count):
+    for unit in ("B", "kB", "MB", "GB"):
+        if count < 1024 or unit == "GB":
+            return "%.0f %s" % (count, unit) if unit != "GB" \
+                else "%.1f GB" % count
+        count /= 1024.0
 
 
 def parse_radius_custom(raw):
@@ -1276,6 +1359,155 @@ class Window(Adw.ApplicationWindow):
         group.add(self._window_buttons_row)
         page.add(group)
         return page
+
+    def _build_packages_page(self):
+        page = Adw.PreferencesPage()
+
+        self._packs_mine = Adw.PreferencesGroup(
+            title="Installed for you",
+            description="Icon and pointer packs under your home directory. "
+                        "Switching packs never removes the one you left, so "
+                        "they accumulate — this is where to get the space back.")
+        page.add(self._packs_mine)
+
+        # Listed rather than hidden. Colloid and MacTahoe often arrive from the
+        # distribution rather than from install.sh, and a page that showed no
+        # trace of the pack currently on screen would look broken. No Remove
+        # button: they are the package manager's, and rm -rf under /usr on
+        # someone's behalf is exactly what uninstall.sh refuses to do for
+        # gnome-rounded-blur, for the same reason.
+        self._packs_system = Adw.PreferencesGroup(
+            title="Installed system-wide",
+            description="Owned by your distribution's package manager, so "
+                        "remove them with it rather than from here.")
+        page.add(self._packs_system)
+
+        self._pack_rows = []
+        self._rebuild_packs()
+        return page
+
+    def _live_theme_stems(self):
+        """The stems of the icon and cursor themes actually in use right now."""
+        try:
+            iface = Gio.Settings.new("org.gnome.desktop.interface")
+            return {theme_stem(iface.get_string("icon-theme")),
+                    theme_stem(iface.get_string("cursor-theme"))}
+        except GLib.Error:
+            return set()
+
+    def _rebuild_packs(self):
+        for group, row in self._pack_rows:
+            group.remove(row)
+        self._pack_rows = []
+
+        live = self._live_theme_stems()
+
+        # Grouped, not one row per directory. A pack is its light/dark pair —
+        # Colloid ships -Light and -Dark, Reversal the bare name plus -dark, and
+        # the icon-sync agent swaps between them — so removing one half of one
+        # is never the thing anyone meant. Yours group by that pair, since that
+        # is what Remove acts on. The system's group by family instead: there is
+        # no button on them, and Colloid alone arrives as 27 directories that
+        # would bury everything else for no gain.
+        mine_groups, system_groups = {}, {}
+        for name, path, is_mine in installed_packs():
+            key = theme_stem(name) if is_mine else pack_family(name)
+            bucket = mine_groups if is_mine else system_groups
+            entry = bucket.setdefault(key, {"names": [], "paths": [],
+                                            "in_use": False})
+            entry["names"].append(name)
+            entry["paths"].append(path)
+            if theme_stem(name) in live:
+                entry["in_use"] = True
+
+        for bucket, group, empty in (
+                (mine_groups, self._packs_mine,
+                 "No packs under your home directory"),
+                (system_groups, self._packs_system,
+                 "No packs installed system-wide")):
+            for key in sorted(bucket):
+                entry = bucket[key]
+                # The shortest name in the pair reads as the pack's own name:
+                # Reversal-purple rather than Reversal-purple-dark.
+                title = min(entry["names"], key=len)
+                row = Adw.ActionRow(title=title)
+                row._paths = entry["paths"]
+                row._in_use = entry["in_use"]
+                row._sized = False
+                row.set_subtitle("In use" if entry["in_use"] else "Not in use")
+
+                if group is self._packs_mine:
+                    remove = Gtk.Button(icon_name="user-trash-symbolic",
+                                        valign=Gtk.Align.CENTER,
+                                        tooltip_text="Remove this pack")
+                    remove.add_css_class("flat")
+                    remove.add_css_class("destructive-action")
+                    remove.connect("clicked", self._on_remove_pack, row, title)
+                    row.add_suffix(remove)
+
+                group.add(row)
+                self._pack_rows.append((group, row))
+
+            if not bucket:
+                row = Adw.ActionRow(title=empty, sensitive=False)
+                group.add(row)
+                self._pack_rows.append((group, row))
+
+        # Sizes come after the rows are up. Walking a full icon theme is tens of
+        # thousands of stat calls, and doing it before the page exists would
+        # make opening the window wait on all of them.
+        GLib.idle_add(self._size_next_pack)
+
+    def _size_next_pack(self):
+        for _group, row in self._pack_rows:
+            if getattr(row, "_sized", True):
+                continue
+            row._sized = True
+            total = sum(dir_size(p) for p in row._paths)
+            parts = ["In use" if row._in_use else "Not in use",
+                     human_size(total)]
+            if len(row._paths) > 1:
+                parts.append("%d variants" % len(row._paths))
+            row.set_subtitle(" — ".join(parts[:2]) + (
+                " (%s)" % parts[2] if len(parts) > 2 else ""))
+            return True     # one per idle turn, so the window stays responsive
+        return False
+
+    def _on_remove_pack(self, _button, row, name):
+        where = "\n".join(row._paths)
+        if row._in_use:
+            body = ("%s is the theme in use right now. Removing it leaves the "
+                    "desktop showing fallback icons until you choose another "
+                    "pack.\n\nThis deletes:\n%s\n\nIt cannot be undone."
+                    % (name, where))
+        else:
+            body = ("This deletes:\n%s\n\nIt cannot be undone, though choosing "
+                    "this pack again later would fetch it again." % where)
+
+        dialog = Adw.AlertDialog(heading="Remove %s?" % name, body=body)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("remove", "Remove")
+        dialog.set_response_appearance("remove",
+                                       Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        dialog.connect("response", self._on_remove_pack_response, name,
+                       list(row._paths))
+        dialog.present(self)
+
+    def _on_remove_pack_response(self, _dialog, response, name, paths):
+        if response != "remove":
+            return
+        for path in paths:
+            try:
+                shutil.rmtree(path)
+            except OSError as exc:
+                self._toasts.add_toast(Adw.Toast(
+                    title="Could not remove %s: %s" % (name, exc.strerror)))
+                self._rebuild_packs()
+                return
+        self._toasts.add_toast(Adw.Toast(title="Removed %s" % name))
+        self._rebuild_packs()
 
     def _build_apps_page(self):
         page = Adw.PreferencesPage()
