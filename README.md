@@ -38,16 +38,25 @@ GNOME Shell extensions and compositor settings take effect on the next session. 
 Installing also puts an **Aura Glass** entry in your Activities overview (or run `aura-glass-settings`). It reads your current setup and lets you retune the parts worth revisiting:
 
 - 🎨 **Accent color**, with a shortcut to GNOME's own `Settings → Appearance`
-- ⬜ **Corner rounding** — `Sharp`, `Default`, `Rounded` or `Pill`, applied to windows, menus, dialogs, notifications and the blur behind each of them together
-- 🪟 **Frosted glass / solid mode**, window blur scope, and popup blur
+- ⬜ **Corner rounding** — the four presets, or set each of the seven surfaces yourself: windows, menus, Quick Settings, notifications, dialogs, popups and the volume pill, each bounded to a range that has been looked at on a screen
+- 🪟 **Frosted glass / solid mode**, a standalone **blur behind every window** switch, and popup blur
 - 🎚️ **Window transparency bar** — anywhere from 70% to 100%, with the three tuned levels marked
-- 📋 **Per-app blur list** — pick which apps get the blur (and the window translucency that comes with it), from your installed apps or by wildcard pattern
-- 🖱️ **Icon and pointer packs** — Colloid or Reversal, Adwaita or MacTahoe
+- 📋 **Two per-app blur lists** — the apps to blur and the apps never to, each in its own window and editable whichever one the current mode consults, from your installed apps or by wildcard pattern with the match explained as you type
+- 🖱️ **Icon and pointer packs** — Colloid or Reversal in a colour of their own rather than the accent's, Adwaita or MacTahoe, plus **Keep current** and **Original**
+- 🪟 **Titlebar buttons** — close alone, or all three
+- 🧩 **Extensions** — every one this installs, with a switch each and install/remove, or fit the recommended or full pack in one click
+- 📦 **Packages** — what each icon and pointer pack on disk costs you, and a button to remove the ones you stopped using
+- 🖥️ **System** — dependencies, the rounded-blur library, the multi-monitor panel fix, the login screen theme and its monitor layout sync
 - 🔔 **Updates** — see your version, check for a new release, install it
+- 🗑️ **Uninstall** — the same three scopes `uninstall.sh` has
 
 Apply takes a few seconds and needs no password: under the hood it runs `./install.sh --settings-only`, which reapplies the dconf preset, the CSS and the gsettings and leaves the theme and extensions untouched. It stays off the network too, unless you pick an icon or pointer pack you have not downloaded yet — those two rows say so.
 
+Some things do not wait for Apply, because they are not settings `install.sh` resolves: the extension switches apply as you click them, and removing a pack is a delete. And the steps that genuinely need root — the dependency install, the rounded-blur library, the login screen, the monitor sync, the uninstall scopes — **open a real terminal** rather than running `sudo` on your behalf out of a window that cannot show you the prompt. If none of the terminals it knows is installed, it hands you the command instead.
+
 > The window is a front end for flags `install.sh` already has — nothing is exposed there that you cannot also script. It needs PyGObject and libadwaita; where those are missing the installer says so and skips it, and everything else installs as normal.
+>
+> One thing it deliberately does not offer is a custom accent **hex**. GNOME's `-st-accent-color` is a read-only keyword backed by a nine-value enum rather than something CSS can assign, so a custom colour would repaint every app window and none of the shell. Nine names it is.
 
 ### 4. Update Notifications
 A `systemd --user` timer checks daily whether a newer release has been **tagged**, and notifies once per release — not once per day. Clicking the notification opens the settings window, where **Install** pulls the release and runs the full installer.
@@ -172,6 +181,7 @@ Replaces stock GNOME's bulky OSD with a clean, compact pill. Configurable via **
 ├── uninstall.sh            # Complete restoration & cleanup script
 ├── bin/
 │   ├── aura-glass-apply    # Idempotent CSS patch & cascade re-apply script
+│   ├── aura-glass-ext      # The extension catalogue, one extension at a time
 │   ├── aura-glass-settings # Launcher for the settings window
 │   └── aura-glass-update-check # Compares the local release tag against the remote
 ├── gui/                    # GTK4 / libadwaita settings window (optional)

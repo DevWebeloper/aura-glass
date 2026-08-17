@@ -33,8 +33,27 @@ reads -st-accent-color and the GTK CSS reads @accent_bg_color, so
 Settings -> Appearance already recolours the desktop live. The row exists to keep
 the remembered value in step; the button beside it goes to the real thing.
 
-GDM is deliberately absent. It needs root, and a window with no way to ask for a
-password has no business starting something that will silently decline.
+Nor is a custom hex on offer, which looks like an omission and is not: -st-
+accent-color is a read-only keyword backed by a nine-value C enum, so a hex
+would reach every app window and none of the shell. tokens/tokens.sh has the
+long version.
+
+Not everything here rides on Apply. Three kinds of thing cannot:
+
+  the extensions       instant, reversible and unprivileged, but not settings
+                       install.sh resolves — so they apply as they are clicked,
+                       through bin/aura-glass-ext
+  the packages page    a filesystem delete, with no flag or memo behind it
+  anything root        the dependency install, the rounded-blur library, the
+                       login screen, the monitor sync, the uninstall scopes
+
+The last of those used to be absent for a good reason: sudo down a pipe that
+nothing can type into blocks forever. The answer is not to run it here but to
+open a terminal that has a keyboard attached, which is what run_in_terminal
+does — and to say so, rather than starting something that would silently
+decline. Those rows report the last state this window read, not a live one:
+a spawned terminal is deliberately not waited on, so there is nothing to wait
+for.
 """
 import json
 import os
