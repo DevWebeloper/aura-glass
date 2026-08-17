@@ -16,21 +16,25 @@ release. Passing only what changed means every untouched setting is resolved by
 exactly the code that resolved it last time.
 
 --settings-only is what makes that safe to drive from a window: it reapplies the
-dconf preset, the CSS and the gsettings, and skips everything that fetches
-(theme, extensions, icon and cursor packs) or wants root (the rounded-blur
-library, GDM). So Apply needs no network, no password, and no terminal to answer
-a prompt in.
+dconf preset, the CSS and the gsettings, and skips the theme, the extensions and
+everything that wants root (the rounded-blur library, GDM). So Apply needs no
+password and no terminal to answer a prompt in.
 
-What is deliberately NOT here:
+The icon and cursor packs are the one exception, and only when a row here has
+actually been changed: asking for a different pack is asking for it to be
+installed. A pack already on disk applies instantly — both steps skip when the
+theme is there — and one that is not gets fetched, which is why those two rows
+sit in their own group saying so. A flagless --settings-only still touches the
+network not at all.
 
-  Accent is here, but as one of nine names install.sh understands rather than a
-  colour picker, because it is not this project's setting to own — the shell CSS
-  reads -st-accent-color and the GTK CSS reads @accent_bg_color, so
-  Settings -> Appearance already recolours the desktop live. The row exists to
-  keep the remembered value in step; the button beside it goes to the real thing.
+Accent is here, but as one of nine names install.sh understands rather than a
+colour picker, because it is not this project's setting to own — the shell CSS
+reads -st-accent-color and the GTK CSS reads @accent_bg_color, so
+Settings -> Appearance already recolours the desktop live. The row exists to keep
+the remembered value in step; the button beside it goes to the real thing.
 
-  Icons, cursors and GDM. Each one downloads a pack or needs root, which is the
-  line --settings-only draws. They stay CLI flags.
+GDM is deliberately absent. It needs root, and a window with no way to ask for a
+password has no business starting something that will silently decline.
 """
 import os
 import sys
@@ -91,6 +95,22 @@ def percent_to_level(percent):
     """A bar position (90) as the argument install.sh takes ("0.90")."""
     return "%.2f" % (percent / 100.0)
 
+
+# Icon packs install.sh understands. Colloid follows the accent, so it is one
+# entry rather than nine; Reversal ships a colour per accent and is named for the
+# one it is built with. "Keep current" is --no-icons: the pack on the system now,
+# whatever it is, left alone.
+ICON_PACKS = [
+    ("colloid", "Colloid", "Follows your accent colour"),
+    ("reversal", "Reversal", "macOS-style circular icons, in your accent"),
+    ("keep", "Keep current", "Leave the icon theme alone"),
+]
+
+CURSOR_PACKS = [
+    ("adwaita", "Adwaita", "Ships with GNOME. Crisper at every size"),
+    ("mactahoe", "MacTahoe", "The macOS pointer set"),
+    ("keep", "Keep current", "Leave the cursor theme alone"),
+]
 
 BLUR_SCOPES = [
     ("gtk", "GTK / GNOME apps only", "Files, Settings, Terminal. Low cost"),
@@ -190,6 +210,16 @@ class Settings:
         self.allow = read_memo_lines("app-blur-allow")
         self.block = read_memo_lines("app-blur-block")
 
+        # Reversal is remembered as reversal-<colour>; the row offers the family
+        # and install.sh pairs it with the accent, so only the family is kept
+        # here. There is no memo for "keep" — --no-icons is a choice not to have
+        # touched anything, which leaves nothing behind to read.
+        icons = read_memo("icon-pack", "colloid") or "colloid"
+        self.icons = "reversal" if icons.startswith("reversal") else "colloid"
+        self.cursors = read_memo("cursor-pack", "adwaita") or "adwaita"
+        if self.cursors not in [c[0] for c in CURSOR_PACKS]:
+            self.cursors = "adwaita"
+
     def flags_against(self, other):
         """The install.sh arguments that turn `other` into `self`.
 
@@ -201,6 +231,22 @@ class Settings:
         args = []
         if self.accent != other.accent:
             args += ["--accent", self.accent]
+
+        # The family, bare. accent_to_reversal in lib/steps-assets.sh turns it
+        # into a colour Reversal actually ships, which is not the accent's own
+        # name for three of the nine — there is no teal, yellow or slate. Naming
+        # the colour here would mean keeping a second copy of that mapping, and
+        # the copy that used to exist in the wizard was wrong.
+        if self.icons != other.icons:
+            if self.icons == "keep":
+                args.append("--no-icons")
+            else:
+                args += ["--icons", self.icons]
+        if self.cursors != other.cursors:
+            if self.cursors == "keep":
+                args.append("--no-cursors")
+            else:
+                args += ["--cursors", self.cursors]
         if self.radius != other.radius:
             args += ["--radius-preset", self.radius]
 
@@ -538,6 +584,23 @@ class Window(Adw.ApplicationWindow):
         look.add(self._radius_row)
         page.add(look)
 
+        # Separate group, because these two are the only settings in the window
+        # that can reach the network. Switching to a pack already on disk is
+        # instant — install_icons and install_cursors both skip when the theme is
+        # there — and a pack that is not gets fetched, which the Apply log shows.
+        packs = Adw.PreferencesGroup(
+            title="Icons and pointer",
+            description="A pack you have already installed applies instantly. "
+                        "One you have not is downloaded first, so Apply can take "
+                        "a minute and needs the network.")
+        self._icons_row = self._combo(
+            "Icon pack", "", ICON_PACKS, self._applied.icons, "icons")
+        packs.add(self._icons_row)
+        self._cursors_row = self._combo(
+            "Pointer", "", CURSOR_PACKS, self._applied.cursors, "cursors")
+        packs.add(self._cursors_row)
+        page.add(packs)
+
         glass = Adw.PreferencesGroup(
             title="Glass",
             description="Blur costs GPU time. Solid mode turns all of it off.")
@@ -602,6 +665,10 @@ class Window(Adw.ApplicationWindow):
         # combine, and they never do.
         self._allow = list(self._applied.allow)
         self._block = list(self._applied.block)
+        self._icons_row.set_selected(
+            self._icons_row._ids.index(self._applied.icons))
+        self._cursors_row.set_selected(
+            self._cursors_row._ids.index(self._applied.cursors))
 
         self._apps_add = Gtk.Button(icon_name="list-add-symbolic",
                                     valign=Gtk.Align.CENTER,
@@ -616,10 +683,9 @@ class Window(Adw.ApplicationWindow):
 
         cli = Adw.PreferencesGroup(
             title="Command line only",
-            description="Icon and cursor packs download a theme, and the GDM "
-                        "login screen needs root — neither fits a window that "
-                        "cannot ask for a password. Use ./install.sh --icons, "
-                        "--cursors or --gdm for those.")
+            description="The GDM login screen theme needs root, and this window "
+                        "has no way to ask for a password — a run started here "
+                        "would decline it silently. Use ./install.sh --gdm.")
         page.add(cli)
 
         self._sync_sensitivity()
@@ -715,6 +781,8 @@ class Window(Adw.ApplicationWindow):
         s.popup_blur = self._popup_row.get_active()
         s.allow = list(self._allow)
         s.block = list(self._block)
+        s.icons = self._icons_row._ids[self._icons_row.get_selected()]
+        s.cursors = self._cursors_row._ids[self._cursors_row.get_selected()]
         return s
 
     def _sync_sensitivity(self):
@@ -769,6 +837,10 @@ class Window(Adw.ApplicationWindow):
         self._popup_row.set_active(self._applied.popup_blur)
         self._allow = list(self._applied.allow)
         self._block = list(self._applied.block)
+        self._icons_row.set_selected(
+            self._icons_row._ids.index(self._applied.icons))
+        self._cursors_row.set_selected(
+            self._cursors_row._ids.index(self._applied.cursors))
         self._loading = False
         self._rebuild_app_list()
         self._sync_sensitivity()

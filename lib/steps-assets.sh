@@ -30,6 +30,25 @@ accent_to_colloid_name() {
     esac
 }
 
+# GNOME's accent enum -> Reversal's colour. The two sets do not line up: Reversal
+# has no teal, no yellow and no slate, and has browns and greys the accent enum
+# does not. So three accents map to a neighbour rather than to themselves.
+#
+# This exists because `--icons reversal-$ACCENT` was being built by hand in the
+# interactive wizard, and three of the nine accents made a colour Reversal does
+# not ship — picking teal, yellow or slate and then choosing Reversal ended the
+# install on "unknown Reversal colour". Bare `reversal` had the opposite problem:
+# it fell back to purple whatever the accent was.
+accent_to_reversal() {
+    case "$1" in
+        teal)   echo cyan ;;    # nearest Reversal has; no teal
+        yellow) echo orange ;;  # no yellow either, and orange is the warm one
+        slate)  echo grey ;;
+        blue|green|orange|red|pink|purple) echo "$1" ;;
+        *)      echo purple ;;
+    esac
+}
+
 # ---------------------------------------------------------------- preflight --
 
 # The icon set, minus any light/dark suffix. Everything downstream — the
@@ -135,7 +154,9 @@ patch_reversal_symbolics() {
 
 install_reversal() {
     local color="${ICONS#reversal}"; color="${color#-}"
-    [ -n "$color" ] || color=purple
+    # Bare `reversal` follows the accent, the way bare `colloid` does. It used to
+    # mean purple regardless, which made the family unusable as a default.
+    [ -n "$color" ] || color="$(accent_to_reversal "$ACCENT")"
     local name="Reversal-$color"
 
     step "Installing the Reversal icon theme ($color)"

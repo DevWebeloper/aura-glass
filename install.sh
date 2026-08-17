@@ -67,8 +67,10 @@ APP_TRANSPARENCY=""   # empty = remembered choice, then off (e.g. 0.90 / 90%)
 APP_TRANSPARENCY_EXPLICIT=""
 APP_OPACITY=""        # empty = remembered choice, then 255 (e.g. 230)
 APP_OPACITY_EXPLICIT=""
-CURSORS="adwaita"   # adwaita | mactahoe
+CURSORS=""          # empty = remembered choice, then adwaita | mactahoe
+CURSORS_EXPLICIT=""
 ICONS=""            # empty = remembered choice, then colloid
+ICONS_EXPLICIT=""
 GRAIN=""          # empty keeps the preset's value, or the remembered choice
 RADIUS_PRESET=""       # empty = remembered choice, then default
 RADIUS_PRESET_EXPLICIT=""
@@ -186,10 +188,10 @@ while [ $# -gt 0 ]; do
                          RADIUS_PRESET="${1#*=}"; RADIUS_PRESET_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --panel-blur-fix)    WANT_PANEL_BLUR_FIX=1; EXPLICIT_FLAGS=1; shift ;;
         --no-panel-blur-fix) WANT_PANEL_BLUR_FIX=0; EXPLICIT_FLAGS=1; shift ;;
-        --cursors)       CURSORS="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
-        --cursors=*)     CURSORS="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
-        --icons)         ICONS="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
-        --icons=*)       ICONS="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --cursors)       CURSORS="${2:-}"; CURSORS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --cursors=*)     CURSORS="${1#*=}"; CURSORS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --icons)         ICONS="${2:-}"; ICONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --icons=*)       ICONS="${1#*=}"; ICONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --osd)           WANT_OSD=1; EXPLICIT_FLAGS=1; shift ;;
         --no-osd)        WANT_OSD=0; EXPLICIT_FLAGS=1; shift ;;
         --bms-git)       WANT_BMS_GIT=1; EXPLICIT_FLAGS=1; shift ;;
@@ -398,7 +400,9 @@ EOF
     read -r ans_icon || ans_icon="1"
     case "$ans_icon" in
         2|reversal)
-            ICONS="reversal-$ACCENT"
+            # Bare, so accent_to_reversal picks a colour Reversal actually ships.
+            # "reversal-$ACCENT" was three broken answers out of nine here.
+            ICONS="reversal"
             WANT_ICONS=1
             printf '  %s✓%s Reversal icon theme selected (%s)\n' "$C_GRN" "$C_OFF" "$ACCENT"
             ;;
@@ -583,6 +587,10 @@ EOF
     fi
 fi
 
+if [ -z "$CURSORS" ] && [ -r "$CONF_DIR/cursor-pack" ]; then
+    CURSORS="$(cat "$CONF_DIR/cursor-pack" 2>/dev/null || true)"
+fi
+CURSORS="${CURSORS:-adwaita}"
 case "$CURSORS" in
     adwaita|mactahoe) ;;
     *) die "unknown --cursors '$CURSORS' — pick adwaita or mactahoe" ;;
@@ -738,6 +746,13 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     if [ ! -d "$CONF_DIR" ] || [ ! -d "$HOME/.themes/Tahoe-Dark" ]; then
         die "--settings-only retunes an existing install, but there is nothing installed yet. Run ./install.sh first."
     fi
+    # Asking for a different pack is asking for it to be installed, so these run
+    # here despite fetching — but only when the flag was actually given. A
+    # flagless --settings-only stays offline, which is what makes it the thing a
+    # window can press without warning anyone. Switching between packs already
+    # on disk does not download either: both steps skip when the theme is there.
+    if [ -n "$ICONS_EXPLICIT" ] && [ "$WANT_ICONS" = 1 ]; then install_icons; fi
+    if [ -n "$CURSORS_EXPLICIT" ] && [ "$WANT_CURSORS" = 1 ]; then install_cursors; fi
     load_dconf
     install_css
     apply_gsettings

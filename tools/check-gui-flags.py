@@ -51,6 +51,8 @@ def state(**kw):
     s.popup_blur = kw.get("popup_blur", True)
     s.allow = list(kw.get("allow", ["org.gnome.Nautilus", "org.gnome.Console"]))
     s.block = list(kw.get("block", ["*chrome*", "*electron*"]))
+    s.icons = kw.get("icons", "colloid")
+    s.cursors = kw.get("cursors", "adwaita")
     return s
 
 
@@ -123,6 +125,23 @@ CASES = [
 
     ("emptying the allow list is a real change", FROSTED,
      state(allow=[]), ["--app-blur-allow", ""]),
+
+    # The family goes out bare, so install.sh maps it to a colour Reversal
+    # ships. Naming the colour here would need a second copy of that mapping —
+    # and would reintroduce reversal-teal, which does not exist.
+    ("reversal icons", FROSTED, state(icons="reversal"),
+     ["--icons", "reversal"]),
+
+    ("reversal icons and a new accent together", FROSTED,
+     state(icons="reversal", accent="teal"),
+     ["--accent", "teal", "--icons", "reversal"]),
+
+    ("keep the icons as they are", FROSTED, state(icons="keep"), ["--no-icons"]),
+
+    ("mactahoe pointer", FROSTED, state(cursors="mactahoe"),
+     ["--cursors", "mactahoe"]),
+
+    ("keep the pointer", FROSTED, state(cursors="keep"), ["--no-cursors"]),
 
     ("everything at once", FROSTED,
      state(accent="slate", radius="rounded", transparency="0.82", scope="all",

@@ -478,5 +478,12 @@ apply_gsettings() {
     fi
     run gsettings set org.gnome.desktop.interface cursor-theme "$cursor"
 
+    # Remembered like the accent above and for the same reason: a later flagless
+    # run has no other way to know which pack was chosen, and would come back to
+    # the Adwaita default over a deliberate --cursors mactahoe.
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        printf '%s\n' "${CURSORS:-adwaita}" > "$CONF_DIR/cursor-pack"
+    fi
+
     ok "gtk-theme=Tahoe-Dark  icons=$icons  cursor=$cursor  accent=$ACCENT"
 }
