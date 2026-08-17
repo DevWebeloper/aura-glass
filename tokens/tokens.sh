@@ -167,6 +167,29 @@ radius_preset_values() {
     esac
 }
 
+# The range each radius may be set to by hand.
+#
+# The four rows above are curated because these numbers are not proportional to
+# each other, and that is still true — but "pick one of four" and "type any
+# number" are not the only two options. The window offers a control per surface
+# bounded by what the curated rows already establish as sane: the low end of
+# `sharp` to the high end of `pill`, which is the range someone looked at.
+#
+# OSD is the exception and does not follow that rule. TOKEN_RADIUS_OSD's comment
+# records why: past half the blurred box's height the four corner arcs overlap
+# and the pill turns into a soft ellipse, which is what 25 produced. `pill` puts
+# it at 18, so the ceiling here is 20 — two pixels of headroom, deliberately not
+# the 25 that is known to be wrong.
+radius_bounds() {
+    RADIUS_MIN_WINDOW=10;          RADIUS_MAX_WINDOW=46
+    RADIUS_MIN_MENU=8;             RADIUS_MAX_MENU=40
+    RADIUS_MIN_QUICK_SETTINGS=10;  RADIUS_MAX_QUICK_SETTINGS=52
+    RADIUS_MIN_NOTIFICATION=6;     RADIUS_MAX_NOTIFICATION=34
+    RADIUS_MIN_DIALOG=6;           RADIUS_MAX_DIALOG=34
+    RADIUS_MIN_POPUP=6;            RADIUS_MAX_POPUP=34
+    RADIUS_MIN_OSD=4;              RADIUS_MAX_OSD=20
+}
+
 # The `default` row and the literals above are the same numbers written twice,
 # which is the one thing this file exists to prevent — so it is asserted rather
 # than trusted. tools/check-tokens.sh calls this.
@@ -260,6 +283,20 @@ TOKEN_APP_TINT=45
 # shell CSS reads -st-accent-color and the GTK CSS reads @accent_bg_color, so
 # Settings -> Appearance recolours the desktop without a file being touched.
 # Pinning it here would be a downgrade. See the README's "Custom colours".
+#
+# Nor can it be an arbitrary hex, which is worth writing down because it looks
+# like it should be. -st-accent-color is not a CSS property St will let anything
+# assign: it is a read-only keyword backed by the C enum StSystemAccentColor,
+# whose nine values are exactly the nine accent names, resolved from the
+# gsetting by st_theme_context_get_accent_color(). There is no assignment of it
+# anywhere in gnome-shell's own stylesheet — only 186 reads. So a
+# `stage { -st-accent-color: #hex }` rule appended after the theme cannot work,
+# however late in the cascade it lands.
+#
+# GTK4's @accent_bg_color *is* an ordinary named colour and would override
+# cleanly, which is the trap: a custom hex is reachable for every app window and
+# for none of the shell. That is not a colour scheme, it is two of them, so the
+# window offers the nine names and no picker.
 #
 # Values that appear exactly once (the .quick-slider capsule at 26px, the
 # gtk4 field radius at 10px, the tooltip at 12px) are not listed. A token for a

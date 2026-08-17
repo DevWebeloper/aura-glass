@@ -45,6 +45,7 @@ def state(**kw):
     s = Settings.__new__(Settings)
     s.accent = kw.get("accent", "purple")
     s.radius = kw.get("radius", "default")
+    s.radius_custom = kw.get("radius_custom", (30, 26, 33, 20, 20, 20, 12))
     s.blur = kw.get("blur", True)
     s.transparency = kw.get("transparency", "0.90")
     s.scope = kw.get("scope", "gtk")
@@ -68,6 +69,27 @@ CASES = [
 
     ("radius only", FROSTED, state(radius="pill"),
      ["--radius-preset", "pill"]),
+
+    # --radius-custom implies the custom preset, so it stands in for
+    # --radius-preset rather than joining it.
+    ("seven radii of your own", FROSTED,
+     state(radius="custom", radius_custom=(20, 18, 22, 14, 14, 14, 8)),
+     ["--radius-custom", "20,18,22,14,14,14,8"]),
+
+    # "custom" says nothing about which custom, so moving one surface has to go
+    # out even though the preset name did not change.
+    ("one surface moved inside custom",
+     state(radius="custom", radius_custom=(20, 18, 22, 14, 14, 14, 8)),
+     state(radius="custom", radius_custom=(20, 18, 22, 14, 14, 14, 12)),
+     ["--radius-custom", "20,18,22,14,14,14,12"]),
+
+    ("custom back to a named preset",
+     state(radius="custom", radius_custom=(20, 18, 22, 14, 14, 14, 8)),
+     state(radius="rounded"), ["--radius-preset", "rounded"]),
+
+    ("the same seven values twice is not a change",
+     state(radius="custom", radius_custom=(20, 18, 22, 14, 14, 14, 8)),
+     state(radius="custom", radius_custom=(20, 18, 22, 14, 14, 14, 8)), []),
 
     ("accent only", FROSTED, state(accent="teal"),
      ["--accent", "teal"]),

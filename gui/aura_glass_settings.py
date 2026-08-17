@@ -65,6 +65,41 @@ RADIUS_PRESETS = [
     ("pill", "Pill", "As round as the blur behind it allows — 46px windows"),
 ]
 
+# The seven surfaces, in the order --radius-custom takes them, which is
+# tools/token_manifest.py's RADIUS_TOKENS order.
+#
+# The bounds and the four preset rows below are the same numbers as
+# radius_bounds() and radius_preset_values() in tokens/tokens.sh, written twice.
+# That is the arrangement tokens.sh itself describes and defends for the CSS
+# — the values live literally where they are used, and a checker makes the
+# duplication checked rather than trusted. tools/check-gui-radius.py is that
+# checker for this copy.
+RADIUS_SURFACES = [
+    ("window", "Windows", 10, 46,
+     "Every app window, and the blur behind it"),
+    ("menu", "Menus", 8, 40,
+     "Right-click menus and app menus"),
+    ("quick_settings", "Quick Settings", 10, 52,
+     "The system menu and the calendar. Larger than a menu by design — Blur My "
+     "Shell groups these two together"),
+    ("notification", "Notifications", 6, 34,
+     "Banners as they arrive, and the stack in the calendar"),
+    ("dialog", "Dialogs", 6, 34,
+     "Log out, restart, power off"),
+    ("popup", "Other popups", 6, 34,
+     "Anything the more specific ones above do not claim"),
+    ("osd", "Volume and brightness", 4, 20,
+     "The pill that appears on a volume key. Its ceiling is lower than the "
+     "others — past it the corners meet and the pill turns into an ellipse"),
+]
+
+RADIUS_PRESET_VALUES = {
+    "sharp":   (10, 8, 10, 6, 6, 6, 4),
+    "default": (30, 26, 33, 20, 20, 20, 12),
+    "rounded": (38, 32, 40, 26, 26, 26, 16),
+    "pill":    (46, 40, 52, 34, 34, 34, 18),
+}
+
 # --app-transparency takes anything from 70% to 100%; install.sh clamps below 70
 # because past that the text stops being readable over a bright wallpaper. The
 # bar covers that whole range rather than offering the three buckets alone.
@@ -182,6 +217,8 @@ WINDOW_BUTTON_LAYOUTS = [
 # the live case: the per-app list asks the blur rows which list is active.
 NAV_SECTIONS = [
     ("look", "Look", "applications-graphics-symbolic", "_build_look_page"),
+    ("radius", "Corner rounding", "circle-outline-thick-symbolic",
+     "_build_radius_page"),
     ("glass", "Glass", "weather-fog-symbolic", "_build_glass_page"),
     ("apps", "Per-app blur", "view-list-symbolic", "_build_apps_page"),
     ("windows", "Window controls", "window-new-symbolic",
@@ -190,6 +227,26 @@ NAV_SECTIONS = [
     ("updates", "Updates", "software-update-available-symbolic",
      "_build_updates_page"),
 ]
+
+
+def parse_radius_custom(raw):
+    """The radius-custom memo as seven ints, or None if it is not seven ints.
+
+    None rather than a partial answer or a default: install.sh validates the
+    same string and refuses a bad one, so a window that quietly repaired it
+    would be showing something the installer would not accept.
+    """
+    parts = [p.strip() for p in (raw or "").split(",") if p.strip()]
+    if len(parts) != len(RADIUS_SURFACES):
+        return None
+    try:
+        values = [int(p) for p in parts]
+    except ValueError:
+        return None
+    for value, (_id, _title, low, high, _sub) in zip(values, RADIUS_SURFACES):
+        if not low <= value <= high:
+            return None
+    return tuple(values)
 
 
 def read_memo(name, default=""):
@@ -355,7 +412,15 @@ class Settings:
             self.accent = "purple"
 
         self.radius = read_memo("radius-preset", "default")
-        if self.radius not in [p[0] for p in RADIUS_PRESETS]:
+        if self.radius not in [p[0] for p in RADIUS_PRESETS] + ["custom"]:
+            self.radius = "default"
+
+        # Only meaningful while radius is "custom", but read either way so the
+        # seven spin rows have somewhere to start from when someone moves one.
+        self.radius_custom = parse_radius_custom(read_memo("radius-custom"))
+        if self.radius == "custom" and self.radius_custom is None:
+            # A custom preset with no values behind it is not a state install.sh
+            # would accept, so it is not one to carry around either.
             self.radius = "default"
 
         # Solid mode has no memo of its own. install_css encodes it by whether
@@ -451,7 +516,16 @@ class Settings:
         # layout standing, which the row says.
         if self.window_buttons != other.window_buttons and self.window_buttons:
             args += ["--window-buttons", self.window_buttons]
-        if self.radius != other.radius:
+        # --radius-custom implies the custom preset, so it stands in for
+        # --radius-preset rather than joining it. Sent when the seven values
+        # moved even if the preset name did not, because "custom" says nothing
+        # about which custom.
+        if self.radius == "custom":
+            if (other.radius != "custom"
+                    or self.radius_custom != other.radius_custom):
+                args += ["--radius-custom",
+                         ",".join(str(v) for v in self.radius_custom)]
+        elif self.radius != other.radius:
             args += ["--radius-preset", self.radius]
 
         if self.blur != other.blur:
@@ -955,11 +1029,102 @@ class Window(Adw.ApplicationWindow):
         self._accent_row.add_suffix(settings_button)
         look.add(self._accent_row)
 
-        self._radius_row = self._combo(
-            "Corner rounding", "", RADIUS_PRESETS, self._applied.radius, "radius")
-        look.add(self._radius_row)
         page.add(look)
         return page
+
+    def _build_radius_page(self):
+        page = Adw.PreferencesPage()
+
+        presets = Adw.PreferencesGroup(
+            title="Corner rounding",
+            description="The four that have been through a screenshot loop. "
+                        "Each sets all seven surfaces below at once — move any "
+                        "one of them afterwards and the rounding becomes yours "
+                        "rather than one of these.")
+        row = Adw.ActionRow(title="Presets")
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6,
+                      valign=Gtk.Align.CENTER)
+        self._radius_preset_buttons = {}
+        for ident, title, subtitle in RADIUS_PRESETS:
+            button = Gtk.Button(label=title, tooltip_text=subtitle)
+            button.connect("clicked", self._on_radius_preset, ident)
+            box.append(button)
+            self._radius_preset_buttons[ident] = button
+        row.add_suffix(box)
+        presets.add(row)
+
+        self._radius_state = Adw.ActionRow(title="Currently")
+        presets.add(self._radius_state)
+        page.add(presets)
+
+        # One control per surface rather than one for all seven. The presets
+        # stay because these numbers are not proportional to each other and a
+        # single multiplier over them produces combinations nobody looked at —
+        # but "pick one of four" was never the only alternative to that.
+        surfaces = Adw.PreferencesGroup(
+            title="Each surface",
+            description="Pixels. Every range here is one the presets already "
+                        "cover, so anything you can set is something that has "
+                        "been seen on a screen.")
+        self._radius_rows = {}
+        for ident, title, low, high, subtitle in RADIUS_SURFACES:
+            spin = Adw.SpinRow.new_with_range(low, high, 1)
+            spin.set_title(title)
+            spin.set_subtitle(subtitle)
+            spin.connect("notify::value", self._on_changed, "radius")
+            surfaces.add(spin)
+            self._radius_rows[ident] = spin
+        page.add(surfaces)
+
+        self._load_radius(self._applied)
+        return page
+
+    def _load_radius(self, settings):
+        """Put the seven rows where a Settings says they are."""
+        values = (settings.radius_custom if settings.radius == "custom"
+                  else RADIUS_PRESET_VALUES[settings.radius])
+        was, self._loading = self._loading, True
+        for (ident, _t, _lo, _hi, _s), value in zip(RADIUS_SURFACES, values):
+            self._radius_rows[ident].set_value(value)
+        self._loading = was
+        self._sync_radius_state()
+
+    def _radius_values(self):
+        return tuple(int(self._radius_rows[ident].get_value())
+                     for ident, _t, _lo, _hi, _s in RADIUS_SURFACES)
+
+    def _radius_preset_name(self):
+        """Which preset the seven rows spell, or custom if they spell none."""
+        values = self._radius_values()
+        for ident, preset in RADIUS_PRESET_VALUES.items():
+            if values == preset:
+                return ident
+        return "custom"
+
+    def _sync_radius_state(self):
+        name = self._radius_preset_name()
+        titles = {p[0]: p[1] for p in RADIUS_PRESETS}
+        self._radius_state.set_subtitle(
+            titles[name] if name in titles
+            else "Your own — " + ", ".join(
+                "%s %d" % (s[1].lower(), v)
+                for s, v in zip(RADIUS_SURFACES, self._radius_values())))
+        for ident, button in self._radius_preset_buttons.items():
+            # The active preset's button reads as pressed rather than going
+            # insensitive: it is still the way back after moving a row.
+            if ident == name:
+                button.add_css_class("suggested-action")
+            else:
+                button.remove_css_class("suggested-action")
+
+    def _on_radius_preset(self, _button, ident):
+        was, self._loading = self._loading, True
+        for (surface, _t, _lo, _hi, _s), value in zip(
+                RADIUS_SURFACES, RADIUS_PRESET_VALUES[ident]):
+            self._radius_rows[surface].set_value(value)
+        self._loading = was
+        self._sync_radius_state()
+        self._mark_dirty()
 
     def _build_icons_page(self):
         page = Adw.PreferencesPage()
@@ -1267,7 +1432,8 @@ class Window(Adw.ApplicationWindow):
         """What the widgets are asking for."""
         s = Settings.__new__(Settings)
         s.accent = self._accent_row._ids[self._accent_row.get_selected()]
-        s.radius = self._radius_row._ids[self._radius_row.get_selected()]
+        s.radius = self._radius_preset_name()
+        s.radius_custom = self._radius_values()
         s.blur = self._blur_row.get_active()
         s.scope = self._scope()
         s.transparency = (
@@ -1339,6 +1505,9 @@ class Window(Adw.ApplicationWindow):
             self._refill_combo(self._icon_color_row, ICON_COLORS[family], color)
             self._loading = False
 
+        if key == "radius":
+            self._sync_radius_state()
+
         if key in ("blur", "transparency", "scope", "icons"):
             self._sync_sensitivity()
         # The mode decides which list is consulted, so it decides which is shown.
@@ -1352,8 +1521,7 @@ class Window(Adw.ApplicationWindow):
         self._loading = True
         self._accent_row.set_selected(
             self._accent_row._ids.index(self._applied.accent))
-        self._radius_row.set_selected(
-            self._radius_row._ids.index(self._applied.radius))
+        self._load_radius(self._applied)
         self._blur_row.set_active(self._applied.blur)
         self._window_blur_row.set_active(self._applied.scope != "none")
         self._blur_all_row.set_active(self._applied.scope == "all")

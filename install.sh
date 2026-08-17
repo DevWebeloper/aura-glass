@@ -76,6 +76,8 @@ ICONS_EXPLICIT=""
 GRAIN=""          # empty keeps the preset's value, or the remembered choice
 RADIUS_PRESET=""       # empty = remembered choice, then default
 RADIUS_PRESET_EXPLICIT=""
+RADIUS_CUSTOM=""       # seven comma-separated pixel values, in RADIUS_TOKENS order
+RADIUS_CUSTOM_EXPLICIT=""
 SETTINGS_ONLY=0
 WANT_GUI=1
 WANT_UPDATE_CHECK=1
@@ -117,6 +119,11 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
     --radius-preset P corner rounding for windows, menus, dialogs and
                       notifications. One of: $RADIUS_PRESETS (default: default,
                       and remembered for later runs)
+    --radius-custom LIST
+                      seven corner radii of your own, in pixels, comma separated:
+                      window,menu,quick-settings,notification,dialog,popup,osd
+                      (e.g. 30,26,33,20,20,20,12). Each is bounded by what the
+                      presets already cover. Overrides --radius-preset
     --panel-blur-fix  agent that rebuilds Blur My Shell's panel blur on layout change (default: on)
     --no-panel-blur-fix skip the panel blur rebuild agent
     --icons WHICH     colloid (default) or reversal, either bare to follow
@@ -196,6 +203,8 @@ while [ $# -gt 0 ]; do
         --grain)         GRAIN="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --grain=*)       GRAIN="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --no-grain)      GRAIN=0; EXPLICIT_FLAGS=1; shift ;;
+        --radius-custom) RADIUS_CUSTOM="${2:-}"; RADIUS_CUSTOM_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --radius-custom=*) RADIUS_CUSTOM="${1#*=}"; RADIUS_CUSTOM_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --radius-preset) RADIUS_PRESET="${2:-}"; RADIUS_PRESET_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --radius-preset=*)
                          RADIUS_PRESET="${1#*=}"; RADIUS_PRESET_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
@@ -663,17 +672,54 @@ if [ -n "$WINDOW_BUTTONS_EXPLICIT" ]; then
     esac
 fi
 
+# Asking for seven values of your own is asking for the preset to be `custom`.
+# One flag decides both so they cannot be remembered disagreeing with each other.
+[ -n "$RADIUS_CUSTOM_EXPLICIT" ] && { RADIUS_PRESET="custom"; RADIUS_PRESET_EXPLICIT=1; }
+
 if [ -z "$RADIUS_PRESET_EXPLICIT" ] && [ -r "$CONF_DIR/radius-preset" ]; then
     RADIUS_PRESET="$(cat "$CONF_DIR/radius-preset" 2>/dev/null || true)"
 fi
 RADIUS_PRESET="${RADIUS_PRESET:-default}"
-# Sets the seven TOKEN_RADIUS_* values for this run, which is what
-# apply_radius_css and apply_radius_dconf both read. Validated here rather than
-# at the point of use so a typo fails before anything has been written, and
-# rejected rather than defaulted: a --radius-preset that silently installed the
-# shipped look would be indistinguishable from the flag working.
-radius_preset_values "$RADIUS_PRESET" \
-    || die "unknown --radius-preset '$RADIUS_PRESET' — pick one of: $RADIUS_PRESETS"
+
+if [ "$RADIUS_PRESET" = custom ]; then
+    # The seven values, from the flag or from the memo the last one wrote.
+    if [ -z "$RADIUS_CUSTOM_EXPLICIT" ] && [ -r "$CONF_DIR/radius-custom" ]; then
+        RADIUS_CUSTOM="$(cat "$CONF_DIR/radius-custom" 2>/dev/null || true)"
+    fi
+    [ -n "$RADIUS_CUSTOM" ] \
+        || die "--radius-preset custom needs seven values — pass --radius-custom"
+
+    # Bounded per surface rather than free. The ranges are the ones the curated
+    # presets already cover, except the OSD's ceiling, which is lower than
+    # arithmetic would suggest and is documented at TOKEN_RADIUS_OSD.
+    radius_bounds
+    _rc_names="WINDOW MENU QUICK_SETTINGS NOTIFICATION DIALOG POPUP OSD"
+    _rc_i=1
+    for _rc_name in $_rc_names; do
+        _rc_val="$(printf '%s' "$RADIUS_CUSTOM" | cut -d, -f"$_rc_i")"
+        case "$_rc_val" in
+            ''|*[!0-9]*) die "--radius-custom needs seven whole numbers of pixels, got '$RADIUS_CUSTOM'" ;;
+        esac
+        eval "_rc_min=\$RADIUS_MIN_$_rc_name; _rc_max=\$RADIUS_MAX_$_rc_name"
+        if [ "$_rc_val" -lt "$_rc_min" ] || [ "$_rc_val" -gt "$_rc_max" ]; then
+            die "--radius-custom: $_rc_name is $_rc_val, outside $_rc_min-$_rc_max"
+        fi
+        eval "TOKEN_RADIUS_$_rc_name=\$_rc_val"
+        _rc_i=$((_rc_i + 1))
+    done
+    # An eighth field is a typo, not a value that happens not to be read.
+    [ -z "$(printf '%s' "$RADIUS_CUSTOM" | cut -d, -f8)" ] \
+        || die "--radius-custom takes seven values, got more"
+else
+    # Sets the seven TOKEN_RADIUS_* values for this run, which is what
+    # apply_radius_css and apply_radius_dconf both read. Validated here rather
+    # than at the point of use so a typo fails before anything has been written,
+    # and rejected rather than defaulted: a --radius-preset that silently
+    # installed the shipped look would be indistinguishable from the flag
+    # working.
+    radius_preset_values "$RADIUS_PRESET" \
+        || die "unknown --radius-preset '$RADIUS_PRESET' — pick one of: $RADIUS_PRESETS custom"
+fi
 
 if [ -n "$APP_TRANSPARENCY" ]; then
     norm_res="$(python3 - "${APP_TRANSPARENCY:-0}" "${APP_OPACITY:-}" <<'PY'

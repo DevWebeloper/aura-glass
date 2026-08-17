@@ -173,6 +173,16 @@ apply_radius_css() {
 
     mkdir -p "$CONF_DIR"
     printf '%s\n' "$preset" > "$CONF_DIR/radius-preset"
+    # The preset name alone is not enough to reconstruct `custom`, so the seven
+    # values go beside it. Written from the resolved tokens rather than from the
+    # flag, so the memo holds what was actually applied.
+    if [ "$preset" = custom ]; then
+        printf '%s,%s,%s,%s,%s,%s,%s\n' \
+            "$TOKEN_RADIUS_WINDOW" "$TOKEN_RADIUS_MENU" \
+            "$TOKEN_RADIUS_QUICK_SETTINGS" "$TOKEN_RADIUS_NOTIFICATION" \
+            "$TOKEN_RADIUS_DIALOG" "$TOKEN_RADIUS_POPUP" "$TOKEN_RADIUS_OSD" \
+            > "$CONF_DIR/radius-custom"
+    fi
     ok "corner radii at the '$preset' preset (remembered for later runs)"
 }
 
