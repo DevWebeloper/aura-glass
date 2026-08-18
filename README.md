@@ -1,6 +1,6 @@
 # aura-glass
 
-> **A fluid, modern frosted-glass desktop for GNOME.**  
+> **A fluid, modern frosted-glass GNOME theme.**  
 > Seamless dynamic blur, macOS-inspired ergonomics, pixel-perfect CSS fixes, and unified system theming — installed with a single command without root (root only required for optional GDM theming).
 
 ```
