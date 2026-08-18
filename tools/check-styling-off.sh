@@ -25,8 +25,8 @@ cp "$gtk4_css" "$conf/backups/gtk4-gtk.css.orig"
 
 # gtk-dark.css: the Tahoe installer made this file where none existed before,
 # so backup_once recorded an .absent marker rather than an .orig — stand_down's
-# remove branch, which has to take the file away rather than restore content
-# that was never ours to restore.
+# move-aside branch, which has to take the file out of GTK's way without
+# throwing it away, because coming back out of solid mode has to bring it back.
 printf '/* theme dark */\nwindow { background: black; }\n' > "$gtk4_dark_css"
 : > "$conf/backups/gtk4-gtk-dark.css.absent"
 
@@ -58,7 +58,9 @@ grep -q 'box-shadow: 0 2px 4px' "$shell_css" \
 grep -q 'aura-glass BEGIN' "$gtk4_css" \
     && failures+=("with the marker the gtk4 sheet should have no block")
 [ -e "$gtk4_dark_css" ] \
-    && failures+=("gtk-dark.css has only an .absent marker — standing down should remove it, not leave it behind")
+    && failures+=("gtk-dark.css has only an .absent marker — standing down should move it aside, not leave it behind")
+[ -f "$conf/backups/gtk4-gtk-dark.css.stood-down" ] \
+    || failures+=("standing down should leave the moved-aside gtk-dark.css in backups/ for coming back")
 grep -q 'aura-glass BEGIN' "$gtk3_css" \
     && failures+=("with the marker the gtk3 sheet should have no block")
 grep -q 'user-own-rule' "$gtk3_css" \
@@ -77,17 +79,31 @@ apply_it
 [ "$before_gtk3" = "$(cat "$gtk3_css")" ] \
     || failures+=("standing down twice should change nothing the second time (gtk3)")
 [ -e "$gtk4_dark_css" ] \
-    && failures+=("standing down twice should leave the removed gtk-dark.css removed")
+    && failures+=("standing down twice should leave the moved-aside gtk-dark.css gone from where GTK reads it")
 
-# And back again.
+# And back again — every target the stand-down touched, not just the shell
+# sheet, because the .stood-down move and the revive that undoes it are
+# exactly what a shell-only assertion here would never catch.
 rm -f "$conf/styling-off"
 apply_it
 grep -q 'aura-glass BEGIN' "$shell_css" \
-    || failures+=("removing the marker should put the block back")
+    || failures+=("removing the marker should put the block back (shell)")
+grep -q 'aura-glass BEGIN' "$gtk4_css" \
+    || failures+=("removing the marker should put the block back (gtk4)")
+if [ -f "$gtk4_dark_css" ]; then
+    grep -q 'aura-glass BEGIN' "$gtk4_dark_css" \
+        || failures+=("gtk-dark.css came back but without its block")
+else
+    failures+=("removing the marker should revive gtk-dark.css, not leave it gone")
+fi
+grep -q 'aura-glass BEGIN' "$gtk3_css" \
+    || failures+=("removing the marker should put the block back (gtk3)")
+grep -q 'user-own-rule' "$gtk3_css" \
+    || failures+=("coming back should still leave the user's own rule in gtk3.css")
 
 if [ "${#failures[@]}" -gt 0 ]; then
     printf 'styling-off check FAILED\n\n'
     printf '  %s\n' "${failures[@]}"
     exit 1
 fi
-printf 'styling-off check passed — splice, stand down (restore, absent-remove, strip) across all four targets, idempotent, and back\n'
+printf 'styling-off check passed — splice, stand down (restore, move-aside, strip) across all four targets, idempotent, and all the way back\n'
