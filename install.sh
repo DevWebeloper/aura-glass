@@ -979,7 +979,16 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     # on disk does not download either: both steps skip when the theme is there.
     if [ -n "$ICONS_EXPLICIT" ] && [ "$WANT_ICONS" = 1 ]; then install_icons; fi
     if [ -n "$CURSORS_EXPLICIT" ] && [ "$WANT_CURSORS" = 1 ]; then install_cursors; fi
-    load_dconf
+    # Not in solid mode. dconf/core.ini is every extension's settings, and
+    # loading it is exactly the "modifying the extension" that standing down is
+    # supposed to avoid — the extensions are switched off with their own
+    # settings intact, ready for the way back.
+    if [ "$WANT_STYLING" = 1 ]; then
+        load_dconf
+    else
+        step "Loading the dconf preset"
+        skip "solid mode — the extensions keep their own settings"
+    fi
     install_css
     apply_gsettings
     remember_glass_mode
@@ -1031,7 +1040,16 @@ else
 fi
 if [ "$WANT_ICONS" = 1 ]; then install_icons; else step "Icons"; skip "left alone (--no-icons)"; fi
 if [ "$WANT_CURSORS" = 1 ]; then install_cursors; else step "Cursors"; skip "left alone (--no-cursors)"; fi
-load_dconf
+# Not in solid mode. dconf/core.ini is every extension's settings, and
+# loading it is exactly the "modifying the extension" that standing down is
+# supposed to avoid — the extensions are switched off with their own
+# settings intact, ready for the way back.
+if [ "$WANT_STYLING" = 1 ]; then
+    load_dconf
+else
+    step "Loading the dconf preset"
+    skip "solid mode — the extensions keep their own settings"
+fi
 install_css
 apply_gsettings
 remember_glass_mode

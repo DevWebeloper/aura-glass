@@ -176,9 +176,27 @@ case "$raw" in
     *) failures+=("switching back to frosted should restore shell-tint-color #224488 (line not seen)") ;;
 esac
 
+# Solid leaves the packs and the accent alone and puts the two theme keys back.
+# Matched against the specific dry-run line each assertion is about, rather
+# than anywhere in the whole run's output, so a regression in one line cannot
+# hide behind an unrelated line elsewhere that happens to share a word.
+out="$(in_scratch --glass-mode solid)"
+case "$out" in
+    *"dry-run: gsettings reset org.gnome.desktop.interface gtk-theme"*) ;;
+    *) failures+=("solid should reset gtk-theme, the run never mentions it") ;;
+esac
+case "$out" in
+    *"dry-run: dconf load /org/gnome/shell/extensions/ < dconf/core.ini"*)
+        failures+=("solid should not load the dconf preset — it would rewrite the extensions' own settings") ;;
+esac
+case "$out" in
+    *"dry-run: gsettings set org.gnome.desktop.interface icon-theme"*) ;;
+    *) failures+=("solid should still set the icon theme — the packs stay") ;;
+esac
+
 if [ "${#failures[@]}" -gt 0 ]; then
     printf 'glass mode check FAILED\n\n'
     printf '  %s\n' "${failures[@]}"
     exit 1
 fi
-printf 'glass mode check passed — 7 resolutions, 5 refusals and 6 drawer keys round-tripped\n'
+printf 'glass mode check passed — 7 resolutions, 5 refusals, 6 drawer keys round-tripped and solid'"'"'s theme keys confirmed\n'

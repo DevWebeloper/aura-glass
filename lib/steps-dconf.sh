@@ -672,9 +672,21 @@ apply_gsettings() {
     [ -n "$icons" ] \
         || { warn "icon theme $base is not installed — falling back to Adwaita"; icons="Adwaita"; }
 
+    # prefer-dark and the accent are GNOME's own keys and a preference of the
+    # user's, not this theme's styling, so they stand in every mode. The GTK
+    # theme is ours, and in solid mode it goes back to GNOME's default along
+    # with the shell theme — that pair is what makes a stood-down desktop look
+    # like one, rather than a themed desktop with the blur removed.
     run gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
-    run gsettings set org.gnome.desktop.interface gtk-theme    'Tahoe-Dark'
     run gsettings set org.gnome.desktop.interface accent-color "$ACCENT"
+    if [ "${WANT_STYLING:-1}" = 1 ]; then
+        run gsettings set org.gnome.desktop.interface gtk-theme 'Tahoe-Dark'
+        run dconf write /org/gnome/shell/extensions/user-theme/name "'Tahoe-Dark'"
+    else
+        run gsettings reset org.gnome.desktop.interface gtk-theme
+        run dconf write /org/gnome/shell/extensions/user-theme/name "''"
+        ok "gtk-theme and the shell theme reset — the theme has stood down"
+    fi
     run gsettings set org.gnome.desktop.interface icon-theme   "$icons"
 
     # Remembered so the next flagless run comes back to this accent rather than
@@ -711,5 +723,9 @@ apply_gsettings() {
     # and this is the step that runs in the --settings-only path with them.
     apply_window_buttons
 
-    ok "gtk-theme=Tahoe-Dark  icons=$icons  cursor=$cursor  accent=$ACCENT"
+    if [ "${WANT_STYLING:-1}" = 1 ]; then
+        ok "gtk-theme=Tahoe-Dark  icons=$icons  cursor=$cursor  accent=$ACCENT"
+    else
+        ok "icons=$icons  cursor=$cursor  accent=$ACCENT — theme keys left at GNOME's defaults"
+    fi
 }
