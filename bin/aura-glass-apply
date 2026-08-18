@@ -21,6 +21,56 @@ GTK3_CSS="$HOME/.config/gtk-3.0/gtk.css"
 mkdir -p "$HOME/.config/gtk-3.0"
 [ -f "$GTK3_CSS" ] || : > "$GTK3_CSS"
 
+# The theme standing down, which is what solid mode is. install.sh writes the
+# marker; this is the only thing that reads it, because this is the only thing
+# that ever put the block into a target in the first place.
+#
+# Stripping is not enough on its own for the three theme-generated files: apply
+# flattens the theme's own shadow and gradient values in place, so a sheet with
+# the block removed is still a flattened sheet. Where there is a backup it is
+# restored; where the file existed only because the theme's installer made it
+# (an .absent marker beside the backups) it goes; otherwise the block is
+# stripped and whatever else is in there is left alone. This is the same rule
+# uninstall.sh's restore() follows, for the same reason.
+if [ -f "$DIR/styling-off" ]; then
+    stand_down() {   # stand_down TARGET BACKUP_NAME
+        local target="$1" name="$2" bak="$DIR/backups/$2.orig"
+        if [ -f "$bak" ]; then
+            cp -a "$bak" "$target"
+            echo "restored $target"
+            return
+        fi
+        if [ -e "$DIR/backups/$name.absent" ]; then
+            rm -f "$target"
+            echo "removed $target (nothing was there before)"
+            return
+        fi
+        [ -f "$target" ] || { echo "skip (missing target): $target"; return; }
+        python3 - "$target" <<'PY'
+import sys, re
+target = sys.argv[1]
+css = open(target, encoding="utf-8").read()
+new = css
+for name in ("aura-glass", "tahoe-glass", "tahoe-tweaks"):
+    new = re.sub(
+        r"/\* >>> %s BEGIN <<< \*/.*?/\* >>> %s END <<< \*/\n?" % (name, name),
+        "", new, flags=re.S,
+    )
+if new != css:
+    open(target, "w", encoding="utf-8").write(new)
+    print("stripped", target)
+else:
+    print("no block in", target)
+PY
+    }
+    stand_down "$SHELL_CSS"     "gnome-shell.css"
+    stand_down "$GTK4_CSS"      "gtk4-gtk.css"
+    stand_down "$GTK4_DARK_CSS" "gtk4-gtk-dark.css"
+    stand_down "$GTK3_CSS"      "gtk3-gtk.css"
+    echo "the theme has stood down — restart GTK apps to pick up the GTK side"
+    exit 0
+fi
+
 # apply TARGET FLATTEN SNIPPET... — one marked block per target, concatenating
 # every snippet that is actually present. Optional sheets are installed and
 # removed by install.sh rather than switched on here, so a missing one simply

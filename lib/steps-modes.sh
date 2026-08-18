@@ -121,6 +121,20 @@ apply_glass_mode() {
     esac
 }
 
+# Writes or removes $CONF_DIR/styling-off to match WANT_STYLING — the marker
+# bin/aura-glass-apply reads to decide whether to splice the block in or stand
+# it down. Called from two places, for two different reasons: install_css calls
+# it before aura-glass-apply runs, because the marker has to already be on disk
+# for that mid-run read to see it; remember_glass_mode calls it again once the
+# run has fully resolved, because that is what leaves it in the right state
+# once install.sh is done. Each caller keeps its own DRY_RUN guard around the
+# call, so this does not need one of its own.
+sync_styling_marker() {
+    mkdir -p "$CONF_DIR"
+    if [ "${WANT_STYLING:-1}" = 0 ]; then : > "$CONF_DIR/styling-off"
+    else rm -f "$CONF_DIR/styling-off"; fi
+}
+
 # Written after the run has resolved, so the memo holds what was applied rather
 # than what was asked for. The marker is the styling half of the same answer and
 # is written here too, so the two can never disagree.
@@ -130,11 +144,7 @@ remember_glass_mode() {
     mkdir -p "$CONF_DIR"
     printf '%s\n' "$GLASS_MODE" > "$CONF_DIR/glass-mode"
     save_glass_mode_memos
-    if [ "${WANT_STYLING:-1}" = 0 ]; then
-        : > "$CONF_DIR/styling-off"
-    else
-        rm -f "$CONF_DIR/styling-off"
-    fi
+    sync_styling_marker
 }
 
 # ---- the per-mode drawer ------------------------------------------------
