@@ -70,7 +70,14 @@ icon_base() {
         original)
             local o; o="$(gsettings_original icon-theme)"
             printf '%s\n' "${o:-Adwaita}" ;;
-        reversal)        printf 'Reversal\n' ;;
+        # Bare `reversal` follows the accent, the same resolution install_reversal
+        # does. It used to print a bare `Reversal`, which is a directory the pack
+        # has never shipped — its installer only ever lays down Reversal-<colour>
+        # — so apply_gsettings asked for a theme that was not there and fell back
+        # to Adwaita. On a --settings-only run, which does not reinstall icons and
+        # so never reaches install_reversal's own resolution, that silently undid
+        # the icon theme every time it was run.
+        reversal)        printf 'Reversal-%s\n' "$(accent_to_reversal "$ACCENT")" ;;
         reversal-*)      printf 'Reversal-%s\n' "${ICONS#reversal-}" ;;
         *)               printf '%s\n' "$ICONS" ;;
     esac
