@@ -60,6 +60,14 @@ want "bare --no-blur is opaque but still themed" \
      "frosted blur=0 window=0 popup=0 transparency=0 styling=1" \
      --no-blur
 
+want "solid accepts an explicit --app-transparency already spelled off (0.0)" \
+     "solid blur=0 window=0 popup=0 transparency=0 styling=0" \
+     --glass-mode solid --app-transparency 0.0
+
+want "solid accepts an explicit --app-transparency already spelled off (off)" \
+     "solid blur=0 window=0 popup=0 transparency=0 styling=0" \
+     --glass-mode solid --app-transparency off
+
 if in_scratch --glass-mode solid --window-blur >/dev/null 2>&1; then
     failures+=("--glass-mode solid --window-blur was accepted, it must be refused")
 fi
@@ -85,4 +93,4 @@ if [ "${#failures[@]}" -gt 0 ]; then
     printf '  %s\n' "${failures[@]}"
     exit 1
 fi
-printf 'glass mode check passed — 5 resolutions and 5 refusals\n'
+printf 'glass mode check passed — 7 resolutions and 5 refusals\n'

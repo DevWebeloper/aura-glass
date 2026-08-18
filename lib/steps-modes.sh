@@ -87,8 +87,19 @@ apply_glass_mode() {
             if [ -n "${POPUP_BLUR_EXPLICIT:-}" ] && [ "$WANT_POPUP_BLUR" = 1 ]; then
                 die "--glass-mode solid and --popup-blur contradict each other — solid mode leaves Blur My Shell out entirely, so there is no blur for --popup-blur to turn on. Pick one."
             fi
-            if [ -n "${APP_TRANSPARENCY_EXPLICIT:-}" ] && [ "$APP_TRANSPARENCY" != 0 ]; then
-                die "--glass-mode solid and --app-transparency contradict each other — solid mode installs no translucency, so there is nothing for --app-transparency to set. Pick one."
+            if [ -n "${APP_TRANSPARENCY_EXPLICIT:-}" ]; then
+                # Not a plain != 0: this runs before install.sh's own
+                # transparency normalisation, deliberately, because a mode has
+                # to resolve before the level it implies gets normalised — so
+                # an off-shaped answer can still arrive spelled any of the ways
+                # that normalisation later folds to 0 rather than as the
+                # literal digit. Matched against that same set of spellings,
+                # so --app-transparency 0.0 / 0% / off / none / no is the same
+                # request as solid, not a contradiction of it.
+                case "$APP_TRANSPARENCY" in
+                    0|0.0|0%|off|none|no) ;;
+                    *) die "--glass-mode solid and --app-transparency contradict each other — solid mode installs no translucency, so there is nothing for --app-transparency to set. Pick one." ;;
+                esac
             fi
             WANT_BLUR=0
             WANT_POPUP_BLUR=0
