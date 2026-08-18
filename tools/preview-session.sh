@@ -210,6 +210,18 @@ shot 03-nautilus
 launch gnome-text-editor
 shot 04-text-editor
 
+# The overview with windows in it, which 02-overview cannot show because it is
+# taken before anything is launched. Window blur is an actor of its own, sitting
+# under the window as a child of the window actor, so the overview's previews
+# clone it along with the window — and with `blur-on-overview: false` it has no
+# business painting there. Upstream let it, and what it painted was the pixels
+# it last sampled on the desktop, changing whenever a preview was hovered.
+# patches/blur-my-shell-overview.patch is what stops it; this is the shot that
+# would show it coming back.
+overview true
+shot 04b-overview-windows
+overview false
+
 # css/gtk3-tweaks.css is the one sheet nothing else here covers. Every app in
 # the roster above is GTK4, and the GTK3 half of Tahoe-Dark ships as a gresource
 # — so those rules can only be seen against a real GTK3 window, and until now

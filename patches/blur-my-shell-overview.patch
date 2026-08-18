@@ -1,0 +1,72 @@
+diff --git a/src/components/applications.js b/src/components/applications.js
+index b6d71d9..71e292d 100644
+--- a/src/components/applications.js
++++ b/src/components/applications.js
+@@ -172,9 +172,56 @@ export const ApplicationsBlur = class ApplicationsBlur {
+                     });
+                 }
+             );
++        } else {
++            // The blur actor is a child of the window actor, so the overview's
++            // window previews clone it along with the window they preview. Its
++            // effect samples the framebuffer wherever it is painted, and with
++            // clipped redraws on it only samples again when something damages
++            // the preview — hovering it, for instance. That leaves a preview
++            // showing a frozen picture of the desktop that jumps to a different
++            // one when the pointer arrives.
++            //
++            // `blur-on-overview: false` reads as "no window blur in the
++            // overview", so take the blur out of the previews for as long as
++            // the overview is up. Nothing here touches actor visibility:
++            // `set_focus_for_window` and the `notify::visible` handler own that
++            // and keep working either way.
++            this.connections.connect(
++                Main.overview, 'showing',
++                _ => this.meta_window_map.forEach(
++                    (meta_window, _pid) => this.set_blur_paused(meta_window, true)
++                )
++            );
++
++            this.connections.connect(
++                Main.overview, 'hidden',
++                _ => this.meta_window_map.forEach(
++                    (meta_window, _pid) => this.set_blur_paused(meta_window, false)
++                )
++            );
+         }
+     }
+ 
++    /// Stop or resume a window's blur without disturbing anything else that
++    /// owns its actor. The opacity is what a `Clutter.Clone` obeys, so it is
++    /// what takes the blur out of an overview preview; the effects are turned
++    /// off with it so the shaders do not run for something nothing can see.
++    set_blur_paused(meta_window, paused) {
++        const blur_actor = meta_window.blur_actor;
++        if (!blur_actor)
++            return;
++
++        blur_actor.opacity = paused ? 0 : 255;
++
++        const pipeline = meta_window.bg_manager?._bms_pipeline;
++        if (!pipeline)
++            return;
++
++        if (pipeline.effect)
++            pipeline.effect.set_enabled(!paused);
++        pipeline.effects?.forEach(effect => effect.set_enabled(!paused));
++    }
++
+     /// Iterate through all existing windows and add blur as needed.
+     update_all_windows() {
+         // Recompile patterns in case whitelist/blacklist changed
+@@ -378,6 +425,10 @@ export const ApplicationsBlur = class ApplicationsBlur {
+         // make sure window is blurred in overview
+         if (this.settings.applications.BLUR_ON_OVERVIEW)
+             this.enforce_window_visibility_on_overview_for(window_actor);
++        // ... or that it is not, for a window that gets its blur while the
++        // overview is already up: the 'showing' signal has been and gone.
++        else if (Main.overview.visible)
++            this.set_blur_paused(meta_window, true);
+ 
+         // update the size
+         this.update_size(pid);

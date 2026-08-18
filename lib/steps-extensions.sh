@@ -2,9 +2,10 @@
 # aura-glass — installing and enabling the shell extensions.
 #
 # Three of them cannot come from extensions.gnome.org as they are. Blur My Shell
-# is built from a pinned commit because no release carries the popup component;
-# Open Bar and Custom OSD are built from their last upstream commit plus a patch
-# in patches/, because neither has a GNOME 50 release. gnome-rounded-blur is not
+# is built from a pinned commit because no release carries the popup component,
+# plus a patch of this project's own; Open Bar and Custom OSD are built from
+# their last upstream commit plus a patch in patches/, because neither has a
+# GNOME 50 release. gnome-rounded-blur is not
 # an extension at all but the C library that lets the popup blur be dynamic, and
 # it is the only thing this project installs outside $HOME.
 #
@@ -101,17 +102,29 @@ install_bms() {
     if [ "${FORCE:-0}" != 1 ] \
        && [ -f "$EXT_DIR/$BMS_UUID/components/popup/index.js" ] \
        && [ "$(cat "$CONF_DIR/bms-ref" 2>/dev/null || true)" = "$BMS_REF" ] \
+       && patch_stamp_current bms-overview-patch "$REPO_ROOT/patches/$BMS_PATCH" \
        && ext_supports_shell "$EXT_DIR/$BMS_UUID" "$GNOME_MAJOR"; then
         skip "$BMS_UUID already built from $BMS_REF"
         return 0
     fi
 
-    info "no release carries the popup component — building from $BMS_REF"
+    info "no release carries the popup component — building from $BMS_REF + patches/$BMS_PATCH"
     local src="$SRC_CACHE/blur-my-shell"
     if [ -d "$src/.git" ]; then
         run git -C "$src" checkout --quiet -- . 2>/dev/null || true
     fi
     clone_pinned "$BMS_REPO" "$BMS_REF" "$src"
+
+    # Upstream's `blur-on-overview: false` leaves the blur actor in the window,
+    # and the overview clones it into every window preview, where it shows a
+    # frozen picture of the desktop that changes when the preview is hovered.
+    # The patch makes the setting mean what it says. The checkout above is reset
+    # by the `git checkout -- .` that precedes it, so this always applies to a
+    # clean tree.
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_PATCH" \
+            || die "the Blur My Shell overview patch did not apply — upstream may have moved"
+    fi
 
     local podir=(--podir=../po)
     if ! have msgfmt; then
@@ -120,7 +133,7 @@ install_bms() {
     fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: gnome-extensions pack in $src/src, then install the zip"
+        info "dry-run: apply patches/$BMS_PATCH, gnome-extensions pack in $src/src, then install the zip"
         return 0
     fi
 
@@ -172,7 +185,8 @@ install_bms() {
     mkdir -p "$CONF_DIR"
     printf '%s\n' "$BMS_REF" > "$CONF_DIR/bms-ref"
     printf 'git\n' > "$CONF_DIR/bms-source"
-    ok "$BMS_UUID (built from $BMS_REF, with the popup component)"
+    patch_stamp_write bms-overview-patch "$REPO_ROOT/patches/$BMS_PATCH"
+    ok "$BMS_UUID (built from $BMS_REF, with the popup component and the overview patch)"
 }
 
 # Open Bar is the one extension with no GNOME 50 release. Upstream's last

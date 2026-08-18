@@ -28,6 +28,10 @@ THEME_REF="6dfcd9d941e5"
 BMS_REPO="https://github.com/aunetx/blur-my-shell.git"
 BMS_REF="7d1290bbcff9"            # master; no release carries the popup component
 BMS_UUID="blur-my-shell@aunetx"
+# Applied on top of that pin: `blur-on-overview: false` does not take the blur
+# out of the overview's window previews upstream, it only stops forcing window
+# actors visible. See the patch's own comments.
+BMS_PATCH="blur-my-shell-overview.patch"
 
 ROUNDEDBLUR_REPO="https://github.com/kancko/gnome-rounded-blur.git"
 ROUNDEDBLUR_REF="9c7efb7ac5de"    # v1.0.1
