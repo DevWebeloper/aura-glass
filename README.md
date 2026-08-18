@@ -54,7 +54,7 @@ Installing also puts an **Aura Glass** entry in your Activities overview (or run
 - 🧩 **Extensions** — every one this installs, with a switch each and install/remove, or fit the recommended or full pack in one click
 - 📦 **Packages** — what each icon and pointer pack on disk costs you, and a button to remove the ones you stopped using: yours are deleted outright, and the ones your distribution installed name the package that owns them and hand it to your package manager in a terminal
 - 🖥️ **System** — dependencies, the rounded-blur library, the multi-monitor panel fix, the login screen theme and its monitor layout sync
-- 🔔 **Updates** — see your version, check for a new release, install it
+- 🔔 **Updates** — see your version, check for a new release, install it; on a branch you are testing it follows that branch's commits instead, and says so
 - 🗑️ **Uninstall** — the same three scopes `uninstall.sh` has
 
 Apply takes a few seconds and needs no password: under the hood it runs `./install.sh --settings-only`, which reapplies the dconf preset, the CSS and the gsettings and leaves the theme and extensions untouched. It stays off the network too, unless you pick an icon or pointer pack you have not downloaded yet — those two rows say so.
@@ -73,9 +73,29 @@ aura-glass-update-check      # check by hand, any time
 ./install.sh --no-update-check   # turn the daily check off (or use the switch in the window)
 ```
 
-It asks the git remote for its tags — one request, no API token, no rate limit. It never fetches into your checkout and never installs anything on its own. Installing refuses outright if the checkout has uncommitted changes, is on a detached HEAD, or is on a branch other than `main`, and tells you which.
+It asks the git remote for its tags — one request, no API token, no rate limit. It never fetches into your checkout and never installs anything on its own. Installing refuses outright if the checkout has uncommitted changes or is on a detached HEAD, and tells you which; a checkout whose history has diverged from the remote stops at `git pull --ff-only`'s own message rather than being merged or rewritten.
 
-### 5. Quick Update / Re-Apply
+### 5. Testing a Branch
+If you have been asked to try something before it is released, check that branch out and install from it as normal:
+
+```bash
+git clone https://github.com/DevWebeloper/aura-glass.git
+cd aura-glass
+git checkout feature/gui-post-install
+./install.sh
+```
+
+From then on the daily check follows **that branch's commits** instead of release tags, because there are no tags on a branch being tested and the ones it can see belong to releases cut before it existed. The settings window says **Test build** and names the build `branch@commit`, and **Install** pulls the branch's new commits and re-runs the installer — the same button, pointed at the line you are actually on.
+
+When the branch is merged and released, go back to the released line once and stay there:
+
+```bash
+git checkout main && git pull
+```
+
+Which line you are on is read from the checkout every time, so there is no setting to change and nothing to switch back.
+
+### 6. Quick Update / Re-Apply
 If you update your theme or GNOME packages later, re-apply the custom CSS fixes anytime with:
 ```bash
 aura-glass-apply
@@ -107,7 +127,7 @@ For scripted setups or power users who prefer flags instead of the interactive w
 | `--radius-preset P` | Corner rounding: `flat`, `sharp`, `soft`, `medium`, `default` or `rounded`. Moves windows, menus, dialogs, notifications **and** the blur radius behind each of them together *(default: `default`, remembered across runs)*. `pill` was retired and still resolves to `rounded`, so an older memo keeps installing. |
 | `--settings-only` | Retune an existing install and nothing else — reapply the dconf preset, CSS and gsettings, leaving the theme and extensions alone. No root, and no network unless `--icons`/`--cursors` ask for a pack you do not have. This is what `aura-glass-settings` runs. |
 | `--no-gui` | Skip the `aura-glass-settings` window *(installed by default where PyGObject and libadwaita are present)*. |
-| `--no-update-check` | Skip the daily release check. It asks the git remote for its tags and notifies once per release; it never installs anything on its own. |
+| `--no-update-check` | Skip the daily update check. On `main` it asks the git remote for its tags and notifies once per release; on a branch you are testing it asks whether that branch has moved. Either way it never installs anything on its own. |
 | `--app-blur-allow LIST` | Comma-separated `wm_class` patterns to blur in GTK/GNOME mode, replacing the shipped list. Wildcards allowed (`*chrome*`). Remembered across runs. |
 | `--app-blur-block LIST` | Comma-separated `wm_class` patterns to exclude in all-apps mode. Remembered across runs. |
 | `--app-transparency LEVEL` | Enable translucent app windows with blur: `90%` (balanced), `82%` (deep glass), `94%` (subtle glass), or custom percentage *(off by default)*. |
@@ -194,7 +214,7 @@ Replaces stock GNOME's bulky OSD with a clean, compact pill. Configurable via **
 │   ├── aura-glass-apply    # Idempotent CSS patch & cascade re-apply script
 │   ├── aura-glass-ext      # The extension catalogue, one extension at a time
 │   ├── aura-glass-settings # Launcher for the settings window
-│   └── aura-glass-update-check # Compares the local release tag against the remote
+│   └── aura-glass-update-check # Compares the local release tag — or, on a test branch, the local commit — against the remote
 ├── gui/                    # GTK4 / libadwaita windows (optional)
 │   ├── aura_glass_settings.py     # Settings window, post-install
 │   └── aura_glass_setup_wizard.py # Setup wizard, run by install.sh

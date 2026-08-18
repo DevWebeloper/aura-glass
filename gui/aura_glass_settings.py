@@ -1107,11 +1107,43 @@ def git_out(repo, *args):
     return res.stdout.strip() if res.returncode == 0 else None
 
 
-def installed_version(repo):
-    """The release this checkout sits on, or None if it is not on one."""
+# main and master are the released line. Anything else is a branch someone is
+# testing, and a detached HEAD is a release tag checked out rather than a branch
+# with commits to follow. bin/aura-glass-update-check splits on exactly this, and
+# the two have to agree: it decides what "an update" means, and this decides what
+# the window calls the thing that is installed.
+RELEASE_BRANCHES = ("main", "master")
+
+
+def current_branch(repo):
+    """The branch this checkout is on, or None on a detached HEAD."""
     if not repo:
         return None
-    return git_out(repo, "describe", "--tags", "--abbrev=0")
+    branch = git_out(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    return None if branch in (None, "HEAD") else branch
+
+
+def is_test_build(repo):
+    """Whether this checkout follows a branch's commits instead of release tags."""
+    branch = current_branch(repo)
+    return branch is not None and branch not in RELEASE_BRANCHES
+
+
+def installed_version(repo):
+    """What is installed, in the terms its own line is measured in.
+
+    A release is a tag. A test build has no tag of its own — the newest one it
+    can see belongs to a release cut before the branch existed, and naming the
+    checkout after it would claim it holds a release it does not — so it is named
+    for the branch and the commit, the way the update check names it.
+    """
+    if not repo:
+        return None
+    branch = current_branch(repo)
+    if branch is None or branch in RELEASE_BRANCHES:
+        return git_out(repo, "describe", "--tags", "--abbrev=0")
+    short = git_out(repo, "rev-parse", "--short=7", "HEAD")
+    return "%s@%s" % (branch, short) if short else None
 
 
 def update_blockers(repo):
@@ -1138,17 +1170,16 @@ def update_blockers(repo):
     if branch in (None, "HEAD"):
         reasons.append("The checkout is on a detached HEAD rather than a branch.")
     else:
+        # Being on a branch other than main is not a blocker: it is the other
+        # line this window knows about, and pulling it is what someone testing
+        # that branch asked for. What still has to hold either way is that there
+        # is a remote branch to pull from — and --ff-only, which is what actually
+        # refuses a checkout whose history has diverged from it.
         upstream = git_out(repo, "rev-parse", "--abbrev-ref",
                            "--symbolic-full-name", "@{upstream}")
         if upstream is None:
             reasons.append("The branch %s is not tracking a remote branch."
                            % branch)
-        # A feature branch is someone working on the theme, not someone running
-        # it. Pulling would update the wrong line and quietly leave them there.
-        elif branch not in ("main", "master"):
-            reasons.append("The checkout is on the branch %s rather than main. "
-                           "Updating would pull that branch instead of the "
-                           "released one." % branch)
     return reasons
 
 
@@ -3405,10 +3436,14 @@ class Window(Adw.ApplicationWindow):
     def _build_updates_page(self):
         page = Adw.PreferencesPage()
 
-        updates = Adw.PreferencesGroup(
+        # Both the description and the version row's title are rewritten by
+        # _sync_updates, which is the one place that knows which of the two lines
+        # this checkout is on. These are what a released install reads.
+        self._updates_group = Adw.PreferencesGroup(
             title="Updates",
             description="The check asks the git remote which release tags exist. "
                         "It never installs anything on its own.")
+        updates = self._updates_group
 
         self._version_row = Adw.ActionRow(title="Version")
         self._check_button = Gtk.Button(label="Check now",
@@ -3665,12 +3700,38 @@ class Window(Adw.ApplicationWindow):
         pending = self._applied.update_available
         blockers = update_blockers(self._repo) if pending else []
 
+        # Which line this is says what a version even means here, so it is said
+        # plainly rather than left to be inferred from a version string that
+        # happens to have an @ in it. Someone testing a branch should be able to
+        # tell at a glance that they are not running a release, and how to stop.
+        if is_test_build(self._repo):
+            self._version_row.set_title("Test build")
+            self._updates_group.set_description(
+                "This checkout is on the branch %s, not the released line, so "
+                "the check asks the git remote whether that branch has moved "
+                "rather than which releases exist. To go back to releases, run "
+                "git checkout main in the checkout once the branch has been "
+                "merged." % current_branch(self._repo))
+        else:
+            self._version_row.set_title("Version")
+            self._updates_group.set_description(
+                "The check asks the git remote which release tags exist. "
+                "It never installs anything on its own.")
+
         if version is None:
             self._version_row.set_subtitle(
                 "This checkout is not on a release tag")
         elif pending:
+            # On a test build both sides carry the same branch@ prefix, and the
+            # branch is already named in the title and the description above. Two
+            # more copies of it in one line is the same fact four times over, so
+            # the one being offered is shown as the commit it is.
+            offered = pending
+            if version.rpartition("@")[0] and \
+                    pending.startswith(version.rpartition("@")[0] + "@"):
+                offered = pending.rpartition("@")[2]
             self._version_row.set_subtitle("%s — %s is available"
-                                           % (version, pending))
+                                           % (version, offered))
         else:
             self._version_row.set_subtitle("%s — up to date" % version)
 
@@ -3756,7 +3817,10 @@ class Window(Adw.ApplicationWindow):
         ApplyDialog(
             self._repo, [], done,
             title="Updating",
-            description="Pulling the new release, then running the installer.",
+            description=("Pulling the newest commit on %s, then running the "
+                         "installer." % current_branch(self._repo))
+                        if is_test_build(self._repo) else
+                        "Pulling the new release, then running the installer.",
             argv=["bash", "-c", script],
         ).present(self)
 
