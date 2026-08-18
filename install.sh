@@ -23,6 +23,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$REPO_ROOT/lib/steps-extensions.sh"
 # shellcheck source=lib/steps-assets.sh
 . "$REPO_ROOT/lib/steps-assets.sh"
+# shellcheck source=lib/steps-modes.sh
+. "$REPO_ROOT/lib/steps-modes.sh"
 # shellcheck source=lib/steps-css.sh
 . "$REPO_ROOT/lib/steps-css.sh"
 # shellcheck source=lib/steps-dconf.sh
@@ -57,6 +59,11 @@ WANT_GDM_MONITORS=0
 GDM_BG="default"
 WANT_BMS_GIT=1
 WANT_BLUR=1
+GLASS_MODE=""            # empty = the memo, then derived from the flags
+GLASS_MODE_EXPLICIT=""
+BLUR_EXPLICIT=""         # --blur / --no-blur were typed, so a mode must not move them
+WANT_STYLING=1           # 0 = the theme stands down (solid mode)
+VALID_GLASS_MODES="frosted transparent solid"
 WANT_WINDOW_BLUR=1
 WINDOW_BLUR_EXPLICIT=""
 APP_BLUR_SCOPE="gtk"     # gtk (default, whitelisted GTK/GNOME apps) | all
@@ -183,6 +190,11 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
     --gtk-apps-blur   blur behind GTK / GNOME applications only (Files, Settings, Terminal - default, low CPU)
     --all-apps-blur   blur behind all application windows (heavy on CPU/GPU)
     --no-window-blur  keep window blur off (opaque windows)
+    --glass-mode M    frosted (blur behind windows and popups), transparent
+                      (translucent windows, no window blur) or solid (the theme
+                      stands down: no styling, stock shell, the extensions it
+                      enabled switched off and their settings left alone).
+                      Remembered; each mode keeps its own opacity and tint
     --no-blur         solid mode: no blur anywhere, opaque surfaces instead of
                       translucent ones (best for low-end GPUs or battery saver)
     --no-rounded-blur skip gnome-rounded-blur library (popup blur falls back to static)
@@ -263,7 +275,9 @@ parse_flags() {
         --popup-blur)    WANT_POPUP_BLUR=1; WANT_BMS_GIT=1
                          POPUP_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-popup-blur) WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --blur)          WANT_BLUR=1; EXPLICIT_FLAGS=1; shift ;;
+        --glass-mode)    GLASS_MODE="${2:-}"; GLASS_MODE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --glass-mode=*)  GLASS_MODE="${1#*=}"; GLASS_MODE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --blur)          WANT_BLUR=1; BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --all-apps-blur|--all-app-blur)
                          WANT_WINDOW_BLUR=1; WINDOW_BLUR_EXPLICIT=1; APP_BLUR_SCOPE="all"; APP_BLUR_SCOPE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --gtk-apps-blur|--gtk-app-blur)
@@ -278,7 +292,7 @@ parse_flags() {
         --app-blur-block=*) APP_BLUR_BLOCK="${1#*=}"; APP_BLUR_BLOCK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --window-blur)   WANT_WINDOW_BLUR=1; WINDOW_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-window-blur) WANT_WINDOW_BLUR=0; WINDOW_BLUR_EXPLICIT=1; APP_BLUR_SCOPE="none"; APP_BLUR_SCOPE_EXPLICIT=1; [ -z "$APP_TRANSPARENCY_EXPLICIT" ] && APP_TRANSPARENCY=0.95; EXPLICIT_FLAGS=1; shift ;;
-        --no-blur)       WANT_BLUR=0; WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1
+        --no-blur)       WANT_BLUR=0; BLUR_EXPLICIT=1; WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1
                          WANT_WINDOW_BLUR=0; WINDOW_BLUR_EXPLICIT=1
                          WANT_ROUNDED_BLUR=0; EXPLICIT_FLAGS=1; shift ;;
         --rounded-blur)      WANT_ROUNDED_BLUR=1; EXPLICIT_FLAGS=1; shift ;;
@@ -722,6 +736,9 @@ if [ -z "$ICONS" ] && [ -r "$CONF_DIR/icon-pack" ]; then
 fi
 ICONS="${ICONS:-colloid}"
 
+resolve_glass_mode
+apply_glass_mode
+
 if [ "${WANT_BLUR:-1}" = 0 ]; then
     APP_TRANSPARENCY=0
     APP_OPACITY=255
@@ -875,6 +892,16 @@ fi
 APP_TRANSPARENCY="${APP_TRANSPARENCY:-0}"
 APP_OPACITY="${APP_OPACITY:-255}"
 
+# The one line tools/check-glass-modes.sh reads. Printed on every dry run rather
+# than behind a flag of its own: the resolution is the whole of what a mode is,
+# and a dry run that did not say which mode it resolved to would be describing
+# everything except the question that was asked.
+if [ "$DRY_RUN" = 1 ]; then
+    printf '  glass-mode: %s blur=%s window=%s popup=%s transparency=%s styling=%s\n' \
+        "$(glass_mode_from_state)" "$WANT_BLUR" "$WANT_WINDOW_BLUR" \
+        "$WANT_POPUP_BLUR" "$APP_TRANSPARENCY" "$WANT_STYLING"
+fi
+
 VALID_REVERSAL="default black blue brown cyan green grey lightblue orange pink purple red"
 # Colloid is named in accent terms rather than in its own: it calls blue
 # "default" and slate "grey" on the command line, and accent_to_colloid_arg
@@ -906,6 +933,9 @@ esac
 # writing that line meant, and apply_app_blur would otherwise write a dconf key
 # for an extension this mode deliberately leaves out.
 if [ "$WANT_BLUR" != 1 ] && [ "$WANT_WINDOW_BLUR" = 1 ]; then
+    if [ "${GLASS_MODE:-}" = solid ]; then
+        die "--glass-mode solid and --window-blur contradict each other — solid mode stands the theme down entirely, so there is no blur to put behind a window. Pick one."
+    fi
     die "--no-blur and --window-blur contradict each other — --no-blur leaves Blur My Shell out entirely, so there is nothing to blur behind a window. Pick one."
 fi
 
@@ -950,6 +980,7 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     load_dconf
     install_css
     apply_gsettings
+    remember_glass_mode
     # Included because it is local, quick and needs nothing: it also refreshes
     # the installed copy of the window, so pulling the repo and pressing Apply
     # is enough to be running the current one.
@@ -1001,6 +1032,7 @@ if [ "$WANT_CURSORS" = 1 ]; then install_cursors; else step "Cursors"; skip "lef
 load_dconf
 install_css
 apply_gsettings
+remember_glass_mode
 install_icon_sync
 install_gui
 install_update_check

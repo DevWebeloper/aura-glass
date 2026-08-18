@@ -112,6 +112,8 @@ step "extension catalogue (tools/check-ext-catalogue.sh)" \
 # builds the literal and parses it back with GLib's own parser; no live dconf.
 step "app blur lists (tools/check-app-blur-lists.sh)" \
     bash "$TMP/tools/check-app-blur-lists.sh"
+step "glass modes (tools/check-glass-modes.sh)" \
+    bash "$TMP/tools/check-glass-modes.sh"
 # Version ordering and tag filtering for the update check, against throwaway git
 # repositories. No network, and never the user's own checkout.
 step "update check (tools/check-update-check.sh)" \
