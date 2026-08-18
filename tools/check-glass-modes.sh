@@ -64,6 +64,18 @@ if in_scratch --glass-mode solid --window-blur >/dev/null 2>&1; then
     failures+=("--glass-mode solid --window-blur was accepted, it must be refused")
 fi
 
+if in_scratch --glass-mode solid --blur >/dev/null 2>&1; then
+    failures+=("--glass-mode solid --blur was accepted, it must be refused")
+fi
+
+if in_scratch --glass-mode solid --popup-blur >/dev/null 2>&1; then
+    failures+=("--glass-mode solid --popup-blur was accepted, it must be refused")
+fi
+
+if in_scratch --glass-mode solid --app-transparency 0.85 >/dev/null 2>&1; then
+    failures+=("--glass-mode solid --app-transparency 0.85 was accepted, it must be refused")
+fi
+
 if in_scratch --glass-mode frostd >/dev/null 2>&1; then
     failures+=("a misspelled --glass-mode was accepted")
 fi
@@ -73,4 +85,4 @@ if [ "${#failures[@]}" -gt 0 ]; then
     printf '  %s\n' "${failures[@]}"
     exit 1
 fi
-printf 'glass mode check passed — 5 resolutions and 2 refusals\n'
+printf 'glass mode check passed — 5 resolutions and 5 refusals\n'
