@@ -112,21 +112,42 @@ TOKEN_RADIUS_OSD=12
 # The OSD column is the one to be careful with. TOKEN_RADIUS_OSD's comment
 # records why: past half the blurred box's height the four corner arcs overlap
 # and the pill turns into a soft ellipse, which is what 25 produced. Every row
-# here stays well under that, and `pill` is deliberately not the largest value
-# it could be for that reason.
+# here stays well under that.
 #
 # The `default` row is the one that has been through the screenshot loop that
-# tokens.sh describes. The other three are coherent by construction — they keep
-# the ladder between surfaces the default row establishes — but each is worth a
+# tokens.sh describes. The others are coherent by construction — they keep the
+# ladder between surfaces the default row establishes — but each is worth a
 # pass of `tools/preview.sh` before being called finished, per the project rule
 # that a radius is raised against a screenshot rather than against an estimate.
-RADIUS_PRESETS="sharp default rounded pill"
+#
+# Six rows rather than the four this shipped with, and `rounded` is now the
+# ceiling. The old table put `default` in the middle of it and reached 46px at
+# `pill`, which nobody wanted: past the shipped 30px a window corner starts
+# eating its own content, and the two rows above default were there because the
+# table looked lopsided without them rather than because anyone asked for a
+# rounder window. So the range now runs *down* from default — flat, sharp, soft
+# and medium below it, rounded as the single step above — which is the
+# direction people actually move this.
+#
+# `pill` is gone. install.sh still accepts the name and resolves it to
+# `rounded`, because it was a --radius-preset anyone could have run and the
+# memo it wrote is still sitting in $CONF_DIR on those machines.
+RADIUS_PRESETS="flat sharp soft medium default rounded"
 
 # Set the seven TOKEN_RADIUS_* values for a preset. Fails on an unknown name
 # rather than falling back to default: a typo in --radius-preset that silently
 # installed the shipped look would be indistinguishable from the flag working.
 radius_preset_values() {
     case "${1:-}" in
+        flat)
+            TOKEN_RADIUS_WINDOW=6
+            TOKEN_RADIUS_MENU=5
+            TOKEN_RADIUS_QUICK_SETTINGS=6
+            TOKEN_RADIUS_NOTIFICATION=4
+            TOKEN_RADIUS_DIALOG=4
+            TOKEN_RADIUS_POPUP=4
+            TOKEN_RADIUS_OSD=2
+            ;;
         sharp)
             TOKEN_RADIUS_WINDOW=10
             TOKEN_RADIUS_MENU=8
@@ -135,6 +156,24 @@ radius_preset_values() {
             TOKEN_RADIUS_DIALOG=6
             TOKEN_RADIUS_POPUP=6
             TOKEN_RADIUS_OSD=4
+            ;;
+        soft)
+            TOKEN_RADIUS_WINDOW=16
+            TOKEN_RADIUS_MENU=14
+            TOKEN_RADIUS_QUICK_SETTINGS=17
+            TOKEN_RADIUS_NOTIFICATION=10
+            TOKEN_RADIUS_DIALOG=10
+            TOKEN_RADIUS_POPUP=10
+            TOKEN_RADIUS_OSD=6
+            ;;
+        medium)
+            TOKEN_RADIUS_WINDOW=22
+            TOKEN_RADIUS_MENU=19
+            TOKEN_RADIUS_QUICK_SETTINGS=24
+            TOKEN_RADIUS_NOTIFICATION=15
+            TOKEN_RADIUS_DIALOG=15
+            TOKEN_RADIUS_POPUP=15
+            TOKEN_RADIUS_OSD=9
             ;;
         default)
             TOKEN_RADIUS_WINDOW=30
@@ -154,14 +193,13 @@ radius_preset_values() {
             TOKEN_RADIUS_POPUP=26
             TOKEN_RADIUS_OSD=16
             ;;
+        # Retired, and still answered. It was a --radius-preset people ran, and
+        # the memo it wrote in $CONF_DIR is read back by every later flagless
+        # install — so removing the name outright would fail those runs at
+        # `unknown --radius-preset` rather than quietly doing the old thing.
+        # It resolves to the row that is now the ceiling.
         pill)
-            TOKEN_RADIUS_WINDOW=46
-            TOKEN_RADIUS_MENU=40
-            TOKEN_RADIUS_QUICK_SETTINGS=52
-            TOKEN_RADIUS_NOTIFICATION=34
-            TOKEN_RADIUS_DIALOG=34
-            TOKEN_RADIUS_POPUP=34
-            TOKEN_RADIUS_OSD=18
+            radius_preset_values rounded
             ;;
         *)  return 1 ;;
     esac
@@ -169,25 +207,23 @@ radius_preset_values() {
 
 # The range each radius may be set to by hand.
 #
-# The four rows above are curated because these numbers are not proportional to
-# each other, and that is still true — but "pick one of four" and "type any
+# The six rows above are curated because these numbers are not proportional to
+# each other, and that is still true — but "pick one of six" and "type any
 # number" are not the only two options. The window offers a control per surface
-# bounded by what the curated rows already establish as sane: the low end of
-# `sharp` to the high end of `pill`, which is the range someone looked at.
+# bounded by what the curated rows already establish as sane: the `flat` row to
+# the `rounded` row, which is the range someone looked at.
 #
-# OSD is the exception and does not follow that rule. TOKEN_RADIUS_OSD's comment
-# records why: past half the blurred box's height the four corner arcs overlap
-# and the pill turns into a soft ellipse, which is what 25 produced. `pill` puts
-# it at 18, so the ceiling here is 20 — two pixels of headroom, deliberately not
-# the 25 that is known to be wrong.
+# The ceiling came down with the table. It used to be `pill`'s 46px window and
+# 52px Quick Settings; `rounded` is now the top row, so it is now the top of
+# the range a spin row can reach.
 radius_bounds() {
-    RADIUS_MIN_WINDOW=10;          RADIUS_MAX_WINDOW=46
-    RADIUS_MIN_MENU=8;             RADIUS_MAX_MENU=40
-    RADIUS_MIN_QUICK_SETTINGS=10;  RADIUS_MAX_QUICK_SETTINGS=52
-    RADIUS_MIN_NOTIFICATION=6;     RADIUS_MAX_NOTIFICATION=34
-    RADIUS_MIN_DIALOG=6;           RADIUS_MAX_DIALOG=34
-    RADIUS_MIN_POPUP=6;            RADIUS_MAX_POPUP=34
-    RADIUS_MIN_OSD=4;              RADIUS_MAX_OSD=20
+    RADIUS_MIN_WINDOW=6;           RADIUS_MAX_WINDOW=38
+    RADIUS_MIN_MENU=5;             RADIUS_MAX_MENU=32
+    RADIUS_MIN_QUICK_SETTINGS=6;   RADIUS_MAX_QUICK_SETTINGS=40
+    RADIUS_MIN_NOTIFICATION=4;     RADIUS_MAX_NOTIFICATION=26
+    RADIUS_MIN_DIALOG=4;           RADIUS_MAX_DIALOG=26
+    RADIUS_MIN_POPUP=4;            RADIUS_MAX_POPUP=26
+    RADIUS_MIN_OSD=2;              RADIUS_MAX_OSD=16
 }
 
 # The `default` row and the literals above are the same numbers written twice,

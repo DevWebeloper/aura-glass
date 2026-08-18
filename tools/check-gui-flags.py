@@ -50,6 +50,9 @@ def state(**kw):
     s.transparency = kw.get("transparency", "0.90")
     s.scope = kw.get("scope", "gtk")
     s.popup_blur = kw.get("popup_blur", True)
+    s.app_tint = kw.get("app_tint", "#000000")
+    s.shell_tint = kw.get("shell_tint", "#000000")
+    s.blur_strength = kw.get("blur_strength", 100)
     s.allow = list(kw.get("allow", ["org.gnome.Nautilus", "org.gnome.Console"]))
     s.block = list(kw.get("block", ["*chrome*", "*electron*"]))
     s.icons = kw.get("icons", "colloid")
@@ -68,7 +71,14 @@ SOLID = state(blur=False)
 CASES = [
     ("nothing touched", FROSTED, state(), []),
 
-    ("radius only", FROSTED, state(radius="pill"),
+    ("radius only", FROSTED, state(radius="rounded"),
+     ["--radius-preset", "rounded"]),
+
+    # `pill` was retired when the table grew to six rows. The window can no
+    # longer produce it — Settings maps it through RADIUS_PRESET_ALIASES on the
+    # way in — but a machine that installed it has the name in its memo, so
+    # install.sh still has to accept it. This is the case that says so.
+    ("a retired preset name still parses", FROSTED, state(radius="pill"),
      ["--radius-preset", "pill"]),
 
     # --radius-custom implies the custom preset, so it stands in for
@@ -128,6 +138,39 @@ CASES = [
      ["--no-app-transparency"]),
 
     ("popup blur off", FROSTED, state(popup_blur=False), ["--no-popup-blur"]),
+
+    # The two tints and the blur strength. Values rather than on/off: black and
+    # 100 are the state the sheets ship in, so asking for them again is how one
+    # is undone.
+    ("app tint picked", FROSTED, state(app_tint="#101820"),
+     ["--app-tint-color", "#101820"]),
+
+    ("shell tint picked", FROSTED, state(shell_tint="#101820"),
+     ["--shell-tint-color", "#101820"]),
+
+    ("both tints at once", FROSTED,
+     state(app_tint="#101820", shell_tint="#101820"),
+     ["--app-tint-color", "#101820", "--shell-tint-color", "#101820"]),
+
+    ("a tint back to black is a real change",
+     state(app_tint="#101820"), state(), ["--app-tint-color", "#000000"]),
+
+    # The app tint rides inside the transparency sheet, which is removed rather
+    # than rewritten when the windows are opaque — so with the level off there
+    # is nothing for a colour to reach, and sending it would write a memo
+    # install_transparency_css returns before reading.
+    ("app tint with the windows opaque is not sent", FROSTED,
+     state(app_tint="#101820", transparency="0"), ["--no-app-transparency"]),
+
+    ("the shell tint is sent with the windows opaque", FROSTED,
+     state(shell_tint="#101820", transparency="0"),
+     ["--no-app-transparency", "--shell-tint-color", "#101820"]),
+
+    ("blur strength moved", FROSTED, state(blur_strength=60),
+     ["--blur-strength", "60"]),
+
+    ("blur strength back to the tuned radii",
+     state(blur_strength=60), state(), ["--blur-strength", "100"]),
 
     # The per-app lists. Whichever one changed goes out, whether or not the mode
     # in force consults it. The window edits both at all times — they are two

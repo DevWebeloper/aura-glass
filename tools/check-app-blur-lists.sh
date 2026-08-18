@@ -16,14 +16,18 @@ set -euo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# app_blur_lines and app_blur_literal are the pieces under test. They need
-# nothing from the rest of the installer, so they are sourced alone rather than
-# by running an install.
+# app_blur_lines, app_blur_literal and the two pin functions are the pieces
+# under test. They need nothing from the rest of the installer, so they are
+# sourced alone rather than by running an install — steps-gui.sh comes along only
+# for $GUI_APP_ID, which is one of the three copies of the settings window's own
+# class this checks the agreement of.
 CONF_DIR="$(mktemp -d)"
 trap 'rm -rf "$CONF_DIR"' EXIT
 DRY_RUN=0
 # shellcheck source=../lib/steps-dconf.sh
 . "$REPO_ROOT/lib/steps-dconf.sh"
+# shellcheck source=../lib/steps-gui.sh
+. "$REPO_ROOT/lib/steps-gui.sh"
 
 fail=0
 note() { printf '  %s\n' "$*"; fail=1; }
@@ -86,8 +90,60 @@ got="$(app_blur_lines 1 "" "$CONF_DIR/app-blur-allow" shipped.default | tr -d '\
 got="$(app_blur_lines 1 "a,b,c" "$CONF_DIR/app-blur-allow" shipped.default | tr '\n' ' ')"
 [ "$got" = "a b c " ] || note "commas should split into entries, got: $got"
 
+# --- the settings window is pinned, in every mode ------------------------
+# The window explains the glass, so it is the one window that cannot be the
+# exception to it. The class is written out in three places — here as
+# $APP_BLUR_SELF, in lib/steps-gui.sh as $GUI_APP_ID for the desktop entry's
+# StartupWMClass, and in gui/aura_glass_settings.py as SELF_WM_CLASS — and a
+# disagreement between any two of them is a window that quietly stops being
+# blurred, which nothing else would report.
+[ "$APP_BLUR_SELF" = "$GUI_APP_ID" ] || note \
+    "APP_BLUR_SELF ($APP_BLUR_SELF) and GUI_APP_ID ($GUI_APP_ID) disagree"
+
+gui_self="$(python3 - "$REPO_ROOT" <<'PY'
+import re, sys
+src = open(sys.argv[1] + "/gui/aura_glass_settings.py", encoding="utf-8").read()
+found = re.search(r'^APP_ID = "([^"]+)"', src, re.M)
+print(found.group(1) if found else "")
+PY
+)"
+[ "$gui_self" = "$APP_BLUR_SELF" ] || note \
+    "the settings window's APP_ID ($gui_self) and APP_BLUR_SELF ($APP_BLUR_SELF) disagree"
+
+got="$(printf 'org.gnome.Nautilus\n' | app_blur_pin_allow | tr '\n' ' ')"
+[ "$got" = "$APP_BLUR_SELF org.gnome.Nautilus " ] || note \
+    "the allow list should carry the settings window, got: $got"
+
+# An emptied allow list still gets it. "Nothing of the user's" and "nothing at
+# all" are different lists, and only the first one is what --app-blur-allow ""
+# asked for.
+got="$(printf '' | app_blur_pin_allow | tr -d '\n')"
+[ "$got" = "$APP_BLUR_SELF" ] || note \
+    "an empty allow list should still carry the settings window, got: '$got'"
+
+got="$(printf 'io.github.DevWebeloper.AuraGlassSettings\na.b\n' | app_blur_pin_allow | tr '\n' ' ')"
+[ "$got" = "$APP_BLUR_SELF a.b " ] || note \
+    "the pin should not duplicate an entry already there, got: $got"
+
+# A wildcard of the user's own already covers it, so the pin stays out of the way
+# rather than adding a second entry that matches the same window.
+got="$(printf '*auraglass*\n' | app_blur_pin_allow | tr '\n' ' ')"
+[ "$got" = "*auraglass* " ] || note \
+    "a pattern that already covers the window should be left alone, got: $got"
+
+# In `all` mode the allow list is not read, so the pin is the block list not
+# excluding it — including by a wildcard, which is the only way the shipped
+# lists could.
+got="$(printf '*chrome*\n*aura*\nPlank\n' | app_blur_pin_block | tr '\n' ' ')"
+[ "$got" = "*chrome* Plank " ] || note \
+    "the block list should drop what would exclude the window, got: $got"
+
+got="$(printf '*chrome*\nPlank\n' | app_blur_pin_block | tr '\n' ' ')"
+[ "$got" = "*chrome* Plank " ] || note \
+    "the block list should keep everything else, got: $got"
+
 if [ "$fail" = 1 ]; then
     printf '\napp blur list check FAILED\n\n'
     exit 1
 fi
-printf 'app blur list check passed — literals parse, and flag/memo/default precedence holds\n'
+printf 'app blur list check passed — literals parse, flag/memo/default precedence holds, and the settings window is pinned\n'

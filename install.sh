@@ -33,6 +33,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$REPO_ROOT/lib/steps-gdm.sh"
 # shellcheck source=lib/steps-gui.sh
 . "$REPO_ROOT/lib/steps-gui.sh"
+# shellcheck source=lib/steps-wizard.sh
+. "$REPO_ROOT/lib/steps-wizard.sh"
 # Values written down in more than one place live here, so that the copy in a
 # stylesheet and the copy in a dconf key cannot drift apart unnoticed.
 # tools/check-tokens.sh asserts they still agree.
@@ -42,6 +44,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ACCENT=""          # empty = remembered choice, then $ACCENT_DEFAULT
 ACCENT_DEFAULT="purple"
 WANT_EXTRAS=1
+EXT_LIST=""        # comma-separated UUIDs, replacing the pack. Empty = a pack
+EXT_LIST_EXPLICIT=""
 WANT_ICONS=1
 WANT_CURSORS=1
 WANT_DEPS=1
@@ -75,6 +79,9 @@ CURSORS_EXPLICIT=""
 ICONS=""            # empty = remembered choice, then colloid
 ICONS_EXPLICIT=""
 GRAIN=""          # empty keeps the preset's value, or the remembered choice
+BLUR_STRENGTH=""    # empty = remembered choice, then the tuned radii (100)
+APP_TINT_COLOR=""   # empty = remembered choice, then black (#000000)
+SHELL_TINT_COLOR="" # empty = remembered choice, then black (#000000)
 RADIUS_PRESET=""       # empty = remembered choice, then default
 RADIUS_PRESET_EXPLICIT=""
 RADIUS_CUSTOM=""       # seven comma-separated pixel values, in RADIUS_TOKENS order
@@ -116,8 +123,21 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
     --all-extras      install all 14 optional extensions
     --no-extras       minimal install with core look only (no optional extensions)
     --minimal         same as --no-extras
+    --extensions LIST comma-separated extension UUIDs to install instead of a
+                      pack, e.g. 'space-bar@luchrioh,Vitals@CoreCoding.com'.
+                      Each must be one --all-extras would install. An empty list
+                      is the same as --no-extras. This is what the setup
+                      wizard's per-extension list sends
     --grain N         film grain over blurred surfaces, 0-1. Default is 0
     --no-grain        no grain at all (same as --grain 0, and the default)
+    --blur-strength P how far every blur reaches, as a percentage of the tuned
+                      radii: 25-200, 100 is the tuned look (remembered)
+    --app-tint-color HEX
+                      the colour a translucent app window is darkened toward,
+                      e.g. #101820. Default #000000 (remembered)
+    --shell-tint-color HEX
+                      the same, for the panel, menus and notifications.
+                      Default #000000 (remembered)
     --radius-preset P corner rounding for windows, menus, dialogs and
                       notifications. One of: $RADIUS_PRESETS (default: default,
                       and remembered for later runs)
@@ -195,7 +215,13 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
 EOF
 }
 
-while [ $# -gt 0 ]; do
+# A function rather than a bare loop, because it is run twice: once over this
+# script's own argv, and again over whatever the graphical setup wizard settled
+# on. That is what makes the window a front end for the flags rather than a
+# second way to configure anything — it produces a command line, and the command
+# line is parsed here by the same code that parses a hand-typed one.
+parse_flags() {
+    while [ $# -gt 0 ]; do
     case "$1" in
         --interactive)   FORCE_INTERACTIVE=1; shift ;;
         --accent)        ACCENT="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
@@ -205,11 +231,19 @@ while [ $# -gt 0 ]; do
         --all-extras)    WANT_EXTRAS=1; EXT_EXTRA=("${EXT_EXTRA_ALL[@]}"); EXPLICIT_FLAGS=1; shift ;;
         --no-extras|--minimal)
                          WANT_EXTRAS=0; EXT_EXTRA=(); EXPLICIT_FLAGS=1; shift ;;
+        --extensions)    EXT_LIST="${2:-}"; EXT_LIST_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --extensions=*)  EXT_LIST="${1#*=}"; EXT_LIST_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --full)          WANT_EXTRAS=1; EXT_EXTRA=("${EXT_EXTRA_ALL[@]}"); WANT_ICONS=1; WANT_CURSORS=1
                          WANT_OSD=1; WANT_PANEL_BLUR_FIX=1; EXPLICIT_FLAGS=1; shift ;;
         --grain)         GRAIN="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --grain=*)       GRAIN="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --no-grain)      GRAIN=0; EXPLICIT_FLAGS=1; shift ;;
+        --blur-strength) BLUR_STRENGTH="${2:-100}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --blur-strength=*) BLUR_STRENGTH="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --app-tint-color) APP_TINT_COLOR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --app-tint-color=*) APP_TINT_COLOR="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --shell-tint-color) SHELL_TINT_COLOR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --shell-tint-color=*) SHELL_TINT_COLOR="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --radius-custom) RADIUS_CUSTOM="${2:-}"; RADIUS_CUSTOM_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --radius-custom=*) RADIUS_CUSTOM="${1#*=}"; RADIUS_CUSTOM_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --radius-preset) RADIUS_PRESET="${2:-}"; RADIUS_PRESET_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
@@ -282,7 +316,10 @@ while [ $# -gt 0 ]; do
         -h|--help)       usage; exit 0 ;;
         *)               usage; die "unknown option: $1" ;;
     esac
-done
+    done
+}
+
+parse_flags "$@"
 
 # Resolve remembered accent or default
 if [ -z "$ACCENT" ] && [ -r "$CONF_DIR/accent" ]; then
@@ -290,8 +327,33 @@ if [ -z "$ACCENT" ] && [ -r "$CONF_DIR/accent" ]; then
 fi
 ACCENT="${ACCENT:-$ACCENT_DEFAULT}"
 
-# Interactive setup wizard when running without flags in an interactive terminal
+# Interactive setup wizard when running without flags in an interactive terminal.
+#
+# There are two of them and they ask the same questions: gui/aura_glass_setup_
+# wizard.py in a window, and the text one below when no window is available. The
+# window is tried first and falls back here for any reason at all — no display,
+# no PyGObject, a declined package install, a crash — so an install is never
+# blocked on a toolkit. Cancelling is the one answer that stops it, because that
+# is a person saying no rather than a machine being unable to ask.
+#
+#   ┌─ PARITY ────────────────────────────────────────────────────────────────┐
+#   │ Any question added below must also be added to the window, and any       │
+#   │ question added to the window must also be added below. They are two      │
+#   │ front ends for one flag surface; a question in only one of them is a     │
+#   │ setting that half the users on half the machines are never offered.      │
+#   └──────────────────────────────────────────────────────────────────────────┘
+WIZARD_RC=3          # 3 = never attempted, so the text wizard below stays out
 if { [ "$EXPLICIT_FLAGS" = 0 ] || [ "$FORCE_INTERACTIVE" = 1 ]; } && [ "$ASSUME_YES" = 0 ] && [ -t 0 ]; then
+    WIZARD_RC=0
+    run_setup_wizard || WIZARD_RC=$?
+    case "$WIZARD_RC" in
+        0) parse_flags "${WIZARD_ARGS[@]}" ;;
+        1) printf '\n  Installation cancelled.\n\n'; exit 0 ;;
+    esac
+fi
+
+# The same questions, asked here, when nothing could ask them in a window.
+if [ "$WIZARD_RC" = 2 ]; then
     cat <<EOF
 
 ${C_BLD}┌─────────────────────────────────────────────────────────────┐${C_OFF}
@@ -621,6 +683,29 @@ EOF
         printf '\n  Installation cancelled.\n\n'
         exit 0
     fi
+fi
+
+# --extensions replaces the pack with a list of your own, which is what the setup
+# wizard's per-extension switches send: a pack name cannot say "the recommended
+# six, but not the magic lamp".
+#
+# Every UUID is checked against what --all-extras would install rather than taken
+# on trust. A misspelled one would otherwise be looked for on the extensions site,
+# not found, and reported as that extension being unavailable — which reads as
+# upstream having removed it rather than as a typo here.
+if [ -n "$EXT_LIST_EXPLICIT" ]; then
+    EXT_EXTRA=()
+    while IFS= read -r ext_uuid; do
+        [ -n "$ext_uuid" ] || continue
+        case " ${EXT_EXTRA_ALL[*]} " in
+            *" $ext_uuid "*) EXT_EXTRA+=("$ext_uuid") ;;
+            *) die "unknown --extensions UUID '$ext_uuid' — it is not one of the ${#EXT_EXTRA_ALL[@]} that --all-extras installs" ;;
+        esac
+    done < <(printf '%s\n' "$EXT_LIST" | tr ',' '\n')
+    # An empty list is a minimal install said the long way round, and reaching
+    # enable_extensions with WANT_EXTRAS=1 and nothing to enable would be a step
+    # that announces itself and does nothing.
+    if [ "${#EXT_EXTRA[@]}" -eq 0 ]; then WANT_EXTRAS=0; else WANT_EXTRAS=1; fi
 fi
 
 if [ -z "$CURSORS" ] && [ -r "$CONF_DIR/cursor-pack" ]; then

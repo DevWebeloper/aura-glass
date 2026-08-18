@@ -109,6 +109,78 @@ PY
 # every value in the installed copy, scaling the whole ladder rather than
 # flattening it: the header bar is meant to stay a little more transparent than
 # the window and the content view a little less, at any setting.
+# The colour a translucent app window is darkened toward, which ships as black.
+#
+# Remembered, like the level it sits beside: the sheet is copied fresh from
+# css/ on every run, so an unremembered colour would last exactly until the
+# next install and then silently go back to smoked grey.
+#
+# Black is not written back through the rewriter, it is simply the shipped
+# state — so the default costs no work, and choosing black again restores the
+# sheet byte-for-byte rather than approximately.
+apply_app_tint_color() {
+    local want="${APP_TINT_COLOR:-}" memo="$CONF_DIR/app-tint-color"
+    if [ -z "$want" ] && [ -r "$memo" ]; then
+        want="$(cat "$memo" 2>/dev/null || true)"
+    fi
+    [ -n "$want" ] || return 0
+
+    case "$want" in
+        \#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;;
+        *) warn "--app-tint-color wants a #rrggbb colour, got '$want'"
+           return 0 ;;
+    esac
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: tint the translucent grounds toward $want"
+        return 0
+    fi
+
+    if [ "$want" != "#000000" ]; then
+        python3 "$REPO_ROOT/tools/apply-tint-color.py" \
+            "$CONF_DIR/gtk4-transparency.css" "$want" | sed 's/^/    /' \
+            || { warn "could not tint the app windows"; return 0; }
+    fi
+    mkdir -p "$CONF_DIR"
+    printf '%s\n' "$want" > "$memo"
+    ok "app windows tinted toward $want (remembered for later runs)"
+}
+
+# The same question for the shell's own surfaces, and a different answer,
+# because they have no single tint to swap — tools/apply-shell-tint.py explains
+# what it does instead and why it only ever moves the colour of a ground and
+# never its lightness.
+#
+# Runs over what install_css has just copied into $CONF_DIR, so like the app
+# tint it never compounds and never touches css/.
+apply_shell_tint_color() {
+    local want="${SHELL_TINT_COLOR:-}" memo="$CONF_DIR/shell-tint-color"
+    if [ -z "$want" ] && [ -r "$memo" ]; then
+        want="$(cat "$memo" 2>/dev/null || true)"
+    fi
+    [ -n "$want" ] || return 0
+
+    case "$want" in
+        \#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;;
+        *) warn "--shell-tint-color wants a #rrggbb colour, got '$want'"
+           return 0 ;;
+    esac
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: tint the shell's dark surfaces toward $want"
+        return 0
+    fi
+
+    if [ "$want" != "#000000" ]; then
+        python3 "$REPO_ROOT/tools/apply-shell-tint.py" "$CONF_DIR" "$want" \
+            | sed 's/^/    /' \
+            || { warn "could not tint the shell surfaces"; return 0; }
+    fi
+    mkdir -p "$CONF_DIR"
+    printf '%s\n' "$want" > "$memo"
+    ok "shell surfaces tinted toward $want (remembered for later runs)"
+}
+
 install_transparency_css() {
     local level="${APP_TRANSPARENCY:-0}"
 
@@ -122,6 +194,10 @@ install_transparency_css() {
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
         info "dry-run: rewrite the transparency sheet to $level"
+        # Said here too, because this return is above the real call below and a
+        # dry run that listed the rescale but not the recolour would be
+        # describing half of what the run does.
+        apply_app_tint_color
         return 0
     fi
 
@@ -133,6 +209,12 @@ install_transparency_css() {
     run python3 "$REPO_ROOT/tools/rescale-transparency.py" \
         "$CONF_DIR/gtk4-transparency.css" "$level" \
         "$TOKEN_APP_TRANSPARENCY_SHIPPED"
+
+    # After the rescale, and on the same installed copy. The two rewriters do
+    # not overlap — one moves the alphas, the other the colour they are applied
+    # over — but the order is fixed anyway so that what a preview renders is
+    # what an install produces.
+    apply_app_tint_color
 
     mkdir -p "$CONF_DIR"
     printf '%s\n' "$level" > "$CONF_DIR/app-transparency"
@@ -226,6 +308,10 @@ install_css() {
         run rm -f "$CONF_DIR/shell-popup-blur.css"
     fi
     install_transparency_css
+    # Over the shell sheets this step has just laid down, and after the solid
+    # and popup ones are decided, so whichever set is installed is the set that
+    # gets the colour.
+    apply_shell_tint_color
     # After the copies are all in place, and before aura-glass-apply splices
     # them: both rewriters edit what install_css just laid down, so neither can
     # run before the file it edits exists.

@@ -332,6 +332,9 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/rounded-blur" \
           "$CONF_DIR/app-transparency" \
           "$CONF_DIR/app-opacity" \
+          "$CONF_DIR/app-tint-color" \
+          "$CONF_DIR/shell-tint-color" \
+          "$CONF_DIR/blur-strength" \
           "$CONF_DIR/gdm-installed" \
           "$CONF_DIR/gdm-monitors-synced" \
           "$CONF_DIR/radius-preset" \

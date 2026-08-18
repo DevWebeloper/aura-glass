@@ -22,12 +22,17 @@ cd aura-glass
 ./install.sh
 ```
 
-Running `./install.sh` launches an **interactive setup wizard** that lets you easily pick your preferences directly in your terminal:
+Running `./install.sh` launches an **interactive setup wizard** that lets you pick your preferences before anything is installed:
 - 🎨 **Accent color** (Purple, Blue, Teal, Green, Yellow, Orange, Red, Pink, Slate)
 - 🪟 **Blur & visual depth** (Frosted Glass vs. Lightweight Solid Mode)
 - 💎 **App window transparency** (Off, 90% balanced, 82% deep, 94% subtle)
-- 🧩 **Extension packages** (Recommended, Full, or Minimal)
+- 🖱️ **Icon and pointer packs**, each with a link to the project it comes from
+- 🧩 **Extensions**, one switch each — or the recommended set in one click
 - 🔒 **GDM login screen theme** (Optional matching blurred login screen)
+
+The wizard opens in a **window**, with a Skip button on every question and nothing applied until you press Install. Close it and the install stops, having changed nothing. When it finishes, the window closes and the terminal carries on from there.
+
+Where a window is not an option — over SSH, on a machine without PyGObject and libadwaita, or if you would simply rather not install them — the installer offers to fetch them once and otherwise asks **exactly the same questions in the terminal**. Either way the install completes.
 
 > **Tip:** Prefer a dry run first? Run `./install.sh --dry-run` to preview all changes safely without modifying your system.
 
@@ -38,14 +43,16 @@ GNOME Shell extensions and compositor settings take effect on the next session. 
 Installing also puts an **Aura Glass** entry in your Activities overview (or run `aura-glass-settings`). It reads your current setup and lets you retune the parts worth revisiting:
 
 - 🎨 **Accent color**, with a shortcut to GNOME's own `Settings → Appearance`
-- ⬜ **Corner rounding** — the four presets, or set each of the seven surfaces yourself: windows, menus, Quick Settings, notifications, dialogs, popups and the volume pill, each bounded to a range that has been looked at on a screen
-- 🪟 **Frosted glass / solid mode**, a standalone **blur behind every window** switch, and popup blur
+- ⬜ **Corner rounding** — six presets, each drawn as a little window carrying its own corners so you can see the difference before you pick it, a **Reset to default** beside them, or set each of the seven surfaces yourself: windows, menus, Quick Settings, notifications, dialogs, popups and the volume pill, each bounded to a range that has been looked at on a screen — with a live drawing of whichever surface you are pointing at, at the value you are setting
+- 🪟 **Frosted glass / solid mode**, a standalone **blur behind every window** switch, and popup blur — with what the blur costs your GPU and CPU said at the top of the page rather than buried in a subtitle
 - 🎚️ **Window transparency bar** — anywhere from 70% to 100%, with the three tuned levels marked
-- 📋 **Two per-app blur lists** — the apps to blur and the apps never to, each in its own window and editable whichever one the current mode consults, from your installed apps or by wildcard pattern with the match explained as you type
+- 🎨 **Tint** — the colour under the glass, picked separately for app windows and for the shell or linked to one colour, with a preview window of real surfaces and real text that recolours as you drag
+- 🌫️ **Blur amount** — one bar for every blurred surface at once, from a quarter of the tuned radii to double them
+- 📋 **Two per-app blur lists** — the apps to blur and the apps never to, listed by the name each app calls itself with its window class underneath, each list in its own window and editable whichever one the current mode consults, from your installed apps or by wildcard pattern with the match explained as you type
 - 🖱️ **Icon and pointer packs** — Colloid or Reversal in a colour of their own rather than the accent's, Adwaita or MacTahoe, plus **Keep current** and **Original**
 - 🪟 **Titlebar buttons** — close alone, or all three
 - 🧩 **Extensions** — every one this installs, with a switch each and install/remove, or fit the recommended or full pack in one click
-- 📦 **Packages** — what each icon and pointer pack on disk costs you, and a button to remove the ones you stopped using
+- 📦 **Packages** — what each icon and pointer pack on disk costs you, and a button to remove the ones you stopped using: yours are deleted outright, and the ones your distribution installed name the package that owns them and hand it to your package manager in a terminal
 - 🖥️ **System** — dependencies, the rounded-blur library, the multi-monitor panel fix, the login screen theme and its monitor layout sync
 - 🔔 **Updates** — see your version, check for a new release, install it
 - 🗑️ **Uninstall** — the same three scopes `uninstall.sh` has
@@ -97,13 +104,16 @@ For scripted setups or power users who prefer flags instead of the interactive w
 | `--interactive` | Force-launch the interactive setup wizard. |
 | `--full` | Install everything at once (core theme, icons, cursors, OSD, panel blur fix, and all reference extensions). |
 | `--accent COLOR` | Set accent: `blue`, `teal`, `green`, `yellow`, `orange`, `red`, `pink`, `purple`, `slate` *(default: `purple`, remembered across runs)*. |
-| `--radius-preset P` | Corner rounding: `sharp`, `default`, `rounded` or `pill`. Moves windows, menus, dialogs, notifications **and** the blur radius behind each of them together *(default: `default`, remembered across runs)*. |
+| `--radius-preset P` | Corner rounding: `flat`, `sharp`, `soft`, `medium`, `default` or `rounded`. Moves windows, menus, dialogs, notifications **and** the blur radius behind each of them together *(default: `default`, remembered across runs)*. `pill` was retired and still resolves to `rounded`, so an older memo keeps installing. |
 | `--settings-only` | Retune an existing install and nothing else — reapply the dconf preset, CSS and gsettings, leaving the theme and extensions alone. No root, and no network unless `--icons`/`--cursors` ask for a pack you do not have. This is what `aura-glass-settings` runs. |
 | `--no-gui` | Skip the `aura-glass-settings` window *(installed by default where PyGObject and libadwaita are present)*. |
 | `--no-update-check` | Skip the daily release check. It asks the git remote for its tags and notifies once per release; it never installs anything on its own. |
 | `--app-blur-allow LIST` | Comma-separated `wm_class` patterns to blur in GTK/GNOME mode, replacing the shipped list. Wildcards allowed (`*chrome*`). Remembered across runs. |
 | `--app-blur-block LIST` | Comma-separated `wm_class` patterns to exclude in all-apps mode. Remembered across runs. |
 | `--app-transparency LEVEL` | Enable translucent app windows with blur: `90%` (balanced), `82%` (deep glass), `94%` (subtle glass), or custom percentage *(off by default)*. |
+| `--app-tint-color HEX` | The colour a translucent app window is darkened toward under its opacity, e.g. `#101820`. How dark it stays is `--app-transparency`'s question; this is only what colour it is *(default `#000000`, remembered across runs)*. |
+| `--shell-tint-color HEX` | The same for the panel, menus, Quick Settings, notifications and dialogs. Each shell surface keeps its own lightness and takes the colour's hue, so a tint cannot change how readable the text on it is *(default `#000000`, remembered across runs)*. |
+| `--blur-strength P` | How far every blur reaches, as a percentage of the tuned radii: `25`–`200`. Scales the whole set together — panel, menus, overview, windows, lock screen — rather than flattening them *(default `100`, remembered across runs)*. |
 | `--window-opacity LEVEL` | Alias for `--app-transparency` (e.g. `--window-opacity 90%`). |
 | `--gdm` | Theme the GDM login screen with matching blurred style *(requires `sudo`)*. |
 | `--gdm-background PATH` | Custom image for the GDM login background *(defaults to your wallpaper)*. |
@@ -111,6 +121,7 @@ For scripted setups or power users who prefer flags instead of the interactive w
 | `--extras` / `--recommended` | Install the recommended reference extension suite. |
 | `--all-extras` | Install all 14 optional extensions. |
 | `--minimal` / `--no-extras` | Minimal install with core look only (no optional extensions). |
+| `--extensions LIST` | Comma-separated extension UUIDs to install instead of a pack, e.g. `space-bar@luchrioh,Vitals@CoreCoding.com`. Each must be one `--all-extras` would install; an empty list means the same as `--no-extras`. This is what the setup wizard's per-extension switches send. |
 | `--icons WHICH` | Choose icon set: `colloid` (default, matches accent) or `reversal-COLOUR`. |
 | `--no-popup-blur` | Use flat translucent popups without background blur. |
 | `--no-osd` | Keep GNOME's stock volume/brightness popup. |
@@ -184,7 +195,9 @@ Replaces stock GNOME's bulky OSD with a clean, compact pill. Configurable via **
 │   ├── aura-glass-ext      # The extension catalogue, one extension at a time
 │   ├── aura-glass-settings # Launcher for the settings window
 │   └── aura-glass-update-check # Compares the local release tag against the remote
-├── gui/                    # GTK4 / libadwaita settings window (optional)
+├── gui/                    # GTK4 / libadwaita windows (optional)
+│   ├── aura_glass_settings.py     # Settings window, post-install
+│   └── aura_glass_setup_wizard.py # Setup wizard, run by install.sh
 ├── css/                    # Modular CSS sheets applied in strict cascade order
 │   ├── shell-NN-*.css      # GNOME Shell styling overrides
 │   ├── gtk4-NN-*.css       # GTK4 & libadwaita overrides

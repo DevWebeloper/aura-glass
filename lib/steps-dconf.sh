@@ -49,6 +49,7 @@ load_dconf() {
     run dconf write /org/gnome/shell/extensions/openbar/trigger-reload true
 
     apply_grain
+    apply_blur_strength
     apply_popup_blur
     apply_app_blur
     apply_app_opacity
@@ -177,6 +178,73 @@ APP_BLUR_BLOCK_DEFAULT=(
     '*electron*' Plank com.desktop.ding Conky
 )
 
+# The settings window's own wm_class, which is blurred whenever anything is.
+#
+# Written out here rather than read from $GUI_APP_ID in lib/steps-gui.sh: that
+# file is sourced after this one and the two are separate concerns, so the string
+# is duplicated and tools/check-app-blur-lists.sh asserts the two copies agree.
+# gui/aura_glass_settings.py holds a third, for the same reason and with the same
+# check behind it.
+APP_BLUR_SELF="io.github.DevWebeloper.AuraGlassSettings"
+
+# Does one pattern cover the settings window?
+#
+# wildcardToRegex in the extension's components/applications.js anchors a pattern
+# at both ends, turns * into .* and ? into ., and compiles case-insensitively —
+# which is what a bash glob under nocasematch does. The one difference is [abc]:
+# the extension escapes the brackets and matches them literally. No wm_class has
+# brackets in it, and this one certainly does not.
+app_blur_covers_self() {
+    local pattern="$1" matched=0 restore
+    restore="$(shopt -p nocasematch)"
+    shopt -s nocasematch
+    case "$APP_BLUR_SELF" in
+        $pattern) matched=1 ;;
+    esac
+    eval "$restore"
+    [ "$matched" = 1 ]
+}
+
+# Lines on stdin -> the same lines with the settings window on them.
+#
+# The window is the one place the glass is explained, so it is the one window
+# that must never be the exception to it: unblurred, it shows an opaque grey
+# panel while describing the blur, and the per-app lists it opens are drawn in
+# a window that proves the setting does not work. Nothing else here is pinned,
+# and this is not a general mechanism — it is one class, named once.
+#
+# Pinned rather than added to APP_BLUR_ALLOW_DEFAULT, because a default is only
+# consulted when there is no memo, and every machine that has run an earlier
+# release has one. Skipped when a pattern already covers it, so a user who wrote
+# their own wildcard for it does not get a duplicate underneath.
+app_blur_pin_allow() {
+    local lines pattern
+    lines="$(cat)"
+    while IFS= read -r pattern; do
+        [ -n "${pattern// /}" ] || continue
+        if app_blur_covers_self "$pattern"; then
+            printf '%s\n' "$lines"
+            return 0
+        fi
+    done <<< "$lines"
+    printf '%s\n%s\n' "$APP_BLUR_SELF" "$lines"
+}
+
+# Lines on stdin -> the same lines, minus anything that would block the window.
+#
+# The other half of the pin. In `all` mode the allow list is not read at all, so
+# keeping the window blurred there means dropping whatever excludes it — and the
+# shipped block list does not name it, but `*aura*` from a user who wanted their
+# own theme's windows left alone would.
+app_blur_pin_block() {
+    local pattern
+    while IFS= read -r pattern; do
+        [ -n "${pattern// /}" ] || continue
+        app_blur_covers_self "$pattern" && continue
+        printf '%s\n' "$pattern"
+    done
+}
+
 # The list to use, one pattern per line: an explicit flag wins, else the user's
 # memo, else the shipped default. Same precedence as every other remembered
 # choice here, so a flag is a one-run override that then becomes the memory.
@@ -280,6 +348,15 @@ apply_app_blur() {
     local allow_lines block_lines allow block
     allow_lines="$(app_blur_lines "${APP_BLUR_ALLOW_EXPLICIT:-}" "${APP_BLUR_ALLOW:-}" "$allow_memo" "${APP_BLUR_ALLOW_DEFAULT[@]}")"
     block_lines="$(app_blur_lines "${APP_BLUR_BLOCK_EXPLICIT:-}" "${APP_BLUR_BLOCK:-}" "$block_memo" "${APP_BLUR_BLOCK_DEFAULT[@]}")"
+
+    # After the flag/memo/default choice and before anything is written, so the
+    # memo the settings window reads back is the list that reached dconf. An
+    # empty allow list is still emptied by --app-blur-allow "" — it comes out of
+    # this holding the settings window and nothing else, which is a list with
+    # nothing of the user's on it rather than a list that ignored them.
+    allow_lines="$(printf '%s\n' "$allow_lines" | app_blur_pin_allow)"
+    block_lines="$(printf '%s\n' "$block_lines" | app_blur_pin_block)"
+
     allow="$(printf '%s\n' "$allow_lines" | app_blur_literal)"
     block="$(printf '%s\n' "$block_lines" | app_blur_literal)"
 
@@ -444,6 +521,111 @@ PY
     run mkdir -p "$CONF_DIR"
     printf '%s\n' "$want" > "$memo"
     ok "blur grain set to $want (remembered for future installs)"
+}
+
+# How far the blur reaches, as a percentage of the tuned values.
+#
+# One number for every blurred surface rather than one per surface. The six
+# sigmas in tokens/tokens.sh are not a ladder anybody should have to climb one
+# rung at a time — they are already in proportion to each other, chosen against
+# what each surface sits in front of, and what people actually want is the
+# whole set softer or crisper. Scaling keeps those proportions: the panel stays
+# heavier than the dock at every setting.
+#
+# Both places a blur radius lives are scaled, because Blur My Shell has two.
+# The per-component `sigma` keys are what the older releases read. The
+# `pipelines` blob is what the current ones read, and it carries the same
+# number again as `unscaled_radius` inside each effect. A run that moved one
+# and not the other would soften the desktop on one machine and do nothing on
+# the next.
+#
+# Sigmas are written from the tokens rather than read back and multiplied, so
+# the value cannot compound over repeated installs. The blob has to be read —
+# there is no token for its seven copies — but dconf load has just rewritten it
+# from dconf/core.ini a few lines above, which is the same assumption apply_grain
+# already makes.
+#
+# Remembered, like the grain beside it: dconf load puts the shipped sigmas back
+# on every run, so an unremembered choice would last until the next install.
+BLUR_STRENGTH_MIN=25
+BLUR_STRENGTH_MAX=200
+
+apply_blur_strength() {
+    local want="${BLUR_STRENGTH:-}" memo="$CONF_DIR/blur-strength"
+    if [ -z "$want" ] && [ -f "$memo" ]; then
+        want="$(cat "$memo" 2>/dev/null || true)"
+    fi
+    [ -n "$want" ] || return 0
+
+    case "$want" in
+        ''|*[!0-9]*) warn "--blur-strength wants a whole percentage, got '$want'"
+                     return 0 ;;
+    esac
+    if [ "$want" -lt "$BLUR_STRENGTH_MIN" ] || [ "$want" -gt "$BLUR_STRENGTH_MAX" ]; then
+        warn "--blur-strength $want is outside ${BLUR_STRENGTH_MIN}-${BLUR_STRENGTH_MAX} — leaving the blur alone"
+        return 0
+    fi
+
+    # Nothing to do at the tuned values, and saying so is better than writing
+    # six keys back to what dconf load just wrote.
+    if [ "$want" = 100 ]; then
+        if [ "${DRY_RUN:-0}" != 1 ]; then
+            mkdir -p "$CONF_DIR"
+            printf '%s\n' "$want" > "$memo"
+        fi
+        ok "blur strength at 100% — the tuned values"
+        return 0
+    fi
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: scale every blur radius to ${want}%"
+        return 0
+    fi
+
+    local base=/org/gnome/shell/extensions/blur-my-shell
+    local pair name token scaled
+    for pair in "panel:$TOKEN_SIGMA_PANEL" "appfolder:$TOKEN_SIGMA_APPFOLDER" \
+                "popup:$TOKEN_SIGMA_POPUP" "window-list:$TOKEN_SIGMA_WINDOW_LIST" \
+                "applications:$TOKEN_SIGMA_APPLICATIONS" \
+                "dash-to-dock:$TOKEN_SIGMA_DASH_TO_DOCK"; do
+        name="${pair%%:*}"; token="${pair##*:}"
+        # Rounded, floored at 1. A sigma of 0 is not a fainter blur, it is the
+        # effect switched off, and the switches on the Glass page are where
+        # that answer lives.
+        scaled=$(( (token * want + 50) / 100 ))
+        [ "$scaled" -lt 1 ] && scaled=1
+        run dconf write "$base/$name/sigma" "$scaled"
+    done
+
+    python3 - "$want" <<'PY' || { warn "could not scale the blur pipelines"; return 0; }
+import re
+import subprocess
+import sys
+
+want = int(sys.argv[1]) / 100.0
+KEY = "/org/gnome/shell/extensions/blur-my-shell/pipelines"
+cur = subprocess.run(["dconf", "read", KEY],
+                     capture_output=True, text=True).stdout.strip()
+if not cur:
+    sys.exit(0)
+
+
+def scale(match):
+    # Floored at 1 for the same reason the sigmas above are: 0 is off, and off
+    # is a different question from faint.
+    return "%s%s%s" % (match.group(1),
+                       repr(max(1.0, round(float(match.group(2)) * want, 1))),
+                       match.group(3))
+
+
+new = re.sub(r"('unscaled_radius': <)([0-9.]+)(>)", scale, cur)
+if new != cur:
+    subprocess.run(["dconf", "write", KEY, new], check=True)
+PY
+
+    mkdir -p "$CONF_DIR"
+    printf '%s\n' "$want" > "$memo"
+    ok "blur strength at ${want}% of the tuned radii (remembered for later runs)"
 }
 
 # Which of the titlebar buttons a window gets. Two answers rather than the free

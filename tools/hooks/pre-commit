@@ -87,6 +87,11 @@ step "radius presets apply (tools/check-radius-preset.sh)" \
 # absent, exactly as install_gui does.
 step "settings window flags (tools/check-gui-flags.py)" \
     python3 "$TMP/tools/check-gui-flags.py"
+# The same, for the window that asks the opening questions. It composes a whole
+# command line rather than a diff, and install.sh has to accept every one it can
+# produce — including the --extensions list its per-extension switches send.
+step "setup wizard flags (tools/check-wizard-flags.py)" \
+    python3 "$TMP/tools/check-wizard-flags.py"
 # The window keeps its own copy of the four preset rows and the per-surface
 # bounds, because the spin rows need their ranges before install.sh runs. Same
 # arrangement tokens.sh defends for the stylesheets, so it gets the same
