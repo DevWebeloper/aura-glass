@@ -182,6 +182,12 @@ seed_glass_mode() {
         # it, and a value living there — 0.88, 0, anything — was never
         # transparent's to inherit. Transparent has no history before it has
         # a drawer of its own, so its first seed is always this darker level.
+        # The tint below is inherited despite that, and the asymmetry is the
+        # point: a tint is a colour preference that travels with the user
+        # regardless of mode, while the level is coupled to whether there is
+        # blur behind the window, which is exactly the thing that changes
+        # between modes — so one carries over and the other is the mode's
+        # own answer.
         mode_memo_write app-transparency "0.82"
         mode_memo_write app-tint-color   "${disk_app:-#0b0b0f}"
         mode_memo_write shell-tint-color "${disk_shell:-#0b0b0f}"
@@ -218,13 +224,26 @@ load_glass_mode_memos() {
     [ -n "${SHELL_TINT_COLOR:-}" ] || SHELL_TINT_COLOR="$(mode_memo_read shell-tint-color '#000000')"
     [ -n "${BLUR_STRENGTH:-}" ]    || BLUR_STRENGTH="$(mode_memo_read blur-strength 100)"
 
+    # *_EXPLICIT has meant "the user typed the flag" up to here; from the
+    # point one of these is set below it means "settled for this run,
+    # whether by a flag or by the mode's drawer, so leave it alone" — because
+    # each of these two markers has a reader further down that goes back to
+    # the shared top-level memo whenever it finds the marker unset:
+    # apply_popup_blur for POPUP_BLUR_EXPLICIT, and both install.sh's own
+    # resolution block a few lines below and apply_app_blur for
+    # APP_BLUR_SCOPE_EXPLICIT — both in lib/steps-dconf.sh. Without setting it
+    # here, a value the drawer just loaded would survive exactly until the
+    # next line that tests the marker, then lose to whatever the top-level
+    # memo (tuned for a different mode) happens to hold.
     if [ -z "${POPUP_BLUR_EXPLICIT:-}" ]; then
         WANT_POPUP_BLUR="$(mode_memo_read popup-blur 1)"
+        POPUP_BLUR_EXPLICIT=1
     fi
     # Transparent has no scope to remember: not blurring behind windows is what
     # the mode is, and apply_glass_mode has already pinned it to none.
     if [ "${GLASS_MODE}" = frosted ] && [ -z "${APP_BLUR_SCOPE_EXPLICIT:-}" ]; then
         APP_BLUR_SCOPE="$(mode_memo_read app-blur-scope gtk)"
+        APP_BLUR_SCOPE_EXPLICIT=1
     fi
 }
 

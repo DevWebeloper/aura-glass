@@ -92,15 +92,31 @@ fi
 # resolutions already run above have their own opinions about --glass-mode
 # frosted/transparent/solid, and seed_glass_mode writes even under --dry-run —
 # so modes/ already holds whatever those left behind. Start this drawer clean
-# rather than assume it is, and give it the disk value the seeding cases below
-# are actually about.
+# rather than assume it is, and give it the disk values the seeding cases below
+# are actually about — one non-default value per key the drawer keeps.
 rm -rf "$scratch/.config/aura-glass/modes"
-printf '0.88\n' > "$scratch/.config/aura-glass/app-transparency"
+printf '0.88\n'    > "$scratch/.config/aura-glass/app-transparency"
+printf '#224488\n' > "$scratch/.config/aura-glass/shell-tint-color"
+printf 'all\n'      > "$scratch/.config/aura-glass/app-blur-scope"
+printf '0\n'        > "$scratch/.config/aura-glass/popup-blur"
+printf '150\n'      > "$scratch/.config/aura-glass/blur-strength"
 
 in_scratch --glass-mode frosted >/dev/null 2>&1
 seeded="$(cat "$scratch/.config/aura-glass/modes/frosted/app-transparency" 2>/dev/null || true)"
 [ "$seeded" = "0.88" ] || failures+=(
     "seeding frosted should take the level already on disk, got '$seeded'")
+seeded="$(cat "$scratch/.config/aura-glass/modes/frosted/shell-tint-color" 2>/dev/null || true)"
+[ "$seeded" = "#224488" ] || failures+=(
+    "seeding frosted should take the shell tint already on disk, got '$seeded'")
+seeded="$(cat "$scratch/.config/aura-glass/modes/frosted/app-blur-scope" 2>/dev/null || true)"
+[ "$seeded" = "all" ] || failures+=(
+    "seeding frosted should take the blur scope already on disk, got '$seeded'")
+seeded="$(cat "$scratch/.config/aura-glass/modes/frosted/popup-blur" 2>/dev/null || true)"
+[ "$seeded" = "0" ] || failures+=(
+    "seeding frosted should take the popup-blur choice already on disk, got '$seeded'")
+seeded="$(cat "$scratch/.config/aura-glass/modes/frosted/blur-strength" 2>/dev/null || true)"
+[ "$seeded" = "150" ] || failures+=(
+    "seeding frosted should take the blur strength already on disk, got '$seeded'")
 
 in_scratch --glass-mode transparent >/dev/null 2>&1
 seeded="$(cat "$scratch/.config/aura-glass/modes/transparent/app-transparency" 2>/dev/null || true)"
@@ -110,11 +126,54 @@ seeded="$(cat "$scratch/.config/aura-glass/modes/transparent/app-tint-color" 2>/
 [ "$seeded" = "#0b0b0f" ] || failures+=(
     "seeding transparent should give it its own tint, got '$seeded'")
 
-# Back to frosted: its own level comes back rather than transparent's.
-got="$(resolved --glass-mode frosted)"
+# Diverge the shared top-level memos from what frosted's own drawer holds —
+# what a plain flagless run, or a real (non-dry) run of another mode, would
+# leave behind. Without this, switching back to frosted would find the shared
+# memo agreeing with the drawer by coincidence, and a re-read that should not
+# have happened would go unnoticed the same way it did the first time: the
+# drawer was written correctly here too, it just was not what reached the
+# resolution.
+printf 'gtk\n'      > "$scratch/.config/aura-glass/app-blur-scope"
+printf '1\n'        > "$scratch/.config/aura-glass/popup-blur"
+printf '100\n'      > "$scratch/.config/aura-glass/blur-strength"
+printf '#000000\n'  > "$scratch/.config/aura-glass/shell-tint-color"
+
+# Back to frosted: its own answers come back, not the shared memos just
+# diverged out from under it. transparency is read straight off the
+# glass-mode line. popup-blur and app-blur-scope are not: both have a
+# downstream reader gated on their own *_EXPLICIT flag rather than on
+# emptiness (apply_popup_blur and apply_app_blur in lib/steps-dconf.sh, plus
+# install.sh's own block for scope), and that reader runs after the
+# glass-mode line is printed and only ever touches its own local copy of the
+# value — so the line itself prints the same popup=0 whether or not the
+# re-read after it was skipped. What actually moves is the dconf write those
+# functions make, echoed here because this is a dry run. blur-strength and
+# shell-tint-color have no such second reader — apply_blur_strength and
+# apply_shell_tint_color only fall back to the shared memo when the value
+# itself is still empty, which load_glass_mode_memos never leaves it — so
+# their own dry-run lines are asserted on for the same reason: it is where
+# this run says what it actually resolved to.
+raw="$(in_scratch --glass-mode frosted 2>&1)"
+got="$(printf '%s\n' "$raw" | sed -n 's/^ *glass-mode: //p' | tail -n 1)"
 case "$got" in
     *"transparency=0.88"*) ;;
-    *) failures+=("switching back to frosted should restore 0.88, got '$got'") ;;
+    *) failures+=("switching back to frosted should restore transparency 0.88, got '$got'") ;;
+esac
+case "$raw" in
+    *"dry-run: dconf write /org/gnome/shell/extensions/blur-my-shell/popup/blur false"*) ;;
+    *) failures+=("switching back to frosted should keep popup-blur off (no 'popup/blur false' dry-run write seen)") ;;
+esac
+case "$raw" in
+    *"dry-run: dconf write /org/gnome/shell/extensions/blur-my-shell/applications/enable-all true"*) ;;
+    *) failures+=("switching back to frosted should keep app-blur-scope all (no 'enable-all true' dry-run write seen)") ;;
+esac
+case "$raw" in
+    *"dry-run: scale every blur radius to 150%"*) ;;
+    *) failures+=("switching back to frosted should restore blur-strength 150 (line not seen)") ;;
+esac
+case "$raw" in
+    *"dry-run: tint the shell's dark surfaces toward #224488"*) ;;
+    *) failures+=("switching back to frosted should restore shell-tint-color #224488 (line not seen)") ;;
 esac
 
 if [ "${#failures[@]}" -gt 0 ]; then
@@ -122,4 +181,4 @@ if [ "${#failures[@]}" -gt 0 ]; then
     printf '  %s\n' "${failures[@]}"
     exit 1
 fi
-printf 'glass mode check passed — 7 resolutions, 5 refusals and 4 round-trips\n'
+printf 'glass mode check passed — 7 resolutions, 5 refusals and 6 drawer keys round-tripped\n'
