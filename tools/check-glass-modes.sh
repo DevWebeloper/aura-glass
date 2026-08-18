@@ -88,9 +88,38 @@ if in_scratch --glass-mode frostd >/dev/null 2>&1; then
     failures+=("a misspelled --glass-mode was accepted")
 fi
 
+# The per-mode drawer, on the same scratch CONF_DIR as everything above. The
+# resolutions already run above have their own opinions about --glass-mode
+# frosted/transparent/solid, and seed_glass_mode writes even under --dry-run —
+# so modes/ already holds whatever those left behind. Start this drawer clean
+# rather than assume it is, and give it the disk value the seeding cases below
+# are actually about.
+rm -rf "$scratch/.config/aura-glass/modes"
+printf '0.88\n' > "$scratch/.config/aura-glass/app-transparency"
+
+in_scratch --glass-mode frosted >/dev/null 2>&1
+seeded="$(cat "$scratch/.config/aura-glass/modes/frosted/app-transparency" 2>/dev/null || true)"
+[ "$seeded" = "0.88" ] || failures+=(
+    "seeding frosted should take the level already on disk, got '$seeded'")
+
+in_scratch --glass-mode transparent >/dev/null 2>&1
+seeded="$(cat "$scratch/.config/aura-glass/modes/transparent/app-transparency" 2>/dev/null || true)"
+[ "$seeded" = "0.82" ] || failures+=(
+    "seeding transparent should give it its own darker level, got '$seeded'")
+seeded="$(cat "$scratch/.config/aura-glass/modes/transparent/app-tint-color" 2>/dev/null || true)"
+[ "$seeded" = "#0b0b0f" ] || failures+=(
+    "seeding transparent should give it its own tint, got '$seeded'")
+
+# Back to frosted: its own level comes back rather than transparent's.
+got="$(resolved --glass-mode frosted)"
+case "$got" in
+    *"transparency=0.88"*) ;;
+    *) failures+=("switching back to frosted should restore 0.88, got '$got'") ;;
+esac
+
 if [ "${#failures[@]}" -gt 0 ]; then
     printf 'glass mode check FAILED\n\n'
     printf '  %s\n' "${failures[@]}"
     exit 1
 fi
-printf 'glass mode check passed — 7 resolutions and 5 refusals\n'
+printf 'glass mode check passed — 7 resolutions, 5 refusals and 4 round-trips\n'

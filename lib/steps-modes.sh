@@ -129,9 +129,113 @@ remember_glass_mode() {
     [ "${DRY_RUN:-0}" = 1 ] && return 0
     mkdir -p "$CONF_DIR"
     printf '%s\n' "$GLASS_MODE" > "$CONF_DIR/glass-mode"
+    save_glass_mode_memos
     if [ "${WANT_STYLING:-1}" = 0 ]; then
         : > "$CONF_DIR/styling-off"
     else
         rm -f "$CONF_DIR/styling-off"
     fi
+}
+
+# ---- the per-mode drawer ------------------------------------------------
+
+# Every mode keeps the settings that belong to it. The top-level memos stay the
+# live state — install_transparency_css, apply_app_tint_color and the settings
+# window all read those, and none of them learn about modes — so these are an
+# archive that the mode switch restores from, not a second source of truth.
+mode_memo_path() { printf '%s/modes/%s/%s\n' "$CONF_DIR" "${GLASS_MODE:-frosted}" "$1"; }
+
+mode_memo_read() {   # KEY DEFAULT
+    local f; f="$(mode_memo_path "$1")"
+    if [ -r "$f" ]; then cat "$f" 2>/dev/null || printf '%s\n' "$2"
+    else printf '%s\n' "$2"; fi
+}
+
+mode_memo_write() {  # KEY VALUE
+    mkdir -p "$CONF_DIR/modes/${GLASS_MODE:-frosted}"
+    printf '%s\n' "$2" > "$(mode_memo_path "$1")"
+}
+
+# What a mode starts life with. Read from the top-level memos where they exist,
+# so an install that predates modes keeps the tuning it is wearing and finds it
+# in the tab it belongs to; from the constants only where there is nothing to
+# read. Transparent is the exception that proves it: with no blur behind the
+# window the wallpaper is what the text sits on, so it starts darker, and a
+# level of 0 is not a state this mode has.
+seed_glass_mode() {
+    local dir="$CONF_DIR/modes/${GLASS_MODE:-frosted}"
+    [ -d "$dir" ] && return 0
+    mkdir -p "$dir"
+    [ "${GLASS_MODE:-}" = solid ] && return 0
+
+    local disk_level disk_app disk_shell disk_strength disk_scope disk_popup
+    disk_level="$(cat "$CONF_DIR/app-transparency" 2>/dev/null || true)"
+    disk_app="$(cat "$CONF_DIR/app-tint-color" 2>/dev/null || true)"
+    disk_shell="$(cat "$CONF_DIR/shell-tint-color" 2>/dev/null || true)"
+    disk_strength="$(cat "$CONF_DIR/blur-strength" 2>/dev/null || true)"
+    disk_scope="$(cat "$CONF_DIR/app-blur-scope" 2>/dev/null || true)"
+    disk_popup="$(cat "$CONF_DIR/popup-blur" 2>/dev/null || true)"
+
+    if [ "${GLASS_MODE:-}" = transparent ]; then
+        # Unconditional, not a fallback for an empty disk_level: the shared
+        # top-level memo is frosted's tab, tuned for a blurred window behind
+        # it, and a value living there — 0.88, 0, anything — was never
+        # transparent's to inherit. Transparent has no history before it has
+        # a drawer of its own, so its first seed is always this darker level.
+        mode_memo_write app-transparency "0.82"
+        mode_memo_write app-tint-color   "${disk_app:-#0b0b0f}"
+        mode_memo_write shell-tint-color "${disk_shell:-#0b0b0f}"
+    else
+        mode_memo_write app-transparency "${disk_level:-0}"
+        mode_memo_write app-tint-color   "${disk_app:-#000000}"
+        mode_memo_write shell-tint-color "${disk_shell:-#000000}"
+        mode_memo_write app-blur-scope   "${disk_scope:-gtk}"
+    fi
+    mode_memo_write blur-strength "${disk_strength:-100}"
+    mode_memo_write popup-blur    "${disk_popup:-1}"
+}
+
+# The drawer into this run's variables. Only where the flag was not given, on
+# the same precedence rule apply_glass_mode follows.
+load_glass_mode_memos() {
+    [ -n "${GLASS_MODE:-}" ] || return 0
+    [ "${GLASS_MODE}" = solid ] && return 0
+
+    # A value install.sh would refuse is treated as an empty drawer rather than
+    # passed along: the flag it would become dies in the parser, which is a
+    # failure a long way from the file that caused it.
+    local level; level="$(mode_memo_read app-transparency 0)"
+    case "$level" in
+        0|0.[0-9][0-9]|1.00) ;;
+        *) warn "$(mode_memo_path app-transparency) holds '$level' — reseeding this mode"
+           rm -rf "$CONF_DIR/modes/$GLASS_MODE"
+           seed_glass_mode ;;
+    esac
+
+    [ -n "${APP_TRANSPARENCY_EXPLICIT:-}" ] || [ -n "${APP_TRANSPARENCY:-}" ] \
+        || APP_TRANSPARENCY="$(mode_memo_read app-transparency 0)"
+    [ -n "${APP_TINT_COLOR:-}" ]   || APP_TINT_COLOR="$(mode_memo_read app-tint-color '#000000')"
+    [ -n "${SHELL_TINT_COLOR:-}" ] || SHELL_TINT_COLOR="$(mode_memo_read shell-tint-color '#000000')"
+    [ -n "${BLUR_STRENGTH:-}" ]    || BLUR_STRENGTH="$(mode_memo_read blur-strength 100)"
+
+    if [ -z "${POPUP_BLUR_EXPLICIT:-}" ]; then
+        WANT_POPUP_BLUR="$(mode_memo_read popup-blur 1)"
+    fi
+    # Transparent has no scope to remember: not blurring behind windows is what
+    # the mode is, and apply_glass_mode has already pinned it to none.
+    if [ "${GLASS_MODE}" = frosted ] && [ -z "${APP_BLUR_SCOPE_EXPLICIT:-}" ]; then
+        APP_BLUR_SCOPE="$(mode_memo_read app-blur-scope gtk)"
+    fi
+}
+
+# This run's answers back into the drawer, after everything has resolved.
+save_glass_mode_memos() {
+    [ "${WANT_STYLING:-1}" = 0 ] && return 0
+    mode_memo_write app-transparency "${APP_TRANSPARENCY:-0}"
+    mode_memo_write app-tint-color   "${APP_TINT_COLOR:-#000000}"
+    mode_memo_write shell-tint-color "${SHELL_TINT_COLOR:-#000000}"
+    mode_memo_write blur-strength    "${BLUR_STRENGTH:-100}"
+    mode_memo_write popup-blur       "${WANT_POPUP_BLUR:-1}"
+    [ "${GLASS_MODE:-}" = frosted ] && mode_memo_write app-blur-scope "${APP_BLUR_SCOPE:-gtk}"
+    return 0
 }

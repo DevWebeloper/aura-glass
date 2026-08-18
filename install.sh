@@ -738,6 +738,8 @@ ICONS="${ICONS:-colloid}"
 
 resolve_glass_mode
 apply_glass_mode
+seed_glass_mode
+load_glass_mode_memos
 
 if [ "${WANT_BLUR:-1}" = 0 ]; then
     APP_TRANSPARENCY=0
