@@ -116,6 +116,11 @@ step "app blur lists (tools/check-app-blur-lists.sh)" \
 # repositories. No network, and never the user's own checkout.
 step "update check (tools/check-update-check.sh)" \
     bash "$TMP/tools/check-update-check.sh"
+# The window and the update check each decide, separately, whether a checkout is
+# on the released line or a branch being tested. This holds the two to the same
+# answer, because nothing else would notice them drifting apart.
+step "update channel (tools/check-update-channel.py)" \
+    python3 "$TMP/tools/check-update-channel.py"
 
 printf '\n'
 if [ "$fail" = 1 ]; then
