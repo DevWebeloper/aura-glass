@@ -2093,6 +2093,13 @@ class Window(Adw.ApplicationWindow):
         self._apply.add_css_class("suggested-action")
         self._apply.connect("clicked", self._on_apply)
 
+        # The Glass page builds one set of these per mode and keys them by it.
+        # They live here rather than in that builder because a dict created
+        # inside the first tab's build would not be there for the second's.
+        self._tints = {}
+        self._tint_rows = {}
+        self._strength_scales = {}
+
         # Every page is built up front rather than on first visit. _reload and
         # _mark_dirty both read every widget in the window — a page built later
         # would be a page whose rows do not exist when they run.
@@ -2464,6 +2471,119 @@ class Window(Adw.ApplicationWindow):
         return page
 
     def _build_glass_page(self):
+        """The three modes, as three tabs.
+
+        The tab is the mode: switching one is asking for the other mode, in the
+        ordinary pending way every other control here works, and Apply is what
+        commits it. Which is why the tab bar cannot be the only mark — a
+        selected tab says "you are reading this", not "you are running this",
+        and those are two different answers until Apply. The badge under the
+        switcher is the second one, in the words the per-app lists already use
+        for the same question.
+
+        Each tab owns its own controls rather than sharing dimmed ones. The page
+        this replaces spent four rows and a sensitivity pass explaining which of
+        its switches did not apply right now; a control that does not apply to
+        the mode you are in is simply in another tab.
+
+        All three are built here and now, like every page in this window and for
+        the same reason: _reload and _mark_dirty read every widget there is, and
+        a tab built on first visit would be a tab whose rows do not exist when
+        they run.
+        """
+        self._mode_stack = Adw.ViewStack()
+        self._mode_stack.add_titled_with_icon(
+            self._build_frosted_page(), "frosted", "Frosted glass",
+            "weather-fog-symbolic")
+        self._mode_stack.add_titled_with_icon(
+            self._build_transparent_page(), "transparent", "Transparent",
+            "view-reveal-symbolic")
+        self._mode_stack.add_titled_with_icon(
+            self._build_solid_page(), "solid", "Solid",
+            "checkbox-symbolic")
+        self._mode_stack.set_visible_child_name(self._applied.glass_mode)
+        self._mode_stack.set_vexpand(True)
+        # After the child is set, so putting the window on the installed mode is
+        # not itself a switch to react to.
+        self._mode_stack.connect("notify::visible-child-name",
+                                 self._on_mode_switched)
+
+        # The badge the per-app lists already carry, for the question they
+        # already ask with it: which of these several things is the one in force
+        # right now. The alternative was a dot on the applied tab —
+        # Adw.ViewStackPage's needs-attention, which is the only per-tab mark
+        # libadwaita has — and it was rejected because it means "there is news
+        # here" everywhere else a GNOME app puts one, and an unlabelled mark is
+        # the wrong tool for the one thing on this page that is easy to get
+        # wrong.
+        self._mode_badge = Gtk.Label(halign=Gtk.Align.CENTER, wrap=True,
+                                     justify=Gtk.Justification.CENTER)
+        self._mode_badge.add_css_class("caption")
+        self._mode_badge.add_css_class("aura-badge")
+        self._sync_mode_badge()
+
+        switcher = Adw.ViewSwitcher(stack=self._mode_stack,
+                                    policy=Adw.ViewSwitcherPolicy.WIDE,
+                                    halign=Gtk.Align.CENTER,
+                                    margin_top=12)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        box.append(switcher)
+        box.append(self._mode_badge)
+        box.append(self._mode_stack)
+        return box
+
+    def _glass_mode(self):
+        """The mode the tabs are showing, which is the mode being asked for."""
+        return self._mode_stack.get_visible_child_name()
+
+    def _mode_title(self, mode):
+        """A mode's name, read back off the tab that carries it.
+
+        Off the tab rather than out of a second list beside GLASS_MODES: the
+        switcher is already showing these three words, and a copy of them here
+        is a copy that can disagree with what the user is looking at.
+        """
+        return self._mode_stack.get_page(
+            self._mode_stack.get_child_by_name(mode)).get_title()
+
+    def _sync_mode_badge(self):
+        """Say which of the three tabs the desktop is actually wearing."""
+        applied = self._applied.glass_mode
+        if self._glass_mode() == applied:
+            self._mode_badge.set_label("In use")
+            self._mode_badge.add_css_class("on")
+        else:
+            # The applied mode by name, rather than a bare "not this one". The
+            # tab bar stops answering "so which one am I in?" the moment you
+            # click away from it, which is exactly when the question gets asked.
+            self._mode_badge.set_label("Not applied yet — %s is in use"
+                                       % self._mode_title(applied))
+            self._mode_badge.remove_css_class("on")
+
+    def _on_mode_switched(self, _stack, _param):
+        # Outside the loading guard for the reason the opacity readout is: the
+        # badge has to follow the tab even when _reload was what moved it.
+        self._sync_mode_badge()
+        if self._loading:
+            return
+        # Which list the blur consults is a property of the mode, so the two
+        # summaries on the Per-app blur page move with the tab.
+        self._rebuild_app_list()
+        self._mark_dirty()
+
+    # ---- frosted ----------------------------------------------------------
+
+    def _build_frosted_page(self):
+        """Blur behind everything, which is the mode the theme is written for.
+
+        Seeded from this mode's own drawer rather than from the live top-level
+        memos. The tab exists whichever mode is installed, and a machine running
+        Transparent still has a frosted drawer on disk — seed_glass_mode wrote
+        it — holding what Apply would install if this tab were chosen. Reading
+        the top-level memos instead would show a machine standing at Solid its
+        own forced zeroes under a Frosted heading.
+        """
+        frosted = self._applied.modes["frosted"]
         page = Adw.PreferencesPage()
 
         # Above the switches rather than under them. Every row on this page
@@ -2476,17 +2596,11 @@ class Window(Adw.ApplicationWindow):
             "integrated GPU, a 4K screen or a laptop on battery expect slower "
             "animations, dropped frames and less battery.\n\nIf the desktop "
             "feels heavy, turn off <b>Blur behind all application windows</b> "
-            "first, then the window blur, then solid mode."))
+            "first, then try the Transparent tab, then Solid."))
 
         glass = Adw.PreferencesGroup(
             title="Glass",
-            description="Blur costs GPU time. Solid mode turns all of it off.")
-        self._blur_row = Adw.SwitchRow(
-            title="Frosted glass",
-            subtitle="Off means solid mode: opaque surfaces, no blur anywhere",
-            active=self._applied.blur)
-        self._blur_row.connect("notify::active", self._on_changed, "blur")
-        glass.add(self._blur_row)
+            description="Blur behind windows, popups and the panel.")
 
         # Two switches, not the dropdown this was. They are two settings in
         # install.sh — WANT_WINDOW_BLUR and APP_BLUR_SCOPE — and the dropdown
@@ -2496,7 +2610,7 @@ class Window(Adw.ApplicationWindow):
         self._window_blur_row = Adw.SwitchRow(
             title="Blur behind app windows",
             subtitle="Off leaves windows translucent with no blur behind them",
-            active=self._applied.scope != "none")
+            active=frosted["scope"] != "none")
         self._window_blur_row.connect("notify::active", self._on_changed,
                                       "scope")
         glass.add(self._window_blur_row)
@@ -2510,7 +2624,7 @@ class Window(Adw.ApplicationWindow):
             subtitle="On covers browsers and Electron apps too, and is "
                      "<b>heavy on the GPU</b>. Off keeps it to GTK and GNOME "
                      "apps",
-            active=self._applied.scope == "all")
+            active=frosted["scope"] == "all")
         self._blur_all_row.connect("notify::active", self._on_changed, "scope")
         glass.add(self._blur_all_row)
 
@@ -2518,10 +2632,15 @@ class Window(Adw.ApplicationWindow):
         # the same thing: 100% leaves the transparency sheet installed and fully
         # opaque, while off removes it, and install_transparency_css treats those
         # differently. A single control would have to pretend otherwise.
+        #
+        # It is also the one switch the Transparent tab does not have, and that
+        # is the difference between the two modes rather than an oversight:
+        # being translucent with nothing blurred behind it is what that mode is,
+        # so turning it off there is asking for this tab.
         self._transparency_on = Adw.SwitchRow(
             title="Translucent app windows",
             subtitle="Let the blur and the wallpaper through GTK app windows",
-            active=self._applied.transparency != "0")
+            active=frosted["transparency"] != "0")
         self._transparency_on.connect("notify::active", self._on_changed,
                                       "transparency")
         glass.add(self._transparency_on)
@@ -2535,29 +2654,14 @@ class Window(Adw.ApplicationWindow):
         # smear. So: the readout moves to the row's suffix as an ordinary label,
         # the marks lose their percentages, and the bar gets the full width to
         # spread the three remaining words across.
-        self._transparency_scale = Gtk.Scale.new_with_range(
-            Gtk.Orientation.HORIZONTAL, TRANSPARENCY_MIN, TRANSPARENCY_MAX, 1)
-        self._transparency_scale.set_hexpand(True)
-        self._transparency_scale.set_draw_value(False)
-        for at, label in TRANSPARENCY_MARKS:
-            self._transparency_scale.add_mark(at, Gtk.PositionType.BOTTOM, label)
-        self._transparency_scale.set_value(
-            level_to_percent(self._applied.transparency))
-        self._transparency_scale.connect("value-changed", self._on_scale_changed)
-
-        # Percent, not the 0-255 actor opacity install.sh also understands: the
-        # window is what the user is looking at, and 90% opaque is a thing you
-        # can picture in a way that 230 is not.
-        self._transparency_value = Gtk.Label(valign=Gtk.Align.CENTER)
-        self._transparency_value.add_css_class("numeric")
-        self._transparency_value.add_css_class("dim-label")
-        self._sync_transparency_value()
+        self._transparency_scale = self._opacity_scale(
+            level_to_percent(frosted["transparency"]))
 
         self._transparency_row = Adw.ActionRow(
             title="Opacity",
             subtitle="Lower is more see-through. Below 70% the text stops "
                      "holding up over a bright wallpaper, so that is the floor")
-        self._transparency_row.add_suffix(self._transparency_value)
+        self._transparency_row.add_suffix(self._transparency_scale._readout)
         glass.add(self._transparency_row)
 
         self._transparency_bar = Gtk.Box(margin_start=12, margin_end=12,
@@ -2576,18 +2680,158 @@ class Window(Adw.ApplicationWindow):
         self._popup_row = Adw.SwitchRow(
             title="Blur behind menus and the top bar",
             subtitle="Popups, Quick Settings and the panel",
-            active=self._applied.popup_blur)
+            active=frosted["popup_blur"])
         self._popup_row.connect("notify::active", self._on_changed, "popup_blur")
         popups.add(self._popup_row)
         page.add(popups)
 
-        page.add(self._build_tint_group())
-        page.add(self._build_blur_strength_group())
+        page.add(self._build_tint_group("frosted"))
+        page.add(self._build_blur_strength_group("frosted"))
+        return page
+
+    # ---- transparent ------------------------------------------------------
+
+    def _build_transparent_page(self):
+        """Translucent windows with nothing blurred behind them.
+
+        Two controls and a switch. There is no translucency on/off here: turning
+        it off is asking for a different mode, and the tab bar is where that is
+        asked. The level and the tint are this mode's own — they are not the
+        ones the frosted tab shows, and moving one here does not move that one.
+        """
+        transparent = self._applied.modes["transparent"]
+        page = Adw.PreferencesPage()
+        page.add(tip_card(
+            "Windows let the wallpaper through without the GPU cost of blurring "
+            "it. Nothing is blurred behind a window, so the wallpaper is what "
+            "your text sits on — which is why this mode starts darker and why "
+            "70% is still the floor."))
+
+        group = Adw.PreferencesGroup(
+            title="Transparency",
+            description="How much of the desktop comes through an app window.")
+
+        self._t_transparency_scale = self._opacity_scale(
+            level_to_percent(transparent["transparency"]))
+
+        row = Adw.ActionRow(
+            title="Opacity",
+            subtitle="Lower is more see-through. Below 70% the text stops "
+                     "holding up over a bright wallpaper, so that is the floor")
+        row.add_suffix(self._t_transparency_scale._readout)
+        group.add(row)
+
+        # The bar last and loose in the group, for the reason the frosted tab
+        # gives at more length: a group puts every non-row child after its list
+        # box, so this is only under the row that names it while the row that
+        # names it is the last one in the group.
+        bar = Gtk.Box(margin_start=12, margin_end=12, margin_top=4,
+                      margin_bottom=4)
+        bar.append(self._t_transparency_scale)
+        group.add(bar)
+        page.add(group)
+
+        popups = Adw.PreferencesGroup(
+            title="Popups",
+            description="The one blur this mode has. Menus and the panel are a "
+                        "fraction of the pixels a window is, so this costs a "
+                        "fraction of what window blur costs.")
+        self._t_popup_row = Adw.SwitchRow(
+            title="Blur behind menus and the top bar",
+            subtitle="Popups, Quick Settings and the panel",
+            active=transparent["popup_blur"])
+        self._t_popup_row.connect("notify::active", self._on_changed,
+                                  "popup_blur")
+        popups.add(self._t_popup_row)
+        page.add(popups)
+
+        page.add(self._build_tint_group("transparent"))
+        page.add(self._build_blur_strength_group(
+            "transparent",
+            description="How far the popup and panel blur reaches. Nothing "
+                        "else is blurred in this mode, so this is the only "
+                        "thing it moves."))
+        return page
+
+    def _opacity_scale(self, percent):
+        """One opacity bar, with the label that reports it kept on its side.
+
+        Two tabs have one of these and neither can borrow the other's, so the
+        readout travels with the bar rather than on an attribute of the window:
+        the handler is handed the bar that moved, and that is the only way it
+        knows which of the two labels to write.
+        """
+        scale = Gtk.Scale.new_with_range(
+            Gtk.Orientation.HORIZONTAL, TRANSPARENCY_MIN, TRANSPARENCY_MAX, 1)
+        scale.set_hexpand(True)
+        scale.set_draw_value(False)
+        for at, label in TRANSPARENCY_MARKS:
+            scale.add_mark(at, Gtk.PositionType.BOTTOM, label)
+
+        # Percent, not the 0-255 actor opacity install.sh also understands: the
+        # window is what the user is looking at, and 90% opaque is a thing you
+        # can picture in a way that 230 is not.
+        scale._readout = Gtk.Label(valign=Gtk.Align.CENTER)
+        scale._readout.add_css_class("numeric")
+        scale._readout.add_css_class("dim-label")
+
+        scale.set_value(percent)
+        self._sync_transparency_value(scale)
+        scale.connect("value-changed", self._on_scale_changed)
+        return scale
+
+    # ---- solid ------------------------------------------------------------
+
+    def _build_solid_page(self):
+        """No controls: this tab is a description of what standing down means.
+
+        It is the tab someone reaches because something is wrong, so it says
+        what it takes away and what it leaves in the order those questions get
+        asked, and it does not editorialise about performance — the frosted tab
+        already does that.
+        """
+        page = Adw.PreferencesPage()
+        page.add(tip_card(
+            "<b>The theme stands down.</b> Your desktop goes back to GNOME's "
+            "own look, as though this was never installed — for when something "
+            "is wrong and you want the desktop back while you work out what.\n\n"
+            "Nothing is deleted and nothing is forgotten. Coming back is "
+            "picking another tab and pressing Apply."))
+
+        goes = Adw.PreferencesGroup(title="What it takes away")
+        for title, subtitle in (
+            ("The stylesheets",
+             "The aura-glass block comes out of your GTK and shell CSS, and "
+             "the files it changed go back to the copies it backed up"),
+            ("The shell and GTK themes",
+             "Both keys go back to GNOME's defaults, so the shell is the one "
+             "GNOME ships"),
+            ("The extensions this installed",
+             "Switched off, not removed and not reconfigured — every one of "
+             "them keeps its own settings and comes back exactly as it was"),
+        ):
+            goes.add(Adw.ActionRow(title=title, subtitle=subtitle))
+        page.add(goes)
+
+        stays = Adw.PreferencesGroup(title="What it leaves")
+        for title, subtitle in (
+            ("Your icons and pointer",
+             "The packs stay installed and selected"),
+            ("Your accent colour",
+             "A GNOME setting rather than one of this theme's, so it stands"),
+            ("Every setting in the other two tabs",
+             "Opacity, tint, blur strength and the per-app lists are all "
+             "remembered where they are"),
+            ("Extensions you installed yourself",
+             "Only the ones this project installs are switched off"),
+        ):
+            stays.add(Adw.ActionRow(title=title, subtitle=subtitle))
+        page.add(stays)
         return page
 
     # ---- the tint ---------------------------------------------------------
 
-    def _build_tint_group(self):
+    def _build_tint_group(self, mode, description=None):
         """The colour under the glass, for the two halves of the desktop.
 
         Two colours rather than one, because they are two different mechanisms
@@ -2601,37 +2845,46 @@ class Window(Adw.ApplicationWindow):
         Neither is an on/off. Black is what the sheets ship with, so choosing
         black is how a tint is undone — and there is no third state to have a
         switch for.
+
+        One group per mode, and one pair of colours per mode with it. Sharing a
+        single group between two tabs is not on offer — a widget has one parent
+        — and sharing the colours would be wrong anyway: the two modes seed
+        different blacks, the drawer on disk keeps them apart, and a tint picked
+        for a blurred window is not the one picked for a bare wallpaper.
         """
-        self._app_tint = self._applied.app_tint
-        self._shell_tint = self._applied.shell_tint
+        tints = self._tints.setdefault(mode, {
+            "app": self._applied.modes[mode]["app_tint"],
+            "shell": self._applied.modes[mode]["shell_tint"],
+        })
+        rows = self._tint_rows.setdefault(mode, {})
 
         group = Adw.PreferencesGroup(
             title="Tint",
-            description="What the glass is coloured with. The theme darkens "
-                        "every translucent surface toward black before its "
-                        "opacity is applied; this is the colour it darkens "
-                        "toward instead. How dark it stays is Opacity's "
-                        "question, not this one.")
+            description=description or
+            "What the glass is coloured with. The theme darkens every "
+            "translucent surface toward black before its opacity is applied; "
+            "this is the colour it darkens toward instead. How dark it stays "
+            "is Opacity's question, not this one.")
 
-        self._tint_link_row = Adw.SwitchRow(
+        rows["link"] = Adw.SwitchRow(
             title="One colour for both",
             subtitle="Point the shell at whatever the app windows are tinted "
                      "with",
-            active=self._applied.app_tint == self._applied.shell_tint)
-        self._tint_link_row.connect("notify::active", self._on_tint_link)
-        group.add(self._tint_link_row)
+            active=tints["app"] == tints["shell"])
+        rows["link"].connect("notify::active", self._on_tint_link, mode)
+        group.add(rows["link"])
 
-        self._app_tint_row = self._tint_row(
+        rows["app"] = self._tint_row(
             "App windows",
             "GTK and libadwaita windows, wherever they are translucent",
-            "app")
-        group.add(self._app_tint_row)
+            "app", mode)
+        group.add(rows["app"])
 
-        self._shell_tint_row = self._tint_row(
+        rows["shell"] = self._tint_row(
             "Shell surfaces",
             "The panel, menus, Quick Settings, notifications and dialogs",
-            "shell")
-        group.add(self._shell_tint_row)
+            "shell", mode)
+        group.add(rows["shell"])
 
         # A window rather than an inline swatch, because what a tint does to
         # text is the whole question and one row of colour cannot answer it.
@@ -2640,66 +2893,75 @@ class Window(Adw.ApplicationWindow):
             subtitle="Opens a window of real surfaces and real text in these "
                      "two colours, before anything is applied")
         button = Gtk.Button(label="Show me", valign=Gtk.Align.CENTER)
-        button.connect("clicked", self._on_tint_preview)
+        button.connect("clicked", self._on_tint_preview, mode)
         preview.add_suffix(button)
         preview.set_activatable_widget(button)
         group.add(preview)
         return group
 
-    def _tint_row(self, title, subtitle, which):
+    def _tint_row(self, title, subtitle, which, mode):
         """One colour button, with the swatch and the hex both readable."""
         row = Adw.ActionRow(title=title, subtitle=subtitle)
         button = Gtk.ColorDialogButton(
             dialog=Gtk.ColorDialog(with_alpha=False, title="%s tint" % title),
             valign=Gtk.Align.CENTER)
-        button.set_rgba(parse_hex(getattr(self, "_%s_tint" % which)))
-        button.connect("notify::rgba", self._on_tint_picked, which)
+        button.set_rgba(parse_hex(self._tints[mode][which]))
+        button.connect("notify::rgba", self._on_tint_picked, which, mode)
         row.add_suffix(button)
         row._button = button
         return row
 
-    def _on_tint_picked(self, button, _param, which):
+    def _on_tint_picked(self, button, _param, which, mode):
         if self._loading:
             return
         colour = rgba_hex(button.get_rgba())
-        setattr(self, "_%s_tint" % which, colour)
+        self._tints[mode][which] = colour
+        rows = self._tint_rows[mode]
 
         # The link is one-directional on purpose: the app windows are the side
         # with a single honest tint behind it, so they are the side that leads.
         # Dragging the shell's own colour while the two are linked is a choice
         # to stop linking them, and the switch says so rather than snapping the
         # value back.
-        if self._tint_link_row.get_active():
+        if rows["link"].get_active():
             if which == "app":
-                self._shell_tint = colour
+                self._tints[mode]["shell"] = colour
                 self._loading = True
-                self._shell_tint_row._button.set_rgba(parse_hex(colour))
+                rows["shell"]._button.set_rgba(parse_hex(colour))
                 self._loading = False
             else:
-                self._tint_link_row.set_active(False)
+                rows["link"].set_active(False)
 
         self._sync_tint_preview()
         self._mark_dirty()
 
-    def _on_tint_link(self, row, _param):
+    def _on_tint_link(self, row, _param, mode):
         if self._loading:
             return
         if row.get_active():
-            self._shell_tint = self._app_tint
+            tints = self._tints[mode]
+            tints["shell"] = tints["app"]
             self._loading = True
-            self._shell_tint_row._button.set_rgba(parse_hex(self._shell_tint))
+            self._tint_rows[mode]["shell"]._button.set_rgba(
+                parse_hex(tints["shell"]))
             self._loading = False
             self._sync_tint_preview()
             self._mark_dirty()
 
-    def _on_tint_preview(self, _button):
+    def _on_tint_preview(self, _button, mode):
         def read():
             # The opacity the bar is on right now, not the one on disk — the
             # point of the window is to judge a tint before Apply, and it is
-            # the same page's own control.
-            opacity = (self._transparency_scale.get_value() / 100.0
-                       if self._transparency_on.get_active() else 1.0)
-            return self._app_tint, self._shell_tint, opacity
+            # the same tab's own control. The transparent tab has no off switch
+            # to consult, because a window that is not translucent is not that
+            # mode.
+            if mode == "transparent":
+                opacity = self._t_transparency_scale.get_value() / 100.0
+            else:
+                opacity = (self._transparency_scale.get_value() / 100.0
+                           if self._transparency_on.get_active() else 1.0)
+            tints = self._tints[mode]
+            return tints["app"], tints["shell"], opacity
 
         self._tint_preview = open_over(TintPreviewWindow(read), self)
         self._tint_preview.connect(
@@ -2713,50 +2975,52 @@ class Window(Adw.ApplicationWindow):
 
     # ---- how far the blur reaches -----------------------------------------
 
-    def _build_blur_strength_group(self):
+    def _build_blur_strength_group(self, mode, description=None):
         group = Adw.PreferencesGroup(
             title="Blur amount",
-            description="One control for every blurred surface — the panel, "
-                        "menus, Quick Settings, the overview, app windows and "
-                        "the lock screen. They are already in proportion to "
-                        "each other, so this scales the set rather than "
-                        "flattening it.")
+            description=description or
+            "One control for every blurred surface — the panel, menus, Quick "
+            "Settings, the overview, app windows and the lock screen. They are "
+            "already in proportion to each other, so this scales the set "
+            "rather than flattening it.")
 
-        self._blur_strength_value = Gtk.Label(valign=Gtk.Align.CENTER)
-        self._blur_strength_value.add_css_class("numeric")
-        self._blur_strength_value.add_css_class("dim-label")
+        # On the bar rather than on the window, for the reason _opacity_scale
+        # gives: two tabs have one of these each, and the handler is handed the
+        # bar that moved.
+        readout = Gtk.Label(valign=Gtk.Align.CENTER)
+        readout.add_css_class("numeric")
+        readout.add_css_class("dim-label")
 
-        self._blur_strength_row = Adw.ActionRow(
+        row = Adw.ActionRow(
             title="Amount",
             subtitle="Higher is softer and costs more GPU time, because a "
                      "wider blur is more pixels read per frame")
-        self._blur_strength_row.add_suffix(self._blur_strength_value)
-        group.add(self._blur_strength_row)
+        row.add_suffix(readout)
+        group.add(row)
 
-        self._blur_strength_scale = Gtk.Scale.new_with_range(
+        scale = Gtk.Scale.new_with_range(
             Gtk.Orientation.HORIZONTAL, BLUR_STRENGTH_MIN, BLUR_STRENGTH_MAX, 5)
-        self._blur_strength_scale.set_hexpand(True)
-        self._blur_strength_scale.set_draw_value(False)
+        scale.set_hexpand(True)
+        scale.set_draw_value(False)
         for at, label in BLUR_STRENGTH_MARKS:
-            self._blur_strength_scale.add_mark(at, Gtk.PositionType.BOTTOM,
-                                               label)
-        self._blur_strength_scale.set_value(self._applied.blur_strength)
-        self._blur_strength_scale.connect("value-changed",
-                                          self._on_blur_strength_changed)
-        self._sync_blur_strength_value()
+            scale.add_mark(at, Gtk.PositionType.BOTTOM, label)
+        scale._readout = readout
+        scale.set_value(self._applied.modes[mode]["blur_strength"])
+        self._sync_blur_strength_value(scale)
+        scale.connect("value-changed", self._on_blur_strength_changed)
+        self._strength_scales[mode] = scale
 
-        self._blur_strength_bar = Gtk.Box(margin_start=12, margin_end=12,
-                                          margin_top=4, margin_bottom=4)
-        self._blur_strength_bar.append(self._blur_strength_scale)
-        group.add(self._blur_strength_bar)
+        bar = Gtk.Box(margin_start=12, margin_end=12, margin_top=4,
+                      margin_bottom=4)
+        bar.append(scale)
+        group.add(bar)
         return group
 
-    def _sync_blur_strength_value(self):
-        self._blur_strength_value.set_label(
-            "%d%%" % round(self._blur_strength_scale.get_value()))
+    def _sync_blur_strength_value(self, scale):
+        scale._readout.set_label("%d%%" % round(scale.get_value()))
 
-    def _on_blur_strength_changed(self, _scale):
-        self._sync_blur_strength_value()
+    def _on_blur_strength_changed(self, scale):
+        self._sync_blur_strength_value(scale)
         if self._loading:
             return
         self._mark_dirty()
@@ -3631,15 +3895,27 @@ class Window(Adw.ApplicationWindow):
     # ---- the per-app list -------------------------------------------------
 
     def _scope(self):
-        """The three-way install.sh value, from the two switches that make it."""
+        """The three-way install.sh value, from the frosted tab's two switches.
+
+        Only that tab has them, and only that mode has a scope: the other two
+        do not blur behind a window at all, which _current spells "none"
+        without asking here.
+        """
         if not self._window_blur_row.get_active():
             return "none"
         return "all" if self._blur_all_row.get_active() else "gtk"
 
     def _list_is_consulted(self, which):
-        """Whether the blur mode as set right now reads this list."""
+        """Whether the mode the tabs are showing reads this list."""
+        # Frosted first, because a window blur is the only thing that consults
+        # either list and frosted is the only mode that has one. Transparent
+        # keeps both lists — they are the same two memos, apply_app_blur still
+        # writes them and flags_against still sends an edit — but nothing reads
+        # them while it is in force.
+        if self._glass_mode() != "frosted":
+            return False
         scope = self._scope()
-        if not self._blur_row.get_active() or scope == "none":
+        if scope == "none":
             return False
         return (scope == "all") == (which == "block")
 
@@ -3658,13 +3934,15 @@ class Window(Adw.ApplicationWindow):
                 shown = empty
             row.set_subtitle(shown)
 
-            # A mode switch changes the badge and nothing else: dimming the idle
-            # list would put back the "your list is gone" reading the two groups
-            # exist to fix. Solid mode is the one case that does dim them, and
-            # it is not the same case — there is no blur at all to list apps
-            # for, and flags_against sends nothing past --no-blur, so an edit
-            # made there would be dropped rather than stored.
-            if not self._blur_row.get_active():
+            # Changing which list is consulted changes the badge and nothing
+            # else: dimming the idle list would put back the "your list is
+            # gone" reading the two groups exist to fix. That covers the
+            # Transparent tab too, which consults neither and keeps both. Solid
+            # is the one case that does dim them, and it is not the same case —
+            # there is no blur at all to list apps for, and flags_against
+            # returns on the mode flag alone, so an edit made there would be
+            # dropped rather than stored.
+            if self._glass_mode() == "solid":
                 row.set_sensitive(False)
                 row._badge.remove_css_class("on")
                 row._badge.set_label("Solid mode — nothing is blurred")
@@ -3687,8 +3965,15 @@ class Window(Adw.ApplicationWindow):
 
         note = None
         if not self._list_is_consulted(which):
-            other = "every app is blurred" if which == "allow" \
-                else "the blur is limited to GTK and GNOME apps"
+            if self._glass_mode() == "frosted":
+                other = "every app is blurred" if which == "allow" \
+                    else "the blur is limited to GTK and GNOME apps"
+            else:
+                # Outside frosted it is not the other list's turn — there is no
+                # window blur to have a turn at, and saying which list is
+                # winning would be answering a question nobody asked.
+                other = "the glass mode is %s" % self._mode_title(
+                    self._glass_mode()).lower()
             note = ("Kept, but not consulted while %s. Edits are saved either "
                     "way." % other)
 
@@ -3703,15 +3988,44 @@ class Window(Adw.ApplicationWindow):
         s.accent = self._accent_row._ids[self._accent_row.get_selected()]
         s.radius = self._radius_preset_name()
         s.radius_custom = self._radius_values()
-        s.blur = self._blur_row.get_active()
-        s.scope = self._scope()
-        s.transparency = (
-            percent_to_level(round(self._transparency_scale.get_value()))
-            if self._transparency_on.get_active() else "0")
-        s.popup_blur = self._popup_row.get_active()
-        s.app_tint = self._app_tint
-        s.shell_tint = self._shell_tint
-        s.blur_strength = int(round(self._blur_strength_scale.get_value()))
+        # The tab that is showing is the mode being asked for, and every glass
+        # field below is read off that tab's own controls — never off another
+        # tab's, which hold that other mode's settings and are not what this
+        # Apply is about.
+        s.glass_mode = self._glass_mode()
+        s.blur = s.glass_mode != "solid"
+        if s.glass_mode == "solid":
+            # This tab has no tint rows, no strength bar and no opacity, so the
+            # applied values come through untouched rather than being read off
+            # widgets that are not there — and what solid forces is what it
+            # forces. flags_against returns on the mode flag alone for solid, so
+            # none of this is ever sent.
+            s.app_tint = self._applied.app_tint
+            s.shell_tint = self._applied.shell_tint
+            s.blur_strength = self._applied.blur_strength
+            s.scope = "none"
+            s.transparency = "0"
+            s.popup_blur = False
+        else:
+            tints = self._tints[s.glass_mode]
+            s.app_tint = tints["app"]
+            s.shell_tint = tints["shell"]
+            s.blur_strength = int(round(
+                self._strength_scales[s.glass_mode].get_value()))
+            if s.glass_mode == "transparent":
+                # No scope and no off switch. Not blurring behind a window is
+                # what this mode is, and a level of 0 is not a state it has.
+                s.scope = "none"
+                s.transparency = percent_to_level(
+                    round(self._t_transparency_scale.get_value()))
+                s.popup_blur = self._t_popup_row.get_active()
+            else:
+                s.scope = self._scope()
+                s.transparency = (
+                    percent_to_level(
+                        round(self._transparency_scale.get_value()))
+                    if self._transparency_on.get_active() else "0")
+                s.popup_blur = self._popup_row.get_active()
         s.allow = list(self._allow)
         s.block = list(self._block)
         s.icons = join_icons(
@@ -3728,17 +4042,26 @@ class Window(Adw.ApplicationWindow):
         return s
 
     def _sync_sensitivity(self):
-        """Solid mode is the absence of all of it, so the blur rows go dim."""
-        on = self._blur_row.get_active()
-        for row in (self._window_blur_row, self._transparency_on,
-                    self._popup_row):
-            row.set_sensitive(on)
+        """Only the rows that depend on another row in the same tab.
+
+        Every glass row here is the frosted tab's, and is named as that tab's
+        rather than looked up through whichever tab is showing. They exist
+        whatever the mode is, so keeping them in step costs nothing and is
+        right whenever the tab comes back into view; the transparent tab has no
+        row that dims another, because its translucency is the mode rather than
+        a switch; and solid has no controls at all. Returning early on solid —
+        the obvious way to keep this off a tab with nothing in it — would have
+        taken the icon row at the bottom with it, and that one has nothing to
+        do with glass.
+
+        What this used to do as well was dim four rows to say "solid mode is
+        on, so none of this applies". Solid is a tab now, and a control that
+        does not apply is in another one.
+        """
         # Nothing to widen when there is no window blur to widen.
-        self._blur_all_row.set_sensitive(
-            on and self._window_blur_row.get_active())
-        # The bar needs both: there is nothing to set a level on in solid mode,
-        # and nothing to set it on when translucency itself is off.
-        live = on and self._transparency_on.get_active()
+        self._blur_all_row.set_sensitive(self._window_blur_row.get_active())
+        # Nothing to set a level on when translucency itself is off.
+        live = self._transparency_on.get_active()
         self._transparency_row.set_sensitive(live)
         self._transparency_bar.set_sensitive(live)
 
@@ -3747,12 +4070,8 @@ class Window(Adw.ApplicationWindow):
         # off there is nothing for a colour to tint. The shell's own surfaces
         # are translucent in their stylesheets whatever this switch says, so
         # that row stays live.
-        self._app_tint_row.set_sensitive(live)
-        self._tint_link_row.set_sensitive(live)
-
-        # And nothing to widen or narrow when there is no blur at all.
-        self._blur_strength_row.set_sensitive(on)
-        self._blur_strength_bar.set_sensitive(on)
+        self._tint_rows["frosted"]["app"].set_sensitive(live)
+        self._tint_rows["frosted"]["link"].set_sensitive(live)
 
         # Neither "keep" nor "original" is a pack with colours to pick from.
         self._icon_color_row.set_sensitive(
@@ -3763,14 +4082,14 @@ class Window(Adw.ApplicationWindow):
         dirty = bool(self._current().flags_against(self._applied))
         self._apply.set_sensitive(dirty and self._repo is not None)
 
-    def _sync_transparency_value(self):
-        self._transparency_value.set_label(
-            "%d%%" % round(self._transparency_scale.get_value()))
+    def _sync_transparency_value(self, scale):
+        scale._readout.set_label("%d%%" % round(scale.get_value()))
 
-    def _on_scale_changed(self, _scale):
+    def _on_scale_changed(self, scale):
         # Outside the loading guard: the readout has to follow the bar even when
-        # the bar was moved by _reload rather than by a hand.
-        self._sync_transparency_value()
+        # the bar was moved by _reload rather than by a hand. The bar that moved
+        # rather than a bar this method names: two tabs have one each.
+        self._sync_transparency_value(scale)
         # The tint preview draws its surfaces at whatever the bar says, so it
         # follows the bar as well as the two colour buttons.
         self._sync_tint_preview()
@@ -3797,10 +4116,11 @@ class Window(Adw.ApplicationWindow):
         if key == "radius":
             self._sync_radius_state()
 
-        if key in ("blur", "transparency", "scope", "icons"):
+        if key in ("transparency", "scope", "icons"):
             self._sync_sensitivity()
-        # The mode decides which list is consulted, so it decides which is shown.
-        if key in ("scope", "blur"):
+        # The scope decides which list is consulted, so it decides which badge
+        # is lit. The mode does too, and _on_mode_switched says so there.
+        if key == "scope":
             self._rebuild_app_list()
         self._mark_dirty()
 
@@ -3811,22 +4131,45 @@ class Window(Adw.ApplicationWindow):
         self._accent_row.set_selected(
             self._accent_row._ids.index(self._applied.accent))
         self._load_radius(self._applied)
-        self._blur_row.set_active(self._applied.blur)
-        self._window_blur_row.set_active(self._applied.scope != "none")
-        self._blur_all_row.set_active(self._applied.scope == "all")
-        self._transparency_on.set_active(self._applied.transparency != "0")
+
+        # The tab first, then every tab's controls — not only the showing one's.
+        # Each was seeded from its own mode's drawer when it was built, Apply
+        # can have rewritten any of them, and Revert is a promise about the
+        # whole window rather than about the page in front of it.
+        self._mode_stack.set_visible_child_name(self._applied.glass_mode)
+        # Again by hand, because the line above only emits when the name
+        # actually changes and the common reload is the one that lands back on
+        # the tab it started on.
+        self._sync_mode_badge()
+
+        frosted = self._applied.modes["frosted"]
+        self._window_blur_row.set_active(frosted["scope"] != "none")
+        self._blur_all_row.set_active(frosted["scope"] == "all")
+        self._transparency_on.set_active(frosted["transparency"] != "0")
         # Only when it is on: off is stored as a flat "0", and moving the bar to
         # 70% because of that would lose the level to come back to.
-        if self._applied.transparency != "0":
+        if frosted["transparency"] != "0":
             self._transparency_scale.set_value(
-                level_to_percent(self._applied.transparency))
-        self._popup_row.set_active(self._applied.popup_blur)
-        self._app_tint = self._applied.app_tint
-        self._shell_tint = self._applied.shell_tint
-        self._app_tint_row._button.set_rgba(parse_hex(self._app_tint))
-        self._shell_tint_row._button.set_rgba(parse_hex(self._shell_tint))
-        self._tint_link_row.set_active(self._app_tint == self._shell_tint)
-        self._blur_strength_scale.set_value(self._applied.blur_strength)
+                level_to_percent(frosted["transparency"]))
+        self._popup_row.set_active(frosted["popup_blur"])
+
+        transparent = self._applied.modes["transparent"]
+        # No such guard here: this mode has no off, so its level is always a
+        # level and there is nothing to come back to.
+        self._t_transparency_scale.set_value(
+            level_to_percent(transparent["transparency"]))
+        self._t_popup_row.set_active(transparent["popup_blur"])
+
+        for mode, tints in self._tints.items():
+            drawer = self._applied.modes[mode]
+            tints["app"] = drawer["app_tint"]
+            tints["shell"] = drawer["shell_tint"]
+            rows = self._tint_rows[mode]
+            rows["app"]._button.set_rgba(parse_hex(tints["app"]))
+            rows["shell"]._button.set_rgba(parse_hex(tints["shell"]))
+            rows["link"].set_active(tints["app"] == tints["shell"])
+            self._strength_scales[mode].set_value(drawer["blur_strength"])
+
         self._allow = list(self._applied.allow)
         self._block = list(self._applied.block)
         family, color = split_icons(self._applied.icons)
