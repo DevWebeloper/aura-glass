@@ -69,9 +69,14 @@ def answers(**kw):
     return state
 
 
-BASE = ["--accent", "purple"]
+# The font rides with the accent because to_argv states both on every run, and
+# it is second because that is the order to_argv writes them in.
+BASE = ["--accent", "purple", "--font", "system"]
 FROSTED = ["--gtk-apps-blur", "--app-transparency", "0.90", "--popup-blur"]
-PACKS = ["--icons", "colloid", "--cursors", "adwaita", "--osd"]
+# The wizard's recommended pair, which is not install.sh's flagless default —
+# the wizard states its answer on every run rather than leaving the packs to the
+# installer, so these are the two names the defaults case has to send.
+PACKS = ["--icons", "hatter", "--cursors", "aosp", "--osd"]
 
 # (description, the answers, whether there is a GDM, expected argv)
 CASES = [
@@ -88,7 +93,13 @@ CASES = [
      BASE + FROSTED + PACKS + ["--no-gdm", "--no-gdm-monitors"]),
 
     ("accent only", answers(accent="teal"), False,
-     ["--accent", "teal"] + FROSTED + PACKS),
+     ["--accent", "teal", "--font", "system"] + FROSTED + PACKS),
+
+    # The font rows on the accent page. system is the default and is still
+    # stated; the other three name themselves, and install.sh downloads
+    # whichever one is named if it is not already on the machine.
+    ("a font of its own", answers(font="inter"), False,
+     ["--accent", "purple", "--font", "inter"] + FROSTED + PACKS),
 
     # Solid mode is the absence of every blur, and install.sh rejects --no-blur
     # beside any blur flag by design. This is the case that says the wizard
@@ -97,7 +108,7 @@ CASES = [
      BASE + ["--no-blur"] + PACKS),
 
     ("solid keeps its own packs", answers(blur=False, want_icons=False), False,
-     BASE + ["--no-blur", "--no-icons", "--cursors", "adwaita", "--osd"]),
+     BASE + ["--no-blur", "--no-icons", "--cursors", "aosp", "--osd"]),
 
     ("every window blurred", answers(scope="all"), False,
      BASE + ["--all-apps-blur", "--app-transparency", "0.90", "--popup-blur"]
@@ -126,7 +137,7 @@ CASES = [
      BASE + FROSTED + ["--no-icons", "--no-cursors", "--osd"]),
 
     ("stock OSD", answers(want_osd=False), False,
-     BASE + FROSTED + ["--icons", "colloid", "--cursors", "adwaita",
+     BASE + FROSTED + ["--icons", "hatter", "--cursors", "aosp",
                        "--no-osd"]),
 
     # A catalogue that could not be read leaves this None, which sends no
@@ -204,8 +215,12 @@ check_wiring()
 def check_links():
     with open(os.path.join(ROOT, "lib", "steps.sh"), encoding="utf-8") as fh:
         steps = fh.read()
+    # The AOSP pointers are absent on purpose: install.sh fetches a release
+    # tarball rather than cloning them, so there is no *_REPO to compare the
+    # wizard's link against.
     for pack, var in (("colloid", "COLLOID_REPO"),
                       ("reversal", "REVERSAL_REPO"),
+                      ("hatter", "HATTER_REPO"),
                       ("mactahoe", "MACTAHOE_REPO")):
         found = re.search(r'^%s="([^"]+)"' % var, steps, re.M)
         if not found:

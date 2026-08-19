@@ -38,8 +38,9 @@ ${C_BLD}aura-glass uninstall${C_OFF}
 
     --interactive   launch the interactive uninstall wizard explicitly
     --extensions    also remove the extensions this installed (and their settings)
-    --assets        also remove the Tahoe theme, the icon pack (Colloid or
-                    Reversal) and MacTahoe cursors
+    --assets        also remove the Tahoe theme, the icon pack (Colloid,
+                    Reversal or Hatter), the AOSP or MacTahoe cursors and any
+                    font --font downloaded (MiSans, Inter or SF Pro)
     --gdm           restore the stock GDM login screen (requires sudo)
     --gdm-monitors  revert synced GDM monitor layout back to default (requires sudo)
     --all           all of the above (--full is accepted as the same thing)
@@ -196,6 +197,12 @@ run gsettings reset org.gnome.desktop.interface gtk-theme
 run gsettings reset org.gnome.desktop.interface icon-theme
 run gsettings reset org.gnome.desktop.interface cursor-theme
 run gsettings reset org.gnome.desktop.interface accent-color
+# The three --font wrote. Reset rather than restored from the backup, unlike
+# --font system's own way back: this is the uninstaller, and GNOME's default is
+# what it puts everything else back to as well.
+run gsettings reset org.gnome.desktop.interface font-name
+run gsettings reset org.gnome.desktop.interface document-font-name
+run gsettings reset org.gnome.desktop.wm.preferences titlebar-font
 ok "back to the GNOME defaults (window buttons left intact)"
 
 step "Resetting extension settings to GNOME defaults"
@@ -271,9 +278,23 @@ if [ "$REMOVE_ASSETS" = 1 ]; then
     # install rewrites its pan-*.svg in place with no backup, so leaving the
     # theme on disk leaves patched files behind with nothing to restore them.
     for d in "$HOME"/.local/share/icons/Colloid* "$HOME"/.local/share/icons/Reversal* \
-             "$HOME"/.local/share/icons/MacTahoe*; do
+             "$HOME"/.local/share/icons/Hatter* "$HOME"/.local/share/icons/MacTahoe* \
+             "$HOME"/.local/share/icons/aosp-cursors; do
         [ -e "$d" ] && { run rm -rf "$d"; ok "removed $(basename "$d")"; }
     done
+    # Everything --font downloaded lives under this one directory, and nothing
+    # else does — a font installed by the distro or dropped in by hand sits
+    # elsewhere in ~/.local/share/fonts and is not ours to remove. The
+    # fontconfig rule goes with it: it names MiSans and would otherwise sit
+    # there pointing at a family that is no longer installed.
+    if [ -d "$HOME/.local/share/fonts/aura-glass" ]; then
+        run rm -rf "$HOME/.local/share/fonts/aura-glass"
+        run rm -f "$HOME/.config/fontconfig/conf.d/60-aura-glass-misans.conf"
+        if [ "${DRY_RUN:-0}" != 1 ] && have fc-cache; then
+            fc-cache -f >/dev/null 2>&1 || true
+        fi
+        ok "removed the fonts aura-glass installed"
+    fi
 fi
 
 # GDM revert runs before the cache wipe so it can still reach WhiteSur's

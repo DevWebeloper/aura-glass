@@ -16,8 +16,21 @@
 install_icon_sync() {
     step "Following the light/dark preference with the icons"
 
+    # Not installed *and* stopped, because leaving it running is the same
+    # override it exists to perform: the agent rewrites icon-theme on every
+    # light/dark switch from the pack memo, so an agent left over from an
+    # earlier run puts this theme's icons back over whatever was set from
+    # anywhere else. Kept icons means nothing of ours writes that key.
     if [ "${WANT_ICONS:-1}" != 1 ]; then
-        skip "icons left alone (--no-icons)"
+        local unit stopped=0
+        for unit in aura-glass-icon-sync tahoe-glass-icon-sync; do
+            [ -f "$HOME/.config/systemd/user/$unit.service" ] || continue
+            run systemctl --user disable --now "$unit.service" >/dev/null 2>&1 || true
+            run rm -f "$HOME/.config/systemd/user/$unit.service"
+            stopped=1
+        done
+        [ "$stopped" = 1 ] && run systemctl --user daemon-reload
+        skip "icons left alone (--no-icons) — the light/dark agent stood down"
         return 0
     fi
 

@@ -23,6 +23,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$REPO_ROOT/lib/steps-extensions.sh"
 # shellcheck source=lib/steps-assets.sh
 . "$REPO_ROOT/lib/steps-assets.sh"
+# shellcheck source=lib/steps-fonts.sh
+. "$REPO_ROOT/lib/steps-fonts.sh"
 # shellcheck source=lib/steps-modes.sh
 . "$REPO_ROOT/lib/steps-modes.sh"
 # shellcheck source=lib/steps-css.sh
@@ -52,7 +54,9 @@ WANT_ICONS=1
 WANT_CURSORS=1
 WANT_DEPS=1
 WANT_OSD=1
-WANT_PANEL_BLUR_FIX=1
+# Empty = no answer yet: the remembered one, and then the monitor count,
+# decide it further down.
+WANT_PANEL_BLUR_FIX=""
 PANEL_BLUR_FIX_EXPLICIT=""
 WANT_GDM=0
 WANT_GDM_MONITORS=0
@@ -83,6 +87,8 @@ APP_OPACITY=""        # empty = remembered choice, then 255 (e.g. 230)
 APP_OPACITY_EXPLICIT=""
 CURSORS=""          # empty = remembered choice, then adwaita | mactahoe
 CURSORS_EXPLICIT=""
+FONT=""             # empty = remembered choice, then system (Cantarell, untouched)
+FONT_EXPLICIT=""
 ICONS=""            # empty = remembered choice, then colloid
 ICONS_EXPLICIT=""
 GRAIN=""          # empty keeps the preset's value, or the remembered choice
@@ -105,6 +111,13 @@ EXPLICIT_FLAGS=0
 FORCE_INTERACTIVE=0
 
 VALID_ACCENTS="blue teal green yellow orange red pink purple slate"
+# system is the absence of an opinion rather than a font: it puts the three
+# font keys back to whatever they held before this project first ran.
+VALID_FONTS="system misans inter sf-pro"
+VALID_REVERSAL="default black blue brown cyan green grey lightblue orange pink purple red"
+# Hatter's nine are the accents under the same names. Yaru is its tenth and has
+# no accent that reaches it, so it is only sayable as --icons hatter-yaru.
+VALID_HATTER="$VALID_ACCENTS yaru"
 
 usage() {
     cat <<EOF
@@ -115,7 +128,8 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
 
   ${C_BLD}interactive mode${C_OFF}
     Running ./install.sh with no options in an interactive terminal launches
-    the step-by-step setup wizard to configure accent, blur, icons and extensions.
+    the step-by-step setup wizard to configure accent, blur, icons, font and
+    extensions.
 
   ${C_BLD}options${C_OFF}
     --interactive     launch the interactive setup wizard explicitly
@@ -153,16 +167,25 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
                       window,menu,quick-settings,notification,dialog,popup,osd
                       (e.g. 30,26,33,20,20,20,12). Each is bounded by what the
                       presets already cover. Overrides --radius-preset
-    --panel-blur-fix  agent that rebuilds Blur My Shell's panel blur on layout change (default: on)
+    --panel-blur-fix  agent that rebuilds Blur My Shell's panel blur on layout change
+                      (default: on when this machine has more than one monitor)
     --no-panel-blur-fix skip the panel blur rebuild agent
-    --icons WHICH     colloid (default) or reversal, either bare to follow
-                      --accent or with a colour of its own: colloid-teal,
-                      reversal-purple. Colloid takes accent names, Reversal its
-                      own ($VALID_REVERSAL). Or original, for whatever was set
+    --icons WHICH     colloid (default), reversal or hatter, either bare to
+                      follow --accent or with a colour of its own: colloid-teal,
+                      reversal-purple, hatter-slate. Colloid and Hatter take
+                      accent names (Hatter also has yaru), Reversal its own
+                      ($VALID_REVERSAL). Or original, for whatever was set
                       before aura-glass first ran here.
                       Remembered for later runs
-    --cursors WHICH   adwaita (default, ships with GNOME), mactahoe, or original
-                      (whatever was set before aura-glass first ran here)
+    --cursors WHICH   adwaita (default, ships with GNOME), aosp, mactahoe, or
+                      original (whatever was set before aura-glass first ran here)
+    --font WHICH      interface font: system (default, leaves GNOME's own font
+                      alone), misans, inter or sf-pro. The three are downloaded
+                      and installed into ~/.local/share/fonts if they are not
+                      already present, and set as the interface, document and
+                      titlebar font at whatever size those keys already carry.
+                      system puts back the font from before aura-glass first ran
+                      here. Remembered for later runs
     --osd             minimal pill OSD for volume & brightness (default: on)
     --no-osd          keep stock volume and brightness popup
     --no-popup-blur   keep flat translucent popups and skip blur behind menus
@@ -195,8 +218,10 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
                       stands down: no styling, stock shell, the extensions it
                       enabled switched off and their settings left alone).
                       Remembered; each mode keeps its own opacity and tint
-    --no-blur         solid mode: no blur anywhere, opaque surfaces instead of
-                      translucent ones (best for low-end GPUs or battery saver)
+    --no-blur         no blur anywhere, opaque surfaces instead of translucent
+                      ones, with the rest of the theme intact (best for low-end
+                      GPUs or battery saver). Not the same as --glass-mode
+                      solid, which stands the theme down altogether
     --no-rounded-blur skip gnome-rounded-blur library (popup blur falls back to static)
     --gdm             theme the GDM login screen with blurred Aura Glass style (requires sudo)
     --gdm-background PATH
@@ -209,8 +234,8 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
     --no-update-check skip the daily check for a newer release. The check asks
                       the git remote for its tags and notifies once per release;
                       it never installs anything on its own
-    --no-icons        keep your current icon theme
-    --no-cursors      keep your current cursor theme
+    --no-icons        leave the icon theme alone, and keep leaving it alone
+    --no-cursors      leave the cursor theme alone, and keep leaving it alone
     --settings-only   retune an existing install and nothing else: reapply the
                       dconf preset, the CSS and the gsettings, leaving the theme,
                       the extensions, the icons and the cursors alone. Needs no
@@ -265,6 +290,8 @@ parse_flags() {
         --no-panel-blur-fix) WANT_PANEL_BLUR_FIX=0; PANEL_BLUR_FIX_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --cursors)       CURSORS="${2:-}"; CURSORS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --cursors=*)     CURSORS="${1#*=}"; CURSORS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --font)          FONT="${2:-}"; FONT_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --font=*)        FONT="${1#*=}"; FONT_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --icons)         ICONS="${2:-}"; ICONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --icons=*)       ICONS="${1#*=}"; ICONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --osd)           WANT_OSD=1; EXPLICIT_FLAGS=1; shift ;;
@@ -404,24 +431,28 @@ EOF
     esac
     printf '  %s✓%s Accent set to %s%s%s\n\n' "$C_GRN" "$C_OFF" "$C_BLD" "$ACCENT" "$C_OFF"
 
-    # 2. Blur & Visual Depth
-    printf '%sStep 2: Blur & Visual Depth%s\n' "$C_BLD" "$C_OFF"
+    # 2. Glass Mode. Solid is deliberately not offered here: standing the whole
+    # theme down is not a step in installing it, and the settings window is
+    # where a desktop already wearing the theme goes to take it off. The mode
+    # is set explicitly rather than left to be derived, so that the answer
+    # given here outranks a mode remembered from an earlier run.
+    printf '%sStep 2: Glass Mode%s\n' "$C_BLD" "$C_OFF"
     printf '  %s[1]%s Frosted Glass %s[Default — blur on top bar, popups, menus, and OSD]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '  %s[2]%s Solid Mode %s[Opaque surfaces, no blur — lightweight for older GPUs or battery]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '  %s[2]%s Transparent %s[Translucent windows, no blur behind them — the wallpaper shows through]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
     printf '  Choice [1-2, default 1]: '
     read -r ans_blur || ans_blur="1"
     case "$ans_blur" in
-        2|solid|no-blur)
-            WANT_BLUR=0
-            WANT_POPUP_BLUR=0
-            POPUP_BLUR_EXPLICIT=1
-            WANT_WINDOW_BLUR=0
-            WINDOW_BLUR_EXPLICIT=1
-            WANT_ROUNDED_BLUR=0
-            APP_TRANSPARENCY=0
-            printf '  %s✓%s Solid mode selected\n\n' "$C_GRN" "$C_OFF"
+        2|transparent)
+            GLASS_MODE="transparent"
+            GLASS_MODE_EXPLICIT=1
+            # Nothing further to ask: no window blur is what this mode is, and
+            # its opacity and tint come from its own drawer rather than from
+            # the questions the frosted branch goes on to ask.
+            printf '  %s✓%s Transparent mode selected\n\n' "$C_GRN" "$C_OFF"
             ;;
         *)
+            GLASS_MODE="frosted"
+            GLASS_MODE_EXPLICIT=1
             WANT_BLUR=1
             printf '  %s✓%s Frosted glass selected\n' "$C_GRN" "$C_OFF"
 
@@ -503,12 +534,13 @@ EOF
     esac
 
     # 3. Icons & Cursors
-    printf '%sStep 3: Icons & Cursors%s\n' "$C_BLD" "$C_OFF"
+    printf '%sStep 3: Icons, Cursors & Font%s\n' "$C_BLD" "$C_OFF"
     printf '  Icon Theme:\n'
     printf '    %s[1]%s Colloid %s[Default — matches accent (%s)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$ACCENT" "$C_OFF"
     printf '    %s[2]%s Reversal %s[macOS-style circular icons]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '    %s[3]%s Keep current system icon theme\n' "$C_BLD" "$C_OFF"
-    printf '  Choice [1-3, default 1]: '
+    printf '    %s[3]%s Hatter %s[Rounded squares, matches accent (%s)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$ACCENT" "$C_OFF"
+    printf '    %s[4]%s Default %s[Your current icon theme, left alone]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '  Choice [1-4, default 1]: '
     read -r ans_icon || ans_icon="1"
     case "$ans_icon" in
         2|reversal)
@@ -518,9 +550,16 @@ EOF
             WANT_ICONS=1
             printf '  %s✓%s Reversal icon theme selected (%s)\n' "$C_GRN" "$C_OFF" "$ACCENT"
             ;;
-        3|keep|none)
+        3|hatter)
+            # Bare for the same reason, though Hatter is the easy case: it has a
+            # variant for all nine accents under the accents' own names.
+            ICONS="hatter"
+            WANT_ICONS=1
+            printf '  %s✓%s Hatter icon theme selected (%s)\n' "$C_GRN" "$C_OFF" "$ACCENT"
+            ;;
+        4|default|keep|none)
             WANT_ICONS=0
-            printf '  %s✓%s Keeping current icons\n' "$C_GRN" "$C_OFF"
+            printf '  %s✓%s Icons left alone — nothing here writes the icon theme\n' "$C_GRN" "$C_OFF"
             ;;
         *)
             ICONS="colloid"
@@ -532,8 +571,9 @@ EOF
     printf '  Cursor Theme:\n'
     printf '    %s[1]%s Stock Adwaita %s[Default — sharp and crisp]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
     printf '    %s[2]%s MacTahoe %s[macOS Tahoe style cursors]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '    %s[3]%s Keep current cursor theme\n' "$C_BLD" "$C_OFF"
-    printf '  Choice [1-3, default 1]: '
+    printf '    %s[3]%s AOSP %s[Android pointers, scalable with a soft shadow]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[4]%s Default %s[Your current cursor theme, left alone]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '  Choice [1-4, default 1]: '
     read -r ans_cursor || ans_cursor="1"
     case "$ans_cursor" in
         2|mactahoe)
@@ -541,16 +581,44 @@ EOF
             WANT_CURSORS=1
             printf '  %s✓%s MacTahoe cursors selected\n\n' "$C_GRN" "$C_OFF"
             ;;
-        3|keep|none)
+        3|aosp)
+            CURSORS="aosp"
+            WANT_CURSORS=1
+            printf '  %s✓%s AOSP cursors selected\n\n' "$C_GRN" "$C_OFF"
+            ;;
+        4|default|keep|none)
             WANT_CURSORS=0
-            printf '  %s✓%s Keeping current cursors\n\n' "$C_GRN" "$C_OFF"
+            printf '  %s✓%s Pointer left alone — nothing here writes the cursor theme\n\n' "$C_GRN" "$C_OFF"
             ;;
         *)
             CURSORS="adwaita"
             WANT_CURSORS=1
-            printf '  %s✓%s Adwaita cursors selected\n\n' "$C_GRN" "$C_OFF"
+            printf '  %s✓%s Adwaita cursors selected\n' "$C_GRN" "$C_OFF"
             ;;
     esac
+
+    # The twin of the setup window's font rows. Three fonts and the way out of
+    # them; each of the three is downloaded here and now if it is not already
+    # on the machine, which is why the sizes are on the screen.
+    printf '  Interface Font:\n'
+    printf '    %s[1]%s System default %s[Default — whatever GNOME is using, left alone]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[2]%s MiSans %s[Xiaomi’s interface font, Latin + Arabic — 7M download]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[3]%s Inter %s[The screen-first grotesque — 34M download]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[4]%s San Francisco %s[Apple’s SF Pro, from a mirror — 49M download]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '  Choice [1-4, default 1]: '
+    read -r ans_font || ans_font="1"
+    case "$ans_font" in
+        2|misans)          FONT="misans" ;;
+        3|inter)           FONT="inter" ;;
+        4|sf-pro|sf|apple) FONT="sf-pro" ;;
+        *)                 FONT="system" ;;
+    esac
+    FONT_EXPLICIT=1
+    if [ "$FONT" = system ]; then
+        printf '  %s✓%s Font left alone — nothing here writes the interface font\n\n' "$C_GRN" "$C_OFF"
+    else
+        printf '  %s✓%s %s selected\n\n' "$C_GRN" "$C_OFF" "$(font_family)"
+    fi
 
     # 4. Extensions
     printf '%sStep 4: Shell Extensions%s\n' "$C_BLD" "$C_OFF"
@@ -654,10 +722,12 @@ EOF
     [ "$APP_BLUR_SCOPE" = "all" ] && win_desc="All Applications (Heavy)"
     [ "$WANT_WINDOW_BLUR" = 0 ] && win_desc="Disabled (Opaque)"
     icon_desc="Colloid ($ACCENT)"
-    [ "$WANT_ICONS" = 0 ] && icon_desc="Keep current"
+    [ "$WANT_ICONS" = 0 ] && icon_desc="Default (left alone)"
     [[ "$ICONS" =~ ^reversal ]] && icon_desc="$ICONS"
     cursor_desc="$CURSORS"
-    [ "$WANT_CURSORS" = 0 ] && cursor_desc="Keep current"
+    [ "$WANT_CURSORS" = 0 ] && cursor_desc="Default (left alone)"
+    font_desc="$(font_family)"
+    [ -n "$font_desc" ] || font_desc="System default (left alone)"
     osd_desc="Pill OSD"
     [ "$WANT_OSD" = 0 ] && osd_desc="Stock GNOME"
     gdm_desc="Stock (Untouched)"
@@ -685,6 +755,7 @@ ${C_BLD}================ Configuration Summary ================${C_OFF}
   ${C_BLD}App Translucency:${C_OFF}    $trans_desc
   ${C_BLD}Icon Theme:${C_OFF}          $icon_desc
   ${C_BLD}Cursor Theme:${C_OFF}        $cursor_desc
+  ${C_BLD}Interface Font:${C_OFF}      $font_desc
   ${C_BLD}Custom OSD:${C_OFF}          $osd_desc
   ${C_BLD}GDM Login Theme:${C_OFF}     $gdm_desc
   ${C_BLD}GDM Monitor Sync:${C_OFF}    $mon_desc
@@ -725,16 +796,42 @@ fi
 if [ -z "$CURSORS" ] && [ -r "$CONF_DIR/cursor-pack" ]; then
     CURSORS="$(cat "$CONF_DIR/cursor-pack" 2>/dev/null || true)"
 fi
+# A remembered "keep" is what --no-cursors wrote: the pointer is not ours to
+# set, so a later run that was given no flag of its own must not set it either.
+# Only ever read here — an explicit --cursors fills CURSORS in before this and
+# the memo is never reached, which is what makes picking a pack again work.
+if [ "$CURSORS" = keep ]; then
+    WANT_CURSORS=0
+    CURSORS=""
+fi
 CURSORS="${CURSORS:-adwaita}"
 case "$CURSORS" in
-    adwaita|mactahoe|original) ;;
-    *) die "unknown --cursors '$CURSORS' — pick adwaita, mactahoe or original" ;;
+    adwaita|aosp|mactahoe|original) ;;
+    *) die "unknown --cursors '$CURSORS' — pick adwaita, aosp, mactahoe or original" ;;
 esac
 
 if [ -z "$ICONS" ] && [ -r "$CONF_DIR/icon-pack" ]; then
     ICONS="$(cat "$CONF_DIR/icon-pack" 2>/dev/null || true)"
 fi
+# The same for the icons, and the same reason.
+if [ "$ICONS" = keep ]; then
+    WANT_ICONS=0
+    ICONS=""
+fi
 ICONS="${ICONS:-colloid}"
+
+# The font has no "keep" spelling of its own: system is already the answer that
+# writes nothing this project chose, and it is the default, so a machine that
+# has never been given --font reads the memo, finds nothing, and leaves the keys
+# where they are.
+if [ -z "$FONT" ] && [ -r "$CONF_DIR/font" ]; then
+    FONT="$(cat "$CONF_DIR/font" 2>/dev/null || true)"
+fi
+FONT="${FONT:-system}"
+case " $VALID_FONTS " in
+    *" $FONT "*) ;;
+    *) die "unknown --font '$FONT' — pick one of: $VALID_FONTS" ;;
+esac
 
 resolve_glass_mode
 apply_glass_mode
@@ -791,7 +888,15 @@ fi
 if [ -z "$PANEL_BLUR_FIX_EXPLICIT" ] && [ -r "$CONF_DIR/panel-blur-fix" ]; then
     WANT_PANEL_BLUR_FIX="$(cat "$CONF_DIR/panel-blur-fix" 2>/dev/null || true)"
 fi
-WANT_PANEL_BLUR_FIX="${WANT_PANEL_BLUR_FIX:-1}"
+# Neither a flag nor a memo: the agent exists for layouts that change, so a
+# machine with more than one screen gets it and a single screen is left alone.
+if [ -z "$WANT_PANEL_BLUR_FIX" ]; then
+    if [ "$(monitor_count)" -gt 1 ]; then
+        WANT_PANEL_BLUR_FIX=1
+    else
+        WANT_PANEL_BLUR_FIX=0
+    fi
+fi
 
 if [ -z "$RADIUS_PRESET_EXPLICIT" ] && [ -r "$CONF_DIR/radius-preset" ]; then
     RADIUS_PRESET="$(cat "$CONF_DIR/radius-preset" 2>/dev/null || true)"
@@ -904,13 +1009,12 @@ if [ "$DRY_RUN" = 1 ]; then
         "$WANT_POPUP_BLUR" "$APP_TRANSPARENCY" "$WANT_STYLING"
 fi
 
-VALID_REVERSAL="default black blue brown cyan green grey lightblue orange pink purple red"
 # Colloid is named in accent terms rather than in its own: it calls blue
 # "default" and slate "grey" on the command line, and accent_to_colloid_arg
 # already knows that. Asking for colloid-blue and letting that function do the
 # translation keeps one copy of the mapping instead of two.
 case "$ICONS" in
-    colloid|reversal|original) ;;
+    colloid|reversal|hatter|original) ;;
     colloid-*)
         case " $VALID_ACCENTS " in
             *" ${ICONS#colloid-} "*) ;;
@@ -921,7 +1025,14 @@ case "$ICONS" in
             *" ${ICONS#reversal-} "*) ;;
             *) die "unknown Reversal colour '${ICONS#reversal-}' — pick one of: $VALID_REVERSAL" ;;
         esac ;;
-    *) die "unknown --icons '$ICONS' — colloid, reversal, original, or a pack with -COLOUR" ;;
+    # Lowercase here and capitalised on disk: icon_base does the one conversion,
+    # so the flag stays spelled the way the other two packs' flags are.
+    hatter-*)
+        case " $VALID_HATTER " in
+            *" ${ICONS#hatter-} "*) ;;
+            *) die "unknown Hatter colour '${ICONS#hatter-}' — pick one of: $VALID_HATTER" ;;
+        esac ;;
+    *) die "unknown --icons '$ICONS' — colloid, reversal, hatter, original, or a pack with -COLOUR" ;;
 esac
 
 case " $VALID_ACCENTS " in
@@ -979,6 +1090,10 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     # on disk does not download either: both steps skip when the theme is there.
     if [ -n "$ICONS_EXPLICIT" ] && [ "$WANT_ICONS" = 1 ]; then install_icons; fi
     if [ -n "$CURSORS_EXPLICIT" ] && [ "$WANT_CURSORS" = 1 ]; then install_cursors; fi
+    # Same bargain for the font: asking for one is asking for it to be
+    # installed, and a font already resolvable needs no network either — see
+    # install_fonts, which skips on fc-match rather than on this flag.
+    if [ -n "$FONT_EXPLICIT" ]; then install_fonts; fi
     # Not in solid mode. dconf/core.ini is every extension's settings, and
     # loading it is exactly the "modifying the extension" that standing down is
     # supposed to avoid — the extensions are switched off with their own
@@ -991,6 +1106,11 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     fi
     install_css
     apply_gsettings
+    # Local, quick and needs nothing — the same grounds install_gui is here on,
+    # and required rather than optional: the agent writes icon-theme on every
+    # light/dark switch, so a window that changes the icon answer has to be
+    # able to install it, repoint it, or stand it down in the same run.
+    install_icon_sync
     if [ "$WANT_STYLING" = 0 ]; then
         stand_down_extensions
     else
@@ -1045,6 +1165,7 @@ else
 fi
 if [ "$WANT_ICONS" = 1 ]; then install_icons; else step "Icons"; skip "left alone (--no-icons)"; fi
 if [ "$WANT_CURSORS" = 1 ]; then install_cursors; else step "Cursors"; skip "left alone (--no-cursors)"; fi
+install_fonts
 # Not in solid mode. dconf/core.ini is every extension's settings, and
 # loading it is exactly the "modifying the extension" that standing down is
 # supposed to avoid — the extensions are switched off with their own

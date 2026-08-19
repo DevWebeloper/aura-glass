@@ -51,6 +51,58 @@ REVERSAL_REF="2c8122287e3b"
 MACTAHOE_REPO="https://github.com/vinceliuice/MacTahoe-icon-theme.git"
 MACTAHOE_REF="b85923bb87f5"
 
+# Hatter has no tags and no releases, so the pin is a bare commit. It is also
+# the one pack big enough for that to matter: a full clone is over a gigabyte
+# of history, and a checkout of everything in it is 328M. install_hatter fetches
+# it shallow and sparse for that reason — see the comment there.
+HATTER_REPO="https://github.com/Mibea/Hatter.git"
+# Full length, unlike the pins above it: those are resolved locally after a full
+# clone, where an abbreviation is enough. This one is asked for by name in a
+# shallow fetch, and a server will only hand over a SHA spelled out in full.
+HATTER_REF="89287fa3f1bdc25d94a2ef358ecd27696e1ee09a"
+
+# The only pack here that is not built from a checkout. Upstream ships no
+# installer and no prebuilt theme in the tree — building it needs bun,
+# kcursorgen and xcursorgen — but every release carries a ready Linux theme,
+# so the release is what gets fetched. Pinned by version and by hash, which is
+# what a tarball has instead of a commit.
+AOSP_CURSORS_VERSION="1.3.1"
+AOSP_CURSORS_URL="https://github.com/Tech-Tac/aosp-cursors/releases/download/$AOSP_CURSORS_VERSION/aosp-cursors-linux-$AOSP_CURSORS_VERSION.tar.xz"
+AOSP_CURSORS_SHA256="d271d2be20a6d7ac13747e4d9224a28ddbf7e2c1fab2e805cdf03bde05a0a3ae"
+
+# The three fonts --font can install. None of them is packaged widely enough to
+# assume, so each is fetched the way its upstream publishes it.
+#
+# Inter ships one release asset with everything in it. Inter.ttc is the static
+# collection and the only file taken: its family is `Inter`, which is the name
+# the gsettings keys will carry. The InterVariable pair beside it registers as
+# a separate family called `Inter Variable`, so installing them as well would
+# put a second name in every font list for no gain.
+INTER_VERSION="4.1"
+INTER_URL="https://github.com/rsms/inter/releases/download/v$INTER_VERSION/Inter-$INTER_VERSION.zip"
+INTER_SHA256="9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e"
+
+# MiSans comes from Xiaomi as one zip per script. The Latin one is the interface
+# font — 3.4M against 218M for the full family, whose extra 214M is the CJK
+# coverage GNOME already has from Noto — and the Arabic one is there because the
+# Latin zip has no Arabic at all, so without it every Arabic string on the
+# desktop would drop back to Noto and read as a different typeface mid-sentence.
+# fonts/misans-arabic.conf is what points fontconfig at it.
+#
+# Both URLs are unversioned: Xiaomi overwrite them in place. The checksums are
+# a notice rather than a pin for that reason — see fetch_zip_pinned.
+MISANS_LATIN_URL="https://hyperos.mi.com/font-download/MiSans_Latin.zip"
+MISANS_LATIN_SHA256="d24091ccd409a4152ffcc12cd659c16df9cdcdb4c702d8ae355b321e711f0004"
+MISANS_ARABIC_URL="https://hyperos.mi.com/font-download/MiSans_Arabic.zip"
+MISANS_ARABIC_SHA256="f2cc4939d202d6c645c5cb06133fbdf7caa420d43250682f9d3792884c8b72e5"
+
+# San Francisco is Apple's, and Apple do not license it for this. There is no
+# upstream to pin, so the pin is a mirror that has carried the OTFs unchanged
+# since 2019 — the same arrangement every "SF Pro on Linux" guide relies on, and
+# it is called out in the README rather than left to be discovered.
+SFPRO_REPO="https://github.com/sahibjotsaggu/San-Francisco-Pro-Fonts.git"
+SFPRO_REF="8bfea09aa6f1"
+
 EXT_DIR="$HOME/.local/share/gnome-shell/extensions"
 CONF_DIR="$HOME/.config/aura-glass"
 BACKUP_DIR="$CONF_DIR/backups"

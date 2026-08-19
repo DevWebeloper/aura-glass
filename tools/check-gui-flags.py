@@ -58,6 +58,7 @@ def state(**kw):
     s.block = list(kw.get("block", ["*chrome*", "*electron*"]))
     s.icons = kw.get("icons", "colloid")
     s.cursors = kw.get("cursors", "adwaita")
+    s.font = kw.get("font", "system")
     s.window_buttons = kw.get("window_buttons", "")
     s.panel_blur_fix = kw.get("panel_blur_fix", True)
     s.update_check = kw.get("update_check", True)
@@ -349,6 +350,13 @@ CASES = [
      ["--cursors", "mactahoe"]),
 
     ("keep the pointer", FROSTED, state(cursors="keep"), ["--no-cursors"]),
+
+    # The interface font. One value and no "keep" beside it: going back is
+    # --font system, which is one of the four rather than the absence of a flag.
+    ("a font", FROSTED, state(font="misans"), ["--font", "misans"]),
+
+    ("back to the system font", state(font="inter"), state(font="system"),
+     ["--font", "system"]),
 
     ("turn the daily update check off", FROSTED, state(update_check=False),
      ["--no-update-check"]),

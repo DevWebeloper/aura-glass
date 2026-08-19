@@ -667,10 +667,20 @@ apply_gsettings() {
 
     # prefer-dark is set below, so pick the dark half of the pair here and save
     # the agent a visible swap a moment later.
-    local base icons; base="$(icon_base)"
-    icons="$(icon_variant "$base" Dark || true)"
-    [ -n "$icons" ] \
-        || { warn "icon theme $base is not installed — falling back to Adwaita"; icons="Adwaita"; }
+    #
+    # Nothing is resolved at all when the icons are being kept. --no-icons is a
+    # promise not to touch the key, and the promise has to hold in this step
+    # too: it used to write icon-theme whatever the flag said, so "Default"
+    # installed no pack and then pointed the key at one anyway — and every
+    # later run, flagless or from the window, put this theme's pack back over
+    # whatever GNOME Tweaks or anything else had set since.
+    local base icons=""
+    if [ "${WANT_ICONS:-1}" = 1 ]; then
+        base="$(icon_base)"
+        icons="$(icon_variant "$base" Dark || true)"
+        [ -n "$icons" ] \
+            || { warn "icon theme $base is not installed — falling back to Adwaita"; icons="Adwaita"; }
+    fi
 
     # prefer-dark and the accent are GNOME's own keys and a preference of the
     # user's, not this theme's styling, so they stand in every mode. The GTK
@@ -687,7 +697,9 @@ apply_gsettings() {
         run dconf write /org/gnome/shell/extensions/user-theme/name "''"
         ok "gtk-theme and the shell theme reset — the theme has stood down"
     fi
-    run gsettings set org.gnome.desktop.interface icon-theme   "$icons"
+    if [ -n "$icons" ]; then
+        run gsettings set org.gnome.desktop.interface icon-theme   "$icons"
+    fi
 
     # Remembered so the next flagless run comes back to this accent rather than
     # to the default. install.sh reads it back before validating. Written here
@@ -696,36 +708,158 @@ apply_gsettings() {
     if [ "${DRY_RUN:-0}" != 1 ]; then
         mkdir -p "$CONF_DIR"
         printf '%s\n' "$ACCENT" > "$CONF_DIR/accent"
+        # "keep" is the memo for --no-icons, and the reason it has to exist:
+        # without it the next flagless run reads the last pack out of icon-pack
+        # and installs it again, which is the same override by a slower route.
+        # remember_icon_pack writes the other answers, from install_icons.
+        if [ "${WANT_ICONS:-1}" != 1 ]; then
+            printf '%s\n' keep > "$CONF_DIR/icon-pack"
+        fi
     fi
 
-    local cursor='Adwaita'
-    if [ "${CURSORS:-adwaita}" = mactahoe ] \
+    # Empty means the pointer is not ours to write, the same way as the icons
+    # above: --no-cursors leaves whatever is set, from wherever it was set.
+    local cursor=""
+    if [ "${WANT_CURSORS:-1}" != 1 ]; then
+        cursor=""
+    elif [ "${CURSORS:-adwaita}" = mactahoe ] \
        && { [ -d "$HOME/.local/share/icons/MacTahoe-dark" ] \
             || [ -d "/usr/share/icons/MacTahoe-dark" ]; }; then
         cursor='MacTahoe-dark'
+    elif [ "${CURSORS:-adwaita}" = aosp ] \
+       && { [ -d "$HOME/.local/share/icons/aosp-cursors" ] \
+            || [ -d "/usr/share/icons/aosp-cursors" ]; }; then
+        # The directory name, not the Name= in index.theme: the key names a
+        # directory, and this pack calls itself "AOSP Cursors" inside the file.
+        cursor='aosp-cursors'
     elif [ "${CURSORS:-adwaita}" = original ]; then
         # Adwaita if nothing was recorded, which is also GNOME's own default —
         # so the fallback is the same answer uninstall.sh's gsettings reset
         # would give.
         local o; o="$(gsettings_original cursor-theme)"
         cursor="${o:-Adwaita}"
+    else
+        cursor='Adwaita'
     fi
-    run gsettings set org.gnome.desktop.interface cursor-theme "$cursor"
+    if [ -n "$cursor" ]; then
+        run gsettings set org.gnome.desktop.interface cursor-theme "$cursor"
+    fi
 
     # Remembered like the accent above and for the same reason: a later flagless
     # run has no other way to know which pack was chosen, and would come back to
-    # the Adwaita default over a deliberate --cursors mactahoe.
+    # the Adwaita default over a deliberate --cursors mactahoe. "keep" is a
+    # choice like the others and is remembered like the others, or the next run
+    # would go back to setting the key.
     if [ "${DRY_RUN:-0}" != 1 ]; then
-        printf '%s\n' "${CURSORS:-adwaita}" > "$CONF_DIR/cursor-pack"
+        if [ "${WANT_CURSORS:-1}" = 1 ]; then
+            printf '%s\n' "${CURSORS:-adwaita}" > "$CONF_DIR/cursor-pack"
+        else
+            printf '%s\n' keep > "$CONF_DIR/cursor-pack"
+        fi
     fi
 
     # Here rather than in load_dconf: it is a gsettings key like the four above,
     # and this is the step that runs in the --settings-only path with them.
     apply_window_buttons
+    apply_font
 
+    # "left alone" rather than a name, because there is no name to give: the
+    # key was not read and not written, and printing what it happens to hold
+    # would read like this run had set it.
+    local icon_say="${icons:-left alone}" cursor_say="${cursor:-left alone}"
+    local font_say; font_say="$(font_family)"; font_say="${font_say:-system}"
     if [ "${WANT_STYLING:-1}" = 1 ]; then
-        ok "gtk-theme=Tahoe-Dark  icons=$icons  cursor=$cursor  accent=$ACCENT"
+        ok "gtk-theme=Tahoe-Dark  icons=$icon_say  cursor=$cursor_say  accent=$ACCENT  font=$font_say"
     else
-        ok "icons=$icons  cursor=$cursor  accent=$ACCENT — theme keys left at GNOME's defaults"
+        ok "icons=$icon_say  cursor=$cursor_say  accent=$ACCENT  font=$font_say — theme keys left at GNOME's defaults"
     fi
+}
+
+# The three keys that carry the interface font, and the memo behind them.
+#
+# Three rather than one because GNOME splits the job: font-name is every label,
+# menu and button; document-font-name is what text views and the document
+# viewers read; and titlebar-font is Mutter's, under a different schema. Setting
+# one and not the others is how a desktop ends up in two typefaces at once, so
+# they move together.
+#
+# monospace-font-name is not here on purpose. None of the three fonts offered
+# has a monospaced face, and writing one of them into that key would put a
+# proportional font behind every terminal and code view on the machine.
+#
+# Font size is not this project's to have an opinion about: someone who set
+# theirs to 10 or 12 did so about their screen, not about this theme. The size
+# already in the key is kept and only the family is replaced, which is also
+# what makes --font system able to be a true undo — it puts back exactly what
+# gsettings_backup_once recorded, size and all.
+apply_font() {
+    local family; family="$(font_family)"
+
+    # Recorded before the first write, so that --font system has something to
+    # go back to that is the user's rather than GNOME's. Three separate names
+    # because gsettings_backup_once keys its file by the name it is given.
+    gsettings_backup_once org.gnome.desktop.interface font-name font-name
+    gsettings_backup_once org.gnome.desktop.interface document-font-name document-font-name
+    gsettings_backup_once org.gnome.desktop.wm.preferences titlebar-font titlebar-font
+
+    if [ -z "$family" ]; then
+        # Not `gsettings reset`: what is being restored is the font from before
+        # this project first ran, and on a machine where that was already a
+        # choice of the user's, reset would throw it away in favour of GNOME's
+        # default. Reset is the fallback for a machine with nothing recorded,
+        # which is the only case where GNOME's default is the honest answer.
+        local key orig
+        for key in font-name document-font-name; do
+            orig="$(gsettings_original "$key")"
+            if [ -n "$orig" ]; then
+                run gsettings set org.gnome.desktop.interface "$key" "$orig"
+            else
+                run gsettings reset org.gnome.desktop.interface "$key"
+            fi
+        done
+        orig="$(gsettings_original titlebar-font)"
+        if [ -n "$orig" ]; then
+            run gsettings set org.gnome.desktop.wm.preferences titlebar-font "$orig"
+        else
+            run gsettings reset org.gnome.desktop.wm.preferences titlebar-font
+        fi
+    else
+        run gsettings set org.gnome.desktop.interface font-name \
+            "$family $(font_size_now org.gnome.desktop.interface font-name)"
+        run gsettings set org.gnome.desktop.interface document-font-name \
+            "$family $(font_size_now org.gnome.desktop.interface document-font-name)"
+        # Bold, because that is what GNOME's own default titlebar-font is
+        # (Cantarell Bold 11) and a window title is the one place the desktop
+        # asks for weight.
+        run gsettings set org.gnome.desktop.wm.preferences titlebar-font \
+            "$family Bold $(font_size_now org.gnome.desktop.wm.preferences titlebar-font)"
+    fi
+
+    # Remembered like the accent and the packs: a later flagless run has no
+    # other way to know which font was chosen, and would come back to leaving
+    # the keys alone over a deliberate --font.
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "${FONT:-system}" > "$CONF_DIR/font"
+    fi
+}
+
+# The size currently in one of the three font keys, or 11 where there is not
+# one to read. Read live rather than out of the backup: someone who moved their
+# interface font to 10 or 12 after installing did so about their screen, and a
+# later run that put the recorded size back would undo it every time.
+#
+# "Cantarell 11" is a family and a size in one string, and only the trailing
+# bare number is the size — "Cantarell Bold" has none, and neither has an empty
+# key. gsettings prints strings quoted, so the quotes come off first.
+font_size_now() {
+    local desc last
+    desc="$(gsettings get "$1" "$2" 2>/dev/null || true)"
+    desc="${desc#\'}"; desc="${desc%\'}"
+    last="${desc##* }"
+    case "$last" in
+        ''|*[!0-9]*)      printf '11\n' ;;
+        "$desc")          printf '11\n' ;;   # no space in it: a family alone
+        *)                printf '%s\n' "$last" ;;
+    esac
 }

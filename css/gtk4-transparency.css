@@ -126,59 +126,90 @@ window.solid-csd .background {
   background-color: var(--tg-tint-window);
 }
 
-/* ---------- The bar a window is decorated with stays solid ----------
- * The bar a window is decorated with stays 100% solid, whatever drew it
- * (Chrome, Vesktop/Electron, GTK3, GTK4, XWayland). Making one of those
- * translucent causes transparent gaps, middle-band see-through, and trailing
- * smear ("tail") artifacts when dragging windows.
- *
+/* ---------- The bar a window is decorated with ----------
  * "Decorated with" is `window > ...`, not a bare `headerbar`. GtkWindow puts
  * the widget passed to gtk_window_set_titlebar() directly under the window
- * node, so a direct child is the one bar the window is dragged and resized by
- * — which is the bar those artifacts come from. A header bar further in is
- * content: an AdwToolbarView top bar, a split-view pane's header, a leaflet's.
- * Those never move the window, so they follow the surface they sit on and go
- * transparent with it further down.
+ * node, and adds .titlebar to it there, so a direct child is the one bar the
+ * window is dragged and resized by. A header bar further in is content: an
+ * AdwToolbarView top bar, a split-view pane's header, a leaflet's. Those never
+ * move the window, so they follow the surface they sit on and go transparent
+ * with it further down.
  *
- * The depth is what does the work here, not the class. .titlebar is not the
- * signal it looks like: neither GtkHeaderBar nor AdwHeaderBar sets it, so any
- * app is free to add it to a bar that decorates nothing, and gnome-tweaks adds
- * it to both of the AdwHeaderBars inside its leaflet. Selecting on it painted
- * a solid slab across the top of that window while the window under it stayed
- * glass, and no amount of specificity in the transparent block below could
- * take it back without out-specifying every app that does use .titlebar
- * honestly.
+ * This one paints nothing either, so the window's own ground carries it — the
+ * same "exactly one layer carries the material" rule the panes further down
+ * follow.
  *
- * Every selector that could reach a .default-decoration bar still excludes it,
- * and the exclusion is written here rather than left to the block below to
- * out-specify. window.background > headerbar is one class and two elements; no
- * plain spelling of .default-decoration reaches that, so the two blocks would
- * have been decided by which one happened to be written last.
+ * It was held 100% solid here, whatever drew it, because a translucent bar
+ * showed transparent gaps, middle-band see-through and trailing smear ("tail")
+ * when a window was dragged. Those come from a frame drawn in a different
+ * process to the content under it — the XWayland case carved out below — not
+ * from an app drawing its own. A GtkHeaderBar handed to
+ * gtk_window_set_titlebar() is composited with the window it decorates, the
+ * same way the .default-decoration bar below is, and that one has painted
+ * nothing since Shelly without any of those artifacts coming back.
+ *
+ * Solid, it painted a flat @headerbar_bg_color slab across the top of an
+ * otherwise translucent window, and the two read as different materials with a
+ * hard seam between them. font-manager (com.github.FontManager.FontManager) is
+ * the case to look at: plain GTK4, no libadwaita, one GtkHeaderBar passed to
+ * gtk_window_set_titlebar(), so its bar is `window > headerbar.titlebar` and
+ * the seam was the same complaint Shelly's auto-generated bar made one class
+ * over.
+ *
+ * The depth is what does the work here, not the class. .titlebar on its own is
+ * not the signal it looks like: neither GtkHeaderBar nor AdwHeaderBar sets it,
+ * so any app is free to add it to a bar that decorates nothing, and
+ * gnome-tweaks adds it to both of the AdwHeaderBars inside its leaflet. Under
+ * `window >` it is the class GtkWindow itself put there, which is why it is
+ * listed only at that depth.
+ *
+ * Both spellings would be the same `transparent` here, so unlike everywhere
+ * else in this sheet there is nothing for the named-colour/color-mix pairing
+ * to do.
  */
-window > headerbar:not(.default-decoration),
-window > headerbar:not(.default-decoration) windowhandle,
-window > .titlebar:not(.default-decoration),
-window > .titlebar:not(.default-decoration) windowhandle,
+window > headerbar,
+window > headerbar windowhandle,
+window > .titlebar,
+window > .titlebar windowhandle,
 window > windowhandle,
-window.background > headerbar:not(.default-decoration),
-window.background > headerbar:not(.default-decoration) windowhandle,
-window.background > .titlebar:not(.default-decoration),
-window.background > .titlebar:not(.default-decoration) windowhandle,
-window.background > windowhandle {
+window > headerbar:backdrop,
+window > headerbar:backdrop windowhandle,
+window > .titlebar:backdrop,
+window > .titlebar:backdrop windowhandle,
+window:backdrop > windowhandle {
+  background-color: transparent;
+  background-image: none;
+}
+
+/* Except when the window cannot be translucent in the first place.
+ *
+ * .solid-csd is what GTK sets when there is no alpha channel to decorate into,
+ * which is the XWayland case: /usr/lib/mutter-x11-frames draws those frames in
+ * its own process and the window under them stays opaque — see
+ * window.solid-csd above. A transparent bar there shows the frame through the
+ * content rather than the window's ground, which is the sliced-in-two artifact
+ * this sheet's header exists to describe. Chrome's profile picker and Steam
+ * are the cases to check.
+ *
+ * One class more than the block above, so it wins wherever GTK has set the
+ * class and only there. Those frames are drawn with a .default-decoration bar,
+ * which has its own carve-out below for the same reason; this covers a
+ * .solid-csd window that sets a titlebar of its own.
+ */
+window.solid-csd > headerbar,
+window.solid-csd > headerbar windowhandle,
+window.solid-csd > .titlebar,
+window.solid-csd > .titlebar windowhandle,
+window.solid-csd > windowhandle {
   background-color: @headerbar_bg_color;
   background-color: var(--headerbar-bg-color);
 }
 
-window > headerbar:not(.default-decoration):backdrop,
-window > headerbar:not(.default-decoration):backdrop windowhandle,
-window > .titlebar:not(.default-decoration):backdrop,
-window > .titlebar:not(.default-decoration):backdrop windowhandle,
-window:backdrop > windowhandle,
-window.background > headerbar:not(.default-decoration):backdrop,
-window.background > headerbar:not(.default-decoration):backdrop windowhandle,
-window.background > .titlebar:not(.default-decoration):backdrop,
-window.background > .titlebar:not(.default-decoration):backdrop windowhandle,
-window.background:backdrop > windowhandle {
+window.solid-csd > headerbar:backdrop,
+window.solid-csd > headerbar:backdrop windowhandle,
+window.solid-csd > .titlebar:backdrop,
+window.solid-csd > .titlebar:backdrop windowhandle,
+window.solid-csd:backdrop > windowhandle {
   background-color: @headerbar_backdrop_color;
   background-color: var(--headerbar-backdrop-color);
 }
@@ -186,14 +217,20 @@ window.background:backdrop > windowhandle {
 /* ---------- The bar GTK draws for a window that has none ----------
  * .default-decoration is not an app's header bar. It is the one GtkWindow
  * builds for itself when the app never called gtk_window_set_titlebar() — an
- * app that is just a window with content in it, like Shelly. Left on the solid
- * list above it painted a flat @headerbar_bg_color slab across the top of an
- * otherwise translucent window, and the two read as different materials with a
- * hard seam between them.
+ * app that is just a window with content in it, like Shelly. Painted solid it
+ * put a flat @headerbar_bg_color slab across the top of an otherwise
+ * translucent window, and the two read as different materials with a hard seam
+ * between them.
  *
  * It paints nothing instead, so the window's own ground carries the whole
  * surface — the same "exactly one layer carries the material" rule the panes
  * further down follow, and the reason the seam disappears rather than moving.
+ *
+ * Written out separately even though the block above already reaches it as a
+ * direct child, because neither the depth nor the ancestor is what has to be
+ * beaten here: gtk4-70-surfaces.css holds `headerbar.default-decoration` solid
+ * for the frames case, and that is one class and one element — more specific
+ * than `window > headerbar`. Only a rule naming the class takes it back.
  *
  * Both spellings are the same `transparent` here, so unlike everywhere else in
  * this sheet there is nothing for the named-colour/color-mix pairing to do.

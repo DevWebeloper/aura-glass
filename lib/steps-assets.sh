@@ -49,6 +49,17 @@ accent_to_reversal() {
     esac
 }
 
+# GNOME's accent enum -> Hatter's colour. This one is a straight rename: Hatter
+# ships a variant for all nine accents and calls them the same things GNOME
+# does, capitalised. Yaru is Hatter's tenth and has no accent to reach it, so it
+# is sayable only as `--icons hatter-yaru`.
+accent_to_hatter() {
+    case "$1" in
+        blue|teal|green|yellow|orange|red|pink|purple|slate) printf '%s\n' "${1^}" ;;
+        *) echo Purple ;;
+    esac
+}
+
 # ---------------------------------------------------------------- preflight --
 
 # The icon set, minus any light/dark suffix. Everything downstream — the
@@ -79,6 +90,11 @@ icon_base() {
         # the icon theme every time it was run.
         reversal)        printf 'Reversal-%s\n' "$(accent_to_reversal "$ACCENT")" ;;
         reversal-*)      printf 'Reversal-%s\n' "${ICONS#reversal-}" ;;
+        # Bare `hatter` follows the accent like the other two. The colour is
+        # capitalised because the directory is: Hatter ships Hatter-Purple, not
+        # Hatter-purple, and this name goes straight into the gsettings key.
+        hatter)          printf 'Hatter-%s\n' "$(accent_to_hatter "$ACCENT")" ;;
+        hatter-*)        local h="${ICONS#hatter-}"; printf 'Hatter-%s\n' "${h^}" ;;
         *)               printf '%s\n' "$ICONS" ;;
     esac
 }
@@ -193,6 +209,59 @@ install_reversal() {
     ok "$name"
 }
 
+# Hatter installs by copy rather than by running its own installer, and the two
+# facts behind that are worth stating. Upstream's install.sh lays down all
+# eleven colour variants plus three KDE flavours, about 370M for a desktop that
+# reads one colour and no KDE theme at all; and it `cp -r`s every one of those
+# directories under `set -e`, so a sparse checkout that does not contain them
+# would abort it on the first missing path. Copying the two directories GNOME
+# actually reads is both smaller and the only thing the sparse checkout can do.
+#
+# The base theme comes along with every colour because the colour needs it:
+# Hatter-Purple is folders and a handful of file-manager icons, and it inherits
+# the other 4800 from bare Hatter.
+install_hatter() {
+    local color="${ICONS#hatter}"; color="${color#-}"
+    [ -n "$color" ] || color="$(accent_to_hatter "$ACCENT")"
+    color="${color^}"
+    local name="Hatter-$color"
+
+    step "Installing the Hatter icon theme ($color)"
+    if [ "${FORCE:-0}" != 1 ] \
+       && { [ -d "$HOME/.local/share/icons/$name" ] || [ -d "/usr/share/icons/$name" ]; } \
+       && { [ -d "$HOME/.local/share/icons/Hatter" ] || [ -d "/usr/share/icons/Hatter" ]; }; then
+        skip "$name already installed"
+        return 0
+    fi
+
+    local src="$SRC_CACHE/Hatter"
+    clone_pinned_sparse "$HATTER_REPO" "$HATTER_REF" "$src" Hatter "$name"
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: copy Hatter and $name into ~/.local/share/icons"
+        ok "$name"
+        return 0
+    fi
+
+    [ -d "$src/$name" ] || die "the Hatter checkout has no $name — unknown colour '$color'"
+
+    local dest="$HOME/.local/share/icons"
+    mkdir -p "$dest"
+    local d
+    for d in Hatter "$name"; do
+        rm -rf "${dest:?}/$d"
+        cp -r "$src/$d" "$dest/$d"
+        # The pack ships a prebuilt icon-theme.cache, and GTK reads it in
+        # preference to the directory it describes. One built elsewhere against
+        # a different GTK is the kind of thing that serves stale icons forever,
+        # so it is rebuilt here rather than trusted.
+        if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+            gtk-update-icon-cache -qft "$dest/$d" 2>/dev/null || true
+        fi
+    done
+    ok "$name"
+}
+
 # Which pack is on, and under which name. Both are read back by the window and
 # by install_icon_sync, so they are written here rather than there: the sync
 # step is not in the --settings-only path, and a pack switched from the window
@@ -224,6 +293,7 @@ install_icons() {
     remember_icon_pack
     case "${ICONS:-colloid}" in
         reversal|reversal-*) install_reversal; return ;;
+        hatter|hatter-*)     install_hatter; return ;;
         original)
             # Nothing to fetch — the theme being restored to was already on the
             # machine before this one was. apply_gsettings reads icon_base and
@@ -265,10 +335,11 @@ install_icons() {
 install_cursors() {
     # Adwaita's cursors ship with GNOME itself, so there is nothing to fetch,
     # nothing to keep pinned, and they are crisper and better hinted at every
-    # size than the MacTahoe set. --cursors mactahoe asks for the old ones.
+    # size than the MacTahoe set. --cursors aosp and --cursors mactahoe are the
+    # two that are fetched.
     if [ "${CURSORS:-adwaita}" = adwaita ]; then
         step "Cursors"
-        skip "using the stock Adwaita cursors (--cursors mactahoe for the macOS set)"
+        skip "using the stock Adwaita cursors (--cursors aosp or mactahoe to change)"
         return 0
     fi
 
@@ -281,6 +352,31 @@ install_cursors() {
         else
             warn "no pointer was recorded before aura-glass — using Adwaita"
         fi
+        return 0
+    fi
+
+    if [ "${CURSORS:-adwaita}" = aosp ]; then
+        step "Installing the AOSP cursors"
+        if [ "${FORCE:-0}" != 1 ] \
+           && { [ -d "$HOME/.local/share/icons/aosp-cursors/cursors" ] \
+                || [ -d "/usr/share/icons/aosp-cursors/cursors" ]; }; then
+            skip "aosp-cursors already installed"
+            return 0
+        fi
+        # The tarball holds one top-level aosp-cursors/ directory, and that
+        # directory is the theme — so what gets copied into the icons directory
+        # is the thing inside the unpack, not the unpack.
+        fetch_tarball_pinned "$AOSP_CURSORS_URL" "$AOSP_CURSORS_SHA256" \
+                             "$SRC_CACHE/aosp-cursors"
+        if [ "${DRY_RUN:-0}" != 1 ]; then
+            [ -d "$SRC_CACHE/aosp-cursors/aosp-cursors" ] \
+                || die "the AOSP cursors release did not contain aosp-cursors/"
+            mkdir -p "$HOME/.local/share/icons"
+            rm -rf "$HOME/.local/share/icons/aosp-cursors"
+            cp -r "$SRC_CACHE/aosp-cursors/aosp-cursors" \
+                  "$HOME/.local/share/icons/aosp-cursors"
+        fi
+        ok "aosp-cursors"
         return 0
     fi
 

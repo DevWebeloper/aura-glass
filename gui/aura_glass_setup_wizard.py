@@ -74,14 +74,47 @@ ACCENTS = [
     ("slate", "Slate", "#6f8396"),
 ]
 
+# The four answers install.sh's --font takes, with the download each one costs.
+# The sizes are on the rows because this is the only question in the window that
+# can start a 49M fetch, and a wizard that does not say so is a wizard that
+# looks hung. The twin list is Step 3 of install.sh's text wizard.
+FONTS = [
+    ("system", "System default",
+     "Whatever GNOME is using now, left alone"),
+    ("misans", "MiSans",
+     "Xiaomi's interface font — Latin and Arabic, 7 MB download"),
+    ("inter", "Inter",
+     "The screen-first grotesque — 34 MB download"),
+    ("sf-pro", "San Francisco",
+     "Apple's SF Pro, from a mirror — 49 MB download"),
+]
+
 # Where each pack comes from, so that picking somebody else's work links to it
-# rather than just naming it. The same URLs as COLLOID_REPO, REVERSAL_REPO and
-# MACTAHOE_REPO in lib/steps.sh, minus the .git — tools/check-wizard-links.sh
-# asserts the two lists still agree.
+# rather than just naming it. The same URLs as COLLOID_REPO, REVERSAL_REPO,
+# HATTER_REPO and MACTAHOE_REPO in lib/steps.sh, minus the .git — the links
+# check in tools/check-wizard-flags.py asserts the two lists still agree.
+#
+# The AOSP pointers are the odd one out: install.sh fetches a release tarball
+# rather than cloning, so there is no *_REPO to check this against, and the link
+# is the project page a person would want anyway.
 PACK_LINKS = {
     "colloid": "https://github.com/vinceliuice/Colloid-icon-theme",
     "reversal": "https://github.com/yeyushengfan258/Reversal-icon-theme",
+    "hatter": "https://github.com/Mibea/Hatter",
     "mactahoe": "https://github.com/vinceliuice/MacTahoe-icon-theme",
+    "aosp": "https://github.com/Tech-Tac/aosp-cursors",
+}
+
+# How each pack spells its own name, for the summary. .capitalize() was doing
+# this and gets two of the five wrong — "Mactahoe" and "Aosp" are neither what
+# the projects call themselves nor what the pages above say.
+PACK_NAMES = {
+    "colloid": "Colloid",
+    "reversal": "Reversal",
+    "hatter": "Hatter",
+    "adwaita": "Adwaita",
+    "aosp": "AOSP",
+    "mactahoe": "MacTahoe",
 }
 
 # The pages, in order. Two of them do not always apply — see Window._applies.
@@ -92,7 +125,7 @@ PAGES = ["welcome", "accent", "blur", "blur-details", "icons", "cursors",
 # is "I did not want to decide this" — so it restores the defaults for the
 # fields that page owns and moves on.
 PAGE_FIELDS = {
-    "accent": ("accent",),
+    "accent": ("accent", "font"),
     "blur": ("blur",),
     "blur-details": ("popup_blur", "scope", "transparency"),
     "icons": ("want_icons", "icons"),
@@ -185,14 +218,22 @@ class Answers:
         # before it reaches the wizard, and the text wizard offers it as the
         # default; this offers the same one.
         self.accent = read_memo("accent") or "purple"
+        # Remembered the same way the accent is, and for the same reason: a
+        # second run of the installer on a machine that already chose a font
+        # should open on that font rather than offer to undo it.
+        self.font = read_memo("font") or "system"
         self.blur = True
         self.popup_blur = True
         self.scope = "gtk"          # gtk | all | none
         self.transparency = "0.90"
         self.want_icons = True
-        self.icons = "colloid"
+        # The recommended pair, and the wizard's defaults. Both go out as an
+        # explicit --icons/--cursors, so install.sh's own flagless defaults
+        # (colloid and adwaita) are untouched by this — the wizard states its
+        # answer rather than relying on one.
+        self.icons = "hatter"
         self.want_cursors = True
-        self.cursors = "adwaita"
+        self.cursors = "aosp"
         self.want_osd = True
         # None means "say nothing about extensions", which leaves install.sh on
         # the recommended pack. Only a readable catalogue turns this into a list.
@@ -208,7 +249,7 @@ class Answers:
         return clone
 
     def to_argv(self, gdm_present):
-        args = ["--accent", self.accent]
+        args = ["--accent", self.accent, "--font", self.font]
 
         if not self.blur:
             # Solid mode is the absence of every blur and has to go out alone:
@@ -446,7 +487,25 @@ class Window(Adw.ApplicationWindow):
         row = Adw.PreferencesRow(activatable=False, child=flow)
         group.add(row)
         page.add(group)
+
+        # On this page rather than one of its own: it is the second half of the
+        # same question — what the desktop is built out of — and a page holding
+        # one radio list would be a click for its own sake. The three fonts are
+        # fetched during the install, not here.
+        fonts = Adw.PreferencesGroup(
+            title="Interface font",
+            description="The font the whole desktop is set in: labels, menus, "
+                        "titlebars and documents. Whichever one you pick keeps "
+                        "the text size already set on this machine, and the "
+                        "settings window can change it back afterwards.")
+        self.radio_rows(fonts, [(v, t, sub, None) for v, t, sub in FONTS],
+                        self.answers.font, self.set_font)
+        page.add(fonts)
+
         return self.shell("accent", "Accent", page)
+
+    def set_font(self, value):
+        self.answers.font = value
 
     def page_blur(self):
         page = Adw.PreferencesPage()
@@ -527,18 +586,22 @@ class Window(Adw.ApplicationWindow):
         page = Adw.PreferencesPage()
         group = Adw.PreferencesGroup(
             title="Icon theme",
-            description="Both are other people's work, fetched from GitHub at "
-                        "a pinned commit. Have a look before you pick one.")
+            description="All three are other people's work, fetched from "
+                        "GitHub at a pinned commit. Have a look before you "
+                        "pick one.")
         current = self.answers.icons if self.answers.want_icons else "keep"
         self.radio_rows(group, [
+            ("hatter", "Hatter — recommended",
+             "Rounded squares, follows your accent colour. By Mibea",
+             PACK_LINKS["hatter"]),
             ("colloid", "Colloid",
              "Follows your accent colour. By vinceliuice",
              PACK_LINKS["colloid"]),
             ("reversal", "Reversal",
              "Round, flatter, a colour of its own. By yeyushengfan258",
              PACK_LINKS["reversal"]),
-            ("keep", "Keep what I have",
-             "Leaves your current icon theme alone", None),
+            ("keep", "Default",
+             "Leaves your current icon theme alone, whatever set it", None),
         ], current, self.on_icons)
         page.add(group)
         return self.shell("icons", "Icons", page)
@@ -553,16 +616,19 @@ class Window(Adw.ApplicationWindow):
         group = Adw.PreferencesGroup(
             title="Pointer theme",
             description="Adwaita is already on your machine — GNOME ships it. "
-                        "MacTahoe is fetched from GitHub.")
+                        "AOSP and MacTahoe are fetched from GitHub.")
         current = self.answers.cursors if self.answers.want_cursors else "keep"
         self.radio_rows(group, [
+            ("aosp", "AOSP — recommended",
+             "Android's pointers, scalable with a soft shadow. By Tech-Tac",
+             PACK_LINKS["aosp"]),
             ("adwaita", "Adwaita",
              "GNOME's own pointers, sharp at any size", None),
             ("mactahoe", "MacTahoe",
              "macOS Tahoe style pointers. By vinceliuice",
              PACK_LINKS["mactahoe"]),
-            ("keep", "Keep what I have",
-             "Leaves your current pointer theme alone", None),
+            ("keep", "Default",
+             "Leaves your current pointer theme alone, whatever set it", None),
         ], current, self.on_cursors)
         page.add(group)
         return self.shell("cursors", "Pointer", page)
@@ -723,10 +789,10 @@ class Window(Adw.ApplicationWindow):
             ("Accent", answers.accent.capitalize()),
             ("Blur", blur),
             ("Window transparency", transparency),
-            ("Icons", answers.icons.capitalize() if answers.want_icons
-             else "Kept as they are"),
-            ("Pointer", answers.cursors.capitalize() if answers.want_cursors
-             else "Kept as they are"),
+            ("Icons", PACK_NAMES.get(answers.icons, answers.icons)
+             if answers.want_icons else "Kept as they are"),
+            ("Pointer", PACK_NAMES.get(answers.cursors, answers.cursors)
+             if answers.want_cursors else "Kept as they are"),
             ("Volume pill", "Yes" if answers.want_osd else "GNOME's own OSD"),
             ("Optional extensions", extras),
         ]
