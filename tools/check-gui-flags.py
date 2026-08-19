@@ -62,6 +62,26 @@ def state(**kw):
     s.panel_blur_fix = kw.get("panel_blur_fix", True)
     s.update_check = kw.get("update_check", True)
     s.update_available = kw.get("update_available", None)
+
+    # Every mode's drawer, seeded exactly as seed_glass_mode seeds a fresh
+    # one in lib/steps-modes.sh — the literal defaults, since a hand-built
+    # state has no top-level memo on disk to inherit a customised value from
+    # the way Settings.__init__ does. A case that needs to show a drawer that
+    # already holds something else — an earlier session's tuning, or the
+    # value flags_against should treat as "no edit" for the mode being
+    # entered — passes e.g. modes={"frosted": {"transparency": "0.70"}} and
+    # this merges it over the seed.
+    s.modes = {
+        "frosted": {"transparency": "0", "app_tint": "#000000",
+                    "shell_tint": "#000000", "blur_strength": 100,
+                    "popup_blur": True, "scope": "gtk"},
+        "transparent": {"transparency": "0.82", "app_tint": "#0b0b0f",
+                        "shell_tint": "#0b0b0f", "blur_strength": 100,
+                        "popup_blur": True, "scope": "gtk"},
+    }
+    for mode, overrides in kw.get("modes", {}).items():
+        s.modes[mode].update(overrides)
+
     return s
 
 
@@ -118,15 +138,49 @@ CASES = [
                                         scope="none"),
      ["--glass-mode", "solid"]),
 
+    # frosted's drawer already holds 0.90 — the same level `state()` gives
+    # every case that does not ask for something else — so this is the
+    # no-edit path: the tab being switched to is showing exactly what its
+    # drawer would load anyway, and none of it is worth restating.
     ("solid -> frosted", state(glass_mode="solid", blur=False, transparency="0",
-                               popup_blur=False, scope="none"),
+                               popup_blur=False, scope="none",
+                               modes={"frosted": {"transparency": "0.90"}}),
      state(), ["--glass-mode", "frosted"]),
 
-    ("frosted -> transparent carries its own level and tint", FROSTED,
+    # transparent's drawer holds a different level and tint than what is
+    # being asked for here, standing in for a tab tuned in an earlier session
+    # — so unlike the no-edit case above, both go out alongside the mode.
+    ("frosted -> transparent carries its own level and tint",
+     state(modes={"transparent": {"transparency": "0.70",
+                                  "app_tint": "#000000",
+                                  "shell_tint": "#000000"}}),
      state(glass_mode="transparent", scope="none", transparency="0.82",
            app_tint="#0b0b0f", shell_tint="#0b0b0f"),
      ["--glass-mode", "transparent", "--app-transparency", "0.82",
       "--app-tint-color", "#0b0b0f", "--shell-tint-color", "#0b0b0f"]),
+
+    # The scenario the first version of this function got wrong: solid never
+    # remembers a level, so leaving it can only be judged against the drawer
+    # of the mode being entered, not against `other`. Here frosted's drawer
+    # holds 0.60 but the tab being applied is showing 0.75 — a real edit made
+    # before Apply — so the level has to go out despite `other` itself
+    # reading 0, which would say nothing changed if it were what got compared.
+    ("leaving solid with an edit sends the level",
+     state(glass_mode="solid", blur=False, transparency="0", popup_blur=False,
+           scope="none", modes={"frosted": {"transparency": "0.60"}}),
+     state(transparency="0.75"),
+     ["--glass-mode", "frosted", "--app-transparency", "0.75"]),
+
+    # Its mirror for a tint: frosted's drawer holds one colour, the tab being
+    # applied is showing another, and the level itself matches the drawer —
+    # isolating that only the tint, not the level, is what changed.
+    ("leaving solid with an edit sends the tint",
+     state(glass_mode="solid", blur=False, transparency="0", popup_blur=False,
+           scope="none",
+           modes={"frosted": {"transparency": "0.90",
+                              "app_tint": "#101820"}}),
+     state(app_tint="#202020"),
+     ["--glass-mode", "frosted", "--app-tint-color", "#202020"]),
 
     ("a level moved inside transparent is not a mode change",
      state(glass_mode="transparent", scope="none", transparency="0.82"),
@@ -365,16 +419,31 @@ for label, base, target, want in CASES:
         failures.append("composition: %s\n      want: %s\n      got:  %s"
                         % (label, want, got))
 
-# The contradiction, stated as its own assertion rather than left implied by the
-# solid-mode cases: no argument list may ever ask for no blur and for a blur.
-NO_BLUR_CONFLICTS = {"--window-blur", "--gtk-apps-blur", "--all-apps-blur",
-                     "--all-app-blur", "--gtk-app-blur"}
+# The contradiction, stated as its own assertion rather than left implied by
+# the mode cases above. This used to check --no-blur against a window-blur
+# flag directly, back when solid was --no-blur and the two spellings for
+# "some blur" and "no blur at all" going out together was the combination
+# install.sh refused. Solid is --glass-mode solid now, and flags_against
+# never emits --no-blur at all — the mode carries what that flag used to
+# spell out — so the check moved with it: apply_glass_mode's solid branch
+# (lib/steps-modes.sh) dies on --blur, --popup-blur, a window-blur flag or a
+# non-off --app-transparency alongside --glass-mode solid, and this is that
+# refusal, stated as an assertion no composed list may trip.
+SOLID_MODE_CONFLICTS = {"--blur", "--window-blur", "--gtk-apps-blur",
+                        "--all-apps-blur", "--popup-blur", "--app-transparency"}
 for label, _, target, _want in CASES:
     for base in (FROSTED, SOLID, state(scope="none"), state(transparency="0")):
         args = target.flags_against(base)
-        if "--no-blur" in args and NO_BLUR_CONFLICTS & set(args):
-            failures.append("contradiction: %s (from %s) emitted --no-blur with "
-                            "a blur flag: %s" % (label, base.__dict__, args))
+        if "--glass-mode" not in args:
+            continue
+        if args[args.index("--glass-mode") + 1] != "solid":
+            continue
+        conflict = SOLID_MODE_CONFLICTS & set(args)
+        if conflict:
+            failures.append(
+                "contradiction: %s (from %s) sent --glass-mode solid "
+                "alongside %s, which install.sh refuses: %s"
+                % (label, base.__dict__, sorted(conflict), args))
 
 # Acceptance. --dry-run resolves and prints without writing anything, so this
 # runs against the real installer on a real machine and still changes nothing.

@@ -1325,24 +1325,54 @@ class Settings:
         self.update_available = read_memo("update-available") or None
 
         # Every mode's own settings, so switching tabs can show them without
-        # applying anything. The seeds match seed_glass_mode's.
+        # applying anything. The seeds match seed_glass_mode's in
+        # lib/steps-modes.sh — which, for every field but the level, seeds a
+        # fresh drawer from whatever the top-level memo already holds and
+        # falls back to its literal only when that is empty too, so a
+        # customised tint or blur strength survives onto a tab that has never
+        # been opened rather than resetting to the shipped default. Read raw
+        # here (not through self.app_tint and friends, which have already
+        # applied their own defaults) so an absent top-level memo reaches the
+        # mode-specific literal exactly as the shell's disk_app/disk_shell/
+        # disk_strength/disk_scope do.
+        disk_transparency = read_memo("app-transparency", "")
+        disk_app_tint = read_memo("app-tint-color", "")
+        disk_shell_tint = read_memo("shell-tint-color", "")
+        disk_strength = read_memo("blur-strength", "")
+        disk_scope = read_memo("app-blur-scope", "")
+        disk_popup = read_memo("popup-blur", "")
+
         self.modes = {}
         for mode in GLASS_MODES:
             if mode == "solid":
                 continue
-            level = "0.82" if mode == "transparent" else "0"
-            tint = "#0b0b0f" if mode == "transparent" else "#000000"
+            # Transparent's level is the one field seed_glass_mode does not
+            # inherit from disk: frosted's own level is tuned for a blurred
+            # window behind it, and was never transparent's to start from, so
+            # its seed is always the darker constant, unconditionally.
+            if mode == "transparent":
+                level = "0.82"
+                tint_default = disk_app_tint or "#0b0b0f"
+                shell_default = disk_shell_tint or "#0b0b0f"
+            else:
+                level = disk_transparency or "0"
+                tint_default = disk_app_tint or "#000000"
+                shell_default = disk_shell_tint or "#000000"
             try:
-                strength = int(read_mode_memo(mode, "blur-strength", "100"))
+                strength = int(read_mode_memo(mode, "blur-strength",
+                                              disk_strength or "100"))
             except ValueError:
                 strength = 100
             self.modes[mode] = {
                 "transparency": read_mode_memo(mode, "app-transparency", level),
-                "app_tint": read_mode_memo(mode, "app-tint-color", tint),
-                "shell_tint": read_mode_memo(mode, "shell-tint-color", tint),
+                "app_tint": read_mode_memo(mode, "app-tint-color", tint_default),
+                "shell_tint": read_mode_memo(mode, "shell-tint-color",
+                                             shell_default),
                 "blur_strength": strength,
-                "popup_blur": read_mode_memo(mode, "popup-blur", "1") != "0",
-                "scope": read_mode_memo(mode, "app-blur-scope", "gtk"),
+                "popup_blur": read_mode_memo(mode, "popup-blur",
+                                             disk_popup or "1") != "0",
+                "scope": read_mode_memo(mode, "app-blur-scope",
+                                        disk_scope or "gtk"),
             }
 
         # The mode in force is the live state whatever its drawer says: the
@@ -1426,68 +1456,83 @@ class Settings:
         if self.glass_mode == "solid":
             return args
 
-        # Solid keeps no settings of its own — every field below it reads as
-        # whatever was in force the moment WANT_STYLING went to 0, frozen and
-        # forced (APP_TRANSPARENCY=0, popup and window blur off), not a
-        # preference anyone chose. Comparing self against that would manufacture
-        # a change out of every one of them. The mode being entered is not
-        # starting from nothing either: its own drawer under $CONF_DIR/modes/
-        # was untouched while solid was in force, so --glass-mode alone hands
-        # install.sh everything it needs to put the tab back the way it was.
-        if mode_changed and other.glass_mode == "solid":
-            return args
+        # Solid keeps no settings of its own — every field below reads, while
+        # solid is in force, as whatever apply_glass_mode's solid branch
+        # forced it to the moment WANT_STYLING went to 0 (APP_TRANSPARENCY=0,
+        # popup and window blur off), not a preference anyone chose. An
+        # earlier version of this function returned here whenever `other`
+        # was solid, sending nothing past the mode flag — which happened to
+        # be right for the tab exactly as its drawer left it, and silently
+        # wrong the moment someone dragged that tab's opacity before pressing
+        # Apply: the edit matched neither `other` (solid's forced 0) nor
+        # anything else this function looked at, so it never went out.
+        #
+        # The honest baseline once the mode has moved is the drawer of the
+        # mode being entered, not `other` itself: self.modes[mode] in
+        # Settings.__init__ populates it from exactly the files install.sh's
+        # load_glass_mode_memos (lib/steps-modes.sh) will read if this Apply
+        # says nothing about a field, so comparing against it tells the truth
+        # about whether the widgets are asking for something the drawer does
+        # not already hold — nothing to send when they are not, the edit when
+        # they are. A mode with no entry — nothing on this path should
+        # produce one, since solid is handled above and Settings.__init__
+        # seeds every other mode unconditionally — falls back to `other`
+        # rather than raising.
+        into = other.modes.get(self.glass_mode) if mode_changed else None
 
-        # Only frosted has a scope to send: not blurring behind windows is what
-        # transparent is, and --glass-mode transparent has already said it.
-        if self.glass_mode == "frosted" and (
-                self.scope != other.scope or mode_changed):
-            if not (mode_changed and self.scope == "gtk"):
-                args.append({"gtk": "--gtk-apps-blur",
-                             "all": "--all-apps-blur",
-                             "none": "--no-window-blur"}[self.scope])
+        def base(field):
+            return into[field] if into is not None else getattr(other, field)
 
-        # --no-window-blur moves the level to 0.95 unless the level is given, so
-        # the level goes after the scope flag and always states itself when
-        # either the scope or the mode moved.
-        if (self.transparency != other.transparency
-                or self.scope != other.scope or mode_changed):
+        scope_base = base("scope")
+        transparency_base = base("transparency")
+        popup_base = base("popup_blur")
+        app_tint_base = base("app_tint")
+        shell_tint_base = base("shell_tint")
+
+        # Only frosted has a scope to send: not blurring behind windows is
+        # what transparent is, and --glass-mode transparent has already said
+        # so.
+        if self.glass_mode == "frosted" and self.scope != scope_base:
+            args.append({"gtk": "--gtk-apps-blur",
+                         "all": "--all-apps-blur",
+                         "none": "--no-window-blur"}[self.scope])
+
+        # --no-window-blur moves the level to 0.95 unless the level is given,
+        # so the level goes after the scope flag and always states itself
+        # when either one is not what the baseline already holds. The scope
+        # half only matters for frosted, for the same reason the flag above
+        # is frosted-only — transparent has no scope flag of its own to move
+        # it.
+        if (self.transparency != transparency_base
+                or (self.glass_mode == "frosted"
+                    and self.scope != scope_base)):
             if self.transparency == "0":
                 args.append("--no-app-transparency")
             else:
                 args += ["--app-transparency", self.transparency]
 
-        if self.popup_blur != other.popup_blur:
+        if self.popup_blur != popup_base:
             args.append("--popup-blur" if self.popup_blur
                         else "--no-popup-blur")
 
         # The two tints. Sent as the value rather than as an on/off, because
         # black is a value in its own right — it is the state the sheets ship
-        # in, and asking for it again is how a tint is undone. Restated on a
-        # mode change too, and not only when the colour itself moved: level and
-        # tint are what "frosted -> transparent carries its own level and
-        # tint" in check-gui-flags.py means — transparent's darker tint is part
-        # of what the mode is, so switching into it says its colour outright
-        # rather than trusting a drawer that a machine new to modes may not
-        # have seeded yet.
+        # in, and asking for it again is how a tint is undone.
         #
         # The app tint rides inside the transparency sheet, which is only
         # installed while there is transparency to tint. Sending it with the
         # windows opaque would write a memo that install_transparency_css
         # returns before reading, so the window would show a colour that is not
         # on the disk — the row is insensitive there for the same reason.
-        if ((self.app_tint != other.app_tint or mode_changed)
-                and self.transparency != "0"):
+        if self.app_tint != app_tint_base and self.transparency != "0":
             args += ["--app-tint-color", self.app_tint]
-        if self.shell_tint != other.shell_tint or mode_changed:
+        if self.shell_tint != shell_tint_base:
             args += ["--shell-tint-color", self.shell_tint]
 
         # The blur strength is not part of a mode's identity the way level and
         # tint are — every mode's drawer seeds it to the same 100, and nothing
         # in apply_glass_mode ever moves it — so unlike them it stays a plain
-        # comparison. Forcing it to restate on every mode change would send a
-        # redundant --blur-strength 100 on the ordinary path through frosted
-        # and transparent alike, which is exactly the noise this function
-        # exists to avoid.
+        # comparison against `other`, never the drawer.
         if self.blur_strength != other.blur_strength:
             args += ["--blur-strength", str(self.blur_strength)]
 
