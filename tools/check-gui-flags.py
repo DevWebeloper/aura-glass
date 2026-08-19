@@ -47,6 +47,7 @@ def state(**kw):
     s.radius = kw.get("radius", "default")
     s.radius_custom = kw.get("radius_custom", (30, 26, 33, 20, 20, 20, 12))
     s.blur = kw.get("blur", True)
+    s.glass_mode = kw.get("glass_mode", "frosted")
     s.transparency = kw.get("transparency", "0.90")
     s.scope = kw.get("scope", "gtk")
     s.popup_blur = kw.get("popup_blur", True)
@@ -108,20 +109,40 @@ CASES = [
     ("accent and radius together", FROSTED, state(accent="red", radius="sharp"),
      ["--accent", "red", "--radius-preset", "sharp"]),
 
-    # Solid mode is the absence of every blur, so it must go out alone. The blur
-    # flags are not redundant here, they are the combination install.sh rejects.
-    ("frosted -> solid", FROSTED, state(blur=False), ["--no-blur"]),
+    # The mode carries the flags it implies, so they are not restated. Sending
+    # --glass-mode solid --no-window-blur --no-popup-blur would be the same
+    # sentence three times, and the third one is the combination install.sh
+    # refuses.
+    ("frosted -> solid", FROSTED, state(glass_mode="solid", blur=False,
+                                        transparency="0", popup_blur=False,
+                                        scope="none"),
+     ["--glass-mode", "solid"]),
 
-    ("frosted -> solid, with a radius change", FROSTED,
-     state(blur=False, radius="sharp"),
-     ["--radius-preset", "sharp", "--no-blur"]),
+    ("solid -> frosted", state(glass_mode="solid", blur=False, transparency="0",
+                               popup_blur=False, scope="none"),
+     state(), ["--glass-mode", "frosted"]),
 
-    # Coming back, every blur setting has to be restated: --no-blur was not
-    # remembered (deliberately — see apply_popup_blur), so nothing on disk says
-    # what the window is showing.
-    ("solid -> frosted restates every blur setting", SOLID, state(),
-     ["--blur", "--gtk-apps-blur", "--app-transparency", "0.90",
-      "--popup-blur"]),
+    ("frosted -> transparent carries its own level and tint", FROSTED,
+     state(glass_mode="transparent", scope="none", transparency="0.82",
+           app_tint="#0b0b0f", shell_tint="#0b0b0f"),
+     ["--glass-mode", "transparent", "--app-transparency", "0.82",
+      "--app-tint-color", "#0b0b0f", "--shell-tint-color", "#0b0b0f"]),
+
+    ("a level moved inside transparent is not a mode change",
+     state(glass_mode="transparent", scope="none", transparency="0.82"),
+     state(glass_mode="transparent", scope="none", transparency="0.78"),
+     ["--app-transparency", "0.78"]),
+
+    ("the popup switch inside transparent",
+     state(glass_mode="transparent", scope="none", transparency="0.82"),
+     state(glass_mode="transparent", scope="none", transparency="0.82",
+           popup_blur=False),
+     ["--no-popup-blur"]),
+
+    ("frosted -> solid with a radius change", FROSTED,
+     state(glass_mode="solid", blur=False, transparency="0",
+           popup_blur=False, scope="none", radius="sharp"),
+     ["--radius-preset", "sharp", "--glass-mode", "solid"]),
 
     ("scope to all apps restates the level", FROSTED, state(scope="all"),
      ["--all-apps-blur", "--app-transparency", "0.90"]),
