@@ -483,24 +483,20 @@ glass_owned_extensions() {
         custom-osd@neuromorph "${EXT_EXTRA_ALL[@]}"
 }
 
-# Solid mode. The UUIDs that are enabled right now and are ours get written
-# down and switched off; nothing else about them is touched, so every one of
-# them keeps its own settings and comes back exactly as it was. The record is
-# what makes the way back exact rather than a guess at what was on.
+# Solid mode. The UUIDs that are enabled right now and are ours get switched
+# off; nothing else about them is touched, so every one of them keeps its own
+# settings and comes back exactly as it was. The record is what makes the way
+# back exact rather than a guess at what was on.
 stand_down_extensions() {
     step "Standing the extensions down"
-    local record enabled u wrote=0
+    local record enabled u
+    local -a disabled_now=()
     record="$CONF_DIR/modes/solid/disabled-extensions"
 
     enabled="$(gnome-extensions list --enabled 2>/dev/null || true)"
     if [ -z "$enabled" ]; then
-        skip "the shell lists nothing enabled — nothing to switch off"
+        skip "the shell lists nothing enabled — nothing to switch off, any earlier record is left as it is"
         return 0
-    fi
-
-    if [ "${DRY_RUN:-0}" != 1 ]; then
-        mkdir -p "$CONF_DIR/modes/solid"
-        : > "$record"
     fi
 
     while IFS= read -r u; do
@@ -509,17 +505,47 @@ stand_down_extensions() {
         # a UUID that merely contains another must never be treated as enabled.
         grep -qxF "$u" <<< "$enabled" || continue
 
-        [ "${DRY_RUN:-0}" = 1 ] || printf '%s\n' "$u" >> "$record"
-        wrote=$((wrote + 1))
+        disabled_now+=("$u")
         run gnome-extensions disable "$u" 2>/dev/null \
             || warn "could not switch $u off — it is still written down, so the way back still tries it"
     done < <(glass_owned_extensions)
 
-    if [ "$wrote" -eq 0 ]; then
-        skip "none of this project's extensions are enabled"
-    else
-        ok "$wrote extension(s) switched off, their settings untouched"
+    # Nothing of ours was on. On a second solid entry this is the normal case
+    # — everything is already off from last time — so any record an earlier
+    # run left behind is exactly right as it stands and is not touched: not
+    # created, not truncated, not deleted.
+    if [ "${#disabled_now[@]}" -eq 0 ]; then
+        skip "none of this project's extensions are enabled — any earlier record is left as it is"
+        return 0
     fi
+
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR/modes/solid"
+        # The union of what the record already named and what just went off,
+        # never a replacement: a solid stay can span more than one run of this
+        # script — some of ours off since an earlier entry, one switched back
+        # on by hand in between — and the record has to keep naming everything
+        # that is currently off because of this project, or the way back only
+        # recovers part of it.
+        local -A seen=()
+        local -a union=()
+        if [ -r "$record" ]; then
+            while IFS= read -r u; do
+                [ -n "$u" ] || continue
+                [ -z "${seen[$u]:-}" ] || continue
+                seen[$u]=1
+                union+=("$u")
+            done < "$record"
+        fi
+        for u in "${disabled_now[@]}"; do
+            [ -z "${seen[$u]:-}" ] || continue
+            seen[$u]=1
+            union+=("$u")
+        done
+        printf '%s\n' "${union[@]}" > "$record"
+    fi
+
+    ok "${#disabled_now[@]} extension(s) switched off, their settings untouched"
 }
 
 # The way back out of solid mode. Exactly what was written down, in the order
@@ -528,6 +554,17 @@ stand_down_extensions() {
 restore_extensions() {
     local record="$CONF_DIR/modes/solid/disabled-extensions" u back=0
     [ -r "$record" ] || return 0
+
+    # A record that exists but names nothing is not the same as no record at
+    # all. stand_down_extensions only ever writes one holding at least the
+    # UUIDs it just switched off, so an empty or whitespace-only file here
+    # means something upstream went wrong, not that nothing was ever switched
+    # off. Deleting it would erase the one clue that happened, so it is left
+    # alone instead of being silently swept away as a no-op.
+    if ! grep -qE '[^[:space:]]' "$record"; then
+        warn "$record exists but names nothing — left alone rather than guessed at"
+        return 0
+    fi
     step "Switching the extensions back on"
 
     while IFS= read -r u; do

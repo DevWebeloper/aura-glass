@@ -114,6 +114,13 @@ step "app blur lists (tools/check-app-blur-lists.sh)" \
     bash "$TMP/tools/check-app-blur-lists.sh"
 step "glass modes (tools/check-glass-modes.sh)" \
     bash "$TMP/tools/check-glass-modes.sh"
+# Separate from check-glass-modes.sh because it needs a different mechanism:
+# the record stand_down_extensions/restore_extensions keep is only ever
+# written or read under DRY_RUN=0, so a dry run of install.sh — the only safe
+# way to drive install.sh itself here — can never exercise it. This calls the
+# two functions directly instead, against a stub gnome-extensions.
+step "solid extensions (tools/check-solid-extensions.sh)" \
+    bash "$TMP/tools/check-solid-extensions.sh"
 step "styling off (tools/check-styling-off.sh)" \
     bash "$TMP/tools/check-styling-off.sh"
 # Version ordering and tag filtering for the update check, against throwaway git
