@@ -13,16 +13,16 @@ Compatibility Arch / CachyOS, Fedora, Ubuntu / Debian
 
 ## 🧪 Beta: GUI Update
 
-[**v0.2.2-beta**][beta] is out — the new settings window, three glass modes, the first-run wizard, installable interface fonts, and a settings window that opens itself once after install. It is a prerelease: expect rough edges, and stick to the [latest stable release][releases] if you would rather not hit them.
+[**v0.2.3-beta**][beta] is out — fixes the daily update check missing every `-beta` release, so installs on v0.2.0-beta through v0.2.2-beta kept reporting "up to date" no matter how many newer betas shipped. It is a prerelease: expect rough edges, and stick to the [latest stable release][releases] if you would rather not hit them.
 
 ```bash
 git clone https://github.com/DevWebeloper/aura-glass.git
 cd aura-glass
-git checkout v0.2.2-beta
+git checkout v0.2.3-beta
 ./install.sh
 ```
 
-[beta]: https://github.com/DevWebeloper/aura-glass/releases/tag/v0.2.2-beta
+[beta]: https://github.com/DevWebeloper/aura-glass/releases/tag/v0.2.3-beta
 [releases]: https://github.com/DevWebeloper/aura-glass/releases
 
 ---
