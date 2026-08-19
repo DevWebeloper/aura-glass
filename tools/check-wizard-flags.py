@@ -76,7 +76,7 @@ FROSTED = ["--gtk-apps-blur", "--app-transparency", "0.90", "--popup-blur"]
 # The wizard's recommended pair, which is not install.sh's flagless default —
 # the wizard states its answer on every run rather than leaving the packs to the
 # installer, so these are the two names the defaults case has to send.
-PACKS = ["--icons", "hatter", "--cursors", "aosp", "--osd"]
+PACKS = ["--icons", "reversal", "--cursors", "aosp", "--osd"]
 
 # (description, the answers, whether there is a GDM, expected argv)
 CASES = [
@@ -129,15 +129,15 @@ CASES = [
      BASE + ["--gtk-apps-blur", "--app-transparency", "0.82", "--popup-blur"]
      + PACKS),
 
-    ("reversal icons and mactahoe pointers",
-     answers(icons="reversal", cursors="mactahoe"), False,
-     BASE + FROSTED + ["--icons", "reversal", "--cursors", "mactahoe", "--osd"]),
+    ("hatter icons and mactahoe pointers",
+     answers(icons="hatter", cursors="mactahoe"), False,
+     BASE + FROSTED + ["--icons", "hatter", "--cursors", "mactahoe", "--osd"]),
 
     ("keep both packs", answers(want_icons=False, want_cursors=False), False,
      BASE + FROSTED + ["--no-icons", "--no-cursors", "--osd"]),
 
     ("stock OSD", answers(want_osd=False), False,
-     BASE + FROSTED + ["--icons", "hatter", "--cursors", "aosp",
+     BASE + FROSTED + ["--icons", "reversal", "--cursors", "aosp",
                        "--no-osd"]),
 
     # A catalogue that could not be read leaves this None, which sends no

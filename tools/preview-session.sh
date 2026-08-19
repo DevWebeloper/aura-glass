@@ -79,7 +79,7 @@ if os.environ.get("TG_SOLID") == "1":
     # After core.ini, never before. A keyfile takes the *last* value for a key,
     # so an overlay written first is silently overridden by the thing it is
     # meant to override — which showed up as a top bar that stayed transparent
-    # because core.ini's bgalpha=0.0 won. load_dconf applies it in this order
+    # because core.ini's near-zero bgalpha won. load_dconf applies it in this order
     # too.
     out.append("# --- solid mode overlay (dconf/solid.ini) ---")
     for line in open(os.path.join(os.path.dirname(src), "solid.ini"),

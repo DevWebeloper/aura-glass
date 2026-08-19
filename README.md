@@ -159,7 +159,7 @@ For scripted setups or power users who prefer flags instead of the interactive w
 | `--all-extras` | Install all 14 optional extensions. |
 | `--minimal` / `--no-extras` | Minimal install with core look only (no optional extensions). |
 | `--extensions LIST` | Comma-separated extension UUIDs to install instead of a pack, e.g. `space-bar@luchrioh,Vitals@CoreCoding.com`. Each must be one `--all-extras` would install; an empty list means the same as `--no-extras`. This is what the setup wizard's per-extension switches send. |
-| `--icons WHICH` | Choose icon set: `colloid` (default, matches accent), `hatter` (the setup wizard's recommendation, also matches accent) or `reversal-COLOUR`. Each takes a colour of its own too: `colloid-teal`, `hatter-slate`. |
+| `--icons WHICH` | Choose icon set: `colloid` (default, matches accent), `hatter` (also matches accent) or `reversal-COLOUR` (the setup wizard's recommendation). Each takes a colour of its own too: `colloid-teal`, `hatter-slate`. |
 | `--cursors WHICH` | Choose pointer set: `adwaita` (default, ships with GNOME), `aosp` (the setup wizard's recommendation), `mactahoe`, or `original`. |
 | `--font WHICH` | Interface font: `system` (default — GNOME's own font, left alone), `misans`, `inter` or `sf-pro`. The font is downloaded into `~/.local/share/fonts/aura-glass` if it is not already on the machine, then set as the interface, document and titlebar font at whatever size those keys already carry. `--font system` puts back the font from before aura-glass first ran here. Remembered across runs. |
 | `--no-popup-blur` | Use flat translucent popups without background blur. |

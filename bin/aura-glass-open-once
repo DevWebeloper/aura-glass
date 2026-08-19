@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Open the settings window once, on the first login after an install or an
+# update — then never again until the next one.
+#
+# An install ends by asking for a logout, because extensions cannot be loaded
+# into a running shell on Wayland and nothing looks right until the session
+# after. That logout is also where the install stops being visible: whoever ran
+# it is handed a fresh desktop with no sign of what just changed, and the
+# settings window they would want at that moment is a name they have to know to
+# search for. This puts it in front of them once instead.
+#
+# The autostart entry is removed here rather than by whatever wrote it, because
+# "once" has to mean once per install, and only the run itself knows it has
+# happened. Removing it first, before the window opens, means a window that
+# crashes on launch still does not come back on every login afterwards — a
+# broken install should be quiet, not a login loop.
+set -euo pipefail
+
+rm -f "$HOME/.config/autostart/aura-glass-open-once.desktop"
+
+exec "$HOME/.local/bin/aura-glass-settings"

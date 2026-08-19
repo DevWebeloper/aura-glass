@@ -90,7 +90,8 @@ import gi
 
 gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
-from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
+from gi.repository import (Adw, Gdk, Gio, GLib, GObject, Gtk,  # noqa: E402
+                           Pango)
 
 APP_ID = "io.github.DevWebeloper.AuraGlassSettings"
 
@@ -286,8 +287,9 @@ def percent_to_level(percent):
 # gsettings_backup_once takes in preflight.
 ICON_PACKS = [
     ("colloid", "Colloid", "Folder icons in a colour of their own"),
-    ("reversal", "Reversal", "macOS-style circular icons"),
-    ("hatter", "Hatter", "Rounded squares, the setup wizard's recommendation"),
+    ("reversal", "Reversal", "macOS-style circular icons, the setup wizard's "
+                             "recommendation"),
+    ("hatter", "Hatter", "Rounded squares, in the accent's colour"),
     ("keep", "Default", "Your desktop's own icons, left alone — set them from "
                         "anywhere else and this will not overwrite them"),
     ("original", "Original", "Back to the icon theme from before aura-glass, "
@@ -2207,10 +2209,16 @@ class TintButton(Gtk.Button):
 
     rgba = GObject.Property(type=Gdk.RGBA)
 
-    def __init__(self, title):
+    def __init__(self, title, on_open=None, on_close=None):
         super().__init__(valign=Gtk.Align.CENTER)
         self._title = title
         self._picker = None
+        # What the window around this button wants to do either side of the
+        # palette being open. It brings the tint preview up with it and takes it
+        # down again — a colour is picked against the preview or it is picked
+        # blind, so the two belong to one another rather than to two buttons.
+        self._on_open = on_open
+        self._on_close = on_close
 
         self._swatch = Swatch(TINT_DEFAULT, size=20, radius=5)
         # The hex next to the swatch, which the stock button only showed once
@@ -2249,6 +2257,8 @@ class TintButton(Gtk.Button):
     def _on_clicked(self, _button):
         if self._picker is not None:
             self._picker.present()
+            if self._on_open is not None:
+                self._on_open(self)
             return
 
         def pick(colour):
@@ -2257,8 +2267,25 @@ class TintButton(Gtk.Button):
         self._picker = open_over(
             TintPickerWindow(self._title, rgba_hex(self.get_rgba()), pick),
             self.get_root(), modal=False)
-        self._picker.connect("close-request",
-                             lambda *_a: setattr(self, "_picker", None))
+        self._picker.connect("close-request", self._picker_closed)
+        if self._on_open is not None:
+            self._on_open(self)
+
+    def _picker_closed(self, *_args):
+        self._picker = None
+        if self._on_close is not None:
+            self._on_close(self)
+        return False
+
+    def close_picker(self):
+        """Take the palette down from outside — the preview closing does this.
+
+        Cleared first, so the close-request handler on the way out finds nothing
+        left to close and the two windows cannot chase each other in a circle.
+        """
+        picker, self._picker = self._picker, None
+        if picker is not None:
+            picker.close()
 
 
 class TintPickerWindow(Adw.Window):
@@ -2533,16 +2560,93 @@ class TintPreviewWindow(Adw.Window):
                    "Shell surfaces")
 
 
+# Lines install.sh prints when part of what it did only lands at the next
+# session. enqueue_extension writes the first, and it is the common one: on
+# Wayland the running shell cannot load an extension that appeared after login,
+# so it is written into enabled-extensions for the session after this one.
+#
+# Matched rather than inferred from the flags, because which flags need a logout
+# is the installer's business and changes with it — a window that decided for
+# itself would be a second copy of that knowledge, and would be wrong first.
+LOGOUT_HINTS = ("after logout", "next login", "log out and back in")
+
+
+def log_view():
+    """A read-only monospace view for a command's output."""
+    view = Gtk.TextView(
+        editable=False, cursor_visible=False, monospace=True,
+        top_margin=8, bottom_margin=8, left_margin=8, right_margin=8)
+    view.add_css_class("card")
+    return view
+
+
+def log_append(view, line):
+    """One line onto the end, with the view following its own tail."""
+    buf = view.get_buffer()
+    buf.insert(buf.get_end_iter(), line + "\n")
+    # Follow the tail, so the interesting end is the part on screen.
+    buf_end = buf.create_mark(None, buf.get_end_iter(), False)
+    view.scroll_to_mark(buf_end, 0, False, 0, 0)
+
+
+def stream_command(argv, on_line, on_done):
+    """Run argv, hand back each output line as it arrives, then the verdict.
+
+    Streamed rather than collected: --settings-only is quick but not instant and
+    an update is neither, and anything that goes quiet for ten seconds is
+    indistinguishable from something that has hung.
+
+    NO_COLOR belongs to the environment install.sh reads rather than to argv, and
+    a piped stdout already turns the colours off in lib/common.sh. Reading the
+    pipe line by line is what keeps a view live.
+
+    on_done(ok, message) runs exactly once, whether the failure was the command
+    exiting non-zero or never starting at all.
+    """
+    try:
+        proc = Gio.Subprocess.new(
+            argv,
+            Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE)
+    except GLib.Error as exc:
+        on_done(False, exc.message)
+        return None
+
+    def exited(finished, res):
+        try:
+            finished.wait_check_finish(res)
+        except GLib.Error as exc:
+            on_done(False, exc.message)
+            return
+        on_done(True, "")
+
+    def read(src, res):
+        try:
+            line, _ = src.read_line_finish_utf8(res)
+        except GLib.Error as exc:
+            on_line("(could not read output: %s)" % exc.message)
+            line = None
+        if line is None:
+            proc.wait_check_async(None, exited)
+            return
+        on_line(line.rstrip())
+        src.read_line_async(GLib.PRIORITY_DEFAULT, None, read)
+
+    stream = Gio.DataInputStream.new(proc.get_stdout_pipe())
+    stream.read_line_async(GLib.PRIORITY_DEFAULT, None, read)
+    return proc
+
+
 class ApplyDialog(Adw.Window):
-    """install.sh's output, while it runs.
+    """One extension being installed, removed, enabled or disabled.
 
-    Streamed rather than collected: --settings-only is quick but not instant,
-    and a window that goes blank for ten seconds is indistinguishable from one
-    that has hung.
+    Apply used to come through here too and no longer does — it runs along the
+    bottom of the window it was pressed in, where the page it changed is still
+    readable. What is left is the extension work, which is the case that argues
+    for a window of its own: it is started from a row rather than from a button
+    that owns the whole window, several can be wanted in a row, and each one is
+    a download this cannot promise the length of.
 
-    A window rather than an Adw.Dialog, for the reason open_over gives — and
-    because this is the popup with something in it worth reading against the
-    page behind it, which a sheet nailed to the middle of that page cannot be.
+    A window rather than an Adw.Dialog, for the reason open_over gives.
     """
 
     def __init__(self, repo, args, on_done, title="Applying",
@@ -2562,10 +2666,7 @@ class ApplyDialog(Adw.Window):
         spinner = Adw.Spinner(width_request=32, height_request=32)
         self._status.set_child(spinner)
 
-        self._log = Gtk.TextView(
-            editable=False, cursor_visible=False, monospace=True,
-            top_margin=8, bottom_margin=8, left_margin=8, right_margin=8)
-        self._log.add_css_class("card")
+        self._log = log_view()
         scroller = Gtk.ScrolledWindow(child=self._log, vexpand=True,
                                       propagate_natural_height=True)
         self._log_reveal = Gtk.Expander(label="Details", child=scroller,
@@ -2590,50 +2691,17 @@ class ApplyDialog(Adw.Window):
         self._run(repo, args)
 
     def _append(self, line):
-        buf = self._log.get_buffer()
-        buf.insert(buf.get_end_iter(), line + "\n")
-        # Follow the tail, so the interesting end is the part on screen.
-        buf_end = buf.create_mark(None, buf.get_end_iter(), False)
-        self._log.scroll_to_mark(buf_end, 0, False, 0, 0)
+        log_append(self._log, line)
 
     def _run(self, repo, args):
         argv = self._argv or ["bash", os.path.join(repo, "install.sh"),
                               "--settings-only", "--yes"] + args
         self._append("$ " + " ".join(argv[1:]))
-        try:
-            proc = Gio.Subprocess.new(
-                argv,
-                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE)
-        except GLib.Error as exc:
-            self._finish(False, "Could not start install.sh", exc.message)
-            return
+        stream_command(argv, self._append, self._done)
 
-        # NO_COLOR belongs to the environment install.sh reads, not to argv, and
-        # a piped stdout already turns the colours off in lib/common.sh. Reading
-        # the pipe line by line is what keeps the view live.
-        stream = Gio.DataInputStream.new(proc.get_stdout_pipe())
-        self._read_line(stream, proc)
-
-    def _read_line(self, stream, proc):
-        def done(src, res):
-            try:
-                line, _ = src.read_line_finish_utf8(res)
-            except GLib.Error as exc:
-                self._append("(could not read output: %s)" % exc.message)
-                line = None
-            if line is None:
-                proc.wait_check_async(None, self._exited)
-                return
-            self._append(line.rstrip())
-            self._read_line(src, proc)
-
-        stream.read_line_async(GLib.PRIORITY_DEFAULT, None, done)
-
-    def _exited(self, proc, res):
-        try:
-            proc.wait_check_finish(res)
-        except GLib.Error as exc:
-            self._finish(False, "install.sh failed", exc.message)
+    def _done(self, ok, message):
+        if not ok:
+            self._finish(False, "install.sh failed", message)
             return
         self._finish(True, "Done" if self._argv else "Applied",
                      "The shell has already reloaded. Restart any open GTK app "
@@ -2666,10 +2734,31 @@ class Window(Adw.ApplicationWindow):
         self._repo = repo
         self._applied = Settings()   # what is on disk
         self._loading = True
+        # A run of install.sh is in flight. Every path that would make Apply
+        # sensitive consults it, because a second run started over the first
+        # would be two installers writing the same files.
+        self._running = False
+        self._needs_logout = False
 
-        self._apply = Gtk.Button(label="Apply", sensitive=False)
+        self._apply = Gtk.Button(sensitive=False)
         self._apply.add_css_class("suggested-action")
         self._apply.connect("clicked", self._on_apply)
+        # The spinner lives inside the button rather than beside it: the button
+        # is what was pressed, so it is the thing that should look busy, and a
+        # spinner that appears next to it moves the row while it runs.
+        self._apply_spinner = Adw.Spinner(width_request=16, height_request=16,
+                                          visible=False)
+        self._apply_text = Gtk.Label(label="Apply")
+        pressed = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        pressed.append(self._apply_spinner)
+        pressed.append(self._apply_text)
+        self._apply.set_child(pressed)
+
+        # The palette that is open, and the preview that came up with it. Kept
+        # here rather than on the button because there are six colour buttons
+        # and exactly one preview between them.
+        self._tint_picker = None
+        self._tint_preview = None
 
         # The Glass page builds one set of these per mode and keys them by it.
         # They live here rather than in that builder because a dict created
@@ -2701,12 +2790,16 @@ class Window(Adw.ApplicationWindow):
         self._toasts = Adw.ToastOverlay(child=self._stack)
 
         # Apply lives on the content pane, not the sidebar: it applies whatever
-        # changed anywhere in the window, and a header that scrolls away with
-        # one page would hide it from the others.
-        content_header = Adw.HeaderBar()
-        content_header.pack_end(self._apply)
+        # changed anywhere in the window, and a bar that scrolled away with one
+        # page would hide it from the others.
+        #
+        # Along the bottom rather than in the header, because it is no longer
+        # only a button: what it has to say while it runs, and what it has to
+        # show when a run fails, needs a line of its own — and a header bar is
+        # the one place in the window with no room for one.
         content_view = Adw.ToolbarView(content=self._toasts)
-        content_view.add_top_bar(content_header)
+        content_view.add_top_bar(Adw.HeaderBar())
+        content_view.add_bottom_bar(self._build_apply_bar())
         self._content_page = Adw.NavigationPage(child=content_view,
                                                 title=NAV_SECTIONS[0][1])
 
@@ -2728,6 +2821,104 @@ class Window(Adw.ApplicationWindow):
         if repo is None:
             self._apply.set_sensitive(False)
             self._banner_missing_repo()
+
+    def _build_apply_bar(self):
+        """Apply, and everything a run of install.sh has to say, along the bottom.
+
+        This replaces a modal window that opened on every Apply, showed a
+        spinner over a live log, and had to be dismissed afterwards — a lot of
+        furniture for a step that usually takes a couple of seconds and then
+        says "Applied". What was worth keeping from it is the honesty: a run
+        still going says so, and a run that failed shows its output rather than
+        a toast that is gone before it can be read.
+
+        So the button carries the spinner, the line beside it carries the last
+        thing install.sh printed, and the log is folded away until there is
+        something wrong to read in it. The page behind stays legible throughout,
+        which the modal it replaces made impossible.
+        """
+        self._apply_status = Gtk.Label(xalign=0, hexpand=True,
+                                       ellipsize=Pango.EllipsizeMode.END)
+        self._apply_status.add_css_class("dim-label")
+        self._apply_status.add_css_class("caption")
+
+        self._apply_log = log_view()
+        scroller = Gtk.ScrolledWindow(child=self._apply_log,
+                                      min_content_height=180)
+        self._apply_expander = Gtk.Expander(label="Details", child=scroller)
+        # Revealed rather than merely collapsed: an empty expander sitting under
+        # every page would be a control that does nothing until something goes
+        # wrong, which is the same as a control nobody understands.
+        self._apply_reveal = Gtk.Revealer(
+            child=self._apply_expander,
+            transition_type=Gtk.RevealerTransitionType.SLIDE_UP)
+
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        row.append(self._apply_status)
+        row.append(self._apply)
+
+        bar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8,
+                      margin_top=8, margin_bottom=8,
+                      margin_start=12, margin_end=12)
+        bar.append(self._apply_reveal)
+        bar.append(row)
+        return bar
+
+    # ---- one run of install.sh, in this window ----------------------------
+
+    def _run_started(self, message):
+        self._running = True
+        self._needs_logout = False
+        self._apply.set_sensitive(False)
+        # Two installers over the same files is the one thing neither button
+        # may allow, so each of them switches the other off for the duration.
+        self._update_button.set_sensitive(False)
+        self._apply_text.set_label("Applying…")
+        self._apply_spinner.set_visible(True)
+        self._apply_status.remove_css_class("error")
+        self._apply_status.set_label(message)
+        self._apply_reveal.set_reveal_child(False)
+        self._apply_expander.set_expanded(False)
+        self._apply_log.get_buffer().set_text("")
+
+    def _run_line(self, line):
+        """One line of install.sh's output: into the log, and onto the status."""
+        log_append(self._apply_log, line)
+        text = line.strip()
+        if text:
+            self._apply_status.set_label(text)
+        # Noticed while it streams rather than looked for at the end, because
+        # the line that says so is one of many and the end is where the summary
+        # has to be already written.
+        lowered = line.lower()
+        if any(hint in lowered for hint in LOGOUT_HINTS):
+            self._needs_logout = True
+
+    def _run_finished(self, ok, message):
+        self._running = False
+        self._sync_updates()
+        self._apply_spinner.set_visible(False)
+        self._apply_text.set_label("Apply")
+        self._apply_status.set_label(message)
+        if ok:
+            self._apply_status.remove_css_class("error")
+        else:
+            self._apply_status.add_css_class("error")
+            self._apply_expander.set_expanded(True)
+            self._apply_reveal.set_reveal_child(True)
+        self._mark_dirty()
+
+    def _applied_message(self):
+        """What to say once a run has finished, which depends on what it did.
+
+        A logout is only ever needed for part of what install.sh does — an
+        extension the running shell would not load is the usual one — so it is
+        said when it was actually printed rather than on every Apply, which
+        would train people to ignore it.
+        """
+        if self._needs_logout:
+            return "Applied — log out and back in to finish"
+        return "Applied — restart any open GTK app for the GTK side"
 
     def _on_section(self, _list, row):
         if row is None:
@@ -3500,7 +3691,10 @@ class Window(Adw.ApplicationWindow):
     def _tint_row(self, title, subtitle, which, mode):
         """One colour button, with the swatch and the hex both readable."""
         row = Adw.ActionRow(title=title, subtitle=subtitle)
-        button = TintButton("%s tint" % title)
+        button = TintButton(
+            "%s tint" % title,
+            on_open=lambda b, m=mode: self._on_tint_picker_opened(b, m),
+            on_close=self._on_tint_picker_closed)
         button.set_rgba(parse_hex(self._tints[mode][which]))
         button.connect("notify::rgba", self._on_tint_picked, which, mode)
         row.add_suffix(button)
@@ -3544,7 +3738,35 @@ class Window(Adw.ApplicationWindow):
             self._sync_tint_preview()
             self._mark_dirty()
 
+    def _on_tint_picker_opened(self, button, mode):
+        """A colour was pressed: the palette and the preview come up together.
+
+        Judging a tint from a swatch is what TintPreviewWindow exists because
+        nobody can do — so opening the palette without it was offering the
+        choice and withholding the only thing that answers it. They open as a
+        pair now, and close as one.
+        """
+        # One palette at a time. Two of them open onto one preview would leave
+        # the preview closing only whichever was pressed last, and the other
+        # standing over a window that is no longer there to judge it against.
+        if self._tint_picker is not None and self._tint_picker is not button:
+            self._tint_picker.close_picker()
+        self._tint_picker = button
+        self._open_tint_preview(mode)
+
+    def _on_tint_picker_closed(self, button):
+        """The palette was closed, so the preview goes with it."""
+        if self._tint_picker is button:
+            self._tint_picker = None
+        preview, self._tint_preview = getattr(self, "_tint_preview", None), None
+        if preview is not None:
+            preview.close()
+
     def _on_tint_preview(self, _button, mode):
+        """The Preview row, which asks for the preview and nothing else."""
+        self._open_tint_preview(mode)
+
+    def _open_tint_preview(self, mode):
         def read():
             # The opacity the bar is on right now, not the one on disk — the
             # point of the window is to judge a tint before Apply, and it is
@@ -3567,8 +3789,20 @@ class Window(Adw.ApplicationWindow):
             return
         self._tint_preview = open_over(TintPreviewWindow(read), self,
                                        modal=False)
-        self._tint_preview.connect(
-            "close-request", lambda *_a: setattr(self, "_tint_preview", None))
+        self._tint_preview.connect("close-request", self._on_preview_closed)
+
+    def _on_preview_closed(self, *_args):
+        """The preview was closed, so the palette that came up with it goes too.
+
+        Cleared before the palette is asked to close, for the reason
+        close_picker gives: each of these two closes the other, and only one of
+        them may still be holding the other when it does.
+        """
+        self._tint_preview = None
+        button, self._tint_picker = self._tint_picker, None
+        if button is not None:
+            button.close_picker()
+        return False
 
     def _sync_tint_preview(self):
         """Keep an open preview window in step with the two buttons."""
@@ -4494,10 +4728,16 @@ class Window(Adw.ApplicationWindow):
         self._update_button_row = Adw.ActionRow(
             title="Install update",
             subtitle="Pulls the new release and runs the full installer")
-        self._update_button = Gtk.Button(label="Install",
-                                         valign=Gtk.Align.CENTER)
+        self._update_button = Gtk.Button(valign=Gtk.Align.CENTER)
         self._update_button.add_css_class("suggested-action")
         self._update_button.connect("clicked", self._on_install_update)
+        self._update_spinner = Adw.Spinner(width_request=16, height_request=16,
+                                           visible=False)
+        self._update_text = Gtk.Label(label="Install")
+        pressed = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        pressed.append(self._update_spinner)
+        pressed.append(self._update_text)
+        self._update_button.set_child(pressed)
         self._update_button_row.add_suffix(self._update_button)
         updates.add(self._update_button_row)
 
@@ -4509,6 +4749,27 @@ class Window(Adw.ApplicationWindow):
                                        "update_check")
         updates.add(self._update_check_row)
         page.add(updates)
+
+        # An update is the one thing this window starts that is not quick: it
+        # is a git pull and then the full installer, which fetches the theme,
+        # the extensions and whatever a release added. So its output is shown
+        # on the page rather than folded away like Apply's — with nothing to
+        # read, a minute of silence and a hang look the same.
+        #
+        # Hidden until there is a run to show. An empty log under a version
+        # number is furniture.
+        self._update_log_group = Adw.PreferencesGroup(
+            title="Update log",
+            description="What the pull and the installer are printing, as they "
+                        "run. Kept after they finish, so a failure can be read "
+                        "back rather than caught as it goes past.")
+        self._update_log = log_view()
+        self._update_log_group.add(
+            Gtk.ScrolledWindow(child=self._update_log, min_content_height=280,
+                               vexpand=True))
+        self._update_log_group.set_visible(False)
+        page.add(self._update_log_group)
+
         self._sync_updates()
 
         return page
@@ -4713,7 +4974,8 @@ class Window(Adw.ApplicationWindow):
 
     def _mark_dirty(self):
         dirty = bool(self._current().flags_against(self._applied))
-        self._apply.set_sensitive(dirty and self._repo is not None)
+        self._apply.set_sensitive(dirty and self._repo is not None
+                                  and not self._running)
 
     def _sync_transparency_value(self, scale):
         scale._readout.set_label("%d%%" % round(scale.get_value()))
@@ -4936,23 +5198,59 @@ class Window(Adw.ApplicationWindow):
                   % (GLib.shell_quote(self._repo),
                      GLib.shell_quote(os.path.join(self._repo, "install.sh"))))
 
-        def done(ok):
-            if ok:
+        if is_test_build(self._repo):
+            doing = ("Pulling the newest commit on %s, then running the "
+                     "installer" % current_branch(self._repo))
+        else:
+            doing = "Pulling the new release, then running the installer"
+
+        self._update_log_group.set_visible(True)
+        self._update_log.get_buffer().set_text("")
+        self._update_button.set_sensitive(False)
+        self._update_text.set_label("Updating…")
+        self._update_spinner.set_visible(True)
+        self._update_button_row.set_subtitle(doing)
+        # The same interlock _run_started keeps, from the other side: this runs
+        # the full installer, and Apply must not start a second one over it.
+        self._running = True
+        self._apply.set_sensitive(False)
+        self._apply_status.set_label("%s…" % doing)
+        log_append(self._update_log, "$ git pull --ff-only && install.sh --yes")
+
+        def done(ok, message):
+            self._update_spinner.set_visible(False)
+            self._update_text.set_label("Install")
+            self._running = False
+            # Whatever happened, Apply goes back to answering for itself — a
+            # failed update must not leave it stuck off.
+            self._mark_dirty()
+            self._apply_status.set_label(
+                "Updated — log out and back in to finish" if ok
+                else "The update failed — see the log on the Updates page")
+            if not ok:
+                log_append(self._update_log, "")
+                log_append(self._update_log, "Failed: %s" % message)
+                # From disk rather than assumed: a pull that landed and an
+                # installer that then failed is still a checkout that moved,
+                # and the row has to say which version is there now.
                 self._applied = Settings()
-                self._reload()
                 self._sync_updates()
                 self._toasts.add_toast(Adw.Toast(
-                    title="Updated — log out and back in to finish"))
+                    title="The update failed — see the log below"))
+                return
+            log_append(self._update_log, "")
+            log_append(self._update_log,
+                       "Done — log out and back in to finish.")
+            self._applied = Settings()
+            self._reload()
+            self._sync_updates()
+            self._toasts.add_toast(Adw.Toast(
+                title="Updated — log out and back in to finish"))
 
-        open_over(ApplyDialog(
-            self._repo, [], done,
-            title="Updating",
-            description=("Pulling the newest commit on %s, then running the "
-                         "installer." % current_branch(self._repo))
-                        if is_test_build(self._repo) else
-                        "Pulling the new release, then running the installer.",
-            argv=["bash", "-c", script],
-        ), self)
+        stream_command(["bash", "-c", script], self._update_log_line, done)
+
+    def _update_log_line(self, line):
+        log_append(self._update_log, line)
 
     # ---- actions ----------------------------------------------------------
 
@@ -4970,18 +5268,32 @@ class Window(Adw.ApplicationWindow):
 
     def _on_apply(self, _button):
         args = self._current().flags_against(self._applied)
-        if not args:
+        if not args or self._repo is None:
             return
-        self._apply.set_sensitive(False)
+        argv = ["bash", os.path.join(self._repo, "install.sh"),
+                "--settings-only", "--yes"] + args
+        self._run_started("Reapplying the dconf preset, the CSS and the "
+                          "gsettings…")
+        log_append(self._apply_log, "$ " + " ".join(argv[1:]))
 
-        def done(ok):
-            if ok:
-                self._reload()
-                self._toasts.add_toast(Adw.Toast(title="Settings applied"))
-            else:
-                self._apply.set_sensitive(True)
+        def done(ok, message):
+            if not ok:
+                failed = "install.sh failed"
+                if message:
+                    failed = "%s — %s" % (failed, message)
+                self._run_finished(False, failed)
+                self._toasts.add_toast(Adw.Toast(
+                    title="Could not apply — see the details"))
+                return
+            # The disk first, then the verdict: _reload puts every row back in
+            # step with what was actually installed, and _run_finished ends by
+            # asking whether there is anything left to apply.
+            said = self._applied_message()
+            self._reload()
+            self._run_finished(True, said)
+            self._toasts.add_toast(Adw.Toast(title=said))
 
-        open_over(ApplyDialog(self._repo, args, done), self)
+        stream_command(argv, self._run_line, done)
 
 
 class Application(Adw.Application):

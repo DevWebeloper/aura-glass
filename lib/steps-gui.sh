@@ -15,6 +15,7 @@
 GUI_DIR="$HOME/.local/share/aura-glass/gui"
 GUI_APP_ID="io.github.DevWebeloper.AuraGlassSettings"
 GUI_DESKTOP="$HOME/.local/share/applications/$GUI_APP_ID.desktop"
+GUI_ICON="$HOME/.local/share/icons/hicolor/scalable/apps/$GUI_APP_ID.svg"
 
 install_gui() {
     step "Settings window"
@@ -37,6 +38,10 @@ install_gui() {
         "$GUI_DIR/aura_glass_settings.py"
     run install -Dm755 "$REPO_ROOT/bin/aura-glass-settings" \
         "$HOME/.local/bin/aura-glass-settings"
+    run install -Dm644 "$REPO_ROOT/gui/icons/$GUI_APP_ID.svg" "$GUI_ICON"
+    if [ "${DRY_RUN:-0}" != 1 ] && command -v gtk-update-icon-cache >/dev/null 2>&1; then
+        gtk-update-icon-cache -qft "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
+    fi
 
     # The window runs install.sh, which needs css/, dconf/ and lib/ beside it, so
     # it has to know where this checkout is. Recorded rather than guessed: by the
@@ -65,7 +70,7 @@ Name=Aura Glass
 GenericName=Theme Settings
 Comment=Retune the Aura Glass desktop — corner rounding, blur and accent
 Exec=$HOME/.local/bin/aura-glass-settings
-Icon=preferences-desktop-appearance
+Icon=$GUI_APP_ID
 Terminal=false
 Categories=GNOME;GTK;Settings;DesktopSettings;
 Keywords=aura;glass;theme;blur;radius;corner;rounding;accent;appearance;
@@ -76,6 +81,71 @@ EOF
     fi
 
     ok "settings window -> aura-glass-settings (and the Activities overview)"
+}
+
+# Arm the settings window to open itself once, on the login after this install.
+#
+# An install ends by asking for a logout, and that logout is where it stops
+# being visible: the next session comes up with everything changed and nothing
+# saying so, and the window that would show it is a name someone has to know to
+# search for. Opening it once, unprompted, is the difference between a theme
+# that landed and a theme that landed where you could see it.
+#
+# XDG autostart rather than a systemd user unit, unlike the three units this
+# project already installs: those run headless programs that only talk to the
+# bus, whereas this one has to put a window on a screen, and autostart is
+# launched by the session with a session's environment already around it.
+#
+# There is nothing to switch off, because the entry deletes itself the first
+# time it runs (see bin/aura-glass-open-once) — it is one window, once, and by
+# the time anyone could want it gone it already is. Re-running the installer
+# before that login rewrites the same path, so it still opens exactly once.
+#
+# Not called from the --settings-only path. That path changes settings from the
+# window and needs no logout, so there is no next session to catch and nothing
+# the window could show that is not already on screen.
+install_first_open_autostart() {
+    step "Opening the settings window next login"
+
+    # The same two conditions install_gui installs under. Asked again rather
+    # than inferred from $GUI_DESKTOP existing, so a --no-gui run over an older
+    # install — which leaves the old entry on disk — does not arm a window the
+    # user just asked not to have.
+    if [ "${WANT_GUI:-1}" != 1 ]; then
+        skip "no settings window to open (--no-gui)"
+        return 0
+    fi
+    if ! gui_toolkit_present; then
+        skip "the settings window was not installed, so there is nothing to open"
+        return 0
+    fi
+
+    local autostart="$HOME/.config/autostart/aura-glass-open-once.desktop"
+
+    run install -Dm755 "$REPO_ROOT/bin/aura-glass-open-once" \
+        "$HOME/.local/bin/aura-glass-open-once"
+
+    # Absolute Exec for the reason install_gui's entry gives: ~/.local/bin is
+    # not reliably on the PATH the session launches an autostart entry with.
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: write $autostart"
+    else
+        mkdir -p "$(dirname "$autostart")"
+        cat > "$autostart" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Aura Glass (first run)
+Comment=Show the Aura Glass settings window once after installing
+Exec=$HOME/.local/bin/aura-glass-open-once
+Icon=$GUI_APP_ID
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+EOF
+        chmod 644 "$autostart"
+    fi
+
+    ok "Aura Glass will open once when you log back in"
 }
 
 # The daily "is there a newer release" check.

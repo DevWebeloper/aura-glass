@@ -689,6 +689,10 @@ apply_gsettings() {
     # like one, rather than a themed desktop with the blur removed.
     run gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
     run gsettings set org.gnome.desktop.interface accent-color "$ACCENT"
+    # And nothing gets to overwrite it a moment later. disable_accent_overriders
+    # explains which extension does that and why it is switched off rather than
+    # argued with.
+    disable_accent_overriders
     if [ "${WANT_STYLING:-1}" = 1 ]; then
         run gsettings set org.gnome.desktop.interface gtk-theme 'Tahoe-Dark'
         run dconf write /org/gnome/shell/extensions/user-theme/name "'Tahoe-Dark'"

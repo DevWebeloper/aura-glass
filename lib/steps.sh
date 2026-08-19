@@ -148,6 +148,18 @@ EXT_EXTRA_ALL=(
     add-to-steam@pupper.space
 )
 
+# Catalogued and installable, but never switched on by a pack. Auto Accent
+# Colour rewrites org.gnome.desktop.interface accent-color from the wallpaper
+# every time the wallpaper changes — and that key is the one thing the wizard
+# asks for by name, so with this on the accent someone picked is replaced by
+# whatever their wallpaper averages to (orange, for a warm one) within a
+# session. It stays in EXT_EXTRA_ALL so the settings window still lists it and
+# can install it for anyone who would rather the wallpaper decided; what it does
+# not get is to arrive switched on behind an --all-extras.
+EXT_NO_AUTO_ENABLE=(
+    auto-accent-colour@Wartybix
+)
+
 # Active selection of extra extensions (defaults to recommended pack)
 EXT_EXTRA=("${EXT_EXTRA_RECOMMENDED[@]}")
 
@@ -275,12 +287,18 @@ finish() {
     # Runs whether or not --rounded-blur was passed, so a machine whose library
     # went stale after a mutter update finds out on the next install either way.
     rounded_blur_staleness_check
+    # Here rather than beside install_gui in the main sequence, because this is
+    # the one thing that is about the logout below rather than about the
+    # install: everything that reaches finish() ends with one, and nothing that
+    # skips finish() — --settings-only, --deps-only — needs one.
+    install_first_open_autostart
     step "Done"
     cat <<EOF
 
     Log out and back in. Extensions cannot be loaded into a running shell on
     Wayland, so the top bar, the blur and the quick settings will only look
-    right on the next session.
+    right on the next session. Aura Glass will open itself once when you get
+    back, so you can see what landed — after that it stays out of the way.
 
     Afterwards:
       aura-glass-apply          re-apply the CSS (needed after any theme update)

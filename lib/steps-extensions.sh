@@ -422,6 +422,13 @@ enable_extensions() {
     fi
 
     for u in "${want[@]}"; do
+        # Installed, listed, and left off. EXT_NO_AUTO_ENABLE says why: these
+        # undo a setting the installer was told to make, so being in a pack
+        # buys them an install and not an enable.
+        if ext_never_auto_enabled "$u"; then
+            skip "$u installed but not enabled — it would overwrite the accent"
+            continue
+        fi
         if [ ! -d "$EXT_DIR/$u" ] && [ ! -d "/usr/share/gnome-shell/extensions/$u" ]; then
             skip "$u not installed — not enabling"
             continue
@@ -447,6 +454,78 @@ enable_extensions() {
             warn "could not enable $u"
         fi
     done
+}
+
+# Whether a UUID is one no pack may switch on. See EXT_NO_AUTO_ENABLE.
+ext_never_auto_enabled() {
+    local u
+    for u in "${EXT_NO_AUTO_ENABLE[@]}"; do
+        [ "$u" = "$1" ] && return 0
+    done
+    return 1
+}
+
+# Switch off anything that rewrites the accent behind the installer's back.
+#
+# Called from apply_gsettings, immediately after the accent is written, because
+# that is the moment the two disagree: the wizard asked for one accent by name
+# and Auto Accent Colour replaces it with the wallpaper's at the next wallpaper
+# change or the next login. Whichever of them runs last is what Settings shows,
+# so an accent that is only set is an accent that does not hold.
+#
+# Switched off rather than fought with: the extension itself stays installed and
+# stays on the Extensions page, so putting it back is one switch away for anyone
+# who would rather the wallpaper decided.
+disable_accent_overriders() {
+    local u enabled
+    # Someone who turned it on from the Extensions page meant it. That is the
+    # one opt-in this respects, and bin/aura-glass-ext writes the memo at the
+    # moment of the switch — so the accent above is still written, and the
+    # extension is still free to paint over it a moment later.
+    if [ -e "$CONF_DIR/accent-from-wallpaper" ]; then
+        info "the accent is set to follow the wallpaper — leaving Auto Accent Colour on"
+        return 0
+    fi
+    enabled="$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || true)"
+    for u in "${EXT_NO_AUTO_ENABLE[@]}"; do
+        case "$enabled" in
+            *"'$u'"*) ;;
+            *) continue ;;
+        esac
+        if [ "${DRY_RUN:-0}" = 1 ]; then
+            info "dry-run: disable $u so it cannot overwrite the accent"
+            continue
+        fi
+        # The gsettings key as well as the running shell: `gnome-extensions
+        # disable` goes through the shell, and on Wayland it can decline for a
+        # UUID this session never loaded — which would leave the extension
+        # enabled for the next one, repainting the accent all over again.
+        gnome-extensions disable "$u" 2>/dev/null || true
+        dequeue_extension "$u" || true
+        warn "$u switched off — it repaints the accent from the wallpaper, which would undo the accent just set. Turn it back on from the Extensions page to have the wallpaper decide instead."
+    done
+}
+
+# The other half of enqueue_extension: take a UUID out of enabled-extensions
+# without disturbing what else is there.
+dequeue_extension() {
+    python3 - "$1" <<'PYDEQ'
+import subprocess, sys
+uuid = sys.argv[1]
+KEY = ["org.gnome.shell", "enabled-extensions"]
+cur = subprocess.run(["gsettings", "get", *KEY], capture_output=True, text=True).stdout.strip()
+if cur.startswith("@as "):
+    cur = cur[4:]
+try:
+    items = [x.strip().strip("'\"") for x in cur.strip("[]").split(",") if x.strip()]
+except Exception:
+    items = []
+if uuid not in items:
+    sys.exit(0)
+items = [i for i in items if i != uuid]
+new = "[" + ", ".join("'" + i + "'" for i in items) + "]"
+subprocess.run(["gsettings", "set", *KEY, new], check=True)
+PYDEQ
 }
 
 # Append a UUID to org.gnome.shell enabled-extensions without disturbing what

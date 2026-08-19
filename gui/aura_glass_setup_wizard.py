@@ -231,7 +231,7 @@ class Answers:
         # explicit --icons/--cursors, so install.sh's own flagless defaults
         # (colloid and adwaita) are untouched by this — the wizard states its
         # answer rather than relying on one.
-        self.icons = "hatter"
+        self.icons = "reversal"
         self.want_cursors = True
         self.cursors = "aosp"
         self.want_osd = True
@@ -591,15 +591,15 @@ class Window(Adw.ApplicationWindow):
                         "pick one.")
         current = self.answers.icons if self.answers.want_icons else "keep"
         self.radio_rows(group, [
-            ("hatter", "Hatter — recommended",
+            ("reversal", "Reversal — recommended",
+             "Round, flatter, a colour of its own. By yeyushengfan258",
+             PACK_LINKS["reversal"]),
+            ("hatter", "Hatter",
              "Rounded squares, follows your accent colour. By Mibea",
              PACK_LINKS["hatter"]),
             ("colloid", "Colloid",
              "Follows your accent colour. By vinceliuice",
              PACK_LINKS["colloid"]),
-            ("reversal", "Reversal",
-             "Round, flatter, a colour of its own. By yeyushengfan258",
-             PACK_LINKS["reversal"]),
             ("keep", "Default",
              "Leaves your current icon theme alone, whatever set it", None),
         ], current, self.on_icons)

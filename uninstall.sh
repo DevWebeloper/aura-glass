@@ -327,6 +327,7 @@ step "Removing aura-glass itself"
 run rm -f "$HOME/.local/bin/aura-glass-apply" "$HOME/.local/bin/aura-glass-icon-sync" \
           "$HOME/.local/bin/aura-glass-panel-blur" "$HOME/.local/bin/aura-glass-gdm-sync" \
           "$HOME/.local/bin/aura-glass-settings" \
+          "$HOME/.local/bin/aura-glass-open-once" \
           "$HOME/.local/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-icon-sync" \
           "$HOME/.local/bin/tahoe-glass-panel-blur" "$HOME/.local/bin/tahoe-glass-gdm-sync"
 # The settings window: its Python, its launcher above, and the desktop entry that
@@ -335,6 +336,11 @@ run rm -f "$HOME/.local/bin/aura-glass-apply" "$HOME/.local/bin/aura-glass-icon-
 run rm -f "$HOME/.local/bin/aura-glass-update-check"
 run rm -rf "$HOME/.local/share/aura-glass"
 run rm -f "$HOME/.local/share/applications/io.github.DevWebeloper.AuraGlassSettings.desktop"
+run rm -f "$HOME/.local/share/icons/hicolor/scalable/apps/io.github.DevWebeloper.AuraGlassSettings.svg"
+# The open-once autostart entry, if an install armed it and no login has spent
+# it yet. Left behind it would open a window that is no longer installed, on
+# every login, forever — the entry only deletes itself when it manages to run.
+run rm -f "$HOME/.config/autostart/aura-glass-open-once.desktop"
 # Stamps describing artifacts that have just been removed, rather than choices
 # the user made — so they go now instead of waiting on the $CONF_DIR prompt.
 #

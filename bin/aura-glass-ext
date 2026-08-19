@@ -107,6 +107,13 @@ cmd_list() {
 }
 
 cmd_enable() {
+    # Turning one of these on here is the opt-in the installer honours. Without
+    # the memo apply_gsettings switches it straight back off at the next Apply,
+    # because it overwrites the accent — see EXT_NO_AUTO_ENABLE.
+    if ext_never_auto_enabled "$1" && [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR"
+        printf '1\n' > "$CONF_DIR/accent-from-wallpaper"
+    fi
     if run gnome-extensions enable "$1" 2>/dev/null; then
         ok "enabled $1"
         return 0
@@ -122,6 +129,11 @@ cmd_enable() {
 }
 
 cmd_disable() {
+    # And switching it off again withdraws it, so the accent goes back to being
+    # the installer's to set.
+    if ext_never_auto_enabled "$1" && [ "${DRY_RUN:-0}" != 1 ]; then
+        rm -f "$CONF_DIR/accent-from-wallpaper"
+    fi
     run gnome-extensions disable "$1" 2>/dev/null || true
     # The key, not just the shell, so it stays disabled across a logout even
     # when the running shell would not take the command.
@@ -170,7 +182,15 @@ cmd_pack() {
     local uuid
     for uuid in "$@"; do
         ext_installed "$uuid" || install_ext_ego "$uuid" || true
-        ext_installed "$uuid" && cmd_enable "$uuid"
+        ext_installed "$uuid" || continue
+        # A pack installs these and stops there, the same way install.sh's does.
+        # Wanting the wallpaper to pick the accent is a choice about one
+        # extension, not something to arrive at by pressing "All".
+        if ext_never_auto_enabled "$uuid"; then
+            skip "$uuid installed but not enabled — it would overwrite the accent"
+            continue
+        fi
+        cmd_enable "$uuid"
     done
 }
 
