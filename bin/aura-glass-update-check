@@ -65,11 +65,11 @@ main|master|HEAD|"")
         exit 1
     fi
 
-    # Only vN.N.N tags. Anything else in refs/tags is not a release of this
-    # project, and sort -V would happily rank it above one.
+    # Only vN.N.N tags, optionally -beta. Anything else in refs/tags is not a
+    # release of this project, and sort -V would happily rank it above one.
     remote_version="$(
         git -C "$REPO" ls-remote --tags --refs origin 2>/dev/null \
-            | sed -n 's#.*refs/tags/\(v[0-9][0-9.]*\)$#\1#p' \
+            | sed -n 's#.*refs/tags/\(v[0-9][0-9.]*\(-beta\)\?\)$#\1#p' \
             | sort -V | tail -n 1
     )"
     if [ -z "$remote_version" ]; then
