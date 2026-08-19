@@ -194,9 +194,27 @@ case "$out" in
     *) failures+=("solid should still set the icon theme — the packs stay") ;;
 esac
 
+# Solid also stands the extensions down, and the way back is silent on any
+# other mode — restore_extensions returns immediately with no record on disk.
+out="$(in_scratch --glass-mode solid)"
+case "$out" in
+    *"Standing the extensions down"*) ;;
+    *) failures+=("solid should stand the extensions down, the run never mentions it") ;;
+esac
+case "$out" in
+    *"dconf reset"*)
+        failures+=("solid must not reset any extension's settings") ;;
+esac
+
+out="$(in_scratch --glass-mode frosted)"
+case "$out" in
+    *"Standing the extensions down"*)
+        failures+=("frosted should never stand the extensions down") ;;
+esac
+
 if [ "${#failures[@]}" -gt 0 ]; then
     printf 'glass mode check FAILED\n\n'
     printf '  %s\n' "${failures[@]}"
     exit 1
 fi
-printf 'glass mode check passed — 7 resolutions, 5 refusals, 6 drawer keys round-tripped and solid'"'"'s theme keys confirmed\n'
+printf 'glass mode check passed — 7 resolutions, 5 refusals, 6 drawer keys round-tripped, solid'"'"'s theme keys confirmed, and its extensions stood down\n'

@@ -991,6 +991,11 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     fi
     install_css
     apply_gsettings
+    if [ "$WANT_STYLING" = 0 ]; then
+        stand_down_extensions
+    else
+        restore_extensions
+    fi
     remember_glass_mode
     # Included because it is local, quick and needs nothing: it also refreshes
     # the installed copy of the window, so pulling the repo and pressing Apply
@@ -1052,6 +1057,11 @@ else
 fi
 install_css
 apply_gsettings
+if [ "$WANT_STYLING" = 0 ]; then
+    stand_down_extensions
+else
+    restore_extensions
+fi
 remember_glass_mode
 install_icon_sync
 install_gui

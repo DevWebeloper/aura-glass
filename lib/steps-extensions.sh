@@ -472,4 +472,89 @@ subprocess.run(["gsettings", "set", *KEY, new], check=True)
 PY
 }
 
+# ---- standing the extensions down ---------------------------------------
+
+# Everything this project ever enables, which is the set it is entitled to
+# switch off again. A user's own extensions are outside it and are never
+# touched in either direction — that is the whole point of computing the
+# intersection rather than disabling a list.
+glass_owned_extensions() {
+    printf '%s\n' "${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" \
+        custom-osd@neuromorph "${EXT_EXTRA_ALL[@]}"
+}
+
+# Solid mode. The UUIDs that are enabled right now and are ours get written
+# down and switched off; nothing else about them is touched, so every one of
+# them keeps its own settings and comes back exactly as it was. The record is
+# what makes the way back exact rather than a guess at what was on.
+stand_down_extensions() {
+    step "Standing the extensions down"
+    local record enabled u wrote=0
+    record="$CONF_DIR/modes/solid/disabled-extensions"
+
+    enabled="$(gnome-extensions list --enabled 2>/dev/null || true)"
+    if [ -z "$enabled" ]; then
+        skip "the shell lists nothing enabled — nothing to switch off"
+        return 0
+    fi
+
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR/modes/solid"
+        : > "$record"
+    fi
+
+    while IFS= read -r u; do
+        [ -n "$u" ] || continue
+        # Whole-line match against the enabled list, not a substring search —
+        # a UUID that merely contains another must never be treated as enabled.
+        grep -qxF "$u" <<< "$enabled" || continue
+
+        [ "${DRY_RUN:-0}" = 1 ] || printf '%s\n' "$u" >> "$record"
+        wrote=$((wrote + 1))
+        run gnome-extensions disable "$u" 2>/dev/null \
+            || warn "could not switch $u off — it is still written down, so the way back still tries it"
+    done < <(glass_owned_extensions)
+
+    if [ "$wrote" -eq 0 ]; then
+        skip "none of this project's extensions are enabled"
+    else
+        ok "$wrote extension(s) switched off, their settings untouched"
+    fi
+}
+
+# The way back out of solid mode. Exactly what was written down, in the order
+# it was written, and then the record goes: it describes a state that no longer
+# exists the moment this succeeds.
+restore_extensions() {
+    local record="$CONF_DIR/modes/solid/disabled-extensions" u back=0
+    [ -r "$record" ] || return 0
+    step "Switching the extensions back on"
+
+    while IFS= read -r u; do
+        [ -n "$u" ] || continue
+        if [ ! -d "$EXT_DIR/$u" ] && [ ! -d "/usr/share/gnome-shell/extensions/$u" ]; then
+            skip "$u is no longer installed"
+            continue
+        fi
+        if run gnome-extensions enable "$u" 2>/dev/null; then
+            back=$((back + 1))
+            continue
+        fi
+        # The same fallback enable_extensions uses: on Wayland the running
+        # shell will not load a UUID it did not start with, so it goes into
+        # enabled-extensions for the next session instead.
+        if [ "${DRY_RUN:-0}" = 1 ]; then
+            info "dry-run: add $u to enabled-extensions for the next session"
+        elif enqueue_extension "$u"; then
+            ok "$u queued — active after logout"
+            back=$((back + 1))
+        else
+            warn "could not switch $u back on"
+        fi
+    done < "$record"
+
+    [ "${DRY_RUN:-0}" = 1 ] || rm -f "$record"
+    ok "$back extension(s) back on"
+}
+
 # ------------------------------------------------------------------- icons --
