@@ -47,13 +47,20 @@ TOKEN_RADIUS_WINDOW=30
 #   dconf/core.ini                [blur-my-shell/popup] menu-corner-radius
 TOKEN_RADIUS_MENU=26
 
-# Quick Settings and the date menu. Blur My Shell groups these two with each
-# other rather than with .popup-menu-content — its popup component matches on
-# style class, and 'quick-settings', 'quick-toggle-menu' and 'datemenu-popover'
-# share one key. That is why the date menu is not on TOKEN_RADIUS_MENU despite
-# also being a .popup-menu-content, and it is not guessable from the selector.
-#   css/shell-tweaks.css  .datemenu-popover, .popup-menu-content.quick-settings
-#   dconf/core.ini        [blur-my-shell/popup] quick-settings-corner-radius
+# Quick Settings, the date menu and the quick-toggle menu (the Wi-Fi/Bluetooth
+# device list under a toggle's arrow). Blur My Shell groups these three with
+# each other rather than with .popup-menu-content — its popup component
+# matches on style class, and 'quick-settings', 'quick-toggle-menu' and
+# 'datemenu-popover' share one key. That is why the date menu and quick-toggle
+# menu are not on TOKEN_RADIUS_MENU despite also being .popup-menu-content, and
+# it is not guessable from the selector.
+#   css/shell-20-popup-menus.css  .datemenu-popover, .quick-toggle-menu,
+#                                 .popup-menu-content.quick-settings
+#   css/shell-popup-blur.css      .datemenu-popover and .quick-toggle-menu
+#                                 again, at !important — that sheet is spliced
+#                                 last and its .popup-menu-content rule would
+#                                 otherwise repaint both at TOKEN_RADIUS_MENU
+#   dconf/core.ini                [blur-my-shell/popup] quick-settings-corner-radius
 TOKEN_RADIUS_QUICK_SETTINGS=33
 
 # Notifications, both in the calendar popup and as arriving banners.

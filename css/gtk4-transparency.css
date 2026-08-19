@@ -116,6 +116,27 @@ windowhandle {
   background-color: color-mix(in srgb, var(--tg-tint-window) 92%, transparent);
 }
 
+/* A window handle that is an overlay child is floating over content, not
+ * standing in for the window's ground, so the tint above is wrong there: it
+ * paints a slab across the handle's whole allocation, on top of whatever the
+ * overlay is showing.
+ *
+ * Showtime is where this reads worst. Its fullscreen toggle and its menu
+ * button each sit in a GtkWindowHandle added to the video overlay, and the
+ * buttons carry 24px of their own margin, so the handle is half again the
+ * size of the button inside it. The tint came out as a dark rounded slab over
+ * the video with the icon pushed into one corner — and on the right the same
+ * slab swallowed the window controls next to the menu button.
+ *
+ * Element and child combinator only, so the toolbarview and header bar rules
+ * further down — equal specificity, later in the file — still decide the
+ * handles they name.
+ */
+overlay > windowhandle {
+  background-color: transparent;
+  background-image: none;
+}
+
 /* Server-side decorations paint an opaque frame around the window. Letting the
  * window under it go translucent shows the frame through the content, which
  * reads as a rendering bug rather than as glass.

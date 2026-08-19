@@ -17,13 +17,14 @@
  * Hairlines, the control ladder and every accent rule carry over from
  * shell-20-popup-menus.css untouched.
  *
- * The menu radius does not. This sheet restates it at !important, which the
+ * The menu and date-menu radii do not. This sheet restates it at !important, which the
  * header here denied for a while: the claim that it "deliberately sets no
  * border-radius" was written when that was true and was not revisited when
  * 4790bfc added one alongside `margin: 0 !important`. It is a third place the
  * same number is written down, exactly as the old comment feared, and it is now
- * a checked one — TOKEN_RADIUS_MENU in tokens/tokens.sh lists it, and
- * tools/check-tokens.sh fails if this line and dconf disagree.
+ * a checked one — TOKEN_RADIUS_MENU and TOKEN_RADIUS_QUICK_SETTINGS in
+ * tokens/tokens.sh list them, and tools/check-tokens.sh fails if these lines
+ * and dconf disagree.
  *
  * Nothing here fights Blur My Shell. Its popup stylesheet only applies when
  * override-background is on, and the preset keeps it off.
@@ -41,6 +42,26 @@
   background-color: rgba(0, 0, 0, 0.26);
   border-radius: 26px !important;
   margin: 0 !important;
+}
+
+/* The date menu and the quick-toggle menu (the Wi-Fi/Bluetooth device list
+ * under a toggle's arrow) are each a .popup-menu-content too, so the rule
+ * above reaches them — and this sheet is spliced last, so on equal
+ * specificity (one class each, both !important) it beats a same-specificity
+ * rule in shell-20-popup-menus.css and repaints the surface at the menu
+ * radius instead of its own. Quick Settings never loses that fight because
+ * .popup-menu-content.quick-settings is two classes; these two have nothing
+ * to out-rank with.
+ *
+ * The visible result is both halves of the project rule breaking at once: the
+ * blur behind the popup stays rounded at quick-settings-corner-radius while
+ * the fill on top of it paints a tighter corner, so the blur's corner shows
+ * outside the fill's — and the popup no longer matches the Quick Settings
+ * panel next to it.
+ */
+.datemenu-popover,
+.quick-toggle-menu {
+  border-radius: 33px !important;
 }
 
 .popup-menu-content.quick-settings,
