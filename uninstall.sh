@@ -21,6 +21,13 @@ EXT_DIR="$HOME/.local/share/gnome-shell/extensions"
 SRC_CACHE="$HOME/.cache/aura-glass/src"
 [ -d "$SRC_CACHE" ] || [ ! -d "$HOME/.cache/tahoe-glass/src" ] || SRC_CACHE="$HOME/.cache/tahoe-glass/src"
 
+# Resolved once, the same way CONF_DIR is. An install that never migrated is
+# still wearing Tahoe-Dark, and restoring into a directory that is not there
+# fails a plain cp — which under set -e would end the uninstall half done, after
+# the CSS strip but before the settings reset and the units come out.
+THEME_NAME="Aura-Glass"
+[ -d "$HOME/.themes/$THEME_NAME" ] || [ ! -d "$HOME/.themes/Tahoe-Dark" ] || THEME_NAME="Tahoe-Dark"
+
 ASSUME_YES=0
 DRY_RUN=0
 REMOVE_EXTENSIONS=0
@@ -151,7 +158,7 @@ else:
     print("no block in", target)
 PY
 }
-for f in "$HOME/.themes/Tahoe-Dark/gnome-shell/gnome-shell.css" \
+for f in "$HOME/.themes/$THEME_NAME/gnome-shell/gnome-shell.css" \
          "$HOME/.config/gtk-4.0/gtk.css" \
          "$HOME/.config/gtk-4.0/gtk-dark.css" \
          "$HOME/.config/gtk-3.0/gtk.css"; do
@@ -188,7 +195,7 @@ restore "gtk3-gtk.css"      "$HOME/.config/gtk-3.0/gtk.css"
 # block leaves a theme that is still flat. Unlike the GTK files this one has no
 # .absent marker — the theme's installer always creates it — so a missing backup
 # falls through to "no backup of", which is correct.
-restore "gnome-shell.css"   "$HOME/.themes/Tahoe-Dark/gnome-shell/gnome-shell.css"
+restore "gnome-shell.css"   "$HOME/.themes/$THEME_NAME/gnome-shell/gnome-shell.css"
 
 # ----------------------------------------------------------------- settings --
 
@@ -273,7 +280,16 @@ fi
 
 if [ "$REMOVE_ASSETS" = 1 ]; then
     step "Removing downloaded themes, icons and cursors"
-    run rm -rf "$HOME/.themes/Tahoe-Dark" "$HOME/.themes/Tahoe-Light"
+    # Both names, plus the timestamped copies upstream's own installer left
+    # behind on every run before the rename collected them.
+    run rm -rf "$HOME/.themes/Aura-Glass" \
+               "$HOME/.themes/Tahoe-Dark" "$HOME/.themes/Tahoe-Light"
+    for d in "$HOME/.themes/Tahoe-Dark".backup.[0-9]*-[0-9]* \
+             "$HOME/.themes/Aura-Glass".replacing.*; do
+        [ -e "$d" ] || continue
+        run rm -rf "$d"
+        ok "removed $(basename "$d")"
+    done
     # Reversal is matched as well as Colloid: --icons reversal installs it, and
     # install rewrites its pan-*.svg in place with no backup, so leaving the
     # theme on disk leaves patched files behind with nothing to restore them.

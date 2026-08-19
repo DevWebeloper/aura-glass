@@ -21,7 +21,7 @@ trap 'rm -rf "$scratch"' EXIT
 # --settings-only refuses to run at all unless both of these already look like
 # an existing install (install.sh's own check), so the scratch HOME needs a
 # config dir and a theme directory even though neither holds anything real.
-mkdir -p "$scratch/.config/aura-glass" "$scratch/.themes/Tahoe-Dark"
+mkdir -p "$scratch/.config/aura-glass" "$scratch/.themes/Aura-Glass"
 
 in_scratch() {   # in_scratch FLAG...
     HOME="$scratch" bash "$ROOT/install.sh" --settings-only --dry-run --yes "$@"

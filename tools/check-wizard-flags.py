@@ -238,7 +238,8 @@ check_links()
 
 # Acceptance. --dry-run resolves and prints without writing anything, so this
 # runs against the real installer on a real machine and still changes nothing.
-if os.path.isdir(os.path.join(os.path.expanduser("~"), ".themes", "Tahoe-Dark")):
+if any(os.path.isdir(os.path.join(os.path.expanduser("~"), ".themes", n))
+       for n in ("Aura-Glass", "Tahoe-Dark")):
     for label, state, gdm, _want in CASES:
         args = state.to_argv(gdm)
         argv = ["bash", os.path.join(ROOT, "install.sh"),

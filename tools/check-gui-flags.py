@@ -455,7 +455,8 @@ for label, _, target, _want in CASES:
 
 # Acceptance. --dry-run resolves and prints without writing anything, so this
 # runs against the real installer on a real machine and still changes nothing.
-if os.path.isdir(os.path.join(os.path.expanduser("~"), ".themes", "Tahoe-Dark")):
+if any(os.path.isdir(os.path.join(os.path.expanduser("~"), ".themes", n))
+       for n in ("Aura-Glass", "Tahoe-Dark")):
     for label, base, target, _want in CASES:
         args = target.flags_against(base)
         argv = ["bash", os.path.join(ROOT, "install.sh"),
@@ -477,7 +478,8 @@ else:
 # install.sh was guarded — the stylesheet moved and the actor stayed where it was
 # last remembered. Nothing in the window could show that; only a window that is
 # half one level and half another, on a machine with both kinds of app open.
-if os.path.isdir(os.path.join(os.path.expanduser("~"), ".themes", "Tahoe-Dark")):
+if any(os.path.isdir(os.path.join(os.path.expanduser("~"), ".themes", n))
+       for n in ("Aura-Glass", "Tahoe-Dark")):
     LEVEL = re.compile(r"rewrite the transparency sheet to ([0-9.]+)")
     ACTOR = re.compile(r"actor opacity set to (\d+)")
     for percent in (70, 75, 82, 88, 90, 93, 95, 100):

@@ -19,6 +19,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # below reads; the rest are definitions only and their order does not matter.
 # shellcheck source=lib/steps.sh
 . "$REPO_ROOT/lib/steps.sh"
+# shellcheck source=lib/steps-migrate.sh
+. "$REPO_ROOT/lib/steps-migrate.sh"
 # shellcheck source=lib/steps-extensions.sh
 . "$REPO_ROOT/lib/steps-extensions.sh"
 # shellcheck source=lib/steps-assets.sh
@@ -361,6 +363,13 @@ parse_flags() {
 }
 
 parse_flags "$@"
+
+# Before the first $CONF_DIR read below, and so before the accent, the packs,
+# the font, the transparency and the glass mode are all resolved from it. An
+# install made under the old name keeps its settings somewhere else entirely,
+# and reading the new path first would answer every one of those from defaults.
+# This is also the earliest point at which DRY_RUN is known.
+migrate_legacy_names
 
 # Resolve remembered accent or default
 if [ -z "$ACCENT" ] && [ -r "$CONF_DIR/accent" ]; then
@@ -1080,7 +1089,11 @@ if [ "$DEPS_ONLY" = 1 ]; then
 fi
 
 if [ "$SETTINGS_ONLY" = 1 ]; then
-    if [ ! -d "$CONF_DIR" ] || [ ! -d "$HOME/.themes/Tahoe-Dark" ]; then
+    # Either theme name counts as installed. migrate_legacy_names has normally
+    # renamed the old one by now, but a dry run deliberately leaves it alone,
+    # and this guard is what the settings window hits on every Apply.
+    if [ ! -d "$CONF_DIR" ] \
+       || { [ ! -d "$HOME/.themes/$THEME_NAME" ] && [ ! -d "$HOME/.themes/$UPSTREAM_THEME_NAME" ]; }; then
         die "--settings-only retunes an existing install, but there is nothing installed yet. Run ./install.sh first."
     fi
     # Asking for a different pack is asking for it to be installed, so these run

@@ -25,6 +25,13 @@
 THEME_REPO="https://github.com/kayozxo/GNOME-macOS-Tahoe.git"
 THEME_REF="6dfcd9d941e5"
 
+# What upstream's installer writes into ~/.themes, and what we rename it to.
+# The first is a string literal inside their install.sh with no flag to change
+# it, so the theme is adopted after they run rather than installed under our
+# name — see adopt_theme_dir in lib/steps-migrate.sh.
+UPSTREAM_THEME_NAME="Tahoe-Dark"
+THEME_NAME="Aura-Glass"
+
 BMS_REPO="https://github.com/aunetx/blur-my-shell.git"
 BMS_REF="7d1290bbcff9"            # master; no release carries the popup component
 BMS_UUID="blur-my-shell@aunetx"
@@ -252,7 +259,7 @@ preflight() {
 # ------------------------------------------------------------------- theme --
 
 install_theme() {
-    step "Installing the Tahoe GTK + shell theme"
+    step "Installing the GTK + shell theme"
 
     local src="$SRC_CACHE/GNOME-macOS-Tahoe"
     clone_pinned "$THEME_REPO" "$THEME_REF" "$src"
@@ -262,6 +269,12 @@ install_theme() {
     backup_once "$HOME/.config/gtk-4.0/gtk.css"      "$BACKUP_DIR" "gtk4-gtk.css"
     backup_once "$HOME/.config/gtk-4.0/gtk-dark.css" "$BACKUP_DIR" "gtk4-gtk-dark.css"
     backup_once "$HOME/.config/gtk-3.0/gtk.css"      "$BACKUP_DIR" "gtk3-gtk.css"
+
+    # Upstream backs up anything already sitting on its target name, which is
+    # how ~/.themes filled up with Tahoe-Dark.backup.<timestamp> copies that
+    # nothing ever collected. We rename its output away on every run, so the
+    # target is normally clear already; clearing it here makes that certain.
+    run rm -rf "$HOME/.themes/$UPSTREAM_THEME_NAME"
 
     # -d installs the dark theme into ~/.themes, -la writes the libadwaita
     # override into ~/.config/gtk-4.0. Both are per-user, so this needs no
@@ -274,11 +287,15 @@ install_theme() {
             || die "the Tahoe theme installer failed"
     fi
 
-    [ "${DRY_RUN:-0}" = 1 ] || [ -d "$HOME/.themes/Tahoe-Dark" ] \
-        || die "expected ~/.themes/Tahoe-Dark after install, but it is not there"
-    ok "Tahoe-Dark installed"
+    [ "${DRY_RUN:-0}" = 1 ] || [ -d "$HOME/.themes/$UPSTREAM_THEME_NAME" ] \
+        || die "expected ~/.themes/$UPSTREAM_THEME_NAME after install, but it is not there"
 
-    backup_once "$HOME/.themes/Tahoe-Dark/gnome-shell/gnome-shell.css" "$BACKUP_DIR" "gnome-shell.css"
+    # Renamed before it is backed up or spliced, so every path from here on —
+    # including the backup below — refers to the theme under our own name.
+    adopt_theme_dir
+    ok "$THEME_NAME installed"
+
+    backup_once "$HOME/.themes/$THEME_NAME/gnome-shell/gnome-shell.css" "$BACKUP_DIR" "gnome-shell.css"
 }
 
 # -------------------------------------------------------------- extensions --

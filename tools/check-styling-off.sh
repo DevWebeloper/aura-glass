@@ -9,9 +9,9 @@ fixture="$(mktemp -d)"
 trap 'rm -rf "$fixture"' EXIT
 conf="$fixture/.config/aura-glass"
 mkdir -p "$conf/backups" "$fixture/.config/gtk-4.0" "$fixture/.config/gtk-3.0" \
-         "$fixture/.themes/Tahoe-Dark/gnome-shell"
+         "$fixture/.themes/Aura-Glass/gnome-shell"
 
-shell_css="$fixture/.themes/Tahoe-Dark/gnome-shell/gnome-shell.css"
+shell_css="$fixture/.themes/Aura-Glass/gnome-shell/gnome-shell.css"
 gtk4_css="$fixture/.config/gtk-4.0/gtk.css"
 gtk4_dark_css="$fixture/.config/gtk-4.0/gtk-dark.css"
 gtk3_css="$fixture/.config/gtk-3.0/gtk.css"

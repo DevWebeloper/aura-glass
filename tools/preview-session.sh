@@ -34,11 +34,15 @@ KEYFILE="$XDG_CONFIG_HOME/glib-2.0/settings/keyfile"
 mkdir -p "$(dirname "$KEYFILE")"
 
 say "seeding settings from dconf/core.ini"
-python3 - "$REPO_ROOT/dconf/core.ini" "$KEYFILE" <<'PY'
+PREVIEW_THEME="${AURA_GLASS_THEME:-Aura-Glass}"
+[ -d "$HOME/.themes/$PREVIEW_THEME" ] || [ ! -d "$HOME/.themes/Tahoe-Dark" ] \
+    || PREVIEW_THEME="Tahoe-Dark"
+
+python3 - "$REPO_ROOT/dconf/core.ini" "$KEYFILE" "$PREVIEW_THEME" <<'PY'
 import os
 import sys
 
-src, dst = sys.argv[1], sys.argv[2]
+src, dst, theme = sys.argv[1], sys.argv[2], sys.argv[3]
 PREFIX = "org/gnome/shell/extensions/"
 
 out = [
@@ -94,7 +98,7 @@ if os.environ.get("TG_SOLID") == "1":
 
 # The shell theme name is under the same prefix, but the preset does not carry
 # it as a section of its own.
-out += ["", "[org/gnome/shell/extensions/user-theme]", "name='Tahoe-Dark'", ""]
+out += ["", "[org/gnome/shell/extensions/user-theme]", "name='%s'" % theme, ""]
 
 open(dst, "w", encoding="utf-8").write("\n".join(out) + "\n")
 print("   %d groups -> %s" % (sum(1 for l in out if l.startswith("[")), dst))

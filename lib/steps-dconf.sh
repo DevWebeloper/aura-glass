@@ -694,8 +694,8 @@ apply_gsettings() {
     # argued with.
     disable_accent_overriders
     if [ "${WANT_STYLING:-1}" = 1 ]; then
-        run gsettings set org.gnome.desktop.interface gtk-theme 'Tahoe-Dark'
-        run dconf write /org/gnome/shell/extensions/user-theme/name "'Tahoe-Dark'"
+        run gsettings set org.gnome.desktop.interface gtk-theme "$THEME_NAME"
+        run dconf write /org/gnome/shell/extensions/user-theme/name "'$THEME_NAME'"
     else
         run gsettings reset org.gnome.desktop.interface gtk-theme
         run dconf write /org/gnome/shell/extensions/user-theme/name "''"
@@ -773,7 +773,7 @@ apply_gsettings() {
     local icon_say="${icons:-left alone}" cursor_say="${cursor:-left alone}"
     local font_say; font_say="$(font_family)"; font_say="${font_say:-system}"
     if [ "${WANT_STYLING:-1}" = 1 ]; then
-        ok "gtk-theme=Tahoe-Dark  icons=$icon_say  cursor=$cursor_say  accent=$ACCENT  font=$font_say"
+        ok "gtk-theme=$THEME_NAME  icons=$icon_say  cursor=$cursor_say  accent=$ACCENT  font=$font_say"
     else
         ok "icons=$icon_say  cursor=$cursor_say  accent=$ACCENT  font=$font_say — theme keys left at GNOME's defaults"
     fi

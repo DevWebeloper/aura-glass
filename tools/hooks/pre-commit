@@ -123,6 +123,11 @@ step "solid extensions (tools/check-solid-extensions.sh)" \
     bash "$TMP/tools/check-solid-extensions.sh"
 step "styling off (tools/check-styling-off.sh)" \
     bash "$TMP/tools/check-styling-off.sh"
+# Moving a pre-rename install onto the current names, against fixture HOMEs.
+# The backups/ merge is the part worth guarding: getting it wrong silently
+# turns a clean uninstall into one that leaves every GTK4 app themed.
+step "legacy migration (tools/check-migration.sh)" \
+    bash "$TMP/tools/check-migration.sh"
 # Version ordering and tag filtering for the update check, against throwaway git
 # repositories. No network, and never the user's own checkout.
 step "update check (tools/check-update-check.sh)" \

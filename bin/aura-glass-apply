@@ -1,19 +1,39 @@
 #!/usr/bin/env bash
 # Re-apply the aura-glass CSS on top of the installed theme.
 #
-# All four targets are generated files: re-running the Tahoe theme's own
+# All four targets are generated files: re-running the upstream theme's own
 # install.sh overwrites them and drops these changes. Run this afterwards.
 # It is idempotent — an existing block is replaced, never stacked.
 set -euo pipefail
 
 DIR="${AURA_GLASS_DIR:-${TAHOE_GLASS_DIR:-$HOME/.config/aura-glass}}"
 [ -d "$DIR" ] || [ ! -d "$HOME/.config/tahoe-glass" ] || DIR="$HOME/.config/tahoe-glass"
-THEME="${AURA_GLASS_THEME:-${TAHOE_GLASS_THEME:-Tahoe-Dark}}"
+# Resolved against what is on disk, not against the shell's dconf key. An
+# install that predates the rename is still wearing Tahoe-Dark and has not been
+# through install.sh since, so both names have to work. Directory first
+# deliberately: reading dconf here would reach the real user's database even
+# when HOME is overridden, which is how the fixtures under tools/ drive this.
+THEME="${AURA_GLASS_THEME:-${TAHOE_GLASS_THEME:-}}"
+if [ -z "$THEME" ]; then
+    if [ -d "$HOME/.themes/Aura-Glass" ]; then THEME="Aura-Glass"
+    else THEME="Tahoe-Dark"
+    fi
+fi
 
 SHELL_CSS="$HOME/.themes/$THEME/gnome-shell/gnome-shell.css"
 GTK4_CSS="$HOME/.config/gtk-4.0/gtk.css"
 GTK4_DARK_CSS="$HOME/.config/gtk-4.0/gtk-dark.css"
 GTK3_CSS="$HOME/.config/gtk-3.0/gtk.css"
+
+# Non-fatal, and the only standing guard against splicing into a theme nobody is
+# wearing: if these disagree the shell loads one file while we write another.
+if command -v dconf >/dev/null 2>&1; then
+    worn="$(dconf read /org/gnome/shell/extensions/user-theme/name 2>/dev/null || true)"
+    case "$worn" in
+        ""|"''"|"'$THEME'") ;;
+        *) printf '    ! shell is wearing %s but applying to %s\n' "$worn" "$THEME" >&2 ;;
+    esac
+fi
 
 # The GTK3 half of the theme ships as a gresource and is never written here, so
 # user CSS is ours alone — create it if it does not exist. It loads at
@@ -99,7 +119,7 @@ fi
 # put back before apply below gets anywhere near it — apply refuses to touch
 # a target that does not exist, so without this, coming out of solid mode
 # would leave that file gone until something else recreated it. That
-# something cannot be left to the Tahoe theme's own installer: switching
+# something cannot be left to the upstream theme's own installer: switching
 # modes is meant to be one run of this script, not this script plus a full
 # theme reinstall just to get back a file this script is the one that moved.
 revive() {   # revive TARGET BACKUP_NAME

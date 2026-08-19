@@ -314,7 +314,7 @@ To restore your original desktop configuration and remove all changes:
 ./uninstall.sh --all
 ```
 
-Backups of your previous settings are automatically stored in `~/.config/aura-glass/backups` (or `~/.config/tahoe-glass/backups`).
+Backups of your previous settings are automatically stored in `~/.config/aura-glass/backups`. An install made under the old name is moved there on the next run.
 
 ---
 
