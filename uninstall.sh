@@ -21,6 +21,13 @@ EXT_DIR="$HOME/.local/share/gnome-shell/extensions"
 SRC_CACHE="$HOME/.cache/aura-glass/src"
 [ -d "$SRC_CACHE" ] || [ ! -d "$HOME/.cache/tahoe-glass/src" ] || SRC_CACHE="$HOME/.cache/tahoe-glass/src"
 
+# Resolved once, the same way CONF_DIR is. An install that never migrated is
+# still wearing Tahoe-Dark, and restoring into a directory that is not there
+# fails a plain cp — which under set -e would end the uninstall half done, after
+# the CSS strip but before the settings reset and the units come out.
+THEME_NAME="Aura-Glass"
+[ -d "$HOME/.themes/$THEME_NAME" ] || [ ! -d "$HOME/.themes/Tahoe-Dark" ] || THEME_NAME="Tahoe-Dark"
+
 ASSUME_YES=0
 DRY_RUN=0
 REMOVE_EXTENSIONS=0
@@ -38,8 +45,9 @@ ${C_BLD}aura-glass uninstall${C_OFF}
 
     --interactive   launch the interactive uninstall wizard explicitly
     --extensions    also remove the extensions this installed (and their settings)
-    --assets        also remove the Tahoe theme, the icon pack (Colloid or
-                    Reversal) and MacTahoe cursors
+    --assets        also remove the Tahoe theme, the icon pack (Colloid,
+                    Reversal or Hatter), the AOSP or MacTahoe cursors and any
+                    font --font downloaded (MiSans, Inter or SF Pro)
     --gdm           restore the stock GDM login screen (requires sudo)
     --gdm-monitors  revert synced GDM monitor layout back to default (requires sudo)
     --all           all of the above (--full is accepted as the same thing)
@@ -150,7 +158,7 @@ else:
     print("no block in", target)
 PY
 }
-for f in "$HOME/.themes/Tahoe-Dark/gnome-shell/gnome-shell.css" \
+for f in "$HOME/.themes/$THEME_NAME/gnome-shell/gnome-shell.css" \
          "$HOME/.config/gtk-4.0/gtk.css" \
          "$HOME/.config/gtk-4.0/gtk-dark.css" \
          "$HOME/.config/gtk-3.0/gtk.css"; do
@@ -187,7 +195,7 @@ restore "gtk3-gtk.css"      "$HOME/.config/gtk-3.0/gtk.css"
 # block leaves a theme that is still flat. Unlike the GTK files this one has no
 # .absent marker — the theme's installer always creates it — so a missing backup
 # falls through to "no backup of", which is correct.
-restore "gnome-shell.css"   "$HOME/.themes/Tahoe-Dark/gnome-shell/gnome-shell.css"
+restore "gnome-shell.css"   "$HOME/.themes/$THEME_NAME/gnome-shell/gnome-shell.css"
 
 # ----------------------------------------------------------------- settings --
 
@@ -196,6 +204,12 @@ run gsettings reset org.gnome.desktop.interface gtk-theme
 run gsettings reset org.gnome.desktop.interface icon-theme
 run gsettings reset org.gnome.desktop.interface cursor-theme
 run gsettings reset org.gnome.desktop.interface accent-color
+# The three --font wrote. Reset rather than restored from the backup, unlike
+# --font system's own way back: this is the uninstaller, and GNOME's default is
+# what it puts everything else back to as well.
+run gsettings reset org.gnome.desktop.interface font-name
+run gsettings reset org.gnome.desktop.interface document-font-name
+run gsettings reset org.gnome.desktop.wm.preferences titlebar-font
 ok "back to the GNOME defaults (window buttons left intact)"
 
 step "Resetting extension settings to GNOME defaults"
@@ -220,7 +234,8 @@ step "Removing systemd units"
 found=0
 for u in aura-glass-panel-blur.service tahoe-glass-panel-blur.service bms-panel-blur-rebuild.service \
          aura-glass-icon-sync.service tahoe-glass-icon-sync.service \
-         aura-glass-gdm-sync.service tahoe-glass-gdm-sync.service; do
+         aura-glass-gdm-sync.service tahoe-glass-gdm-sync.service \
+         aura-glass-update-check.timer aura-glass-update-check.service; do
     [ -f "$HOME/.config/systemd/user/$u" ] || continue
     found=1
     run systemctl --user disable --now "$u" >/dev/null 2>&1 || true
@@ -265,14 +280,37 @@ fi
 
 if [ "$REMOVE_ASSETS" = 1 ]; then
     step "Removing downloaded themes, icons and cursors"
-    run rm -rf "$HOME/.themes/Tahoe-Dark" "$HOME/.themes/Tahoe-Light"
+    # Both names, plus the timestamped copies upstream's own installer left
+    # behind on every run before the rename collected them.
+    run rm -rf "$HOME/.themes/Aura-Glass" \
+               "$HOME/.themes/Tahoe-Dark" "$HOME/.themes/Tahoe-Light"
+    for d in "$HOME/.themes/Tahoe-Dark".backup.[0-9]*-[0-9]* \
+             "$HOME/.themes/Aura-Glass".replacing.*; do
+        [ -e "$d" ] || continue
+        run rm -rf "$d"
+        ok "removed $(basename "$d")"
+    done
     # Reversal is matched as well as Colloid: --icons reversal installs it, and
     # install rewrites its pan-*.svg in place with no backup, so leaving the
     # theme on disk leaves patched files behind with nothing to restore them.
     for d in "$HOME"/.local/share/icons/Colloid* "$HOME"/.local/share/icons/Reversal* \
-             "$HOME"/.local/share/icons/MacTahoe*; do
+             "$HOME"/.local/share/icons/Hatter* "$HOME"/.local/share/icons/MacTahoe* \
+             "$HOME"/.local/share/icons/aosp-cursors; do
         [ -e "$d" ] && { run rm -rf "$d"; ok "removed $(basename "$d")"; }
     done
+    # Everything --font downloaded lives under this one directory, and nothing
+    # else does — a font installed by the distro or dropped in by hand sits
+    # elsewhere in ~/.local/share/fonts and is not ours to remove. The
+    # fontconfig rule goes with it: it names MiSans and would otherwise sit
+    # there pointing at a family that is no longer installed.
+    if [ -d "$HOME/.local/share/fonts/aura-glass" ]; then
+        run rm -rf "$HOME/.local/share/fonts/aura-glass"
+        run rm -f "$HOME/.config/fontconfig/conf.d/60-aura-glass-misans.conf"
+        if [ "${DRY_RUN:-0}" != 1 ] && have fc-cache; then
+            fc-cache -f >/dev/null 2>&1 || true
+        fi
+        ok "removed the fonts aura-glass installed"
+    fi
 fi
 
 # GDM revert runs before the cache wipe so it can still reach WhiteSur's
@@ -304,8 +342,21 @@ fi
 step "Removing aura-glass itself"
 run rm -f "$HOME/.local/bin/aura-glass-apply" "$HOME/.local/bin/aura-glass-icon-sync" \
           "$HOME/.local/bin/aura-glass-panel-blur" "$HOME/.local/bin/aura-glass-gdm-sync" \
+          "$HOME/.local/bin/aura-glass-settings" \
+          "$HOME/.local/bin/aura-glass-open-once" \
           "$HOME/.local/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-icon-sync" \
           "$HOME/.local/bin/tahoe-glass-panel-blur" "$HOME/.local/bin/tahoe-glass-gdm-sync"
+# The settings window: its Python, its launcher above, and the desktop entry that
+# puts it in the overview. The entry has to go with the launcher — one left
+# without the other is a search result that does nothing when clicked.
+run rm -f "$HOME/.local/bin/aura-glass-update-check"
+run rm -rf "$HOME/.local/share/aura-glass"
+run rm -f "$HOME/.local/share/applications/io.github.DevWebeloper.AuraGlassSettings.desktop"
+run rm -f "$HOME/.local/share/icons/hicolor/scalable/apps/io.github.DevWebeloper.AuraGlassSettings.svg"
+# The open-once autostart entry, if an install armed it and no login has spent
+# it yet. Left behind it would open a window that is no longer installed, on
+# every login, forever — the entry only deletes itself when it manages to run.
+run rm -f "$HOME/.config/autostart/aura-glass-open-once.desktop"
 # Stamps describing artifacts that have just been removed, rather than choices
 # the user made — so they go now instead of waiting on the $CONF_DIR prompt.
 #
@@ -324,8 +375,18 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/rounded-blur" \
           "$CONF_DIR/app-transparency" \
           "$CONF_DIR/app-opacity" \
+          "$CONF_DIR/app-tint-color" \
+          "$CONF_DIR/shell-tint-color" \
+          "$CONF_DIR/blur-strength" \
           "$CONF_DIR/gdm-installed" \
           "$CONF_DIR/gdm-monitors-synced" \
+          "$CONF_DIR/radius-preset" \
+          "$CONF_DIR/repo-path" \
+          "$CONF_DIR/update-check" \
+          "$CONF_DIR/update-available" \
+          "$CONF_DIR/app-blur-allow" \
+          "$CONF_DIR/app-blur-block" \
+          "$CONF_DIR/cursor-pack" \
           "$CONF_DIR/openbar-patch" "$CONF_DIR/custom-osd-patch"
 if confirm "Delete $CONF_DIR (this also deletes the backups above)?" 0; then
     run rm -rf "$CONF_DIR"

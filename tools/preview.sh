@@ -62,7 +62,8 @@ PROFILE="${AURA_PREVIEW_DIR:-${TAHOE_PREVIEW_DIR:-$HOME/.cache/aura-glass/previe
 SHOTS="${AURA_PREVIEW_SHOTS:-${TAHOE_PREVIEW_SHOTS:-$REPO_ROOT/screenshots/preview}}"
 DISPLAY_NAME="aura-preview"
 RESOLUTION="${AURA_PREVIEW_RES:-${TAHOE_PREVIEW_RES:-1920x1080}}"
-THEME="Tahoe-Dark"
+THEME="${AURA_GLASS_THEME:-Aura-Glass}"
+[ -d "$HOME/.themes/$THEME" ] || [ ! -d "$HOME/.themes/Tahoe-Dark" ] || THEME="Tahoe-Dark"
 # Loaded only into the preview profile — see tools/preview-driver/extension.js
 # for why it must never reach a real session.
 DRIVER_UUID="aura-preview-driver@aura-glass.local"

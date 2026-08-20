@@ -11,6 +11,18 @@
 # current setting and exits.
 set -euo pipefail
 
+# The pack answer, not the resolved theme name: "keep" means --no-icons, and
+# nothing of this theme's writes icon-theme under it. Checked at every apply
+# rather than only at startup, so an agent already running when the answer
+# changes stops writing the key from that moment rather than at the next login.
+icons_kept() {
+    local pack=""
+    if [ -r "$HOME/.config/aura-glass/icon-pack" ]; then
+        pack="$(cat "$HOME/.config/aura-glass/icon-pack")"
+    fi
+    [ "$pack" = keep ]
+}
+
 BASE="${AURA_GLASS_ICONS:-${TAHOE_GLASS_ICONS:-}}"
 if [ -z "$BASE" ]; then
     if [ -r "$HOME/.config/aura-glass/icons" ]; then
@@ -27,6 +39,7 @@ have_theme() {
 
 apply() {
     local scheme variant want c
+    icons_kept && return 0
     scheme="$(gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null || echo "''")"
     case "$scheme" in
         *prefer-dark*) variant="Dark" ;;

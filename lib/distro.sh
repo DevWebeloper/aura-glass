@@ -64,6 +64,75 @@ declare -A PKG_DEBIAN=(
 
 REQUIRED_CMDS=(git curl unzip sassc gsettings dconf gnome-extensions python3 glib-compile-resources)
 
+# PyGObject and libadwaita's typelib, for the settings window and the graphical
+# setup wizard. These are imported rather than executed, so `command -v` cannot
+# see them and they cannot join REQUIRED_CMDS or the PKG_* maps above — hence a
+# probe of their own.
+#
+# Non-fatal, the same tier as msgfmt below: what a missing GUI toolkit costs is
+# one optional window and a wizard that has a text twin, and every setting either
+# exposes is a flag that still works from the command line. Failing an install of
+# a *theme* over it would be absurd.
+gui_toolkit_present() {
+    python3 - >/dev/null 2>&1 <<'PY'
+import gi
+gi.require_version("Adw", "1")
+gi.require_version("Gtk", "4.0")
+from gi.repository import Adw, Gtk
+PY
+}
+
+# What it takes to get it, per family. One copy, read by both the hint that only
+# prints and the step that offers to run it.
+GUI_TOOLKIT_PKGS_ARCH="python-gobject libadwaita"
+GUI_TOOLKIT_PKGS_FEDORA="python3-gobject libadwaita"
+GUI_TOOLKIT_PKGS_DEBIAN="python3-gi gir1.2-adw-1"
+
+# Printed as a suggestion — never run. install_gui uses this, because by the time
+# it runs the install is already under way and the window it wants is optional.
+gui_toolkit_hint() {
+    case "$DISTRO_FAMILY" in
+        arch)   printf 'sudo pacman -S --needed %s' "$GUI_TOOLKIT_PKGS_ARCH" ;;
+        fedora) printf 'sudo dnf install %s' "$GUI_TOOLKIT_PKGS_FEDORA" ;;
+        debian) printf 'sudo apt install %s' "$GUI_TOOLKIT_PKGS_DEBIAN" ;;
+        *)      printf 'install PyGObject and libadwaita 1 for your distro' ;;
+    esac
+}
+
+# The same packages, offered rather than printed — for the graphical setup
+# wizard, which is asked for before anything has been installed and is worth one
+# question at that point.
+#
+# Deliberately unlike install_deps in the one way that matters: it never dies.
+# Every path out of here that is not "the toolkit is now present" means the text
+# wizard runs instead, which asks the same questions and reaches the same flags.
+# A declined package install is a preference, not a failure, and the install
+# carries on either way.
+ensure_gui_toolkit() {
+    gui_toolkit_present && return 0
+
+    local pkgs
+    case "$DISTRO_FAMILY" in
+        arch)   pkgs="$GUI_TOOLKIT_PKGS_ARCH" ;;
+        fedora) pkgs="$GUI_TOOLKIT_PKGS_FEDORA" ;;
+        debian) pkgs="$GUI_TOOLKIT_PKGS_DEBIAN" ;;
+        *)      return 1 ;;
+    esac
+
+    info "the graphical setup wizard needs: $pkgs"
+    info "without it the same questions are asked here in the terminal"
+    info "would run: $(gui_toolkit_hint)"
+    confirm "Install them and use the graphical wizard?" 1 || return 1
+
+    case "$DISTRO_FAMILY" in
+        arch)   run sudo pacman -S --needed --noconfirm $pkgs ;;
+        fedora) run sudo dnf install -y $pkgs ;;
+        debian) run sudo apt-get install -y $pkgs ;;
+    esac
+
+    gui_toolkit_present
+}
+
 # Nice to have, never fatal. msgfmt compiles Blur My Shell's translations when
 # it is built from git; without it the extension works and its preferences are
 # simply untranslated. Kept out of REQUIRED_CMDS so a missing gettext cannot
@@ -134,4 +203,72 @@ install_deps() {
         die "still missing after install: ${still[*]}"
     fi
     ok "dependencies satisfied"
+}
+
+# ---------- Who owns a file, and how to remove them ----------
+#
+# The settings window's Packages page lists the icon and pointer themes on the
+# machine, and the ones under /usr belong to the distribution rather than to
+# this project. It used to say so and stop there. These two answer the obvious
+# next question — which package is that, and what would remove it — without
+# either side of the window having to know one distro's syntax.
+#
+# They are here rather than in the Python for the reason every other
+# distro-shaped thing is: DISTRO_FAMILY is resolved in exactly one place, and a
+# second copy of that case statement is a second thing to update when a family
+# is added.
+#
+# Neither of them removes anything. pkg_remove_cmd prints a command for a
+# terminal the user is looking at, because this is root's work and a password
+# prompt needs a keyboard — the same rule the window follows for the rounded
+# blur library and for uninstall.sh.
+
+# The package that owns a path, or nothing if no package does.
+pkg_owner() {
+    local path="${1:-}"
+    [ -n "$path" ] || return 1
+    case "$DISTRO_FAMILY" in
+        arch)
+            have pacman || return 1
+            # -Qoq prints the name alone. A path no package owns is an error
+            # with a message on stderr, which is the "not from a package" case
+            # rather than a failure worth reporting.
+            pacman -Qoq "$path" 2>/dev/null | head -n1
+            ;;
+        fedora)
+            have rpm || return 1
+            rpm -qf --queryformat '%{NAME}\n' "$path" 2>/dev/null | head -n1
+            ;;
+        debian)
+            have dpkg || return 1
+            # `dpkg -S` answers "package: path" and takes no leading ./, so the
+            # name is everything before the first colon.
+            dpkg -S "$path" 2>/dev/null | head -n1 | cut -d: -f1
+            ;;
+        *)  return 1 ;;
+    esac
+}
+
+# The command that would remove a package, for a terminal to run.
+#
+# On Arch an AUR helper is preferred when one is installed, because a theme
+# under /usr on an Arch machine is as likely to have come from the AUR as from
+# the repositories, and paru or yay removing it keeps that machine's own record
+# of what it built straight. Both take pacman's own -Rns for a removal, so this
+# is the same command with a different front end rather than a special case.
+pkg_remove_cmd() {
+    local pkg="${1:-}"
+    [ -n "$pkg" ] || return 1
+    case "$DISTRO_FAMILY" in
+        arch)
+            local helper
+            for helper in paru yay; do
+                have "$helper" && { printf '%s -Rns %s' "$helper" "$pkg"; return 0; }
+            done
+            printf 'sudo pacman -Rns %s' "$pkg"
+            ;;
+        fedora) printf 'sudo dnf remove %s' "$pkg" ;;
+        debian) printf 'sudo apt remove %s' "$pkg" ;;
+        *)      return 1 ;;
+    esac
 }

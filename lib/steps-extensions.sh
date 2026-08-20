@@ -2,9 +2,10 @@
 # aura-glass — installing and enabling the shell extensions.
 #
 # Three of them cannot come from extensions.gnome.org as they are. Blur My Shell
-# is built from a pinned commit because no release carries the popup component;
-# Open Bar and Custom OSD are built from their last upstream commit plus a patch
-# in patches/, because neither has a GNOME 50 release. gnome-rounded-blur is not
+# is built from a pinned commit because no release carries the popup component,
+# plus a patch of this project's own; Open Bar and Custom OSD are built from
+# their last upstream commit plus a patch in patches/, because neither has a
+# GNOME 50 release. gnome-rounded-blur is not
 # an extension at all but the C library that lets the popup blur be dynamic, and
 # it is the only thing this project installs outside $HOME.
 #
@@ -101,17 +102,29 @@ install_bms() {
     if [ "${FORCE:-0}" != 1 ] \
        && [ -f "$EXT_DIR/$BMS_UUID/components/popup/index.js" ] \
        && [ "$(cat "$CONF_DIR/bms-ref" 2>/dev/null || true)" = "$BMS_REF" ] \
+       && patch_stamp_current bms-overview-patch "$REPO_ROOT/patches/$BMS_PATCH" \
        && ext_supports_shell "$EXT_DIR/$BMS_UUID" "$GNOME_MAJOR"; then
         skip "$BMS_UUID already built from $BMS_REF"
         return 0
     fi
 
-    info "no release carries the popup component — building from $BMS_REF"
+    info "no release carries the popup component — building from $BMS_REF + patches/$BMS_PATCH"
     local src="$SRC_CACHE/blur-my-shell"
     if [ -d "$src/.git" ]; then
         run git -C "$src" checkout --quiet -- . 2>/dev/null || true
     fi
     clone_pinned "$BMS_REPO" "$BMS_REF" "$src"
+
+    # Upstream's `blur-on-overview: false` leaves the blur actor in the window,
+    # and the overview clones it into every window preview, where it shows a
+    # frozen picture of the desktop that changes when the preview is hovered.
+    # The patch makes the setting mean what it says. The checkout above is reset
+    # by the `git checkout -- .` that precedes it, so this always applies to a
+    # clean tree.
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_PATCH" \
+            || die "the Blur My Shell overview patch did not apply — upstream may have moved"
+    fi
 
     local podir=(--podir=../po)
     if ! have msgfmt; then
@@ -120,7 +133,7 @@ install_bms() {
     fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: gnome-extensions pack in $src/src, then install the zip"
+        info "dry-run: apply patches/$BMS_PATCH, gnome-extensions pack in $src/src, then install the zip"
         return 0
     fi
 
@@ -172,7 +185,8 @@ install_bms() {
     mkdir -p "$CONF_DIR"
     printf '%s\n' "$BMS_REF" > "$CONF_DIR/bms-ref"
     printf 'git\n' > "$CONF_DIR/bms-source"
-    ok "$BMS_UUID (built from $BMS_REF, with the popup component)"
+    patch_stamp_write bms-overview-patch "$REPO_ROOT/patches/$BMS_PATCH"
+    ok "$BMS_UUID (built from $BMS_REF, with the popup component and the overview patch)"
 }
 
 # Open Bar is the one extension with no GNOME 50 release. Upstream's last
@@ -408,6 +422,13 @@ enable_extensions() {
     fi
 
     for u in "${want[@]}"; do
+        # Installed, listed, and left off. EXT_NO_AUTO_ENABLE says why: these
+        # undo a setting the installer was told to make, so being in a pack
+        # buys them an install and not an enable.
+        if ext_never_auto_enabled "$u"; then
+            skip "$u installed but not enabled — it would overwrite the accent"
+            continue
+        fi
         if [ ! -d "$EXT_DIR/$u" ] && [ ! -d "/usr/share/gnome-shell/extensions/$u" ]; then
             skip "$u not installed — not enabling"
             continue
@@ -435,6 +456,78 @@ enable_extensions() {
     done
 }
 
+# Whether a UUID is one no pack may switch on. See EXT_NO_AUTO_ENABLE.
+ext_never_auto_enabled() {
+    local u
+    for u in "${EXT_NO_AUTO_ENABLE[@]}"; do
+        [ "$u" = "$1" ] && return 0
+    done
+    return 1
+}
+
+# Switch off anything that rewrites the accent behind the installer's back.
+#
+# Called from apply_gsettings, immediately after the accent is written, because
+# that is the moment the two disagree: the wizard asked for one accent by name
+# and Auto Accent Colour replaces it with the wallpaper's at the next wallpaper
+# change or the next login. Whichever of them runs last is what Settings shows,
+# so an accent that is only set is an accent that does not hold.
+#
+# Switched off rather than fought with: the extension itself stays installed and
+# stays on the Extensions page, so putting it back is one switch away for anyone
+# who would rather the wallpaper decided.
+disable_accent_overriders() {
+    local u enabled
+    # Someone who turned it on from the Extensions page meant it. That is the
+    # one opt-in this respects, and bin/aura-glass-ext writes the memo at the
+    # moment of the switch — so the accent above is still written, and the
+    # extension is still free to paint over it a moment later.
+    if [ -e "$CONF_DIR/accent-from-wallpaper" ]; then
+        info "the accent is set to follow the wallpaper — leaving Auto Accent Colour on"
+        return 0
+    fi
+    enabled="$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || true)"
+    for u in "${EXT_NO_AUTO_ENABLE[@]}"; do
+        case "$enabled" in
+            *"'$u'"*) ;;
+            *) continue ;;
+        esac
+        if [ "${DRY_RUN:-0}" = 1 ]; then
+            info "dry-run: disable $u so it cannot overwrite the accent"
+            continue
+        fi
+        # The gsettings key as well as the running shell: `gnome-extensions
+        # disable` goes through the shell, and on Wayland it can decline for a
+        # UUID this session never loaded — which would leave the extension
+        # enabled for the next one, repainting the accent all over again.
+        gnome-extensions disable "$u" 2>/dev/null || true
+        dequeue_extension "$u" || true
+        warn "$u switched off — it repaints the accent from the wallpaper, which would undo the accent just set. Turn it back on from the Extensions page to have the wallpaper decide instead."
+    done
+}
+
+# The other half of enqueue_extension: take a UUID out of enabled-extensions
+# without disturbing what else is there.
+dequeue_extension() {
+    python3 - "$1" <<'PYDEQ'
+import subprocess, sys
+uuid = sys.argv[1]
+KEY = ["org.gnome.shell", "enabled-extensions"]
+cur = subprocess.run(["gsettings", "get", *KEY], capture_output=True, text=True).stdout.strip()
+if cur.startswith("@as "):
+    cur = cur[4:]
+try:
+    items = [x.strip().strip("'\"") for x in cur.strip("[]").split(",") if x.strip()]
+except Exception:
+    items = []
+if uuid not in items:
+    sys.exit(0)
+items = [i for i in items if i != uuid]
+new = "[" + ", ".join("'" + i + "'" for i in items) + "]"
+subprocess.run(["gsettings", "set", *KEY, new], check=True)
+PYDEQ
+}
+
 # Append a UUID to org.gnome.shell enabled-extensions without disturbing what
 # is already there.
 enqueue_extension() {
@@ -456,6 +549,128 @@ items.append(uuid)
 new = "[" + ", ".join("'" + i + "'" for i in items) + "]"
 subprocess.run(["gsettings", "set", *KEY, new], check=True)
 PY
+}
+
+# ---- standing the extensions down ---------------------------------------
+
+# Everything this project ever enables, which is the set it is entitled to
+# switch off again. A user's own extensions are outside it and are never
+# touched in either direction — that is the whole point of computing the
+# intersection rather than disabling a list.
+glass_owned_extensions() {
+    printf '%s\n' "${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" \
+        custom-osd@neuromorph "${EXT_EXTRA_ALL[@]}"
+}
+
+# Solid mode. The UUIDs that are enabled right now and are ours get switched
+# off; nothing else about them is touched, so every one of them keeps its own
+# settings and comes back exactly as it was. The record is what makes the way
+# back exact rather than a guess at what was on.
+stand_down_extensions() {
+    step "Standing the extensions down"
+    local record enabled u
+    local -a disabled_now=()
+    record="$CONF_DIR/modes/solid/disabled-extensions"
+
+    enabled="$(gnome-extensions list --enabled 2>/dev/null || true)"
+    if [ -z "$enabled" ]; then
+        skip "the shell lists nothing enabled — nothing to switch off, any earlier record is left as it is"
+        return 0
+    fi
+
+    while IFS= read -r u; do
+        [ -n "$u" ] || continue
+        # Whole-line match against the enabled list, not a substring search —
+        # a UUID that merely contains another must never be treated as enabled.
+        grep -qxF "$u" <<< "$enabled" || continue
+
+        disabled_now+=("$u")
+        run gnome-extensions disable "$u" 2>/dev/null \
+            || warn "could not switch $u off — it is still written down, so the way back still tries it"
+    done < <(glass_owned_extensions)
+
+    # Nothing of ours was on. On a second solid entry this is the normal case
+    # — everything is already off from last time — so any record an earlier
+    # run left behind is exactly right as it stands and is not touched: not
+    # created, not truncated, not deleted.
+    if [ "${#disabled_now[@]}" -eq 0 ]; then
+        skip "none of this project's extensions are enabled — any earlier record is left as it is"
+        return 0
+    fi
+
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR/modes/solid"
+        # The union of what the record already named and what just went off,
+        # never a replacement: a solid stay can span more than one run of this
+        # script — some of ours off since an earlier entry, one switched back
+        # on by hand in between — and the record has to keep naming everything
+        # that is currently off because of this project, or the way back only
+        # recovers part of it.
+        local -A seen=()
+        local -a union=()
+        if [ -r "$record" ]; then
+            while IFS= read -r u; do
+                [ -n "$u" ] || continue
+                [ -z "${seen[$u]:-}" ] || continue
+                seen[$u]=1
+                union+=("$u")
+            done < "$record"
+        fi
+        for u in "${disabled_now[@]}"; do
+            [ -z "${seen[$u]:-}" ] || continue
+            seen[$u]=1
+            union+=("$u")
+        done
+        printf '%s\n' "${union[@]}" > "$record"
+    fi
+
+    ok "${#disabled_now[@]} extension(s) switched off, their settings untouched"
+}
+
+# The way back out of solid mode. Exactly what was written down, in the order
+# it was written, and then the record goes: it describes a state that no longer
+# exists the moment this succeeds.
+restore_extensions() {
+    local record="$CONF_DIR/modes/solid/disabled-extensions" u back=0
+    [ -r "$record" ] || return 0
+
+    # A record that exists but names nothing is not the same as no record at
+    # all. stand_down_extensions only ever writes one holding at least the
+    # UUIDs it just switched off, so an empty or whitespace-only file here
+    # means something upstream went wrong, not that nothing was ever switched
+    # off. Deleting it would erase the one clue that happened, so it is left
+    # alone instead of being silently swept away as a no-op.
+    if ! grep -qE '[^[:space:]]' "$record"; then
+        warn "$record exists but names nothing — left alone rather than guessed at"
+        return 0
+    fi
+    step "Switching the extensions back on"
+
+    while IFS= read -r u; do
+        [ -n "$u" ] || continue
+        if [ ! -d "$EXT_DIR/$u" ] && [ ! -d "/usr/share/gnome-shell/extensions/$u" ]; then
+            skip "$u is no longer installed"
+            continue
+        fi
+        if run gnome-extensions enable "$u" 2>/dev/null; then
+            back=$((back + 1))
+            continue
+        fi
+        # The same fallback enable_extensions uses: on Wayland the running
+        # shell will not load a UUID it did not start with, so it goes into
+        # enabled-extensions for the next session instead.
+        if [ "${DRY_RUN:-0}" = 1 ]; then
+            info "dry-run: add $u to enabled-extensions for the next session"
+        elif enqueue_extension "$u"; then
+            ok "$u queued — active after logout"
+            back=$((back + 1))
+        else
+            warn "could not switch $u back on"
+        fi
+    done < "$record"
+
+    [ "${DRY_RUN:-0}" = 1 ] || rm -f "$record"
+    ok "$back extension(s) back on"
 }
 
 # ------------------------------------------------------------------- icons --

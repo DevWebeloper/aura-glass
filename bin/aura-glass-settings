@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Open the aura-glass settings window.
+#
+# A launcher rather than the app itself, for the same reason bin/ holds
+# aura-glass-apply: what lands on PATH should be a short, readable name, and the
+# Python it runs belongs in a data directory rather than in a bin one.
+#
+# AURA_GLASS_GUI overrides where that Python is, which is what makes it possible
+# to run a checkout's copy against an installed theme while working on it.
+set -euo pipefail
+
+GUI_DIR="${AURA_GLASS_GUI:-$HOME/.local/share/aura-glass/gui}"
+APP="$GUI_DIR/aura_glass_settings.py"
+
+if [ ! -f "$APP" ]; then
+    printf 'aura-glass-settings: %s is not there.\n' "$APP" >&2
+    printf 'Re-run the installer, or set AURA_GLASS_GUI to a checkout gui/ directory.\n' >&2
+    exit 1
+fi
+
+exec python3 "$APP" "$@"

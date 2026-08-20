@@ -107,14 +107,52 @@ popover.menu modelbutton radio {
 .question-layer,
 frame.background.dialog-overlay,
 frame.dialog-overlay,
-dialog > contents,
-window.dialog .dialog-vbox,
-window.dialog.message .dialog-vbox,
-window.messagedialog .background {
+dialog > contents {
   background-color: rgba(24, 25, 30, 0.98);
   background-image: none;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
+  box-shadow: none;
+}
+
+/* A dialog that is its own window is not one of those cards.
+ *
+ * The list above is card geometry — a rounded, outlined rectangle drawn over
+ * something else, which is what an AdwDialog or a frame over a scrim is.
+ * GtkDialog's .dialog-vbox is not that: it is the whole content area of a real
+ * toplevel, sitting flush under the window's own header bar. Given the card's
+ * border and 16px radius it drew a second, smaller outlined rectangle inside
+ * the window, its top corners cut away from a header bar that stayed square,
+ * with a gutter of window ground around it. gnome-tweaks' Startup Applications
+ * "+" chooser is the one to look at.
+ *
+ * So the window carries the ground and the box inside it paints nothing — the
+ * same "exactly one layer carries the material" rule as everywhere else. The
+ * ground is the near-solid one rather than the glass for the reason above: a
+ * dialog exists to be read and answered.
+ *
+ * .background is on the selector because gtk4-transparency.css is appended
+ * after this sheet and sets window.background there. That is one class and one
+ * element, so window.dialog alone only ties with it and would lose on order;
+ * window.dialog.background is two and wins whether or not that sheet is
+ * installed.
+ */
+window.dialog,
+window.dialog.background,
+window.messagedialog,
+window.messagedialog.background {
+  background-color: rgba(24, 25, 30, 0.98);
+  background-image: none;
+}
+
+window.dialog .dialog-vbox,
+window.dialog.message .dialog-vbox,
+window.messagedialog .background,
+window.messagedialog .dialog-vbox {
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  border-radius: 0;
   box-shadow: none;
 }
 
@@ -145,6 +183,31 @@ tooltip label {
   background-color: transparent;
   background-image: none;
   box-shadow: none;
+}
+
+/* ---------- Window corners ----------
+ * Upstream Tahoe-Dark already paints `window { border-radius: 30px }`, so at the
+ * shipped radius this block changes nothing — it is a duplicate on purpose.
+ *
+ * It exists because --radius-preset has to be able to move this corner, and the
+ * theme's own rule is not ours to edit: the theme's installer regenerates
+ * gtk.css, and bin/aura-glass-apply deliberately only ever appends a marked
+ * block rather than rewriting rules outside it. Appended after the theme at
+ * equal specificity, this wins — which is the whole mechanism.
+ *
+ * Deliberately not restated for the maximized case. The theme's
+ * `.maximized window` and `window.maximized` rules are more specific than this
+ * one and square the corners of a maximized window, which is correct at every
+ * preset: a rounded corner on a window filling the screen cuts a notch out of
+ * the display, and no radius preset should be able to ask for that.
+ *
+ * 30 also has to equal the blur behind it — see TOKEN_RADIUS_WINDOW in
+ * tokens/tokens.sh, and the same note in css/gtk3-tweaks.css.
+ */
+window,
+window.background,
+window.csd {
+  border-radius: 30px;
 }
 
 /* ---------- Server-side decoration frames (XWayland, Chrome, Electron) ----------

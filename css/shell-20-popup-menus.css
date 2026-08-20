@@ -27,28 +27,31 @@
   box-shadow: none;
 }
 
-/* The date menu — the calendar and notification list under the clock — is a
- * .popup-menu-content, and the theme singles it out at `border-radius: 22px
- * !important` so it paints a tighter corner than every other menu. The blur
- * behind it then shows its own corner outside the fill's, which reads as two
- * stacked surfaces rather than one menu.
+/* The date menu — the calendar and notification list under the clock — and the
+ * quick-toggle menu — the Wi-Fi/Bluetooth device list that expands under a
+ * toggle's arrow — are each a .popup-menu-content, and the theme singles them
+ * out at `border-radius: 22px !important` so they paint a tighter corner than
+ * every other menu. The blur behind them then shows its own corner outside the
+ * fill's, which reads as two stacked surfaces rather than one menu.
  *
  * The value is 33 and not 26, which is not guessable from the name. Blur My
- * Shell groups this surface with Quick Settings, not with menus —
+ * Shell groups both surfaces with Quick Settings, not with menus —
  * components/popup/targets.js:
  *
  *     key: 'quick-settings-corner-radius',
  *     style_classes: ['quick-settings', 'quick-toggle-menu', 'datemenu-popover'],
  *
- * so it is blurred at quick-settings-corner-radius, while every other
- * .popup-menu-content is blurred at menu-corner-radius. Setting this to 26 to
- * match the menus left it still mismatched, just less obviously.
+ * so both are blurred at quick-settings-corner-radius, while every other
+ * .popup-menu-content is blurred at menu-corner-radius. quick-toggle-menu had
+ * no rule here at all until now, which is the same fault as the date menu's —
+ * fill at 26, blur at 33 — just never written down.
  *
  * A painted radius must always equal the blur radius behind it. !important is
  * required to answer the theme's own, and this tracks
  * blur-my-shell/popup/quick-settings-corner-radius in dconf/core.ini.
  */
-.datemenu-popover {
+.datemenu-popover,
+.quick-toggle-menu {
   border-radius: 33px !important;
 }
 
@@ -66,6 +69,7 @@
   border: 1px solid transparent;
   border-radius: 33px !important;
   box-shadow: none;
+  padding-top: 20px !important;
 }
 
 .popup-menu .popup-menu-item {

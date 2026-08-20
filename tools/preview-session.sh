@@ -34,11 +34,15 @@ KEYFILE="$XDG_CONFIG_HOME/glib-2.0/settings/keyfile"
 mkdir -p "$(dirname "$KEYFILE")"
 
 say "seeding settings from dconf/core.ini"
-python3 - "$REPO_ROOT/dconf/core.ini" "$KEYFILE" <<'PY'
+PREVIEW_THEME="${AURA_GLASS_THEME:-Aura-Glass}"
+[ -d "$HOME/.themes/$PREVIEW_THEME" ] || [ ! -d "$HOME/.themes/Tahoe-Dark" ] \
+    || PREVIEW_THEME="Tahoe-Dark"
+
+python3 - "$REPO_ROOT/dconf/core.ini" "$KEYFILE" "$PREVIEW_THEME" <<'PY'
 import os
 import sys
 
-src, dst = sys.argv[1], sys.argv[2]
+src, dst, theme = sys.argv[1], sys.argv[2], sys.argv[3]
 PREFIX = "org/gnome/shell/extensions/"
 
 out = [
@@ -79,7 +83,7 @@ if os.environ.get("TG_SOLID") == "1":
     # After core.ini, never before. A keyfile takes the *last* value for a key,
     # so an overlay written first is silently overridden by the thing it is
     # meant to override — which showed up as a top bar that stayed transparent
-    # because core.ini's bgalpha=0.0 won. load_dconf applies it in this order
+    # because core.ini's near-zero bgalpha won. load_dconf applies it in this order
     # too.
     out.append("# --- solid mode overlay (dconf/solid.ini) ---")
     for line in open(os.path.join(os.path.dirname(src), "solid.ini"),
@@ -94,7 +98,7 @@ if os.environ.get("TG_SOLID") == "1":
 
 # The shell theme name is under the same prefix, but the preset does not carry
 # it as a section of its own.
-out += ["", "[org/gnome/shell/extensions/user-theme]", "name='Tahoe-Dark'", ""]
+out += ["", "[org/gnome/shell/extensions/user-theme]", "name='%s'" % theme, ""]
 
 open(dst, "w", encoding="utf-8").write("\n".join(out) + "\n")
 print("   %d groups -> %s" % (sum(1 for l in out if l.startswith("[")), dst))
@@ -209,6 +213,18 @@ launch nautilus
 shot 03-nautilus
 launch gnome-text-editor
 shot 04-text-editor
+
+# The overview with windows in it, which 02-overview cannot show because it is
+# taken before anything is launched. Window blur is an actor of its own, sitting
+# under the window as a child of the window actor, so the overview's previews
+# clone it along with the window — and with `blur-on-overview: false` it has no
+# business painting there. Upstream let it, and what it painted was the pixels
+# it last sampled on the desktop, changing whenever a preview was hovered.
+# patches/blur-my-shell-overview.patch is what stops it; this is the shot that
+# would show it coming back.
+overview true
+shot 04b-overview-windows
+overview false
 
 # css/gtk3-tweaks.css is the one sheet nothing else here covers. Every app in
 # the roster above is GTK4, and the GTK3 half of Tahoe-Dark ships as a gresource

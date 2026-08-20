@@ -74,10 +74,69 @@ fi
 
 # ---- the project's own checks -----------------------------------------------
 #
-# Both take their REPO_ROOT from their own location, so running the extracted
-# copies checks the extracted tree.
+# All three take their REPO_ROOT from their own location, so running the
+# extracted copies checks the extracted tree.
 step "tokens agree (tools/check-tokens.sh)"   bash "$TMP/tools/check-tokens.sh"
 step "cascade intact (tools/check-cascade.sh)" bash "$TMP/tools/check-cascade.sh"
+# check-tokens asserts the repo is at the shipped radii; this asserts a preset
+# can move them and move nothing else. It writes only to a temporary directory.
+step "radius presets apply (tools/check-radius-preset.sh)" \
+    bash "$TMP/tools/check-radius-preset.sh"
+# Asserts the settings window's argument lists are ones install.sh accepts. Runs
+# install.sh --dry-run, so it writes nothing; skips itself where PyGObject is
+# absent, exactly as install_gui does.
+step "settings window flags (tools/check-gui-flags.py)" \
+    python3 "$TMP/tools/check-gui-flags.py"
+# The same, for the window that asks the opening questions. It composes a whole
+# command line rather than a diff, and install.sh has to accept every one it can
+# produce — including the --extensions list its per-extension switches send.
+step "setup wizard flags (tools/check-wizard-flags.py)" \
+    python3 "$TMP/tools/check-wizard-flags.py"
+# The window keeps its own copy of the four preset rows and the per-surface
+# bounds, because the spin rows need their ranges before install.sh runs. Same
+# arrangement tokens.sh defends for the stylesheets, so it gets the same
+# treatment: the duplication is checked rather than trusted.
+step "settings window radii (tools/check-gui-radius.py)" \
+    python3 "$TMP/tools/check-gui-radius.py"
+# The root-requiring steps get a real terminal rather than the in-window log.
+# Whether one stays open is a thing only a desktop can answer; this catches the
+# malformed argv and the wrapper that will not parse. It launches nothing.
+step "terminal spawn (tools/check-terminal-spawn.py)" \
+    python3 "$TMP/tools/check-terminal-spawn.py"
+# The window builds its Extensions page from bin/aura-glass-ext list rather than
+# from a copy of the arrays, so that command is the catalogue as far as it is
+# concerned. This asserts it describes everything the install path can reach.
+step "extension catalogue (tools/check-ext-catalogue.sh)" \
+    bash "$TMP/tools/check-ext-catalogue.sh"
+# The per-app lists are the one place arbitrary user text reaches dconf. This
+# builds the literal and parses it back with GLib's own parser; no live dconf.
+step "app blur lists (tools/check-app-blur-lists.sh)" \
+    bash "$TMP/tools/check-app-blur-lists.sh"
+step "glass modes (tools/check-glass-modes.sh)" \
+    bash "$TMP/tools/check-glass-modes.sh"
+# Separate from check-glass-modes.sh because it needs a different mechanism:
+# the record stand_down_extensions/restore_extensions keep is only ever
+# written or read under DRY_RUN=0, so a dry run of install.sh — the only safe
+# way to drive install.sh itself here — can never exercise it. This calls the
+# two functions directly instead, against a stub gnome-extensions.
+step "solid extensions (tools/check-solid-extensions.sh)" \
+    bash "$TMP/tools/check-solid-extensions.sh"
+step "styling off (tools/check-styling-off.sh)" \
+    bash "$TMP/tools/check-styling-off.sh"
+# Moving a pre-rename install onto the current names, against fixture HOMEs.
+# The backups/ merge is the part worth guarding: getting it wrong silently
+# turns a clean uninstall into one that leaves every GTK4 app themed.
+step "legacy migration (tools/check-migration.sh)" \
+    bash "$TMP/tools/check-migration.sh"
+# Version ordering and tag filtering for the update check, against throwaway git
+# repositories. No network, and never the user's own checkout.
+step "update check (tools/check-update-check.sh)" \
+    bash "$TMP/tools/check-update-check.sh"
+# The window and the update check each decide, separately, whether a checkout is
+# on the released line or a branch being tested. This holds the two to the same
+# answer, because nothing else would notice them drifting apart.
+step "update channel (tools/check-update-channel.py)" \
+    python3 "$TMP/tools/check-update-channel.py"
 
 printf '\n'
 if [ "$fail" = 1 ]; then

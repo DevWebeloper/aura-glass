@@ -1,25 +1,138 @@
 #!/usr/bin/env bash
 # Re-apply the aura-glass CSS on top of the installed theme.
 #
-# All four targets are generated files: re-running the Tahoe theme's own
+# All four targets are generated files: re-running the upstream theme's own
 # install.sh overwrites them and drops these changes. Run this afterwards.
 # It is idempotent — an existing block is replaced, never stacked.
 set -euo pipefail
 
 DIR="${AURA_GLASS_DIR:-${TAHOE_GLASS_DIR:-$HOME/.config/aura-glass}}"
 [ -d "$DIR" ] || [ ! -d "$HOME/.config/tahoe-glass" ] || DIR="$HOME/.config/tahoe-glass"
-THEME="${AURA_GLASS_THEME:-${TAHOE_GLASS_THEME:-Tahoe-Dark}}"
+# Resolved against what is on disk, not against the shell's dconf key. An
+# install that predates the rename is still wearing Tahoe-Dark and has not been
+# through install.sh since, so both names have to work. Directory first
+# deliberately: reading dconf here would reach the real user's database even
+# when HOME is overridden, which is how the fixtures under tools/ drive this.
+THEME="${AURA_GLASS_THEME:-${TAHOE_GLASS_THEME:-}}"
+if [ -z "$THEME" ]; then
+    if [ -d "$HOME/.themes/Aura-Glass" ]; then THEME="Aura-Glass"
+    else THEME="Tahoe-Dark"
+    fi
+fi
 
 SHELL_CSS="$HOME/.themes/$THEME/gnome-shell/gnome-shell.css"
 GTK4_CSS="$HOME/.config/gtk-4.0/gtk.css"
 GTK4_DARK_CSS="$HOME/.config/gtk-4.0/gtk-dark.css"
 GTK3_CSS="$HOME/.config/gtk-3.0/gtk.css"
 
+# Non-fatal, and the only standing guard against splicing into a theme nobody is
+# wearing: if these disagree the shell loads one file while we write another.
+if command -v dconf >/dev/null 2>&1; then
+    worn="$(dconf read /org/gnome/shell/extensions/user-theme/name 2>/dev/null || true)"
+    case "$worn" in
+        ""|"''"|"'$THEME'") ;;
+        *) printf '    ! shell is wearing %s but applying to %s\n' "$worn" "$THEME" >&2 ;;
+    esac
+fi
+
 # The GTK3 half of the theme ships as a gresource and is never written here, so
 # user CSS is ours alone — create it if it does not exist. It loads at
 # GTK_STYLE_PROVIDER_PRIORITY_USER, above the theme, so it wins on merit.
 mkdir -p "$HOME/.config/gtk-3.0"
 [ -f "$GTK3_CSS" ] || : > "$GTK3_CSS"
+
+# The theme standing down, which is what solid mode is. install.sh writes the
+# marker; this is the only thing that reads it, because this is the only thing
+# that ever put the block into a target in the first place.
+#
+# Stripping is not enough on its own for the three theme-generated files: apply
+# flattens the theme's own shadow and gradient values in place, so a sheet with
+# the block removed is still a flattened sheet. The first branch below —
+# restore the .orig backup — is uninstall.sh's restore() rule, for the same
+# reason it has it: put back whatever was there before.
+#
+# The second branch, a file recorded .absent, is where this parts ways with
+# restore(): restore() deletes that file outright, because uninstall is a
+# one-way door with nowhere for it to go back to. Standing down is not a
+# one-way door — solid is a mode like any other, and coming back out of it has
+# to be one run of this same script with nothing lost along the way — so the
+# file is moved aside into backups/<name>.stood-down instead of deleted: gone
+# from where GTK reads it, which is the whole point, but kept for the revive
+# step below to put back. A .stood-down left over from an earlier stand-down
+# is overwritten, because the file on disk right now is the newer truth.
+#
+# The third branch, reached with neither record, is where this deliberately
+# parts ways with restore() a second time: restore() skips and leaves the
+# file untouched, because it is a one-way door and a missing backup means it
+# does not know what to put back. Standing down only has to undo what we
+# added, which it can always do regardless of the backup record, so it strips
+# the block and leaves whatever else is in the file alone rather than leaving
+# our styling spliced in. In the supported flow this branch is never actually
+# reached — install_theme's backup_once guarantees an .orig or an .absent for
+# all four targets before any of this can run — so it exists as a safety net
+# for a backups/ directory that has been damaged, not a path the installer
+# takes.
+if [ -f "$DIR/styling-off" ]; then
+    stand_down() {   # stand_down TARGET BACKUP_NAME
+        local target="$1" name="$2" bak="$DIR/backups/$2.orig"
+        if [ -f "$bak" ]; then
+            cp -a "$bak" "$target"
+            echo "restored $target"
+            return
+        fi
+        if [ -e "$DIR/backups/$name.absent" ]; then
+            if [ -f "$target" ]; then
+                mv -f "$target" "$DIR/backups/$name.stood-down"
+                echo "moved $target aside (nothing was there before)"
+            else
+                echo "already stood down: $target"
+            fi
+            return
+        fi
+        [ -f "$target" ] || { echo "skip (missing target): $target"; return; }
+        python3 - "$target" <<'PY'
+import sys, re
+target = sys.argv[1]
+css = open(target, encoding="utf-8").read()
+new = css
+for name in ("aura-glass", "tahoe-glass", "tahoe-tweaks"):
+    new = re.sub(
+        r"/\* >>> %s BEGIN <<< \*/.*?/\* >>> %s END <<< \*/\n?" % (name, name),
+        "", new, flags=re.S,
+    )
+if new != css:
+    open(target, "w", encoding="utf-8").write(new)
+    print("stripped", target)
+else:
+    print("no block in", target)
+PY
+    }
+    stand_down "$SHELL_CSS"     "gnome-shell.css"
+    stand_down "$GTK4_CSS"      "gtk4-gtk.css"
+    stand_down "$GTK4_DARK_CSS" "gtk4-gtk-dark.css"
+    stand_down "$GTK3_CSS"      "gtk3-gtk.css"
+    echo "the theme has stood down — restart GTK apps to pick up the GTK side"
+    exit 0
+fi
+
+# The other half of standing down. A target stand_down moved aside has to be
+# put back before apply below gets anywhere near it — apply refuses to touch
+# a target that does not exist, so without this, coming out of solid mode
+# would leave that file gone until something else recreated it. That
+# something cannot be left to the upstream theme's own installer: switching
+# modes is meant to be one run of this script, not this script plus a full
+# theme reinstall just to get back a file this script is the one that moved.
+revive() {   # revive TARGET BACKUP_NAME
+    local target="$1" name="$2" stood="$DIR/backups/$2.stood-down"
+    if [ ! -f "$target" ] && [ -f "$stood" ]; then
+        mv -f "$stood" "$target"
+        echo "revived $target"
+    fi
+}
+revive "$SHELL_CSS"     "gnome-shell.css"
+revive "$GTK4_CSS"      "gtk4-gtk.css"
+revive "$GTK4_DARK_CSS" "gtk4-gtk-dark.css"
+revive "$GTK3_CSS"      "gtk3-gtk.css"
 
 # apply TARGET FLATTEN SNIPPET... — one marked block per target, concatenating
 # every snippet that is actually present. Optional sheets are installed and

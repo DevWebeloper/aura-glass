@@ -1,0 +1,212 @@
+#!/usr/bin/env bash
+#
+# aura-glass — the extension catalogue, and one extension at a time.
+#
+#   aura-glass-ext list
+#   aura-glass-ext install|remove|enable|disable UUID
+#   aura-glass-ext recommended|full
+#
+# install.sh installs extensions in packs: core, then --recommended, then
+# --all-extras. That is the right shape for an install and the wrong shape for
+# a settings window, where the question is "I want this one and not that one".
+# This is the same functions, reachable one UUID at a time.
+#
+# None of it needs root — gnome-extensions installs under $HOME and enabling is
+# a gsettings key — which is why the settings window runs this through the same
+# in-window log Apply uses rather than through a terminal.
+#
+# `list` exists so the window does not keep a second copy of the catalogue. The
+# arrays and their descriptions change more often than anything else here, and a
+# hand-maintained Python copy of them would be wrong within a release.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/common.sh
+. "$REPO_ROOT/lib/common.sh"
+# shellcheck source=lib/distro.sh
+. "$REPO_ROOT/lib/distro.sh"
+# shellcheck source=lib/steps.sh
+. "$REPO_ROOT/lib/steps.sh"
+# shellcheck source=lib/steps-extensions.sh
+. "$REPO_ROOT/lib/steps-extensions.sh"
+
+usage() {
+    cat <<EOF
+usage: aura-glass-ext <command> [uuid]
+
+  list                 every catalogued extension as JSON, with its tier,
+                       description, and whether it is installed and enabled
+  install UUID         fetch and install one extension
+  remove UUID          disable and delete one extension
+  enable UUID          enable one already-installed extension
+  disable UUID         disable one extension
+  recommended          install and enable the recommended pack
+  full                 install and enable every optional extension
+EOF
+}
+
+# Which pack a UUID belongs to. Core is what the desktop needs to look like
+# itself; the other two are the --recommended and --all-extras tiers.
+ext_tier() {
+    local uuid="$1" u
+    for u in "${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" custom-osd@neuromorph; do
+        [ "$u" = "$uuid" ] && { printf 'core'; return; }
+    done
+    for u in "${EXT_EXTRA_RECOMMENDED[@]}"; do
+        [ "$u" = "$uuid" ] && { printf 'recommended'; return; }
+    done
+    printf 'full'
+}
+
+ext_installed() {
+    [ -d "$EXT_DIR/$1" ] || [ -d "/usr/share/gnome-shell/extensions/$1" ]
+}
+
+# From the gsettings key rather than from `gnome-extensions list --enabled`,
+# because that asks the running shell and the shell does not know about one
+# enqueued for the next session — which is the state enqueue_extension leaves
+# things in on Wayland, and the one most worth reporting accurately.
+ext_enabled() {
+    local enabled
+    enabled="$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')"
+    case "$enabled" in
+        *"'$1'"*) return 0 ;;
+        *)        return 1 ;;
+    esac
+}
+
+# A UUID this project knows about. Anything else is refused rather than acted
+# on: this runs rm -rf, and an unvetted argument is not something to aim it with.
+ext_known() {
+    local uuid="$1" u
+    for u in "${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" \
+             custom-osd@neuromorph "${EXT_EXTRA_ALL[@]}"; do
+        [ "$u" = "$uuid" ] && return 0
+    done
+    return 1
+}
+
+json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+cmd_list() {
+    local first=1 uuid
+    printf '[\n'
+    for uuid in "${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" \
+                custom-osd@neuromorph "${EXT_EXTRA_ALL[@]}"; do
+        [ "$first" = 1 ] || printf ',\n'
+        first=0
+        printf '  {"uuid": "%s", "tier": "%s", "description": "%s", ' \
+            "$(json_escape "$uuid")" "$(ext_tier "$uuid")" \
+            "$(json_escape "$(ext_description "$uuid")")"
+        printf '"installed": %s, "enabled": %s, "system": %s}' \
+            "$(ext_installed "$uuid" && echo true || echo false)" \
+            "$(ext_enabled "$uuid" && echo true || echo false)" \
+            "$([ -d "/usr/share/gnome-shell/extensions/$uuid" ] && echo true || echo false)"
+    done
+    printf '\n]\n'
+}
+
+cmd_enable() {
+    # Turning one of these on here is the opt-in the installer honours. Without
+    # the memo apply_gsettings switches it straight back off at the next Apply,
+    # because it overwrites the accent — see EXT_NO_AUTO_ENABLE.
+    if ext_never_auto_enabled "$1" && [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR"
+        printf '1\n' > "$CONF_DIR/accent-from-wallpaper"
+    fi
+    if run gnome-extensions enable "$1" 2>/dev/null; then
+        ok "enabled $1"
+        return 0
+    fi
+    # Same fallback enable_extensions uses, and for the same reason: the running
+    # shell refuses a UUID it has not loaded, and on Wayland it cannot load one
+    # that appeared after login.
+    if enqueue_extension "$1"; then
+        ok "$1 queued — active after logout"
+    else
+        die "could not enable $1"
+    fi
+}
+
+cmd_disable() {
+    # And switching it off again withdraws it, so the accent goes back to being
+    # the installer's to set.
+    if ext_never_auto_enabled "$1" && [ "${DRY_RUN:-0}" != 1 ]; then
+        rm -f "$CONF_DIR/accent-from-wallpaper"
+    fi
+    run gnome-extensions disable "$1" 2>/dev/null || true
+    # The key, not just the shell, so it stays disabled across a logout even
+    # when the running shell would not take the command.
+    python3 - "$1" <<'PY' || warn "could not take $1 out of enabled-extensions"
+import subprocess, sys
+uuid = sys.argv[1]
+key = ["gsettings", "get", "org.gnome.shell", "enabled-extensions"]
+cur = subprocess.run(key, capture_output=True, text=True).stdout.strip()
+try:
+    from gi.repository import GLib
+    items = list(GLib.Variant.parse(GLib.VariantType("as"), cur))
+except Exception:
+    sys.exit(1)
+if uuid not in items:
+    sys.exit(0)
+items = [i for i in items if i != uuid]
+subprocess.run(["gsettings", "set", "org.gnome.shell", "enabled-extensions",
+                str(GLib.Variant("as", items))], check=True)
+PY
+    ok "disabled $1"
+}
+
+cmd_remove() {
+    if [ -d "/usr/share/gnome-shell/extensions/$1" ] && [ ! -d "$EXT_DIR/$1" ]; then
+        die "$1 was installed by your distribution — remove it with the package manager"
+    fi
+    cmd_disable "$1"
+    run rm -rf "${EXT_DIR:?}/$1"
+    ok "removed $1"
+}
+
+# The three that are built from a pinned commit rather than downloaded, because
+# no published release works on the shell versions this targets. Routed to their
+# own installers so a single-extension install matches what a full one does.
+cmd_install() {
+    case "$1" in
+        "$BMS_UUID")            install_bms ;;
+        openbar@neuromorph)     install_openbar ;;
+        custom-osd@neuromorph)  install_custom_osd ;;
+        *)                      install_ext_ego "$1" ;;
+    esac
+    cmd_enable "$1"
+}
+
+cmd_pack() {
+    local uuid
+    for uuid in "$@"; do
+        ext_installed "$uuid" || install_ext_ego "$uuid" || true
+        ext_installed "$uuid" || continue
+        # A pack installs these and stops there, the same way install.sh's does.
+        # Wanting the wallpaper to pick the accent is a choice about one
+        # extension, not something to arrive at by pressing "All".
+        if ext_never_auto_enabled "$uuid"; then
+            skip "$uuid installed but not enabled — it would overwrite the accent"
+            continue
+        fi
+        cmd_enable "$uuid"
+    done
+}
+
+main() {
+    local cmd="${1:-}"
+    case "$cmd" in
+        list)        cmd_list ;;
+        recommended) cmd_pack "${EXT_EXTRA_RECOMMENDED[@]}" ;;
+        full)        cmd_pack "${EXT_EXTRA_ALL[@]}" ;;
+        install|remove|enable|disable)
+            [ -n "${2:-}" ] || { usage; exit 2; }
+            ext_known "$2" || die "unknown extension '$2'"
+            "cmd_$cmd" "$2" ;;
+        ""|-h|--help) usage ;;
+        *)           usage; exit 2 ;;
+    esac
+}
+
+main "$@"

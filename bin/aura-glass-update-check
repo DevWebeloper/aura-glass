@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+# Is there a newer aura-glass than the one installed?
+#
+#   aura-glass-update-check [--notify]
+#
+# Prints the answer and exits 0 when up to date, 10 when an update is available,
+# and 1 when it could not tell. --notify also sends a desktop notification, and
+# is what the systemd timer passes; run without it to check by hand.
+#
+# There are two lines to follow, and which one applies is whatever branch the
+# checkout is on rather than a setting someone has to keep in step with it:
+#
+#   main, master, or a detached HEAD — the released line. "Released" means a tag,
+#   not a commit, so the tag at HEAD is compared against the newest vN.N.N tag on
+#   the remote.
+#
+#   any other branch — a test build. There are no tags on a branch being tested,
+#   and the tags it can see belong to releases that do not contain it, so the
+#   commit at HEAD is compared against the same branch's commit on the remote and
+#   the version is called branch@shortsha.
+#
+# Either way the remote is asked with git ls-remote, which is one cheap request,
+# needs no API token, is not rate limited, and works for any git remote rather
+# than only for GitHub. Nothing is fetched into the checkout — this never touches
+# the working tree.
+#
+# The answer is left in $CONF_DIR/update-available, holding the version, so the
+# settings window can show it without going to the network itself. Absent means
+# up to date.
+set -euo pipefail
+
+CONF_DIR="${AURA_GLASS_CONF:-$HOME/.config/aura-glass}"
+STATE="$CONF_DIR/update-available"
+NOTIFY=0
+[ "${1:-}" = "--notify" ] && NOTIFY=1
+
+REPO="$(cat "$CONF_DIR/repo-path" 2>/dev/null || true)"
+if [ -z "$REPO" ] || [ ! -d "$REPO/.git" ]; then
+    echo "aura-glass-update-check: no git checkout recorded in $CONF_DIR/repo-path" >&2
+    exit 1
+fi
+
+# Both lines end the same way, so they say so in one place rather than twice.
+up_to_date() {
+    rm -f "$STATE"
+    echo "up to date ($1)"
+    exit 0
+}
+
+branch="$(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+
+case "$branch" in
+main|master|HEAD|"")
+    # A detached HEAD lands here rather than in the branch case below because
+    # there is no branch to follow the commits of. It is the checkout a release
+    # tag was checked out into, so the tag is still the right question to ask.
+
+    # The tag at, or most recently before, what is checked out. --tags so
+    # lightweight tags count; the trailing -N-gHASH when HEAD has moved past a
+    # release is cut off by --abbrev=0, because "newer than v0.1.7" still
+    # installs from v0.1.7's tag.
+    local_version="$(git -C "$REPO" describe --tags --abbrev=0 2>/dev/null || true)"
+    if [ -z "$local_version" ]; then
+        echo "aura-glass-update-check: no tag reachable from HEAD — this checkout is not at a release" >&2
+        exit 1
+    fi
+
+    # Only vN.N.N tags, optionally -beta. Anything else in refs/tags is not a
+    # release of this project, and sort -V would happily rank it above one.
+    remote_version="$(
+        git -C "$REPO" ls-remote --tags --refs origin 2>/dev/null \
+            | sed -n 's#.*refs/tags/\(v[0-9][0-9.]*\(-beta\)\?\)$#\1#p' \
+            | sort -V | tail -n 1
+    )"
+    if [ -z "$remote_version" ]; then
+        echo "aura-glass-update-check: could not read tags from origin (offline?)" >&2
+        exit 1
+    fi
+
+    # sort -V puts them in order; the newest of the two being the remote one is
+    # the only case that counts as an update. Equal, or a local tag somehow ahead
+    # of the remote, are both "nothing to do" — the second happens while cutting
+    # a release.
+    newest="$(printf '%s\n%s\n' "$local_version" "$remote_version" | sort -V | tail -n 1)"
+    if [ "$local_version" = "$remote_version" ] || [ "$newest" = "$local_version" ]; then
+        up_to_date "$local_version"
+    fi
+
+    headline="Aura Glass $remote_version is available"
+    body="You have $local_version. Open Aura Glass settings to install it."
+    ;;
+*)
+    local_sha="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)"
+    if [ -z "$local_sha" ]; then
+        echo "aura-glass-update-check: $branch has no commits" >&2
+        exit 1
+    fi
+
+    # One ref rather than all of them, and by full name so a tag of the same name
+    # cannot answer instead.
+    remote_sha="$(
+        git -C "$REPO" ls-remote origin "refs/heads/$branch" 2>/dev/null \
+            | awk 'NR == 1 { print $1 }'
+    )"
+    if [ -z "$remote_sha" ]; then
+        echo "aura-glass-update-check: origin has no branch $branch (offline, or it was never pushed?)" >&2
+        exit 1
+    fi
+
+    # Seven characters on both sides, taken the same way, so the two versions the
+    # window puts side by side are the same shape.
+    local_version="$branch@$(git -C "$REPO" rev-parse --short=7 HEAD)"
+    remote_version="$branch@$(printf '%s' "$remote_sha" | cut -c1-7)"
+
+    if [ "$local_sha" = "$remote_sha" ]; then
+        up_to_date "$local_version"
+    fi
+
+    # Different is not necessarily behind. Someone who committed on the branch
+    # themselves is ahead of it, and the giveaway is that they already hold the
+    # remote's commit: nothing is fetched here, so a commit this checkout has is
+    # one it made or already pulled. An ancestor of HEAD means the remote is
+    # behind us and there is nothing to install; a commit we do not hold at all
+    # is the new one we are looking for. Without this the daily check would nag
+    # a tester about their own work, and offer an install that stops at git's
+    # diverged-history message every time.
+    if git -C "$REPO" cat-file -e "$remote_sha^{commit}" 2>/dev/null \
+        && git -C "$REPO" merge-base --is-ancestor "$remote_sha" HEAD 2>/dev/null; then
+        up_to_date "$local_version"
+    fi
+
+    headline="A new Aura Glass test build is available"
+    body="$branch has moved on since $local_version. Open Aura Glass settings to install it."
+    ;;
+esac
+
+mkdir -p "$CONF_DIR"
+printf '%s\n' "$remote_version" > "$STATE"
+echo "update available: $local_version -> $remote_version"
+
+if [ "$NOTIFY" = 1 ] && command -v notify-send >/dev/null 2>&1; then
+    # --hint desktop-entry ties the notification to the settings window's desktop
+    # file, which is what makes GNOME show it as coming from Aura Glass and open
+    # the window when it is clicked.
+    #
+    # -h string:x-canonical-private-synchronous replaces an existing notification
+    # from this check rather than stacking a new one beside it. The timer runs
+    # daily and a release stays newer than the install until something is done
+    # about it, so without this a fortnight away from the machine would come back
+    # to fourteen identical notifications.
+    notify-send \
+        --app-name="Aura Glass" \
+        --icon=preferences-desktop-appearance \
+        --hint=string:desktop-entry:io.github.DevWebeloper.AuraGlassSettings \
+        --hint=string:x-canonical-private-synchronous:aura-glass-update \
+        "$headline" \
+        "$body" \
+        || true
+fi
+
+exit 10

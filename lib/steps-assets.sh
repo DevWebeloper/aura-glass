@@ -30,6 +30,36 @@ accent_to_colloid_name() {
     esac
 }
 
+# GNOME's accent enum -> Reversal's colour. The two sets do not line up: Reversal
+# has no teal, no yellow and no slate, and has browns and greys the accent enum
+# does not. So three accents map to a neighbour rather than to themselves.
+#
+# This exists because `--icons reversal-$ACCENT` was being built by hand in the
+# interactive wizard, and three of the nine accents made a colour Reversal does
+# not ship — picking teal, yellow or slate and then choosing Reversal ended the
+# install on "unknown Reversal colour". Bare `reversal` had the opposite problem:
+# it fell back to purple whatever the accent was.
+accent_to_reversal() {
+    case "$1" in
+        teal)   echo cyan ;;    # nearest Reversal has; no teal
+        yellow) echo orange ;;  # no yellow either, and orange is the warm one
+        slate)  echo grey ;;
+        blue|green|orange|red|pink|purple) echo "$1" ;;
+        *)      echo purple ;;
+    esac
+}
+
+# GNOME's accent enum -> Hatter's colour. This one is a straight rename: Hatter
+# ships a variant for all nine accents and calls them the same things GNOME
+# does, capitalised. Yaru is Hatter's tenth and has no accent to reach it, so it
+# is sayable only as `--icons hatter-yaru`.
+accent_to_hatter() {
+    case "$1" in
+        blue|teal|green|yellow|orange|red|pink|purple|slate) printf '%s\n' "${1^}" ;;
+        *) echo Purple ;;
+    esac
+}
+
 # ---------------------------------------------------------------- preflight --
 
 # The icon set, minus any light/dark suffix. Everything downstream — the
@@ -41,12 +71,30 @@ accent_to_colloid_name() {
 # want, and tying them together would make it unsayable.
 icon_base() {
     case "${ICONS:-colloid}" in
-        colloid)
-            local n; n="$(accent_to_colloid_name "$ACCENT")"
+        colloid|colloid-*)
+            local n; n="$(accent_to_colloid_name "$(colloid_color)")"
             n="${n%-Dark}"; n="${n%-Light}"
             printf '%s\n' "$n" ;;
-        reversal)        printf 'Reversal\n' ;;
+        # Whatever was set before aura-glass first ran here. Falls back to
+        # Adwaita rather than to this theme's own pack: "original" that
+        # quietly resolved to Colloid would be the opposite of what it says.
+        original)
+            local o; o="$(gsettings_original icon-theme)"
+            printf '%s\n' "${o:-Adwaita}" ;;
+        # Bare `reversal` follows the accent, the same resolution install_reversal
+        # does. It used to print a bare `Reversal`, which is a directory the pack
+        # has never shipped — its installer only ever lays down Reversal-<colour>
+        # — so apply_gsettings asked for a theme that was not there and fell back
+        # to Adwaita. On a --settings-only run, which does not reinstall icons and
+        # so never reaches install_reversal's own resolution, that silently undid
+        # the icon theme every time it was run.
+        reversal)        printf 'Reversal-%s\n' "$(accent_to_reversal "$ACCENT")" ;;
         reversal-*)      printf 'Reversal-%s\n' "${ICONS#reversal-}" ;;
+        # Bare `hatter` follows the accent like the other two. The colour is
+        # capitalised because the directory is: Hatter ships Hatter-Purple, not
+        # Hatter-purple, and this name goes straight into the gsettings key.
+        hatter)          printf 'Hatter-%s\n' "$(accent_to_hatter "$ACCENT")" ;;
+        hatter-*)        local h="${ICONS#hatter-}"; printf 'Hatter-%s\n' "${h^}" ;;
         *)               printf '%s\n' "$ICONS" ;;
     esac
 }
@@ -135,7 +183,9 @@ patch_reversal_symbolics() {
 
 install_reversal() {
     local color="${ICONS#reversal}"; color="${color#-}"
-    [ -n "$color" ] || color=purple
+    # Bare `reversal` follows the accent, the way bare `colloid` does. It used to
+    # mean purple regardless, which made the family unusable as a default.
+    [ -n "$color" ] || color="$(accent_to_reversal "$ACCENT")"
     local name="Reversal-$color"
 
     step "Installing the Reversal icon theme ($color)"
@@ -159,14 +209,109 @@ install_reversal() {
     ok "$name"
 }
 
+# Hatter installs by copy rather than by running its own installer, and the two
+# facts behind that are worth stating. Upstream's install.sh lays down all
+# eleven colour variants plus three KDE flavours, about 370M for a desktop that
+# reads one colour and no KDE theme at all; and it `cp -r`s every one of those
+# directories under `set -e`, so a sparse checkout that does not contain them
+# would abort it on the first missing path. Copying the two directories GNOME
+# actually reads is both smaller and the only thing the sparse checkout can do.
+#
+# The base theme comes along with every colour because the colour needs it:
+# Hatter-Purple is folders and a handful of file-manager icons, and it inherits
+# the other 4800 from bare Hatter.
+install_hatter() {
+    local color="${ICONS#hatter}"; color="${color#-}"
+    [ -n "$color" ] || color="$(accent_to_hatter "$ACCENT")"
+    color="${color^}"
+    local name="Hatter-$color"
+
+    step "Installing the Hatter icon theme ($color)"
+    if [ "${FORCE:-0}" != 1 ] \
+       && { [ -d "$HOME/.local/share/icons/$name" ] || [ -d "/usr/share/icons/$name" ]; } \
+       && { [ -d "$HOME/.local/share/icons/Hatter" ] || [ -d "/usr/share/icons/Hatter" ]; }; then
+        skip "$name already installed"
+        return 0
+    fi
+
+    local src="$SRC_CACHE/Hatter"
+    clone_pinned_sparse "$HATTER_REPO" "$HATTER_REF" "$src" Hatter "$name"
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: copy Hatter and $name into ~/.local/share/icons"
+        ok "$name"
+        return 0
+    fi
+
+    [ -d "$src/$name" ] || die "the Hatter checkout has no $name — unknown colour '$color'"
+
+    local dest="$HOME/.local/share/icons"
+    mkdir -p "$dest"
+    local d
+    for d in Hatter "$name"; do
+        rm -rf "${dest:?}/$d"
+        cp -r "$src/$d" "$dest/$d"
+        # The pack ships a prebuilt icon-theme.cache, and GTK reads it in
+        # preference to the directory it describes. One built elsewhere against
+        # a different GTK is the kind of thing that serves stale icons forever,
+        # so it is rebuilt here rather than trusted.
+        if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+            gtk-update-icon-cache -qft "$dest/$d" 2>/dev/null || true
+        fi
+    done
+    ok "$name"
+}
+
+# Which pack is on, and under which name. Both are read back by the window and
+# by install_icon_sync, so they are written here rather than there: the sync
+# step is not in the --settings-only path, and a pack switched from the window
+# has to leave the same trail behind as one switched from the command line.
+#
+# Called before the "already installed" early returns on purpose. Choosing a
+# pack that happens to be on disk already is still choosing it.
+remember_icon_pack() {
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: remember icon pack ${ICONS:-colloid}"
+        return 0
+    fi
+    mkdir -p "$CONF_DIR"
+    printf '%s\n' "$(icon_base)" > "$CONF_DIR/icons"
+    printf '%s\n' "${ICONS:-colloid}" > "$CONF_DIR/icon-pack"
+}
+
+# The colour a Colloid install should use: the one named on --icons if there is
+# one, the accent otherwise. Bare `colloid` follows the accent the way bare
+# `reversal` does, which is what makes "purple folders under a pink accent"
+# sayable without making it the default.
+colloid_color() {
+    local color="${ICONS#colloid}"; color="${color#-}"
+    [ -n "$color" ] || color="$ACCENT"
+    printf '%s\n' "$color"
+}
+
 install_icons() {
+    remember_icon_pack
     case "${ICONS:-colloid}" in
         reversal|reversal-*) install_reversal; return ;;
+        hatter|hatter-*)     install_hatter; return ;;
+        original)
+            # Nothing to fetch — the theme being restored to was already on the
+            # machine before this one was. apply_gsettings reads icon_base and
+            # points the key back at it.
+            step "Icons"
+            local o; o="$(gsettings_original icon-theme)"
+            if [ -n "$o" ]; then
+                ok "restoring $o, the icon theme from before aura-glass"
+            else
+                warn "no icon theme was recorded before aura-glass — using Adwaita"
+            fi
+            return 0 ;;
     esac
 
-    step "Installing the Colloid icon theme ($ACCENT)"
+    local color; color="$(colloid_color)"
+    step "Installing the Colloid icon theme ($color)"
 
-    local name; name="$(accent_to_colloid_name "$ACCENT")"
+    local name; name="$(accent_to_colloid_name "$color")"
     if [ "${FORCE:-0}" != 1 ] \
        && { [ -d "$HOME/.local/share/icons/$name" ] || [ -d "/usr/share/icons/$name" ]; }; then
         skip "$name already installed"
@@ -179,9 +324,9 @@ install_icons() {
     # No -d: unprivileged runs default to ~/.local/share/icons, which keeps
     # this step out of /usr like every other one.
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: $src/install.sh -t $(accent_to_colloid_arg "$ACCENT")"
+        info "dry-run: $src/install.sh -t $(accent_to_colloid_arg "$color")"
     else
-        ( cd "$src" && ./install.sh -t "$(accent_to_colloid_arg "$ACCENT")" ) >/dev/null \
+        ( cd "$src" && ./install.sh -t "$(accent_to_colloid_arg "$color")" ) >/dev/null \
             || die "the Colloid installer failed"
     fi
     ok "$name"
@@ -190,10 +335,48 @@ install_icons() {
 install_cursors() {
     # Adwaita's cursors ship with GNOME itself, so there is nothing to fetch,
     # nothing to keep pinned, and they are crisper and better hinted at every
-    # size than the MacTahoe set. --cursors mactahoe asks for the old ones.
+    # size than the MacTahoe set. --cursors aosp and --cursors mactahoe are the
+    # two that are fetched.
     if [ "${CURSORS:-adwaita}" = adwaita ]; then
         step "Cursors"
-        skip "using the stock Adwaita cursors (--cursors mactahoe for the macOS set)"
+        skip "using the stock Adwaita cursors (--cursors aosp or mactahoe to change)"
+        return 0
+    fi
+
+    # Same as the icons: the pointer being restored to was already here.
+    if [ "${CURSORS:-adwaita}" = original ]; then
+        step "Cursors"
+        local o; o="$(gsettings_original cursor-theme)"
+        if [ -n "$o" ]; then
+            ok "restoring $o, the pointer from before aura-glass"
+        else
+            warn "no pointer was recorded before aura-glass — using Adwaita"
+        fi
+        return 0
+    fi
+
+    if [ "${CURSORS:-adwaita}" = aosp ]; then
+        step "Installing the AOSP cursors"
+        if [ "${FORCE:-0}" != 1 ] \
+           && { [ -d "$HOME/.local/share/icons/aosp-cursors/cursors" ] \
+                || [ -d "/usr/share/icons/aosp-cursors/cursors" ]; }; then
+            skip "aosp-cursors already installed"
+            return 0
+        fi
+        # The tarball holds one top-level aosp-cursors/ directory, and that
+        # directory is the theme — so what gets copied into the icons directory
+        # is the thing inside the unpack, not the unpack.
+        fetch_tarball_pinned "$AOSP_CURSORS_URL" "$AOSP_CURSORS_SHA256" \
+                             "$SRC_CACHE/aosp-cursors"
+        if [ "${DRY_RUN:-0}" != 1 ]; then
+            [ -d "$SRC_CACHE/aosp-cursors/aosp-cursors" ] \
+                || die "the AOSP cursors release did not contain aosp-cursors/"
+            mkdir -p "$HOME/.local/share/icons"
+            rm -rf "$HOME/.local/share/icons/aosp-cursors"
+            cp -r "$SRC_CACHE/aosp-cursors/aosp-cursors" \
+                  "$HOME/.local/share/icons/aosp-cursors"
+        fi
+        ok "aosp-cursors"
         return 0
     fi
 

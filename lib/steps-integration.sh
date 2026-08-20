@@ -16,8 +16,21 @@
 install_icon_sync() {
     step "Following the light/dark preference with the icons"
 
+    # Not installed *and* stopped, because leaving it running is the same
+    # override it exists to perform: the agent rewrites icon-theme on every
+    # light/dark switch from the pack memo, so an agent left over from an
+    # earlier run puts this theme's icons back over whatever was set from
+    # anywhere else. Kept icons means nothing of ours writes that key.
     if [ "${WANT_ICONS:-1}" != 1 ]; then
-        skip "icons left alone (--no-icons)"
+        local unit stopped=0
+        for unit in aura-glass-icon-sync tahoe-glass-icon-sync; do
+            [ -f "$HOME/.config/systemd/user/$unit.service" ] || continue
+            run systemctl --user disable --now "$unit.service" >/dev/null 2>&1 || true
+            run rm -f "$HOME/.config/systemd/user/$unit.service"
+            stopped=1
+        done
+        [ "$stopped" = 1 ] && run systemctl --user daemon-reload
+        skip "icons left alone (--no-icons) — the light/dark agent stood down"
         return 0
     fi
 
@@ -35,13 +48,9 @@ install_icon_sync() {
         "$HOME/.local/bin/aura-glass-icon-sync"
     ln -sf "$HOME/.local/bin/aura-glass-icon-sync" "$HOME/.local/bin/tahoe-glass-icon-sync" 2>/dev/null || true
 
-    if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: remember icon set $base"
-    else
-        mkdir -p "$CONF_DIR"
-        printf '%s\n' "$base" > "$CONF_DIR/icons"
-        printf '%s\n' "${ICONS:-colloid}" > "$CONF_DIR/icon-pack"
-    fi
+    # The two memos this used to write live in remember_icon_pack now, called
+    # from install_icons — this step does not run in the --settings-only path,
+    # so a pack chosen from the window was never getting recorded here.
 
     run install -Dm644 "$REPO_ROOT/systemd/aura-glass-icon-sync.service" \
         "$HOME/.config/systemd/user/aura-glass-icon-sync.service"
@@ -84,6 +93,15 @@ install_panel_blur_unit() {
     # order cannot defeat it: --no-blur --full would otherwise turn it back on.
     if [ "${WANT_BLUR:-1}" != 1 ]; then
         WANT_PANEL_BLUR_FIX=0
+    fi
+
+    # Remembered like every other setting, so a later flagless run — and the
+    # settings window, which reads the memo to draw the switch — comes back to
+    # this answer rather than to the default. Written before the branch so it
+    # records the choice whichever way it went.
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "${WANT_PANEL_BLUR_FIX:-1}" > "$CONF_DIR/panel-blur-fix"
     fi
 
     if [ "${WANT_PANEL_BLUR_FIX:-1}" != 1 ]; then

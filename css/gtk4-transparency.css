@@ -116,6 +116,27 @@ windowhandle {
   background-color: color-mix(in srgb, var(--tg-tint-window) 92%, transparent);
 }
 
+/* A window handle that is an overlay child is floating over content, not
+ * standing in for the window's ground, so the tint above is wrong there: it
+ * paints a slab across the handle's whole allocation, on top of whatever the
+ * overlay is showing.
+ *
+ * Showtime is where this reads worst. Its fullscreen toggle and its menu
+ * button each sit in a GtkWindowHandle added to the video overlay, and the
+ * buttons carry 24px of their own margin, so the handle is half again the
+ * size of the button inside it. The tint came out as a dark rounded slab over
+ * the video with the icon pushed into one corner — and on the right the same
+ * slab swallowed the window controls next to the menu button.
+ *
+ * Element and child combinator only, so the toolbarview and header bar rules
+ * further down — equal specificity, later in the file — still decide the
+ * handles they name.
+ */
+overlay > windowhandle {
+  background-color: transparent;
+  background-image: none;
+}
+
 /* Server-side decorations paint an opaque frame around the window. Letting the
  * window under it go translucent shows the frame through the content, which
  * reads as a rendering bug rather than as glass.
@@ -126,40 +147,217 @@ window.solid-csd .background {
   background-color: var(--tg-tint-window);
 }
 
-/* ---------- Header bars and decoration frames stay solid ----------
- * The top bar must stay 100% solid across all applications (Chrome, Vesktop/Electron,
- * GTK3, GTK4, XWayland). Translucent headerbars cause transparent gaps, middle-band
- * see-through, and trailing smear ("tail") artifacts when dragging windows.
+/* ---------- The bar a window is decorated with ----------
+ * "Decorated with" is `window > ...`, not a bare `headerbar`. GtkWindow puts
+ * the widget passed to gtk_window_set_titlebar() directly under the window
+ * node, and adds .titlebar to it there, so a direct child is the one bar the
+ * window is dragged and resized by. A header bar further in is content: an
+ * AdwToolbarView top bar, a split-view pane's header, a leaflet's. Those never
+ * move the window, so they follow the surface they sit on and go transparent
+ * with it further down.
+ *
+ * This one paints nothing either, so the window's own ground carries it — the
+ * same "exactly one layer carries the material" rule the panes further down
+ * follow.
+ *
+ * It was held 100% solid here, whatever drew it, because a translucent bar
+ * showed transparent gaps, middle-band see-through and trailing smear ("tail")
+ * when a window was dragged. Those come from a frame drawn in a different
+ * process to the content under it — the XWayland case carved out below — not
+ * from an app drawing its own. A GtkHeaderBar handed to
+ * gtk_window_set_titlebar() is composited with the window it decorates, the
+ * same way the .default-decoration bar below is, and that one has painted
+ * nothing since Shelly without any of those artifacts coming back.
+ *
+ * Solid, it painted a flat @headerbar_bg_color slab across the top of an
+ * otherwise translucent window, and the two read as different materials with a
+ * hard seam between them. font-manager (com.github.FontManager.FontManager) is
+ * the case to look at: plain GTK4, no libadwaita, one GtkHeaderBar passed to
+ * gtk_window_set_titlebar(), so its bar is `window > headerbar.titlebar` and
+ * the seam was the same complaint Shelly's auto-generated bar made one class
+ * over.
+ *
+ * The depth is what does the work here, not the class. .titlebar on its own is
+ * not the signal it looks like: neither GtkHeaderBar nor AdwHeaderBar sets it,
+ * so any app is free to add it to a bar that decorates nothing, and
+ * gnome-tweaks adds it to both of the AdwHeaderBars inside its leaflet. Under
+ * `window >` it is the class GtkWindow itself put there, which is why it is
+ * listed only at that depth.
+ *
+ * Both spellings would be the same `transparent` here, so unlike everywhere
+ * else in this sheet there is nothing for the named-colour/color-mix pairing
+ * to do.
  */
-headerbar,
-headerbar windowhandle,
-headerbar.titlebar,
-headerbar.titlebar windowhandle,
-.titlebar,
-.titlebar windowhandle,
+window > headerbar,
+window > headerbar windowhandle,
+window > .titlebar,
+window > .titlebar windowhandle,
 window > windowhandle,
-window > headerbar.titlebar,
-window.background > headerbar.titlebar,
-window.background > windowhandle,
-headerbar.default-decoration,
-headerbar.default-decoration.titlebar,
-.titlebar.default-decoration {
+window > headerbar:backdrop,
+window > headerbar:backdrop windowhandle,
+window > .titlebar:backdrop,
+window > .titlebar:backdrop windowhandle,
+window:backdrop > windowhandle {
+  background-color: transparent;
+  background-image: none;
+}
+
+/* Except when the window cannot be translucent in the first place.
+ *
+ * .solid-csd is what GTK sets when there is no alpha channel to decorate into,
+ * which is the XWayland case: /usr/lib/mutter-x11-frames draws those frames in
+ * its own process and the window under them stays opaque — see
+ * window.solid-csd above. A transparent bar there shows the frame through the
+ * content rather than the window's ground, which is the sliced-in-two artifact
+ * this sheet's header exists to describe. Chrome's profile picker and Steam
+ * are the cases to check.
+ *
+ * One class more than the block above, so it wins wherever GTK has set the
+ * class and only there. Those frames are drawn with a .default-decoration bar,
+ * which has its own carve-out below for the same reason; this covers a
+ * .solid-csd window that sets a titlebar of its own.
+ */
+window.solid-csd > headerbar,
+window.solid-csd > headerbar windowhandle,
+window.solid-csd > .titlebar,
+window.solid-csd > .titlebar windowhandle,
+window.solid-csd > windowhandle {
   background-color: @headerbar_bg_color;
   background-color: var(--headerbar-bg-color);
 }
 
-headerbar:backdrop,
-headerbar:backdrop windowhandle,
-.titlebar:backdrop,
-.titlebar:backdrop windowhandle,
-window:backdrop > windowhandle,
-window:backdrop > headerbar.titlebar,
-window.background:backdrop > headerbar.titlebar,
-window.background:backdrop > windowhandle,
-headerbar.default-decoration:backdrop,
-.titlebar.default-decoration:backdrop {
+window.solid-csd > headerbar:backdrop,
+window.solid-csd > headerbar:backdrop windowhandle,
+window.solid-csd > .titlebar:backdrop,
+window.solid-csd > .titlebar:backdrop windowhandle,
+window.solid-csd:backdrop > windowhandle {
   background-color: @headerbar_backdrop_color;
   background-color: var(--headerbar-backdrop-color);
+}
+
+/* ---------- The bar GTK draws for a window that has none ----------
+ * .default-decoration is not an app's header bar. It is the one GtkWindow
+ * builds for itself when the app never called gtk_window_set_titlebar() — an
+ * app that is just a window with content in it, like Shelly. Painted solid it
+ * put a flat @headerbar_bg_color slab across the top of an otherwise
+ * translucent window, and the two read as different materials with a hard seam
+ * between them.
+ *
+ * It paints nothing instead, so the window's own ground carries the whole
+ * surface — the same "exactly one layer carries the material" rule the panes
+ * further down follow, and the reason the seam disappears rather than moving.
+ *
+ * Written out separately even though the block above already reaches it as a
+ * direct child, because neither the depth nor the ancestor is what has to be
+ * beaten here: gtk4-70-surfaces.css holds `headerbar.default-decoration` solid
+ * for the frames case, and that is one class and one element — more specific
+ * than `window > headerbar`. Only a rule naming the class takes it back.
+ *
+ * Both spellings are the same `transparent` here, so unlike everywhere else in
+ * this sheet there is nothing for the named-colour/color-mix pairing to do.
+ */
+headerbar.default-decoration,
+headerbar.default-decoration windowhandle,
+headerbar.default-decoration.titlebar,
+.titlebar.default-decoration,
+.titlebar.default-decoration windowhandle,
+headerbar.default-decoration:backdrop,
+headerbar.default-decoration:backdrop windowhandle,
+.titlebar.default-decoration:backdrop,
+.titlebar.default-decoration:backdrop windowhandle {
+  background-color: transparent;
+  background-image: none;
+}
+
+/* Except when the window cannot be translucent in the first place.
+ *
+ * .solid-csd is what GTK sets when there is no alpha channel to decorate into,
+ * which is the XWayland case: /usr/lib/mutter-x11-frames draws those frames in
+ * its own process, and it is a .default-decoration bar it draws them with. The
+ * window under it stays opaque — see window.solid-csd above — so a transparent
+ * bar there shows the frame through the content rather than the window's
+ * ground, which is the sliced-in-two artifact this sheet's header exists to
+ * describe. Chrome's profile picker and Steam are the cases to check.
+ *
+ * Two classes and two elements, so this beats the transparent block above
+ * wherever GTK has set the class, and only there.
+ */
+window.solid-csd headerbar.default-decoration,
+window.solid-csd headerbar.default-decoration windowhandle,
+window.solid-csd .titlebar.default-decoration,
+window.solid-csd .titlebar.default-decoration windowhandle {
+  background-color: @headerbar_bg_color;
+  background-color: var(--headerbar-bg-color);
+}
+
+window.solid-csd headerbar.default-decoration:backdrop,
+window.solid-csd headerbar.default-decoration:backdrop windowhandle,
+window.solid-csd .titlebar.default-decoration:backdrop,
+window.solid-csd .titlebar.default-decoration:backdrop windowhandle {
+  background-color: @headerbar_backdrop_color;
+  background-color: var(--headerbar-backdrop-color);
+}
+
+/* ---------- Every other header bar is content, and paints nothing ----------
+ * The block above claims the one bar the window is decorated with. Everything
+ * it does not reach is a header bar an app put inside its own content, and this
+ * is where those are settled — one rule, rather than a list of the containers
+ * they turn up in.
+ *
+ * The list did not scale, because there is no container to name. simple-scan
+ * puts an AdwHeaderBar straight into an AdwApplicationWindow's content box, and
+ * Ptyxis buries one under a tab overview, a fullscreen box and a shrinker.
+ * Neither is inside an AdwToolbarView or a split-view pane, so neither was on
+ * the list, and libadwaita's own `headerbar` ground painted them a solid slab
+ * across the top of a window that was otherwise glass.
+ *
+ * One element and no class, so every scoped rule in this sheet still outranks
+ * it — the solid block above by two, the .default-decoration block below by
+ * one — and this only decides the bars nothing else has an opinion about.
+ *
+ * That an app already asks for the same thing is not enough on its own: user
+ * CSS loads at GTK_STYLE_PROVIDER_PRIORITY_USER, and in GTK a property set by a
+ * higher-priority provider is never looked up again in a lower one, whatever
+ * the specificity. Ptyxis ships `... box.visual-bell headerbar { background-
+ * color: transparent }` and this sheet was overruling it. Painting it here is
+ * what puts the two back in agreement.
+ */
+headerbar,
+headerbar windowhandle,
+headerbar:backdrop,
+headerbar:backdrop windowhandle {
+  background-color: transparent;
+  background-image: none;
+}
+
+/* ---------- Tab bars ----------
+ * AdwTabBar is the other bar that sits directly under a title, and it paints
+ * @headerbar_bg_color the same way a header bar does. With the header bar above
+ * it now transparent it was the only opaque band left across the top of a
+ * Ptyxis, Console, Text Editor or Builder window — a solid strip between the
+ * glass title and the glass content, which reads as a rendering fault rather
+ * than as a bar.
+ *
+ * So it paints nothing and the window's ground carries it, exactly as with the
+ * header bar. The tabs themselves are untouched: a tab is a control and still
+ * needs to show which one is selected.
+ *
+ * Both shapes of the widget are listed. libadwaita wraps the row in a
+ * windowhandle when the bar is draggable — inside an AdwToolbarView top bar —
+ * and puts the box straight in the revealer when it is not.
+ */
+tabbar,
+tabbar > revealer,
+tabbar > revealer > box,
+tabbar > revealer > windowhandle,
+tabbar > revealer > windowhandle > box,
+tabbar:backdrop,
+tabbar:backdrop > revealer,
+tabbar:backdrop > revealer > box,
+tabbar:backdrop > revealer > windowhandle,
+tabbar:backdrop > revealer > windowhandle > box {
+  background-color: transparent;
+  background-image: none;
 }
 
 /* ---------- In-window toolbars, searchbars, actionbars ---------- */
@@ -214,14 +412,14 @@ placessidebar {
  * window it sits in. The navigation list inside the pane is handled in
  * gtk4-40-containers.css, which is always installed.
  *
- * Scoped headerbars and toolbars in split-view panes (like Files/Nautilus)
- * and toolbarviews stay transparent in both focused and backdrop/unfocused
- * states, preventing a solid background from appearing when the window is unfocused.
+ * Toolbars and lists in split-view panes (like Files/Nautilus) and in
+ * toolbarviews stay transparent in both the focused and the backdrop state, so
+ * no solid ground appears when the window loses focus. The header bars that
+ * used to be listed here alongside them are gone: the blanket rule above
+ * settles every header bar that is not the window's own decoration, whatever it
+ * sits in, and repeating them here only made the list look like the place to
+ * add the next app that turned up.
  */
-.sidebar-pane headerbar,
-.sidebar-pane headerbar windowhandle,
-.sidebar-pane headerbar:backdrop,
-.sidebar-pane headerbar:backdrop windowhandle,
 .sidebar-pane toolbarview,
 .sidebar-pane toolbarview:backdrop,
 .sidebar-pane toolbarview > .toolbar,
@@ -240,38 +438,10 @@ placessidebar {
 .sidebar-pane list,
 .sidebar-pane scrolledwindow,
 .sidebar-pane viewport,
-.content-pane headerbar,
-.content-pane headerbar windowhandle,
-.content-pane headerbar:backdrop,
-.content-pane headerbar:backdrop windowhandle,
 .content-pane toolbarview > .toolbar,
 .content-pane toolbarview > .toolbar:backdrop,
 .content-pane toolbarview > revealer.top-bar,
 .content-pane toolbarview > revealer.top-bar:backdrop,
-navigation-split-view headerbar,
-navigation-split-view headerbar windowhandle,
-navigation-split-view headerbar:backdrop,
-navigation-split-view headerbar:backdrop windowhandle,
-overlay-split-view headerbar,
-overlay-split-view headerbar windowhandle,
-overlay-split-view headerbar:backdrop,
-overlay-split-view headerbar:backdrop windowhandle,
-toolbarview headerbar,
-toolbarview headerbar windowhandle,
-toolbarview headerbar:backdrop,
-toolbarview headerbar:backdrop windowhandle,
-headerbar.flat,
-headerbar.flat windowhandle,
-headerbar.flat:backdrop,
-headerbar.flat:backdrop windowhandle,
-headerbar.tweak-titlebar-left,
-headerbar.tweak-titlebar-left windowhandle,
-headerbar.tweak-titlebar-left:backdrop,
-headerbar.tweak-titlebar-left:backdrop windowhandle,
-headerbar.tweak-titlebar-right,
-headerbar.tweak-titlebar-right windowhandle,
-headerbar.tweak-titlebar-right:backdrop,
-headerbar.tweak-titlebar-right:backdrop windowhandle,
 toolbarview windowhandle,
 toolbarview windowhandle:backdrop,
 toolbarview > revealer.top-bar > windowhandle,
