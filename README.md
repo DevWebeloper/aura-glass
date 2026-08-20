@@ -73,8 +73,6 @@ aura-glass-update-check      # check by hand, any time
 ./install.sh --no-update-check   # turn the daily check off (or use the switch in the window)
 ```
 
-It asks the git remote for its tags — one request, no API token, no rate limit. It never fetches into your checkout and never installs anything on its own. Installing refuses outright if the checkout has uncommitted changes or is on a detached HEAD, and tells you which; a checkout whose history has diverged from the remote stops at `git pull --ff-only`'s own message rather than being merged or rewritten.
-
 
 ### 5. Quick Update / Re-Apply
 If you update your theme or GNOME packages later, re-apply the custom CSS fixes anytime with:
