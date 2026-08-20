@@ -75,27 +75,8 @@ aura-glass-update-check      # check by hand, any time
 
 It asks the git remote for its tags — one request, no API token, no rate limit. It never fetches into your checkout and never installs anything on its own. Installing refuses outright if the checkout has uncommitted changes or is on a detached HEAD, and tells you which; a checkout whose history has diverged from the remote stops at `git pull --ff-only`'s own message rather than being merged or rewritten.
 
-### 5. Testing a Branch
-If you have been asked to try something before it is released, check that branch out and install from it as normal:
 
-```bash
-git clone https://github.com/DevWebeloper/aura-glass.git
-cd aura-glass
-git checkout feature/gui-post-install
-./install.sh
-```
-
-From then on the daily check follows **that branch's commits** instead of release tags, because there are no tags on a branch being tested and the ones it can see belong to releases cut before it existed. The settings window says **Test build** and names the build `branch@commit`, and **Install** pulls the branch's new commits and re-runs the installer — the same button, pointed at the line you are actually on.
-
-When the branch is merged and released, go back to the released line once and stay there:
-
-```bash
-git checkout main && git pull
-```
-
-Which line you are on is read from the checkout every time, so there is no setting to change and nothing to switch back.
-
-### 6. Quick Update / Re-Apply
+### 5. Quick Update / Re-Apply
 If you update your theme or GNOME packages later, re-apply the custom CSS fixes anytime with:
 ```bash
 aura-glass-apply
