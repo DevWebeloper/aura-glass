@@ -213,8 +213,14 @@ window.csd {
 
 window.maximized,
 .maximized window,
-window:fullscreen,
 window.fullscreen {
+  /* No `window:fullscreen` beside it: neither GTK3 nor GTK4 has a
+   * :fullscreen pseudo-class, and an unknown pseudo-class does not
+   * just skip that one selector — the parser abandons the whole
+   * ruleset, so every declaration in this block was being dropped
+   * and every GTK app logged "Unknown name of pseudo-class" twice
+   * at startup. `.fullscreen` is the style class GTK actually sets
+   * on a fullscreen window, and it is already in the list. */
   padding: 0;
 }
 
