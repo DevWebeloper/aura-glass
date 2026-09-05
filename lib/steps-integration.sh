@@ -44,23 +44,36 @@ install_icon_sync() {
         run rm -f "$HOME/.config/systemd/user/tahoe-glass-icon-sync.service"
     fi
 
-    run install -Dm755 "$REPO_ROOT/bin/aura-glass-icon-sync" \
-        "$HOME/.local/bin/aura-glass-icon-sync"
-    ln -sf "$HOME/.local/bin/aura-glass-icon-sync" "$HOME/.local/bin/tahoe-glass-icon-sync" 2>/dev/null || true
+    local icon_command_changed=0 icon_unit_changed=0
+    install_if_changed "$REPO_ROOT/bin/aura-glass-icon-sync" \
+        "$HOME/.local/bin/aura-glass-icon-sync" 755
+    icon_command_changed="$INSTALL_CHANGED"
+    if [ "$(readlink "$HOME/.local/bin/tahoe-glass-icon-sync" 2>/dev/null || true)" != "$HOME/.local/bin/aura-glass-icon-sync" ]; then
+        run ln -sfn "$HOME/.local/bin/aura-glass-icon-sync" "$HOME/.local/bin/tahoe-glass-icon-sync"
+    fi
 
     # The two memos this used to write live in remember_icon_pack now, called
     # from install_icons — this step does not run in the --settings-only path,
     # so a pack chosen from the window was never getting recorded here.
 
-    run install -Dm644 "$REPO_ROOT/systemd/aura-glass-icon-sync.service" \
-        "$HOME/.config/systemd/user/aura-glass-icon-sync.service"
-    run systemctl --user daemon-reload
-    run systemctl --user enable aura-glass-icon-sync.service >/dev/null 2>&1 || true
+    install_if_changed "$REPO_ROOT/systemd/aura-glass-icon-sync.service" \
+        "$HOME/.config/systemd/user/aura-glass-icon-sync.service" 644
+    icon_unit_changed="$INSTALL_CHANGED"
+    [ "$icon_unit_changed" = 1 ] && run systemctl --user daemon-reload
+    if ! systemctl --user is-enabled --quiet aura-glass-icon-sync.service 2>/dev/null; then
+        run systemctl --user enable aura-glass-icon-sync.service >/dev/null 2>&1 || true
+    fi
 
     # enable alone only arms it for the next login, and there is no reason to
     # make the user log out to see their icons follow the theme.
     if systemctl --user is-active --quiet graphical-session.target 2>/dev/null; then
-        run systemctl --user restart aura-glass-icon-sync.service 2>/dev/null || true
+        if systemctl --user is-active --quiet aura-glass-icon-sync.service 2>/dev/null; then
+            if [ "$icon_command_changed" = 1 ] || [ "$icon_unit_changed" = 1 ]; then
+                run systemctl --user restart aura-glass-icon-sync.service 2>/dev/null || true
+            fi
+        else
+            run systemctl --user start aura-glass-icon-sync.service 2>/dev/null || true
+        fi
     fi
     ok "icons follow Settings > Appearance ($(icon_variant "$base" Dark || echo "$base") / $(icon_variant "$base" Light || echo "$base"))"
 }
@@ -126,17 +139,33 @@ install_panel_blur_unit() {
         fi
     done
 
-    run install -Dm755 "$REPO_ROOT/bin/aura-glass-panel-blur" \
-        "$HOME/.local/bin/aura-glass-panel-blur"
-    ln -sf "$HOME/.local/bin/aura-glass-panel-blur" "$HOME/.local/bin/tahoe-glass-panel-blur" 2>/dev/null || true
-    run install -Dm644 "$REPO_ROOT/systemd/aura-glass-panel-blur.service" \
-        "$HOME/.config/systemd/user/aura-glass-panel-blur.service"
-    run systemctl --user daemon-reload
-    run systemctl --user enable aura-glass-panel-blur.service >/dev/null 2>&1 || true
+    local panel_command_changed=0 panel_unit_changed=0
+    install_if_changed "$REPO_ROOT/bin/aura-glass-panel-blur" \
+        "$HOME/.local/bin/aura-glass-panel-blur" 755
+    panel_command_changed="$INSTALL_CHANGED"
+    install_if_changed "$REPO_ROOT/tools/aura_glass_panel_blur.py" \
+        "$HOME/.local/share/aura-glass/aura_glass_panel_blur.py" 755
+    [ "$INSTALL_CHANGED" = 1 ] && panel_command_changed=1
+    if [ "$(readlink "$HOME/.local/bin/tahoe-glass-panel-blur" 2>/dev/null || true)" != "$HOME/.local/bin/aura-glass-panel-blur" ]; then
+        run ln -sfn "$HOME/.local/bin/aura-glass-panel-blur" "$HOME/.local/bin/tahoe-glass-panel-blur"
+    fi
+    install_if_changed "$REPO_ROOT/systemd/aura-glass-panel-blur.service" \
+        "$HOME/.config/systemd/user/aura-glass-panel-blur.service" 644
+    panel_unit_changed="$INSTALL_CHANGED"
+    [ "$panel_unit_changed" = 1 ] && run systemctl --user daemon-reload
+    if ! systemctl --user is-enabled --quiet aura-glass-panel-blur.service 2>/dev/null; then
+        run systemctl --user enable aura-glass-panel-blur.service >/dev/null 2>&1 || true
+    fi
 
     # enable only arms it for the next login, and the strip is on screen now.
     if systemctl --user is-active --quiet graphical-session.target 2>/dev/null; then
-        run systemctl --user restart aura-glass-panel-blur.service 2>/dev/null || true
+        if systemctl --user is-active --quiet aura-glass-panel-blur.service 2>/dev/null; then
+            if [ "$panel_command_changed" = 1 ] || [ "$panel_unit_changed" = 1 ]; then
+                run systemctl --user restart aura-glass-panel-blur.service 2>/dev/null || true
+            fi
+        else
+            run systemctl --user start aura-glass-panel-blur.service 2>/dev/null || true
+        fi
     fi
     ok "panel blur rebuilds on every monitor change, and once at login"
 }

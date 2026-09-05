@@ -9,6 +9,19 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# A real uninstall changes the same generated targets as Apply, so it joins
+# the coordinator before reading or removing any owned state.
+_aura_lock=1
+for _aura_arg in "$@"; do
+    case "$_aura_arg" in
+        -h|--help|-n|--dry-run) _aura_lock=0 ;;
+    esac
+done
+if [ "$_aura_lock" = 1 ] \
+   && ! "$REPO_ROOT/bin/aura-glass-operation" held >/dev/null 2>&1; then
+    exec "$REPO_ROOT/bin/aura-glass-operation" run -- \
+        bash "$REPO_ROOT/uninstall.sh" "$@"
+fi
 # shellcheck source=lib/common.sh
 . "$REPO_ROOT/lib/common.sh"
 # shellcheck source=lib/steps-gdm.sh

@@ -24,6 +24,27 @@ run() {
     "$@"
 }
 
+# install_if_changed SOURCE DESTINATION MODE — install an owned artifact only
+# when its bytes or required permissions differ.  The normal installer invokes
+# several settings-only steps together; making this a successful no-op is what
+# lets those steps reconcile instead of needlessly waking user services.
+#
+# Do not use its result as a shell condition: set -e users need unchanged to be
+# successful.  Read INSTALL_CHANGED immediately after the call instead.
+INSTALL_CHANGED=0
+install_if_changed() {
+    local source="$1" destination="$2" mode="$3" actual=""
+    INSTALL_CHANGED=0
+    if [ -f "$destination" ]; then
+        actual="$(stat -Lc '%a' "$destination" 2>/dev/null || true)"
+        if [ "$actual" = "$mode" ] && cmp -s "$source" "$destination"; then
+            return 0
+        fi
+    fi
+    run install -Dm"$mode" "$source" "$destination"
+    INSTALL_CHANGED=1
+}
+
 # Whether this run may leave a $CONF_DIR memo behind.
 #
 # A dry run may not, for the obvious reason. A preview may not for a subtler

@@ -59,6 +59,12 @@
 # keeping it leaves the desktop exactly as it was before begin ran.
 set -euo pipefail
 
+operation="$(dirname "${BASH_SOURCE[0]}")/aura-glass-operation"
+[ -x "$operation" ] || operation="$HOME/.local/bin/aura-glass-operation"
+if ! "$operation" held >/dev/null 2>&1; then
+    exec "$operation" run -- bash "$0" "$@"
+fi
+
 CONF_DIR="$HOME/.config/aura-glass"
 MARKER="$CONF_DIR/preview-active"
 BACKUP="$CONF_DIR/preview-backup"
@@ -95,7 +101,7 @@ BMS=/org/gnome/shell/extensions/blur-my-shell
 PREVIEW_MEMOS="app-tint-color shell-tint-color app-transparency radius-preset radius-custom blur-strength popup-brightness notification-opacity popup-blur notification-blur window-blur app-blur-scope app-blur-allow app-blur-block"
 
 usage() {
-    printf 'usage: aura-glass-preview begin|set [options]|apps [options]|revert|status\n' >&2
+    printf 'usage: aura-glass-preview begin|set [options]|apps [options]|app-blur --wm-class CLASS --enabled 0|1|commit --session ID -- INSTALLER [ARG...]|revert [--session ID]|status [--json]\n' >&2
     exit 2
 }
 
@@ -123,19 +129,28 @@ cmd_begin() {
         # Already running — a second slider move mid-drag, not a new preview.
         # Nothing to snapshot again; the first begin's backup is still the
         # truth of what to revert to.
-        exit 0
+        cat "$BACKUP/session" 2>/dev/null || true
+        return 0
     fi
-    mkdir -p "$BACKUP/memos"
+    local staging session
+    staging="$(mktemp -d "$CONF_DIR/.preview-backup.XXXXXX")"
+    session="$(basename "$staging" | sed 's/^\.preview-backup\.//')"
+    mkdir -p "$staging/memos"
     local sheet
     for sheet in "$CONF_DIR"/shell-*.css "$CONF_DIR"/gtk4-*.css "$CONF_DIR/gtk3-tweaks.css"; do
-        [ -f "$sheet" ] && cp -a "$sheet" "$BACKUP/"
+        [ -f "$sheet" ] && cp -a "$sheet" "$staging/"
     done
     local name
     for name in $PREVIEW_MEMOS; do
-        [ -f "$CONF_DIR/$name" ] && cp -a "$CONF_DIR/$name" "$BACKUP/memos/"
+        [ -f "$CONF_DIR/$name" ] && cp -a "$CONF_DIR/$name" "$staging/memos/"
     done
-    dconf dump "$BMS/" > "$BACKUP/blur-my-shell.dconf"
+    dconf dump "$BMS/" > "$staging/blur-my-shell.dconf"
+    printf '%s\n' 1 > "$staging/schema-version"
+    printf '%s\n' "$session" > "$staging/session"
+    printf '%s\n' "${REPO_ROOT}" > "$staging/source-checkout"
+    mv "$staging" "$BACKUP"
     touch "$MARKER"
+    printf '%s\n' "$session"
 }
 
 # Put every memo back to exactly what begin found — present or absent, since a
@@ -155,13 +170,14 @@ restore_memos() {
 cmd_set() {
     require_begun
 
-    local app_tint="" shell_tint="" transparency="" radius_preset="" \
+    local session="" app_tint="" shell_tint="" transparency="" radius_preset="" \
         radius_custom="" blur_strength="" popup_brightness="" notification_opacity="" \
         popup_blur="" notification_blur="" window_blur="" scope="" \
         app_blur_allow="" app_blur_allow_given=0 \
         app_blur_block="" app_blur_block_given=0
     while [ $# -gt 0 ]; do
         case "$1" in
+            --session) session="$2"; shift 2 ;;
             --app-tint) app_tint="$2"; shift 2 ;;
             --shell-tint) shell_tint="$2"; shift 2 ;;
             --transparency) transparency="$2"; shift 2 ;;
@@ -179,6 +195,7 @@ cmd_set() {
             *) usage ;;
         esac
     done
+    check_session "$session"
 
     # Read by remembering() in lib/common.sh: the apply_* functions below do
     # every rewrite they normally do and skip every $CONF_DIR memo. See the
@@ -268,9 +285,10 @@ cmd_set() {
 cmd_apps() {
     require_begun
 
-    local allow="" block="" window_blur="1" scope="gtk"
+    local session="" allow="" block="" window_blur="1" scope="gtk"
     while [ $# -gt 0 ]; do
         case "$1" in
+            --session) session="$2"; shift 2 ;;
             --allow) allow="$2"; shift 2 ;;
             --block) block="$2"; shift 2 ;;
             --window-blur) window_blur="$2"; shift 2 ;;
@@ -278,6 +296,7 @@ cmd_apps() {
             *) usage ;;
         esac
     done
+    check_session "$session"
 
     export PREVIEW_MODE=1
     export WANT_BLUR=1
@@ -292,8 +311,86 @@ cmd_apps() {
     apply_app_blur >/dev/null
 }
 
+cmd_app_blur() {
+    # This is intentionally not a preview mutation.  The Shell menu changes a
+    # saved preference, so it runs under aura-glass-operation and reuses the
+    # canonical list/memo/dconf writer rather than replacing lists calculated
+    # before it obtained the shared descriptor.
+    [ ! -d "$BACKUP" ] || die "aura-glass-preview: a preview is active; finish it before changing an app blur rule"
+    local wm_class="" enabled="" allow_lines block_lines
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --wm-class) wm_class="${2:-}"; shift 2 ;;
+            --enabled) enabled="${2:-}"; shift 2 ;;
+            *) usage ;;
+        esac
+    done
+    [ -n "$wm_class" ] || usage
+    case "$enabled" in 0|1) ;; *) usage ;; esac
+
+    allow_lines="$(app_blur_lines "" "" "$CONF_DIR/app-blur-allow" "${APP_BLUR_ALLOW_DEFAULT[@]}")"
+    block_lines="$(app_blur_lines "" "" "$CONF_DIR/app-blur-block" "${APP_BLUR_BLOCK_DEFAULT[@]}")"
+    # The extension's wildcardToRegex escapes every regex metacharacter except
+    # * and ?.  Keep that exact membership rule here so a menu action removes
+    # the same covering wildcard it used to remove synchronously.
+    eval "$(APP_BLUR_ALLOW_INPUT="$allow_lines" APP_BLUR_BLOCK_INPUT="$block_lines" \
+        python3 - "$wm_class" "$enabled" <<'PY'
+import os
+import re
+import shlex
+import sys
+
+wm_class, enabled = sys.argv[1], sys.argv[2]
+
+def lines(name):
+    return [line.strip() for line in os.environ[name].splitlines()
+            if line.strip()]
+
+def covers(pattern):
+    escaped = re.escape(pattern).replace(r"\*", ".*").replace(r"\?", ".")
+    return re.fullmatch(escaped, wm_class, flags=re.I) is not None
+
+def edit(entries, wanted, label):
+    covered = [item for item in entries if covers(item)]
+    widened = [item for item in covered if item.lower() != wm_class.lower()]
+    if wanted:
+        if not covered:
+            entries.append(wm_class)
+    else:
+        entries[:] = [item for item in entries if item not in covered]
+    for item in widened:
+        print("aura-glass-app-blur-wildcard: %s: %s" % (label, item),
+              file=sys.stderr)
+
+allow, block = lines("APP_BLUR_ALLOW_INPUT"), lines("APP_BLUR_BLOCK_INPUT")
+is_on = enabled == "1"
+edit(allow, is_on, "always-blur")
+edit(block, not is_on, "never-blur")
+print("APP_BLUR_ALLOW=" + shlex.quote(",".join(allow)))
+print("APP_BLUR_BLOCK=" + shlex.quote(",".join(block)))
+PY
+    )"
+    export APP_BLUR_ALLOW APP_BLUR_BLOCK
+    export APP_BLUR_ALLOW_EXPLICIT=1 APP_BLUR_BLOCK_EXPLICIT=1
+    export WINDOW_BLUR_EXPLICIT=1 WANT_WINDOW_BLUR=1 WANT_BLUR=1
+    apply_app_blur
+}
+
+check_session() {
+    local wanted="${1:-}" actual
+    [ -n "$wanted" ] || return 0
+    actual="$(cat "$BACKUP/session" 2>/dev/null || true)"
+    [ "$wanted" = "$actual" ] || die "aura-glass-preview: session '$wanted' does not own this preview"
+}
+
 cmd_revert() {
+    local session=""
+    if [ "${1:-}" = --session ]; then
+        session="${2:-}"
+        shift 2
+    fi
     [ -d "$BACKUP" ] || exit 0
+    check_session "$session"
 
     # Byte-for-byte: put back exactly the sheets begin found, and remove any
     # set created that was not there before (shell-popup-blur.css toggled on
@@ -318,17 +415,48 @@ cmd_revert() {
 }
 
 cmd_status() {
+    local json=0
+    [ "${1:-}" != --json ] || json=1
     if [ -d "$BACKUP" ]; then
+        if [ "$json" = 1 ]; then
+            printf '{"schema_version":1,"state":"previewing","session_id":"%s","revision":0,"recovery_available":true,"conflicts":[]}\n' \
+                "$(cat "$BACKUP/session" 2>/dev/null || true)"
+            return
+        fi
         printf 'active\n'
     else
+        if [ "$json" = 1 ]; then
+            printf '%s\n' '{"schema_version":1,"state":"idle","session_id":null,"revision":0,"recovery_available":false,"conflicts":[]}'
+            return
+        fi
         printf 'idle\n'
     fi
+}
+
+cmd_commit() {
+    [ "${1:-}" = --session ] || usage
+    local session="$2"
+    shift 2
+    [ "${1:-}" = -- ] || usage
+    shift
+    require_begun
+    check_session "$session"
+    if "$@"; then
+        rm -rf "$BACKUP" "$MARKER"
+        return 0
+    fi
+    # Preserve the recovery journal if restoring cannot finish; the caller can
+    # still request an explicit revert rather than losing the pre-preview state.
+    cmd_revert --session "$session" || true
+    return 1
 }
 
 case "${1:-}" in
     begin)  shift; cmd_begin "$@" ;;
     set)    shift; cmd_set "$@" ;;
     apps)   shift; cmd_apps "$@" ;;
+    app-blur) shift; cmd_app_blur "$@" ;;
+    commit) shift; cmd_commit "$@" ;;
     revert) shift; cmd_revert "$@" ;;
     status) shift; cmd_status "$@" ;;
     *) usage ;;

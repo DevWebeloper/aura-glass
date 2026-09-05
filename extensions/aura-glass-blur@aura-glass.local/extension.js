@@ -12,10 +12,9 @@
  * Ships no schema of its own. It reads and writes Blur My Shell's
  * org.gnome.shell.extensions.blur-my-shell.applications directly — 'blur',
  * 'enable-all', 'whitelist', 'blacklist' — the same keys apply_app_blur in
- * lib/steps-dconf.sh writes, and mirrors the change into the same memo files
- * ($CONF_DIR/app-blur-allow, app-blur-block) that install.sh reads back on
- * every later run. Skipping that mirror would mean a toggle here holding
- * only until the next ./install.sh, which reads the stale memo over dconf.
+ * lib/steps-dconf.sh writes. The menu delegates changes to the operation
+ * helper, which acquires the project writer lock and updates those keys plus
+ * their memos through that canonical Bash function.
  *
  * Adds nothing at all when Blur My Shell's schema cannot be found, or when
  * applications/blur is off: a menu item that provably does nothing is worse
@@ -297,62 +296,64 @@ export default class AuraGlassBlurExtension extends Extension {
             item.setOrnament(checked ? PopupMenu.Ornament.CHECK
                                       : PopupMenu.Ornament.NONE);
             item.connect('activate', () => {
-                this._toggleBlur(wmClass, !checked);
+                this._toggleBlur(wmClass, !checked, item);
             });
         }
     }
 
-    _toggleBlur(wmClass, wantBlurred) {
-        // Both lists move together, unlike an edit made in the settings
-        // window's per-app blur manager: this toggle is one checkbox with
-        // one meaning, and apply_app_blur writes both memos every run
-        // regardless of scope — see the comment above that function in
-        // lib/steps-dconf.sh — so a choice recorded in only one of them is a
-        // choice a later scope flip in the settings window would silently
-        // undo. wantBlurred present in the allow list and absent from the
-        // block list is that choice, whichever list scope ends up consulting.
-        const allow = this._setListMembership('whitelist', wmClass, wantBlurred);
-        const block = this._setListMembership('blacklist', wmClass, !wantBlurred);
-        this._settings.set_strv('whitelist', allow);
-        this._settings.set_strv('blacklist', block);
-        this._writeMemo('app-blur-allow', allow);
-        this._writeMemo('app-blur-block', block);
-    }
-
-    _setListMembership(key, wmClass, present) {
-        const list = this._settings.get_strv(key);
-        if (present) {
-            if (matchesAny(list, wmClass))
-                return list;
-            return [...list, wmClass];
+    _toggleBlur(wmClass, wantBlurred, item) {
+        // A lock wait must never run on GNOME Shell's main loop. The backend
+        // reads the current memo after it owns that lock, changes both lists
+        // through apply_app_blur, and reports any wildcard it had to remove.
+        // Until that succeeds the checkmark stays truthful about live state.
+        item.setSensitive(false);
+        const local = GLib.build_filenamev([
+            GLib.get_home_dir(), '.local', 'bin', 'aura-glass-operation']);
+        const command = GLib.file_test(local, GLib.FileTest.IS_EXECUTABLE)
+            ? local : 'aura-glass-operation';
+        let process;
+        try {
+            process = Gio.Subprocess.new(
+                [command, 'app-blur', '--wm-class', wmClass, '--enabled',
+                    wantBlurred ? '1' : '0'],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
+        } catch (error) {
+            item.setSensitive(true);
+            Main.notify('aura-glass', `${_('Could not change app blur')}: ${error.message}`);
+            return;
         }
-
-        const removed = list.filter(p => wildcardToRegex(p).test(wmClass));
-        if (removed.length === 0)
-            return list;
-        // A wildcard removed here can cover more than the one window that
-        // was right-clicked — *chrome* also stops matching every other
-        // window that trips it. Silently dropping it would make the block
-        // list shrink for reasons the settings window never shows.
-        if (removed.some(p => p !== wmClass)) {
-            const listLabel = key === 'blacklist'
-                ? _('the never-blur list') : _('the always-blur list');
-            Main.notify('aura-glass',
-                `${_('Removed from')} ${listLabel}: ${removed.join(', ')}`);
-        }
-        return list.filter(p => !removed.includes(p));
-    }
-
-    // Shipped as memos rather than trusting dconf alone, for the same reason
-    // apply_app_blur writes both: a user's edited list has to survive the
-    // next ./install.sh, and app_blur_lines prefers the memo over whatever
-    // is already in dconf.
-    _writeMemo(name, list) {
-        const dir = GLib.build_filenamev([GLib.get_user_config_dir(), 'aura-glass']);
-        GLib.mkdir_with_parents(dir, 0o755);
-        const path = GLib.build_filenamev([dir, name]);
-        const contents = list.length ? `${list.join('\n')}\n` : '';
-        GLib.file_set_contents(path, contents);
+        process.communicate_utf8_async(null, null, (source, result) => {
+            let ok, _stdout, stderr;
+            try {
+                [ok, _stdout, stderr] = source.communicate_utf8_finish(result);
+            } catch (error) {
+                item.setSensitive(true);
+                Main.notify('aura-glass', `${_('Could not change app blur')}: ${error.message}`);
+                return;
+            }
+            if (!ok || !source.get_successful()) {
+                item.setSensitive(true);
+                Main.notify('aura-glass', `${_('Could not change app blur')}: ${stderr?.trim() || _('operation failed')}`);
+                return;
+            }
+            // The backend, rather than the menu's old pre-lock list, is now
+            // authoritative. Read it only after success so a failed command
+            // can never leave a false checkmark behind.
+            const scope = this._settings.get_boolean('enable-all') ? 'all' : 'gtk';
+            const key = scope === 'all' ? 'blacklist' : 'whitelist';
+            const covered = matchesAny(this._settings.get_strv(key), wmClass);
+            item.setOrnament((scope === 'all' ? !covered : covered)
+                ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
+            item.setSensitive(true);
+            for (const line of (stderr || '').split('\n')) {
+                const match = /^aura-glass-app-blur-wildcard: (always-blur|never-blur): (.+)$/.exec(line);
+                if (match) {
+                    const list = match[1] === 'never-blur'
+                        ? _('the never-blur list') : _('the always-blur list');
+                    Main.notify('aura-glass', `${_('Removed from')} ${list}: ${match[2]}`);
+                }
+            }
+        });
     }
 
     // ---- D-Bus bridge ------------------------------------------------------

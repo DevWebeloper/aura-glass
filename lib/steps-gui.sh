@@ -34,18 +34,23 @@ install_gui() {
         return 0
     fi
 
-    run install -Dm644 "$REPO_ROOT/gui/aura_glass_settings.py" \
-        "$GUI_DIR/aura_glass_settings.py"
-    run install -Dm755 "$REPO_ROOT/bin/aura-glass-settings" \
-        "$HOME/.local/bin/aura-glass-settings"
+    install_if_changed "$REPO_ROOT/gui/aura_glass_settings.py" \
+        "$GUI_DIR/aura_glass_settings.py" 644
+    # Kept beside the window so the installed launcher has the same preview
+    # sequencing contract as a checkout launch; it uses only the stdlib.
+    install_if_changed "$REPO_ROOT/gui/preview_queue.py" \
+        "$GUI_DIR/preview_queue.py" 644
+    install_if_changed "$REPO_ROOT/bin/aura-glass-settings" \
+        "$HOME/.local/bin/aura-glass-settings" 755
     # Backs the settings window's live preview: begin/set/revert reapply the
     # CSS-only and dconf-only subset of --settings-only, memo-free, so a
     # slider can show its result on the real desktop before Apply commits it.
     # See the script's own header for why it is safe to call on every tick.
-    run install -Dm755 "$REPO_ROOT/bin/aura-glass-preview" \
-        "$HOME/.local/bin/aura-glass-preview"
-    run install -Dm644 "$REPO_ROOT/gui/icons/$GUI_APP_ID.svg" "$GUI_ICON"
-    if [ "${DRY_RUN:-0}" != 1 ] && command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    install_if_changed "$REPO_ROOT/bin/aura-glass-preview" \
+        "$HOME/.local/bin/aura-glass-preview" 755
+    install_if_changed "$REPO_ROOT/gui/icons/$GUI_APP_ID.svg" "$GUI_ICON" 644
+    local gui_icon_changed="$INSTALL_CHANGED"
+    if [ "$gui_icon_changed" = 1 ] && [ "${DRY_RUN:-0}" != 1 ] && command -v gtk-update-icon-cache >/dev/null 2>&1; then
         gtk-update-icon-cache -qft "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
     fi
 

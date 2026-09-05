@@ -17,33 +17,6 @@
 # for the login case.
 set -euo pipefail
 
-KEY=/org/gnome/shell/extensions/blur-my-shell/panel/blur
-
-# Settle time between the layout changing and the actor being rebuilt. The
-# toggle is only correct once the new geometry is in place; 3s is comfortably
-# past mutter's own reconfiguration without being a noticeable wait.
-SETTLE="${AURA_GLASS_BLUR_SETTLE:-${TAHOE_GLASS_BLUR_SETTLE:-3}}"
-
-rebuild() {
-    # Only meaningful when the panel blur is actually on — otherwise this would
-    # switch on a feature the user turned off.
-    [ "$(dconf read "$KEY" 2>/dev/null)" = "true" ] || return 0
-    sleep "$SETTLE"
-    dconf write "$KEY" false
-    sleep 1
-    dconf write "$KEY" true
-}
-
-# The login case: the session is starting around us, so settle before the first
-# rebuild the same way a layout change does.
-rebuild || true
-
-# One line per signal; each is a layout change worth rebuilding for. gdbus
-# monitor never exits, so this is the whole loop.
-gdbus monitor --session --dest org.gnome.Mutter.DisplayConfig \
-              --object-path /org/gnome/Mutter/DisplayConfig 2>/dev/null \
-    | while read -r line; do
-        case "$line" in
-            *MonitorsChanged*) rebuild || true ;;
-        esac
-    done
+worker="$HOME/.local/share/aura-glass/aura_glass_panel_blur.py"
+[ -r "$worker" ] || worker="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tools/aura_glass_panel_blur.py"
+exec python3 "$worker"

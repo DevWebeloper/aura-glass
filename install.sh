@@ -10,6 +10,19 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Help and dry-run remain side-effect free; every real installer invocation
+# owns the shared descriptor before it can migrate or read remembered state.
+_aura_lock=1
+for _aura_arg in "$@"; do
+    case "$_aura_arg" in
+        -h|--help|-n|--dry-run) _aura_lock=0 ;;
+    esac
+done
+if [ "$_aura_lock" = 1 ] \
+   && ! "$REPO_ROOT/bin/aura-glass-operation" held >/dev/null 2>&1; then
+    exec "$REPO_ROOT/bin/aura-glass-operation" run -- \
+        bash "$REPO_ROOT/install.sh" "$@"
+fi
 # shellcheck source=lib/common.sh
 . "$REPO_ROOT/lib/common.sh"
 # shellcheck source=lib/distro.sh
@@ -39,6 +52,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$REPO_ROOT/lib/steps-gdm.sh"
 # shellcheck source=lib/steps-gui.sh
 . "$REPO_ROOT/lib/steps-gui.sh"
+# shellcheck source=lib/steps-apply-plan.sh
+. "$REPO_ROOT/lib/steps-apply-plan.sh"
 # shellcheck source=lib/steps-wizard.sh
 . "$REPO_ROOT/lib/steps-wizard.sh"
 # Values written down in more than one place live here, so that the copy in a
@@ -48,6 +63,9 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$REPO_ROOT/tokens/tokens.sh"
 
 ACCENT=""          # empty = remembered choice, then $ACCENT_DEFAULT
+TYPED_FLAGS=()
+INCREMENTAL=0
+PLAN_JSON=0
 ACCENT_DEFAULT="purple"
 WANT_EXTRAS=1
 EXT_LIST=""        # comma-separated UUIDs, replacing the pack. Empty = a pack
@@ -291,6 +309,7 @@ EOF
 # line is parsed here by the same code that parses a hand-typed one.
 parse_flags() {
     while [ $# -gt 0 ]; do
+    TYPED_FLAGS+=("$1")
     case "$1" in
         --interactive)   FORCE_INTERACTIVE=1; shift ;;
         --accent)        ACCENT="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
@@ -397,6 +416,8 @@ parse_flags() {
         --titlebar-button-style) TITLEBUTTON_STYLE="${2:-}"; TITLEBUTTON_STYLE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --titlebar-button-style=*) TITLEBUTTON_STYLE="${1#*=}"; TITLEBUTTON_STYLE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --settings-only) SETTINGS_ONLY=1; WANT_DEPS=0; EXPLICIT_FLAGS=1; shift ;;
+        --incremental)   INCREMENTAL=1; EXPLICIT_FLAGS=1; shift ;;
+        --plan-json)     PLAN_JSON=1; EXPLICIT_FLAGS=1; shift ;;
         --deps-only)     DEPS_ONLY=1; EXPLICIT_FLAGS=1; shift ;;
         --no-deps)       WANT_DEPS=0; EXPLICIT_FLAGS=1; shift ;;
         --force)         FORCE=1; EXPLICIT_FLAGS=1; shift ;;
@@ -1186,7 +1207,7 @@ APP_OPACITY="${APP_OPACITY:-255}"
 # than behind a flag of its own: the resolution is the whole of what a mode is,
 # and a dry run that did not say which mode it resolved to would be describing
 # everything except the question that was asked.
-if [ "$DRY_RUN" = 1 ]; then
+if [ "$DRY_RUN" = 1 ] && [ "$PLAN_JSON" != 1 ]; then
     printf '  glass-mode: %s blur=%s window=%s popup=%s transparency=%s styling=%s\n' \
         "$(glass_mode_from_state)" "$WANT_BLUR" "$WANT_WINDOW_BLUR" \
         "$WANT_POPUP_BLUR" "$APP_TRANSPARENCY" "$WANT_STYLING"
@@ -1235,6 +1256,28 @@ if [ "$WANT_BLUR" != 1 ] && [ "$WANT_WINDOW_BLUR" = 1 ]; then
     die "--no-blur and --window-blur contradict each other — --no-blur leaves Blur My Shell out entirely, so there is nothing to blur behind a window. Pick one."
 fi
 
+# The GUI consumes this protocol directly. Handle it before the normal banner
+# and preflight output so stdout stays a single JSON document.
+if [ "$PLAN_JSON" = 1 ]; then
+    if [ "$SETTINGS_ONLY" != 1 ] || [ "$INCREMENTAL" != 1 ] || [ "$DRY_RUN" != 1 ]; then
+        die "--plan-json requires --settings-only --incremental --dry-run"
+    fi
+    select_apply_actions
+    current_fingerprint="$(apply_source_fingerprint)"
+    saved_fingerprint="$(cat "$CONF_DIR/apply-source-fingerprint" 2>/dev/null || true)"
+    if [ "${APPLY_ACTIONS[0]}" != full ] && [ "$current_fingerprint" != "$saved_fingerprint" ]; then
+        APPLY_ACTIONS=(full)
+        APPLY_FALLBACK_REASON="installed source fingerprint is absent or changed"
+    fi
+    python3 - "${APPLY_FALLBACK_REASON:-}" "${APPLY_ACTIONS[@]}" <<'PY'
+import json
+import sys
+print(json.dumps({"schema_version": 1, "actions": sys.argv[2:],
+                  "fallback_reason": sys.argv[1] or None}, separators=(",", ":")))
+PY
+    exit 0
+fi
+
 printf '\n%s  aura-glass%s  %saccent %s%s\n' \
     "$C_BLD" "$C_OFF" "$C_DIM" "$ACCENT" "$C_OFF"
 [ "$DRY_RUN" = 1 ] && printf '%s  dry run — nothing will be changed%s\n' "$C_DIM" "$C_OFF"
@@ -1269,6 +1312,30 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     if [ ! -d "$CONF_DIR" ] \
        || { [ ! -d "$HOME/.themes/$THEME_NAME" ] && [ ! -d "$HOME/.themes/$UPSTREAM_THEME_NAME" ]; }; then
         die "--settings-only retunes an existing install, but there is nothing installed yet. Run ./install.sh first."
+    fi
+    if [ "$INCREMENTAL" = 1 ]; then
+        select_apply_actions
+        current_fingerprint="$(apply_source_fingerprint)"
+        saved_fingerprint="$(cat "$CONF_DIR/apply-source-fingerprint" 2>/dev/null || true)"
+        if [ "${APPLY_ACTIONS[0]}" != full ] && [ "$current_fingerprint" != "$saved_fingerprint" ]; then
+            APPLY_ACTIONS=(full)
+            APPLY_FALLBACK_REASON="installed source fingerprint is absent or changed"
+        fi
+        if [ "${APPLY_ACTIONS[0]}" != full ]; then
+            step "Applying changed settings only"
+            for action in "${APPLY_ACTIONS[@]}"; do
+                case "$action" in
+                    accent) apply_accent ;;
+                    cursor-size) apply_cursor_size ;;
+                    window-buttons) apply_window_buttons ;;
+                    app-blur) apply_app_blur ;;
+                    css) install_css ;;
+                esac
+            done
+            step "Done"
+            exit 0
+        fi
+        info "incremental Apply falls back to the complete refresh: $APPLY_FALLBACK_REASON"
     fi
     # Asking for a different pack is asking for it to be installed, so these run
     # here despite fetching — but only when the flag was actually given. A
@@ -1313,6 +1380,9 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     # grounds install_gui is here on. Without it the window's switch for it
     # would write a memo that nothing acted on until the next full install.
     install_panel_blur_unit
+    if [ "$INCREMENTAL" = 1 ] && [ "$DRY_RUN" != 1 ]; then
+        apply_source_fingerprint > "$CONF_DIR/apply-source-fingerprint"
+    fi
     step "Done"
     cat <<EOF
 

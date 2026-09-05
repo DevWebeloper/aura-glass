@@ -85,6 +85,8 @@ import shutil
 import subprocess
 import sys
 
+from preview_queue import PreviewQueue
+
 import cairo
 import gi
 
@@ -2797,29 +2799,26 @@ class Window(Adw.ApplicationWindow):
         # subprocess per pixel; _preview_css_providers are this window's own
         # GTK4 half of it — see _reload_preview_css.
         #
-        # _preview_proc is the tick that is running right now, kept rather than
-        # fired and forgotten so that Apply can wait for it. A preview run takes
-        # about a second — install_css, aura-glass-apply and a handful of dconf
-        # writes — and two installers over the same $CONF_DIR is the one thing
-        # neither may do. _apply_after_preview is the Apply that arrived while
-        # one was in flight, held until it is not.
+        # One active preview writer and one terminal operation are sequenced by
+        # PreviewQueue. Debouncing decides when to offer a candidate; it never
+        # decides whether two subprocesses can write the same generated files.
         self._preview_enabled = True
         self._preview_active = False
         self._preview_timer = 0
         self._preview_proc = None
-        # Whether the tick in flight is the apps-only fast path (aura-glass-
-        # preview apps — four dconf writes, no CSS) or the full set — set
-        # right before the process starts in _fire_preview, read back in
-        # _on_preview_set_done to decide whether the GTK4 CSS is worth
-        # re-reading.
-        self._preview_fast = False
-        self._apply_after_preview = None
+        self._preview_queue = PreviewQueue(self._launch_preview_operation)
+        self._preview_terminal_requested = False
+        self._preview_fast_by_argv = {}
+        self._preview_generation = None
+        self._preview_session = None
         self._preview_css_providers = []
         # Set only by _on_close_request, on the way to closing over a dirty
         # window that chose Apply rather than Discard — read once by
         # _on_apply's own done() and cleared there, so an ordinary Apply
         # elsewhere in the session never closes the window by accident.
         self._close_after_apply = False
+        self._close_after_revert = False
+        self._recovering_preview = False
 
         # Every page is built up front rather than on first visit. _reload and
         # _mark_dirty both read every widget in the window — a page built later
@@ -2975,11 +2974,8 @@ class Window(Adw.ApplicationWindow):
         if repo is not None and os.path.exists(
                 os.path.join(CONF_DIR, "preview-active")):
             self._preview_active = True
-            stream_command(
-                ["bash", os.path.join(repo, "bin", "aura-glass-preview"),
-                 "revert"], lambda _l: None, self._on_preview_reverted)
-            self._toasts.add_toast(Adw.Toast(
-                title="A preview from before was reverted"))
+            self._recovering_preview = True
+            self._preview_revert()
 
     def _build_apply_bar(self):
         """Apply, and everything a run of install.sh has to say, along the bottom.
@@ -3134,23 +3130,23 @@ class Window(Adw.ApplicationWindow):
         current = self._current()
         pending = [a for a in current.flags_against(self._applied)
                   if a in self._PREVIEWABLE_FLAGS]
-        self._preview_fast = bool(pending) and all(
-            a in self._APP_ONLY_FLAGS for a in pending)
+        fast = bool(pending) and all(a in self._APP_ONLY_FLAGS for a in pending)
 
         script = os.path.join(self._repo, "bin", "aura-glass-preview")
         window_blur = "0" if current.scope == "none" else "1"
         scope = current.scope if current.scope != "none" else "gtk"
         q = shlex.quote
-        if self._preview_fast:
+        if fast:
             # Four dconf writes through apply_app_blur, nothing about the
             # CSS pipeline — see aura-glass-preview's own header for why
             # that split exists.
-            cmd = ("%s begin && %s apps --allow %s --block %s "
-                  "--window-blur %s --scope %s"
+            cmd = ("session=$(%s begin) && %s apps --session \"$session\" "
+                  "--allow %s --block %s --window-blur %s --scope %s"
                   % (q(script), q(script), q(",".join(current.allow)),
                      q(",".join(current.block)), q(window_blur), q(scope)))
         else:
-            cmd = ("%s begin && %s set --app-tint %s --shell-tint %s "
+            cmd = ("session=$(%s begin) && %s set --session \"$session\" "
+                  "--app-tint %s --shell-tint %s "
                   "--transparency %s --radius-custom %s --blur-strength %s "
                   "--popup-brightness %s --notification-opacity %s "
                   "--popup-blur %s --notification-blur %s "
@@ -3167,31 +3163,53 @@ class Window(Adw.ApplicationWindow):
                      q(window_blur),
                      q(scope), q(",".join(current.allow)),
                      q(",".join(current.block))))
-        self._preview_proc = stream_command(
-            ["bash", "-c", cmd], lambda _l: None, self._on_preview_set_done)
+        argv = ("bash", "-c", cmd)
+        self._preview_fast_by_argv[argv] = fast
+        self._preview_queue.request_preview(argv)
         return False
 
-    def _on_preview_set_done(self, ok, message):
-        self._preview_proc = None
-        # An Apply that arrived mid-tick is what this tick was holding up, and
-        # it is the newer answer — so the preview it superseded neither claims
-        # the desktop nor raises the bar. _on_apply has already torn down the
-        # preview's own record of what to go back to.
-        held, self._apply_after_preview = self._apply_after_preview, None
-        if held is not None:
-            self._start_apply(held)
+    def _launch_preview_operation(self, kind, argv, generation):
+        """Launch the queue's next operation and bind its immutable metadata."""
+        self._preview_generation = generation
+        if kind == "apply":
+            self._start_apply(list(argv), generation)
             return
-        self._preview_active = True
-        self._sync_preview_bar()
+        if kind == "revert":
+            self._preview_proc = stream_command(
+                list(argv), lambda _line: None,
+                lambda ok, message: self._on_preview_reverted(
+                    generation, ok, message))
+            return
+        fast = self._preview_fast_by_argv.pop(tuple(argv), False)
+        self._preview_proc = stream_command(
+            list(argv), lambda _line: None,
+            lambda ok, message: self._on_preview_set_done(
+                generation, fast, ok, message))
+
+    def _on_preview_set_done(self, generation, fast, ok, message):
+        if self._preview_generation != generation:
+            return
+        self._preview_proc = None
         if ok:
+            self._preview_active = True
+            try:
+                with open(os.path.join(CONF_DIR, "preview-backup", "session"),
+                          encoding="utf-8") as stream:
+                    self._preview_session = stream.read().strip() or None
+            except OSError:
+                self._preview_session = None
+            self._sync_preview_bar()
             # The fast path never touches the CSS this window itself wears —
             # apps mode is four dconf writes — so there is nothing on disk
             # for a re-read to pick up.
-            if not self._preview_fast:
+            if not fast:
                 self._reload_preview_css()
         else:
+            self._preview_active = False
+            self._sync_preview_bar()
             self._toasts.add_toast(Adw.Toast(
                 title="Preview failed — %s" % message))
+        self._preview_queue.finish(generation)
 
     def _reload_preview_css(self):
         """The GTK4 half of the preview: this window wearing its own candidate.
@@ -3232,60 +3250,52 @@ class Window(Adw.ApplicationWindow):
         if self._preview_timer:
             GLib.source_remove(self._preview_timer)
             self._preview_timer = 0
-        if not self._preview_active or self._repo is None:
+        if (not self._preview_active and self._preview_proc is None) or self._repo is None:
             return
-        self._preview_active = False
-        self._sync_preview_bar()
+        if self._preview_terminal_requested:
+            return
         script = os.path.join(self._repo, "bin", "aura-glass-preview")
-        stream_command(["bash", script, "revert"], lambda _l: None,
-                       self._on_preview_reverted)
+        self._preview_terminal_requested = True
+        argv = ["bash", script, "revert"]
+        if self._preview_session is not None:
+            argv.extend(("--session", self._preview_session))
+        self._preview_queue.request_terminal("revert", tuple(argv))
 
-    def _on_preview_reverted(self, ok, message):
+    def _on_preview_reverted(self, generation, ok, message):
         # Lowered here as well as in _preview_revert, because the stale-preview
         # revert at startup raises it without going through that path — and a
         # flag left up with no backup on disk would have _on_apply tear down a
         # preview that is not there and _preview_revert shell out for nothing,
         # for the rest of the session.
-        self._preview_active = False
-        self._sync_preview_bar()
-        self._clear_preview_css()
-        if not ok:
+        if self._preview_generation != generation:
+            return
+        self._preview_proc = None
+        self._preview_terminal_requested = False
+        if ok:
+            self._preview_active = False
+            self._preview_session = None
+            self._sync_preview_bar()
+            self._clear_preview_css()
+            if self._recovering_preview:
+                self._recovering_preview = False
+                self._toasts.add_toast(Adw.Toast(
+                    title="A preview from before was reverted"))
+            if self._close_after_revert:
+                self._close_after_revert = False
+                self.destroy()
+        else:
+            self._recovering_preview = False
             self._toasts.add_toast(Adw.Toast(
                 title="Could not revert the preview — %s" % message))
+        self._preview_queue.finish(generation)
 
     def _sync_preview_bar(self):
         self._preview_reveal.set_reveal_child(self._preview_active)
 
     def _on_close_request(self, _window):
-        # Synchronous and on the way out, not fired-and-forgotten: a preview
-        # that outlives this window is indistinguishable from a crash, and
-        # the whole safety property aura-glass-preview keeps depends on
-        # revert actually having run before anything reads $CONF_DIR again.
-        # Ahead of the dirty check below, not after it: a preview belongs to
-        # this window whether or not the edit behind it has been applied, and
-        # a Cancel on the dialog that follows must not leave it half torn
-        # down.
-        if self._preview_timer:
-            GLib.source_remove(self._preview_timer)
-            self._preview_timer = 0
-        # A tick still in flight counts as a preview to tear down. Its completion
-        # callback will never run — this window is closing — so without this the
-        # backup and the previewed sheets would be left on disk, and the next
-        # session's first revert would restore them over whatever had been
-        # applied since.
-        if ((self._preview_active or self._preview_proc is not None)
-                and self._repo is not None):
-            script = os.path.join(self._repo, "bin", "aura-glass-preview")
-            try:
-                subprocess.run(["bash", script, "revert"], timeout=15,
-                               check=False)
-            except (OSError, subprocess.SubprocessError):
-                pass
-            self._preview_active = False
-            self._preview_proc = None
-
         if not self._apply.get_sensitive():
-            return False
+            self._discard_and_close()
+            return True
 
         dialog = AlertWindow(
             heading="Apply before closing?",
@@ -3304,7 +3314,7 @@ class Window(Adw.ApplicationWindow):
 
         def response(_d, answer):
             if answer == "discard":
-                self.destroy()
+                self._discard_and_close()
             elif answer == "apply":
                 self._close_after_apply = True
                 self._on_apply(self._apply)
@@ -3312,6 +3322,17 @@ class Window(Adw.ApplicationWindow):
         dialog.connect("response", response)
         open_over(dialog, self)
         return True
+
+    def _discard_and_close(self):
+        """Close only after an active preview has been asynchronously reverted."""
+        if self._preview_timer:
+            GLib.source_remove(self._preview_timer)
+            self._preview_timer = 0
+        if self._preview_active or self._preview_proc is not None:
+            self._close_after_revert = True
+            self._preview_revert()
+            return
+        self.destroy()
 
     # ---- one run of install.sh, in this window ----------------------------
 
@@ -6571,7 +6592,7 @@ class Window(Adw.ApplicationWindow):
             return
 
         self._run_started("Re-applying the CSS to the theme…")
-        log_append(self._apply_log, "$ aura-glass-apply")
+        log_append(self._apply_log, "$ aura-glass-apply --force-reload")
 
         def done(ok, message):
             if not ok:
@@ -6588,55 +6609,45 @@ class Window(Adw.ApplicationWindow):
             self._run_finished(True, "CSS re-applied to the theme")
             self._toasts.add_toast(Adw.Toast(title="CSS re-applied"))
 
-        stream_command(["bash", script], self._run_line, done)
+        stream_command(["bash", script, "--force-reload"], self._run_line, done)
 
     def _on_apply(self, _button):
         args = self._current().flags_against(self._applied)
         if not args or self._repo is None:
             return
-        # install.sh is about to write exactly what the preview has been
-        # showing, for real — so the preview's own record of "what to go back
-        # to" is discarded here rather than reverted: reverting first would
-        # put the desktop back on the old look for the second it takes
-        # --settings-only to run, which is the flicker a preview exists to
-        # avoid, not cause.
+        if self._preview_terminal_requested:
+            self._toasts.add_toast(Adw.Toast(
+                title="A preview operation is already finishing"))
+            return
         if self._preview_timer:
             GLib.source_remove(self._preview_timer)
             self._preview_timer = 0
-        if self._preview_active or self._preview_proc is not None:
-            self._preview_active = False
-            self._sync_preview_bar()
-            shutil.rmtree(os.path.join(CONF_DIR, "preview-backup"),
-                          ignore_errors=True)
-            try:
-                os.remove(os.path.join(CONF_DIR, "preview-active"))
-            except FileNotFoundError:
-                pass
-        # A tick that is still running is rewriting the same $CONF_DIR sheets
-        # install.sh is about to rewrite, so the two are serialised rather than
-        # allowed to overlap. Held rather than killed: a preview run is about a
-        # second, and a half-written sheet is worse than a moment's wait.
-        # PREVIEW_MODE keeps the memos out of it either way — see remembering()
-        # in lib/common.sh — but two writers over one directory is its own
-        # problem, and this is the end of it.
+        self._preview_terminal_requested = True
         if self._preview_proc is not None:
-            self._apply_after_preview = args
             self._run_started("Waiting for the preview to finish…")
-            return
-        self._start_apply(args)
+        self._preview_queue.request_terminal("apply", tuple(args))
 
-    def _start_apply(self, args):
+    def _start_apply(self, args, generation):
         # The preview's providers belong to a preview that is over. Cleared
         # here rather than left on the display, where they would go on
         # outranking nothing in particular for the life of the window.
         self._clear_preview_css()
-        argv = ["bash", os.path.join(self._repo, "install.sh"),
-                "--settings-only", "--yes"] + args
+        installer = ["bash", os.path.join(self._repo, "install.sh"),
+                     "--settings-only", "--incremental", "--yes"] + args
+        if self._preview_session is None:
+            argv = installer
+        else:
+            argv = ["bash", os.path.join(self._repo, "bin",
+                                           "aura-glass-preview"),
+                    "commit", "--session", self._preview_session, "--"] + installer
         self._run_started("Reapplying the dconf preset, the CSS and the "
                           "gsettings…")
         log_append(self._apply_log, "$ " + " ".join(argv[1:]))
 
         def done(ok, message):
+            if self._preview_generation != generation:
+                return
+            self._preview_terminal_requested = False
             # Read once and cleared here regardless of outcome: a failed
             # Apply started from the close dialog leaves the window open on
             # the error rather than closing over it, and the flag must not
@@ -6650,16 +6661,19 @@ class Window(Adw.ApplicationWindow):
                 self._run_finished(False, failed)
                 self._toasts.add_toast(Adw.Toast(
                     title="Could not apply — see the details"))
+                self._preview_queue.finish(generation)
                 return
             # The disk first, then the verdict: _reload puts every row back in
             # step with what was actually installed, and _run_finished ends by
             # asking whether there is anything left to apply.
             said = self._applied_message()
+            self._preview_session = None
             self._reload()
             self._run_finished(True, said)
             self._toasts.add_toast(Adw.Toast(title=said))
             if close_after:
                 self.destroy()
+            self._preview_queue.finish(generation)
 
         stream_command(argv, self._run_line, done)
 

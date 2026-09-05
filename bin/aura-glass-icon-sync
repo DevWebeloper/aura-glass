@@ -11,6 +11,17 @@
 # current setting and exits.
 set -euo pipefail
 
+# A one-shot correction is a project-owned write. The long-lived monitor does
+# not hold a lock while it waits for appearance events, but each correction
+# takes the same short lock as Apply and re-reads its inputs inside it.
+if [ "${1:-}" = "--once" ]; then
+    operation="$(dirname "${BASH_SOURCE[0]}")/aura-glass-operation"
+    [ -x "$operation" ] || operation="$HOME/.local/bin/aura-glass-operation"
+    if ! "$operation" held >/dev/null 2>&1; then
+        exec "$operation" run -- bash "$0" --once
+    fi
+fi
+
 # The pack answer, not the resolved theme name: "keep" means --no-icons, and
 # nothing of this theme's writes icon-theme under it. Checked at every apply
 # rather than only at startup, so an agent already running when the answer
@@ -23,23 +34,22 @@ icons_kept() {
     [ "$pack" = keep ]
 }
 
-BASE="${AURA_GLASS_ICONS:-${TAHOE_GLASS_ICONS:-}}"
-if [ -z "$BASE" ]; then
-    if [ -r "$HOME/.config/aura-glass/icons" ]; then
-        BASE="$(cat "$HOME/.config/aura-glass/icons")"
-    elif [ -r "$HOME/.config/tahoe-glass/icons" ]; then
-        BASE="$(cat "$HOME/.config/tahoe-glass/icons")"
-    fi
-fi
-BASE="${BASE:-Colloid}"
-
 have_theme() {
     [ -d "$HOME/.local/share/icons/$1" ] || [ -d "/usr/share/icons/$1" ]
 }
 
 apply() {
-    local scheme variant want c
+    local scheme variant want c base
     icons_kept && return 0
+    base="${AURA_GLASS_ICONS:-${TAHOE_GLASS_ICONS:-}}"
+    if [ -z "$base" ]; then
+        if [ -r "$HOME/.config/aura-glass/icons" ]; then
+            base="$(cat "$HOME/.config/aura-glass/icons")"
+        elif [ -r "$HOME/.config/tahoe-glass/icons" ]; then
+            base="$(cat "$HOME/.config/tahoe-glass/icons")"
+        fi
+    fi
+    base="${base:-Colloid}"
     scheme="$(gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null || echo "''")"
     case "$scheme" in
         *prefer-dark*) variant="Dark" ;;
@@ -51,9 +61,9 @@ apply() {
     # both spellings, then the bare name — a set with only one half is left on
     # that half rather than swapped for something that would look wrong.
     want=""
-    for c in "$BASE-$variant" \
-             "$BASE-$(printf '%s' "$variant" | tr '[:upper:]' '[:lower:]')" \
-             "$BASE"; do
+    for c in "$base-$variant" \
+             "$base-$(printf '%s' "$variant" | tr '[:upper:]' '[:lower:]')" \
+             "$base"; do
         if have_theme "$c"; then want="$c"; break; fi
     done
     [ -n "$want" ] || return 0

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Serialize Aura Glass's project-owned writers through the installed helper.
+set -euo pipefail
+
+installed="$HOME/.local/share/aura-glass/aura_glass_operation.py"
+checkout="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tools/aura_glass_operation.py"
+preview="$(dirname "${BASH_SOURCE[0]}")/aura-glass-preview"
+
+if [ -f "$checkout" ]; then
+    [ -x "$preview" ] && export AURA_GLASS_OPERATION_PREVIEW="$preview"
+    exec python3 "$checkout" "$@"
+fi
+if [ -f "$installed" ]; then
+    exec python3 "$installed" "$@"
+fi
+printf 'aura-glass-operation: coordinator helper is not installed. Re-run install.sh.\n' >&2
+exit 1

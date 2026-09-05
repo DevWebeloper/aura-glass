@@ -900,6 +900,17 @@ apply_cursor_size() {
     fi
 }
 
+apply_accent() {
+    # Accent is intentionally separable from the full interface-theme write:
+    # it is GNOME's preference and a narrow GUI edit must not reset appearance.
+    run gsettings set org.gnome.desktop.interface accent-color "$ACCENT"
+    disable_accent_overriders
+    if remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$ACCENT" > "$CONF_DIR/accent"
+    fi
+}
+
 apply_gsettings() {
     step "Setting themes and accent"
 
@@ -926,11 +937,7 @@ apply_gsettings() {
     # with the shell theme — that pair is what makes a stood-down desktop look
     # like one, rather than a themed desktop with the blur removed.
     run gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
-    run gsettings set org.gnome.desktop.interface accent-color "$ACCENT"
-    # And nothing gets to overwrite it a moment later. disable_accent_overriders
-    # explains which extension does that and why it is switched off rather than
-    # argued with.
-    disable_accent_overriders
+    apply_accent
     if [ "${WANT_STYLING:-1}" = 1 ]; then
         run gsettings set org.gnome.desktop.interface gtk-theme "$THEME_NAME"
         run dconf write /org/gnome/shell/extensions/user-theme/name "'$THEME_NAME'"
@@ -949,7 +956,6 @@ apply_gsettings() {
     # leaves the previous answer standing.
     if [ "${DRY_RUN:-0}" != 1 ]; then
         mkdir -p "$CONF_DIR"
-        printf '%s\n' "$ACCENT" > "$CONF_DIR/accent"
         # "keep" is the memo for --no-icons, and the reason it has to exist:
         # without it the next flagless run reads the last pack out of icon-pack
         # and installs it again, which is the same override by a slower route.

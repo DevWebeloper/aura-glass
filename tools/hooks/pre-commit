@@ -137,6 +137,23 @@ step "update check (tools/check-update-check.sh)" \
 # answer, because nothing else would notice them drifting apart.
 step "update channel (tools/check-update-channel.py)" \
     python3 "$TMP/tools/check-update-channel.py"
+# Stable-apply fixture suite: isolated HOME/session stubs prove writer
+# serialization, complete CSS publication, quiet reconciliation, event
+# reduction, incremental classification, and GUI-facing recovery protocol.
+step "preview queue (tools/check-preview-queue.py)" \
+    python3 "$TMP/tools/check-preview-queue.py"
+step "operation recovery (tools/check-operation-recovery.py)" \
+    python3 "$TMP/tools/check-operation-recovery.py"
+step "CSS publication (tools/check-apply-publication.py)" \
+    python3 "$TMP/tools/check-apply-publication.py"
+step "integration reconciliation (tools/check-integration-reconcile.py)" \
+    python3 "$TMP/tools/check-integration-reconcile.py"
+step "panel blur events (tools/check-panel-blur-events.py)" \
+    python3 "$TMP/tools/check-panel-blur-events.py"
+step "incremental apply (tools/check-incremental-apply.py)" \
+    python3 "$TMP/tools/check-incremental-apply.py"
+step "apply feedback (tools/check-apply-feedback.py)" \
+    python3 "$TMP/tools/check-apply-feedback.py"
 
 printf '\n'
 if [ "$fail" = 1 ]; then

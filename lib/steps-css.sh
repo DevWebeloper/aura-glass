@@ -413,8 +413,20 @@ install_css() {
         run install -Dm644 "$sheet" "$CONF_DIR/$(basename "$sheet")"
     done
     run install -Dm644 "$REPO_ROOT/css/gtk3-tweaks.css"  "$CONF_DIR/gtk3-tweaks.css"
-    run install -Dm755 "$REPO_ROOT/bin/aura-glass-apply" "$HOME/.local/bin/aura-glass-apply"
-    ln -sf "$HOME/.local/bin/aura-glass-apply" "$HOME/.local/bin/tahoe-glass-apply" 2>/dev/null || true
+    # Standalone apply and preview use this installed stdlib helper after the
+    # checkout is gone, so keep it with their durable user-level assets. A
+    # preview already runs through that helper; refreshing it on each slider
+    # tick would turn a candidate render into artifact reconciliation.
+    if [ "${PREVIEW_MODE:-0}" != 1 ]; then
+        install_if_changed "$REPO_ROOT/tools/aura_glass_operation.py" \
+            "$HOME/.local/share/aura-glass/aura_glass_operation.py" 755
+        install_if_changed "$REPO_ROOT/bin/aura-glass-operation" \
+            "$HOME/.local/bin/aura-glass-operation" 755
+        install_if_changed "$REPO_ROOT/bin/aura-glass-apply" \
+            "$HOME/.local/bin/aura-glass-apply" 755
+        ln -sf "$HOME/.local/bin/aura-glass-apply" \
+            "$HOME/.local/bin/tahoe-glass-apply" 2>/dev/null || true
+    fi
 
     # Upgrading from a version that shipped one sheet per target. Both names are
     # gone from aura-glass-apply's lists, so leaving them would only be dead

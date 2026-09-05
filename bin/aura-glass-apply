@@ -6,6 +6,47 @@
 # It is idempotent — an existing block is replaced, never stacked.
 set -euo pipefail
 
+operation="$(dirname "${BASH_SOURCE[0]}")/aura-glass-operation"
+[ -x "$operation" ] || operation="$HOME/.local/bin/aura-glass-operation"
+if ! "$operation" held >/dev/null 2>&1; then
+    exec "$operation" run -- bash "$0" "$@"
+fi
+
+JSON_OUTPUT=0
+FORCE_RELOAD=0
+for arg in "$@"; do
+    case "$arg" in
+        --json) JSON_OUTPUT=1 ;;
+        --force-reload) FORCE_RELOAD=1 ;;
+        *) printf 'aura-glass-apply: unknown option: %s\n' "$arg" >&2; exit 2 ;;
+    esac
+done
+# JSON is a protocol, not a prettified log: diagnostics remain on stderr so a
+# GUI never has to guess whether a human-readable line is part of the result.
+if [ "$JSON_OUTPUT" = 1 ]; then
+    exec 3>&1
+    exec 1>&2
+fi
+
+CHANGED_TARGETS=()
+GTK_TARGET_CHANGED=0
+SHELL_RELOAD="unchanged"
+
+emit_result() {
+    [ "$JSON_OUTPUT" = 1 ] || return 0
+    python3 - "$SHELL_RELOAD" "$GTK_TARGET_CHANGED" "${CHANGED_TARGETS[@]}" >&3 <<'PY'
+import json
+import sys
+
+print(json.dumps({
+    "schema_version": 1,
+    "changed_targets": sys.argv[3:],
+    "shell_reload": sys.argv[1],
+    "gtk_restart_required": sys.argv[2] == "1",
+}, separators=(",", ":")))
+PY
+}
+
 DIR="${AURA_GLASS_DIR:-${TAHOE_GLASS_DIR:-$HOME/.config/aura-glass}}"
 [ -d "$DIR" ] || [ ! -d "$HOME/.config/tahoe-glass" ] || DIR="$HOME/.config/tahoe-glass"
 # Resolved against what is on disk, not against the shell's dconf key. An
@@ -148,8 +189,10 @@ apply() {
     local present=() s
     for s in "$@"; do [ -f "$s" ] && present+=("$s"); done
     [ ${#present[@]} -gt 0 ] || { echo "skip (no snippets): $target"; return; }
+    local before after
+    before="$(stat -Lc '%d:%i:%s:%y' "$target")"
     python3 - "$target" "$flatten" "${present[@]}" <<'PY'
-import sys, re
+import os, re, stat, sys, tempfile
 target, flatten, snippets = sys.argv[1], sys.argv[2] == "1", sys.argv[3:]
 BEGIN = "/* >>> aura-glass BEGIN <<< */"
 END   = "/* >>> aura-glass END <<< */"
@@ -325,11 +368,40 @@ if accent:
 block = "\n\n".join(
     open(p, encoding="utf-8").read().rstrip("\n") for p in snippets
 )
-open(target, "w", encoding="utf-8").write(
-    css.rstrip("\n") + "\n\n" + BEGIN + "\n" + block + "\n" + END + "\n"
-)
+candidate = (css.rstrip("\n") + "\n\n" + BEGIN + "\n" + block + "\n" + END + "\n").encode()
+# Replace the resolved regular file, never the symlink a user/theme may use to
+# reach it. Readers therefore see the old complete file or the new complete
+# file, not the truncation window an ordinary open(..., "w") created.
+destination = os.path.realpath(target)
+mode = os.stat(destination).st_mode
+if not stat.S_ISREG(mode):
+    raise RuntimeError("unsupported non-regular target: %s" % target)
+with open(destination, "rb") as stream:
+    if stream.read() == candidate:
+        print("unchanged ->", target)
+        raise SystemExit(0)
+fd, temporary = tempfile.mkstemp(prefix=".aura-glass-", dir=os.path.dirname(destination))
+try:
+    with os.fdopen(fd, "wb") as stream:
+        os.fchmod(stream.fileno(), stat.S_IMODE(mode))
+        stream.write(candidate)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, destination)
+finally:
+    if os.path.exists(temporary):
+        os.unlink(temporary)
 print("applied ->", target, "(%d snippet%s)" % (len(snippets), "" if len(snippets) == 1 else "s"))
 PY
+    after="$(stat -Lc '%d:%i:%s:%y' "$target")"
+    if [ "$before" != "$after" ]; then
+        CHANGED_TARGETS+=("$target")
+        if [ "$target" = "$SHELL_CSS" ]; then
+            SHELL_TARGET_CHANGED=1
+        else
+            GTK_TARGET_CHANGED=1
+        fi
+    fi
 }
 
 # Snippet order is the cascade. These sheets override each other on equal
@@ -345,6 +417,7 @@ PY
 # gtk4-tweaks.css these replaced are deliberately not listed: install_css
 # deletes them from $CONF_DIR on upgrade, because a $CONF_DIR holding both the
 # monolith and its parts would apply every rule twice.
+SHELL_TARGET_CHANGED=0
 SHELL_SNIPPETS=(
     "$DIR/shell-00-flat.css"
     "$DIR/shell-10-quick-settings.css"
@@ -391,13 +464,19 @@ apply "$GTK3_CSS"      0 "$DIR/gtk3-tweaks.css" \
 # so toggle the key to force Main.loadTheme().
 SD="$HOME/.local/share/gnome-shell/extensions/user-theme@gnome-shell-extensions.gcampax.github.com/schemas"
 [ -d "$SD" ] || SD="/usr/share/gnome-shell/extensions/user-theme@gnome-shell-extensions.gcampax.github.com/schemas"
-if [ -d "$SD" ]; then
+if { [ "$SHELL_TARGET_CHANGED" = 1 ] || [ "$FORCE_RELOAD" = 1 ]; } && [ ! -d "$SD" ]; then
+    SHELL_RELOAD="unavailable"
+elif { [ "$SHELL_TARGET_CHANGED" = 1 ] || [ "$FORCE_RELOAD" = 1 ]; } && [ -d "$SD" ]; then
     cur=$(GSETTINGS_SCHEMA_DIR="$SD" gsettings get org.gnome.shell.extensions.user-theme name 2>/dev/null || echo "''")
     cur=${cur#\'}; cur=${cur%\'}
-    if [ -n "$cur" ]; then
+    # A forced repair only reloads the Aura Glass theme we own; reloading an
+    # unrelated selected theme merely because its name is nonempty is a visible
+    # surprise and cannot repair these files.
+    if [ "$cur" = "$THEME" ]; then
         GSETTINGS_SCHEMA_DIR="$SD" gsettings set org.gnome.shell.extensions.user-theme name ''
         sleep 1
         GSETTINGS_SCHEMA_DIR="$SD" gsettings set org.gnome.shell.extensions.user-theme name "$cur"
+        SHELL_RELOAD="reloaded"
         echo "shell theme reloaded ($cur)"
     fi
 fi
@@ -405,3 +484,4 @@ fi
 # GTK apps read their CSS at startup, so already-running apps keep the old look
 # until they are restarted. Nothing to do about that from here.
 echo "done — restart GTK apps to pick up the GTK side"
+emit_result
