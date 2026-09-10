@@ -19,6 +19,7 @@ select_apply_actions() {
             --window-buttons|--window-buttons=*) _apply_add window-buttons ;;
             --app-blur-allow|--app-blur-allow=*|--app-blur-block|--app-blur-block=*) _apply_add app-blur ;;
             --app-tint-color|--app-tint-color=*|--shell-tint-color|--shell-tint-color=*|--app-transparency|--app-transparency=*|--no-app-transparency|--notification-opacity|--notification-opacity=*|--titlebar-button-style|--titlebar-button-style=*) _apply_add css ;;
+            --liquid-glass|--no-liquid-glass) _apply_add liquid-glass ;;
             *) APPLY_FALLBACK_REASON="unclassified flag: $flag"; APPLY_ACTIONS=(full); return ;;
         esac
     done

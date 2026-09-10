@@ -88,6 +88,22 @@ if in_scratch --glass-mode frostd >/dev/null 2>&1; then
     failures+=("a misspelled --glass-mode was accepted")
 fi
 
+# Liquid Glass remembers a renderer choice independently from the glass mode:
+# a power-saving/sold run must suspend that choice rather than reinterpret it
+# as an explicit opt-out, while an explicit contradictory enable is refused
+# before the settings-only path can write dconf or CSS.
+mkdir -p "$scratch/.config/aura-glass/liquid-glass"
+printf '1\n' > "$scratch/.config/aura-glass/liquid-glass/enabled"
+if ! in_scratch --no-blur >/dev/null 2>&1; then
+    failures+=("a remembered Liquid Glass selection should suspend under --no-blur, not fail")
+fi
+if [ "$(cat "$scratch/.config/aura-glass/liquid-glass/enabled")" != 1 ]; then
+    failures+=("--no-blur should not erase the remembered Liquid Glass selection")
+fi
+if in_scratch --liquid-glass --no-blur >/dev/null 2>&1; then
+    failures+=("--liquid-glass --no-blur was accepted, it must be refused before styling changes")
+fi
+
 # The per-mode drawer, on the same scratch CONF_DIR as everything above. The
 # resolutions already run above have their own opinions about --glass-mode
 # frosted/transparent/solid, and seed_glass_mode writes even under --dry-run —

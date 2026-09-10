@@ -10,6 +10,100 @@
 #
 # Sourced by install.sh.
 
+liquid_snapshot_read() {
+    local value
+    value="$(dconf read "$1" 2>/dev/null || true)"
+    # dconf read is empty when a key has no user value.  Record that distinct
+    # state so restoration resets the key instead of leaving Liquid Glass's
+    # false override behind as a fake user choice.
+    printf '%s\n' "${value:-__AURA_DCONF_RESET__}"
+}
+
+# Liquid Glass owns the visual treatment of shell popups, notifications, the
+# dock and OSD.  Keep Aura's panel/application Blur My Shell effects running;
+# they are separate actors and disabling either would make this renderer's
+# shell-only scope unexpectedly change application windows.
+apply_liquid_glass_profile() {
+    [ "${LIQUID_GLASS_EFFECTIVE:-0}" = 1 ] || return 0
+    local profile="$CONF_DIR/liquid-glass" marker="$CONF_DIR/liquid-glass/profile-snapshot"
+    local bms=/org/gnome/shell/extensions/blur-my-shell
+    local dock=/org/gnome/shell/extensions/dash-to-dock/blur
+    local openbar=/org/gnome/shell/extensions/openbar/apply-menu-notif
+    local enabled
+
+    if [ ! -f "$marker" ]; then
+        if [ "${DRY_RUN:-0}" = 1 ]; then
+            info "dry-run: snapshot Liquid Glass conflicts and suspend their Aura profile"
+        else
+            mkdir -p "$profile"
+            liquid_snapshot_read "$bms/popup/blur" > "$profile/bms-popup-blur"
+            liquid_snapshot_read "$bms/popup/notification" > "$profile/bms-popup-notification"
+            liquid_snapshot_read "$dock" > "$profile/dash-to-dock-blur"
+            liquid_snapshot_read "$openbar" > "$profile/openbar-apply-menu-notif"
+            enabled="$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || true)"
+            case "$enabled" in *"'custom-osd@neuromorph'"*) printf '1\n' > "$profile/custom-osd-enabled" ;; *) printf '0\n' > "$profile/custom-osd-enabled" ;; esac
+            : > "$marker"
+        fi
+    fi
+
+    # These are the only upstream keys Aura writes.  Advanced Liquid Glass
+    # preferences remain entirely upstream-owned.
+    run dconf write /org/gnome/shell/extensions/liquid-glass/enable-dock-glass true
+    run dconf write /org/gnome/shell/extensions/liquid-glass/enable-menu-glass true
+    run dconf write /org/gnome/shell/extensions/liquid-glass/enable-notification-glass true
+    run dconf write /org/gnome/shell/extensions/liquid-glass/enable-quick-settings-glass true
+    run dconf write /org/gnome/shell/extensions/liquid-glass/enable-osd-glass true
+    run dconf write /org/gnome/shell/extensions/liquid-glass/enable-application-glass false
+    run dconf write "$bms/popup/blur" false
+    run dconf write "$bms/popup/notification" false
+    run dconf write "$dock" false
+    run dconf write "$openbar" false
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: disable Custom OSD if the saved Liquid Glass profile says it was enabled"
+    elif [ "$(cat "$profile/custom-osd-enabled" 2>/dev/null || true)" = 1 ]; then
+        gnome-extensions disable custom-osd@neuromorph 2>/dev/null || true
+        dequeue_extension custom-osd@neuromorph || true
+    fi
+    queue_liquid_glass
+    ok "Liquid Glass conflict profile staged — shell renderer activates after logout"
+}
+
+restore_liquid_glass_profile() {
+    local profile="$CONF_DIR/liquid-glass" marker="$CONF_DIR/liquid-glass/profile-snapshot"
+    local bms=/org/gnome/shell/extensions/blur-my-shell value
+    [ -f "$marker" ] || return 0
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: restore the saved Liquid Glass conflict profile"
+        return 0
+    fi
+    gnome-extensions disable "$LIQUID_GLASS_UUID" 2>/dev/null || true
+    dequeue_extension "$LIQUID_GLASS_UUID" || true
+    for value in \
+        "$bms/popup/blur:bms-popup-blur" \
+        "$bms/popup/notification:bms-popup-notification" \
+        "/org/gnome/shell/extensions/dash-to-dock/blur:dash-to-dock-blur" \
+        "/org/gnome/shell/extensions/openbar/apply-menu-notif:openbar-apply-menu-notif"; do
+        local key="${value%%:*}" file="${value#*:}" saved
+        saved="$(cat "$profile/$file" 2>/dev/null || true)"
+        case "$saved" in
+            __AURA_DCONF_RESET__) run dconf reset "$key" ;;
+            '') warn "Liquid Glass snapshot for $key is empty — left for inspection" ;;
+            *) run dconf write "$key" "$saved" ;;
+        esac
+    done
+    if [ "$(cat "$profile/custom-osd-enabled" 2>/dev/null || true)" = 1 ]; then
+        if ! gnome-extensions enable custom-osd@neuromorph 2>/dev/null; then
+            enqueue_extension custom-osd@neuromorph || true
+        fi
+    fi
+    rm -f "$marker" "$profile/bms-popup-blur" "$profile/bms-popup-notification" \
+          "$profile/dash-to-dock-blur" "$profile/openbar-apply-menu-notif" \
+          "$profile/custom-osd-enabled"
+    rmdir "$profile" 2>/dev/null || true
+    ok "Liquid Glass conflict profile restored"
+}
+
 load_dconf() {
     step "Loading the dconf preset"
 

@@ -429,6 +429,7 @@ SHELL_SNIPPETS=(
     "$DIR/shell-90-density.css"
     "$DIR/shell-popup-blur.css"
     "$DIR/shell-notification-blur.css"
+    "$DIR/shell-liquid-glass.css"
 )
 GTK4_SNIPPETS=(
     "$DIR/gtk4-00-flat.css"

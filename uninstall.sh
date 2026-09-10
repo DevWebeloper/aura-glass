@@ -286,6 +286,19 @@ if [ "$REMOVE_EXTENSIONS" = 1 ]; then
             skip "$u not installed here"
         fi
     done
+    # Liquid Glass can be present from a user or distro install.  The marker is
+    # written only after Aura atomically staged its pinned runtime, so it is the
+    # authority for whether --extensions is allowed to remove this directory.
+    u="liquid-glass@thinkingcoding1231.gmail.com"
+    if [ -d "$EXT_DIR/$u" ] && [ -f "$EXT_DIR/$u/.aura-glass-liquid-glass" ]; then
+        run gnome-extensions disable "$u" 2>/dev/null || true
+        run rm -rf "$EXT_DIR/$u"
+        ok "removed $u (Aura-owned pinned runtime)"
+    elif [ -d "$EXT_DIR/$u" ]; then
+        skip "$u is externally managed — left installed"
+    else
+        skip "$u not installed here"
+    fi
     # user-theme is deliberately left alone: it is a stock GNOME extension that
     # plenty of other setups depend on.
     info "user-theme left installed — it is a stock GNOME extension"

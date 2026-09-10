@@ -36,6 +36,14 @@ BMS_REPO="https://github.com/aunetx/blur-my-shell.git"
 BMS_REF="7d1290bbcff9"            # master; no release carries the popup component
 BMS_UUID="blur-my-shell@aunetx"
 
+# Liquid Glass is deliberately an optional runtime fetch.  Aura tracks this
+# commit and installs only the extension's runtime payload; it never vendors
+# the upstream source tree, its history, or its preference UI.
+LIQUID_GLASS_REPO="https://github.com/ryohsuke1231/liquid-glass.git"
+LIQUID_GLASS_REF="af41a303002c69e2f2a3dcd5405fb6903b2430f8"
+LIQUID_GLASS_UUID="liquid-glass@thinkingcoding1231.gmail.com"
+LIQUID_GLASS_SCHEMA="org.gnome.shell.extensions.liquid-glass@thinkingcoding1231.gmail.com"
+
 # First-party — no upstream repo or ref, since the source lives in
 # extensions/ next to this script. See install_aura_ext in
 # lib/steps-extensions.sh.
@@ -210,6 +218,8 @@ ext_description() {
             printf 'Blur My Shell — the blur behind windows, popups and the panel' ;;
         custom-osd@neuromorph)
             printf 'Custom OSD — the volume and brightness pill' ;;
+        liquid-glass@thinkingcoding1231.gmail.com)
+            printf 'Liquid Glass — experimental shell-only glass renderer (GNOME 49-50)' ;;
         just-perfection-desktop@just-perfection)
             printf 'Just Perfection — GNOME UI tweaker & visibility manager' ;;
         gnome-ui-tune@itstime.tech)

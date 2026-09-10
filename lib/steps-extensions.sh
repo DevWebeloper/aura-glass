@@ -453,6 +453,7 @@ install_extensions() {
     install_aura_ext
     install_openbar
     install_custom_osd
+    [ "${LIQUID_GLASS_EFFECTIVE:-0}" = 1 ] && install_liquid_glass
 
     if [ "${WANT_EXTRAS:-0}" = 1 ] && [ "${#EXT_EXTRA[@]}" -gt 0 ]; then
         step "Installing optional extensions (${#EXT_EXTRA[@]} selected)"
@@ -508,6 +509,96 @@ enable_extensions() {
             warn "could not enable $u"
         fi
     done
+
+    # Liquid Glass must never be offered to the running Wayland shell: its
+    # conflict profile has already been staged, and this queue is the explicit
+    # handoff to the next login.
+    [ "${LIQUID_GLASS_EFFECTIVE:-0}" = 1 ] && queue_liquid_glass
+}
+
+liquid_glass_payload_valid() {
+    local dir="$1" entry
+    for entry in extension.js metadata.json stylesheet.css prefs.js resources.gresource \
+                 resources.gresource.xml dist shaders schemas LICENSE; do
+        [ -e "$dir/$entry" ] || return 1
+    done
+    python3 - "$dir/metadata.json" "$LIQUID_GLASS_UUID" <<'PY'
+import json, sys
+try:
+    data = json.load(open(sys.argv[1], encoding="utf-8"))
+    versions = {str(v) for v in data.get("shell-version", [])}
+    raise SystemExit(0 if data.get("uuid") == sys.argv[2] and versions & {"49", "50"} else 1)
+except Exception:
+    raise SystemExit(1)
+PY
+}
+
+install_liquid_glass() {
+    local uuid="$LIQUID_GLASS_UUID" target="$EXT_DIR/$LIQUID_GLASS_UUID"
+    local marker="$target/.aura-glass-liquid-glass" src stage old entry
+    [ "${LIQUID_GLASS_EFFECTIVE:-0}" = 1 ] || return 0
+    case "${GNOME_MAJOR:-49}" in 49|50) ;; *) die "Liquid Glass supports GNOME Shell 49 or 50 only" ;; esac
+
+    # An extension a person or their distribution owns is not ours to replace.
+    if [ -d "$target" ] && [ ! -f "$marker" ]; then
+        liquid_glass_payload_valid "$target" \
+            || die "$uuid is installed externally but its runtime payload is incomplete or unsupported"
+        ext_supports_shell "$target" "${GNOME_MAJOR:-49}" \
+            || die "$uuid is installed externally but does not support GNOME ${GNOME_MAJOR:-49}"
+        [ -f "$target/schemas/gschemas.compiled" ] || run glib-compile-schemas "$target/schemas"
+        GSETTINGS_SCHEMA_DIR="$target/schemas" gsettings list-schemas | grep -qxF "$LIQUID_GLASS_SCHEMA" \
+            || die "$uuid's schema did not compile"
+        skip "$uuid is externally managed — validated and left in place"
+        return 0
+    fi
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: fetch $LIQUID_GLASS_REPO at $LIQUID_GLASS_REF and stage filtered $uuid runtime payload"
+        return 0
+    fi
+    src="$SRC_CACHE/liquid-glass"
+    clone_pinned "$LIQUID_GLASS_REPO" "$LIQUID_GLASS_REF" "$src"
+    src="$src/$uuid"
+    liquid_glass_payload_valid "$src" \
+        || die "the pinned Liquid Glass runtime payload changed or is incomplete"
+    mkdir -p "$EXT_DIR" "$CONF_DIR/liquid-glass"
+    stage="$(mktemp -d "$EXT_DIR/.liquid-glass.XXXXXX")"
+    for entry in extension.js metadata.json stylesheet.css prefs.js resources.gresource \
+                 resources.gresource.xml dist shaders schemas LICENSE; do
+        cp -a "$src/$entry" "$stage/$entry"
+    done
+    liquid_glass_payload_valid "$stage" || { run rm -rf "$stage"; die "staged Liquid Glass payload is incomplete"; }
+    ext_supports_shell "$stage" "${GNOME_MAJOR:-49}" \
+        || { run rm -rf "$stage"; die "the pinned Liquid Glass payload does not support GNOME ${GNOME_MAJOR:-49}"; }
+    glib-compile-schemas "$stage/schemas" || { run rm -rf "$stage"; die "failed to compile Liquid Glass schemas"; }
+    GSETTINGS_SCHEMA_DIR="$stage/schemas" gsettings list-schemas | grep -qxF "$LIQUID_GLASS_SCHEMA" \
+        || { run rm -rf "$stage"; die "Liquid Glass schema did not compile"; }
+
+    old=""
+    if [ -d "$target" ]; then old="$EXT_DIR/.liquid-glass.previous.$$"; mv "$target" "$old"; fi
+    if ! mv "$stage" "$target"; then
+        [ -n "$old" ] && mv "$old" "$target"
+        die "could not activate staged Liquid Glass payload"
+    fi
+    [ -z "$old" ] || run rm -rf "$old"
+    printf '%s\n' "$LIQUID_GLASS_REF" > "$marker"
+    printf '%s\n' "$LIQUID_GLASS_REF" > "$CONF_DIR/liquid-glass/ref"
+    ok "$uuid (pinned runtime payload, $LIQUID_GLASS_REF)"
+}
+
+queue_liquid_glass() {
+    [ "${LIQUID_GLASS_EFFECTIVE:-0}" = 1 ] || return 0
+    if [ ! -d "$EXT_DIR/$LIQUID_GLASS_UUID" ] && [ ! -d "/usr/share/gnome-shell/extensions/$LIQUID_GLASS_UUID" ]; then
+        skip "$LIQUID_GLASS_UUID is not staged — normal settings Apply stays offline"
+        return 0
+    fi
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: queue $LIQUID_GLASS_UUID for the next login"
+    elif enqueue_extension "$LIQUID_GLASS_UUID"; then
+        ok "$LIQUID_GLASS_UUID queued — active after logout"
+    else
+        warn "could not queue $LIQUID_GLASS_UUID"
+    fi
 }
 
 # Whether a UUID is one no pack may switch on. See EXT_NO_AUTO_ENABLE.
@@ -613,7 +704,7 @@ PY
 # intersection rather than disabling a list.
 glass_owned_extensions() {
     printf '%s\n' "${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" \
-        custom-osd@neuromorph "${EXT_EXTRA_ALL[@]}"
+        custom-osd@neuromorph "$LIQUID_GLASS_UUID" "${EXT_EXTRA_ALL[@]}"
 }
 
 # Solid mode. The UUIDs that are enabled right now and are ours get switched

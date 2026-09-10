@@ -1,0 +1,11 @@
+/* Liquid Glass compatibility ---------------------------------------------
+ * These selectors are roots added by the upstream renderer itself.  Keeping
+ * this final sheet scoped to them means Aura's panel and application blur stay
+ * untouched, while Aura's regular popup sheets can be omitted without a broad
+ * selector accidentally changing stock shell surfaces. */
+.liquid-glass-transparent,
+.liquid-glass-bg-actor,
+.liquid-glass-menu-root,
+.liquid-glass-qs-root {
+  background-image: none;
+}

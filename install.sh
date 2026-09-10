@@ -83,6 +83,9 @@ WANT_GDM_MONITORS=0
 GDM_BG="default"
 WANT_BMS_GIT=1
 WANT_BLUR=1
+WANT_LIQUID_GLASS=0   # explicit flag, then memo, then deliberately off
+LIQUID_GLASS_EXPLICIT=""
+LIQUID_GLASS_EFFECTIVE=0
 GLASS_MODE=""            # empty = the memo, then derived from the flags
 GLASS_MODE_EXPLICIT=""
 BLUR_EXPLICIT=""         # --blur / --no-blur were typed, so a mode must not move them
@@ -270,6 +273,9 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
                       ones, with the rest of the theme intact (best for low-end
                       GPUs or battery saver). Not the same as --glass-mode
                       solid, which stands the theme down altogether
+    --liquid-glass    stage the experimental shell-only Liquid Glass renderer
+                      for the next GNOME 49/50 login (downloads its pinned runtime)
+    --no-liquid-glass disable Liquid Glass and restore Aura's saved shell profile
     --no-rounded-blur skip gnome-rounded-blur library (popup blur falls back to static)
     --gdm             theme the GDM login screen with blurred Aura Glass style (requires sudo)
     --gdm-background PATH
@@ -364,6 +370,8 @@ parse_flags() {
                          NOTIFICATION_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-notification-blur)
                          WANT_NOTIFICATION_BLUR=0; NOTIFICATION_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --liquid-glass) WANT_LIQUID_GLASS=1; LIQUID_GLASS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-liquid-glass) WANT_LIQUID_GLASS=0; LIQUID_GLASS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --glass-mode)    GLASS_MODE="${2:-}"; GLASS_MODE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --glass-mode=*)  GLASS_MODE="${1#*=}"; GLASS_MODE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --blur)          WANT_BLUR=1; BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
@@ -1023,6 +1031,24 @@ apply_glass_mode
 seed_glass_mode
 load_glass_mode_memos
 
+# Liquid Glass is an optional renderer with a reversible conflict profile, not
+# a glass-mode drawer.  Keep its resolver here with every other CLI/memo/default
+# decision.  Solid and no-blur suspend a remembered selection without erasing
+# it; only an explicit impossible enable is rejected before any styling work.
+LIQUID_GLASS_MEMO="$CONF_DIR/liquid-glass/enabled"
+if [ -z "$LIQUID_GLASS_EXPLICIT" ] && [ -r "$LIQUID_GLASS_MEMO" ]; then
+    WANT_LIQUID_GLASS="$(cat "$LIQUID_GLASS_MEMO" 2>/dev/null || true)"
+fi
+case "$WANT_LIQUID_GLASS" in 0|1) ;; *) die "invalid Liquid Glass memo — use --liquid-glass or --no-liquid-glass" ;; esac
+if [ "$LIQUID_GLASS_EXPLICIT" = 1 ] && { [ "$WANT_BLUR" != 1 ] || [ "$WANT_STYLING" != 1 ]; }; then
+    die "--liquid-glass conflicts with --no-blur or --glass-mode solid — enable normal blur first, then stage Liquid Glass"
+fi
+[ "$WANT_LIQUID_GLASS" = 1 ] && [ "$WANT_BLUR" = 1 ] && [ "$WANT_STYLING" = 1 ] && LIQUID_GLASS_EFFECTIVE=1
+if [ -n "$LIQUID_GLASS_EXPLICIT" ] && [ "${DRY_RUN:-0}" != 1 ]; then
+    mkdir -p "$CONF_DIR/liquid-glass"
+    printf '%s\n' "$WANT_LIQUID_GLASS" > "$LIQUID_GLASS_MEMO"
+fi
+
 if [ "${WANT_BLUR:-1}" = 0 ]; then
     APP_TRANSPARENCY=0
     APP_OPACITY=255
@@ -1330,6 +1356,20 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
                     window-buttons) apply_window_buttons ;;
                     app-blur) apply_app_blur ;;
                     css) install_css ;;
+                    liquid-glass)
+                        # This is the documented settings-only exception: an
+                        # explicit first enable may fetch its pinned runtime.
+                        if [ "$LIQUID_GLASS_EFFECTIVE" = 1 ]; then
+                            install_liquid_glass
+                            apply_liquid_glass_profile
+                        fi
+                        if [ "$WANT_STYLING" = 1 ]; then load_dconf; fi
+                        if [ "$LIQUID_GLASS_EFFECTIVE" = 1 ]; then
+                            apply_liquid_glass_profile
+                        else
+                            restore_liquid_glass_profile
+                        fi
+                        install_css ;;
                 esac
             done
             step "Done"
@@ -1348,6 +1388,12 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     # installed, and a font already resolvable needs no network either — see
     # install_fonts, which skips on fc-match rather than on this flag.
     if [ -n "$FONT_EXPLICIT" ]; then install_fonts; fi
+    # A plain settings Apply never installs extensions or reaches the network.
+    # The explicit Liquid Glass enable is the one documented exception.
+    if [ "$LIQUID_GLASS_EFFECTIVE" = 1 ] && [ -n "$LIQUID_GLASS_EXPLICIT" ]; then
+        install_liquid_glass
+    fi
+    [ "$LIQUID_GLASS_EFFECTIVE" = 1 ] && apply_liquid_glass_profile
     # Not in solid mode. dconf/core.ini is every extension's settings, and
     # loading it is exactly the "modifying the extension" that standing down is
     # supposed to avoid — the extensions are switched off with their own
@@ -1357,6 +1403,11 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     else
         step "Loading the dconf preset"
         skip "solid mode — the extensions keep their own settings"
+    fi
+    if [ "$LIQUID_GLASS_EFFECTIVE" = 1 ]; then
+        apply_liquid_glass_profile
+    else
+        restore_liquid_glass_profile
     fi
     install_css
     apply_gsettings
@@ -1423,6 +1474,9 @@ fi
 if [ "$WANT_ICONS" = 1 ]; then install_icons; else step "Icons"; skip "left alone (--no-icons)"; fi
 if [ "$WANT_CURSORS" = 1 ]; then install_cursors; else step "Cursors"; skip "left alone (--no-cursors)"; fi
 install_fonts
+# Snapshot the live conflict state before dconf/core.ini rewrites any Blur My
+# Shell key; the second call below reapplies the suspension after that preset.
+[ "$LIQUID_GLASS_EFFECTIVE" = 1 ] && apply_liquid_glass_profile
 # Not in solid mode. dconf/core.ini is every extension's settings, and
 # loading it is exactly the "modifying the extension" that standing down is
 # supposed to avoid — the extensions are switched off with their own
@@ -1433,6 +1487,7 @@ else
     step "Loading the dconf preset"
     skip "solid mode — the extensions keep their own settings"
 fi
+[ "$LIQUID_GLASS_EFFECTIVE" = 1 ] && apply_liquid_glass_profile || restore_liquid_glass_profile
 install_css
 apply_gsettings
 if [ "$WANT_STYLING" = 0 ]; then

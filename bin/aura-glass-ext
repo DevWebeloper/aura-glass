@@ -49,7 +49,7 @@ EOF
 # itself; the other two are the --recommended and --all-extras tiers.
 ext_tier() {
     local uuid="$1" u
-    for u in "${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" custom-osd@neuromorph; do
+    for u in "${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" custom-osd@neuromorph "$LIQUID_GLASS_UUID"; do
         [ "$u" = "$uuid" ] && { printf 'core'; return; }
     done
     for u in "${EXT_EXTRA_RECOMMENDED[@]}"; do
@@ -80,7 +80,7 @@ ext_enabled() {
 ext_known() {
     local uuid="$1" u
     for u in "${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" \
-             custom-osd@neuromorph "${EXT_EXTRA_ALL[@]}"; do
+             custom-osd@neuromorph "$LIQUID_GLASS_UUID" "${EXT_EXTRA_ALL[@]}"; do
         [ "$u" = "$uuid" ] && return 0
     done
     return 1
@@ -92,7 +92,7 @@ cmd_list() {
     local first=1 uuid
     printf '[\n'
     for uuid in "${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" \
-                custom-osd@neuromorph "${EXT_EXTRA_ALL[@]}"; do
+                custom-osd@neuromorph "$LIQUID_GLASS_UUID" "${EXT_EXTRA_ALL[@]}"; do
         [ "$first" = 1 ] || printf ',\n'
         first=0
         printf '  {"uuid": "%s", "tier": "%s", "description": "%s", ' \

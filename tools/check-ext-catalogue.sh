@@ -30,7 +30,7 @@ json="$(bash "$ROOT/bin/aura-glass-ext" list)" \
 # Every UUID the install path can reach, which is what the window has to be able
 # to show. BMS_UUID, openbar and custom-osd are named the way enable_extensions
 # names them: they are installed unconditionally rather than sitting in a tier.
-expected=("${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" custom-osd@neuromorph
+expected=("${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" custom-osd@neuromorph "$LIQUID_GLASS_UUID"
           "${EXT_EXTRA_ALL[@]}")
 
 listed="$(printf '%s' "$json" | python3 -c '

@@ -447,15 +447,20 @@ install_css() {
         run install -Dm644 "$REPO_ROOT/css/shell-80-solid.css" "$CONF_DIR/shell-80-solid.css"
     fi
 
-    if [ "${WANT_POPUP_BLUR:-1}" = 1 ]; then
+    if [ "${WANT_POPUP_BLUR:-1}" = 1 ] && [ "${LIQUID_GLASS_EFFECTIVE:-0}" != 1 ]; then
         run install -Dm644 "$REPO_ROOT/css/shell-popup-blur.css" "$CONF_DIR/shell-popup-blur.css"
     else
         run rm -f "$CONF_DIR/shell-popup-blur.css"
     fi
-    if [ "${WANT_NOTIFICATION_BLUR:-1}" = 1 ]; then
+    if [ "${WANT_NOTIFICATION_BLUR:-1}" = 1 ] && [ "${LIQUID_GLASS_EFFECTIVE:-0}" != 1 ]; then
         run install -Dm644 "$REPO_ROOT/css/shell-notification-blur.css" "$CONF_DIR/shell-notification-blur.css"
     else
         run rm -f "$CONF_DIR/shell-notification-blur.css"
+    fi
+    if [ "${LIQUID_GLASS_EFFECTIVE:-0}" = 1 ]; then
+        run install -Dm644 "$REPO_ROOT/css/shell-liquid-glass.css" "$CONF_DIR/shell-liquid-glass.css"
+    else
+        run rm -f "$CONF_DIR/shell-liquid-glass.css"
     fi
     install_transparency_css
     install_window_control_style

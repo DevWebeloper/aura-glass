@@ -148,6 +148,10 @@ STRIP
 
     cp "$REPO_ROOT"/css/shell-[0-9][0-9]-*.css "$REPO_ROOT"/css/gtk4-[0-9][0-9]-*.css "$conf/"
     cp "$REPO_ROOT/css/gtk3-tweaks.css" "$conf/"
+    # This sheet is a no-op unless Liquid Glass itself has placed one of its
+    # root classes in the shell, so retaining it in normal previews cannot
+    # change their pixels and keeps the preview cascade complete.
+    cp "$REPO_ROOT/css/shell-liquid-glass.css" "$conf/"
     # Mirrors what install_css does with these two: solid mode gets the opaque
     # overrides and no popup blur sheet, glass mode the other way round.
     if [ "$SOLID" = 1 ]; then
