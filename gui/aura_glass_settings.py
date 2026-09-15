@@ -6667,7 +6667,15 @@ class Window(Adw.ApplicationWindow):
             # step with what was actually installed, and _run_finished ends by
             # asking whether there is anything left to apply.
             said = self._applied_message()
+            # commit removed the preview journal along with the marker, so the
+            # window must stop describing a preview before _reload reaches
+            # _mark_dirty.  Otherwise its no-pending-changes path asks for a
+            # Revert while this Apply still owns PreviewQueue; that request is
+            # intentionally dropped, but it leaves the terminal-request flag
+            # raised and makes the next Apply look permanently busy.
+            self._preview_active = False
             self._preview_session = None
+            self._sync_preview_bar()
             self._reload()
             self._run_finished(True, said)
             self._toasts.add_toast(Adw.Toast(title=said))
