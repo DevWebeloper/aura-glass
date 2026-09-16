@@ -1,7 +1,0 @@
-{
-  "uuid": "aura-glass-adaptive@aura-glass.local",
-  "name": "Aura Glass Adaptive Performance",
-  "description": "Adds the Aura Glass Auto, Full Glass, and Performance profile menu to the top bar, and supplies the focused-fullscreen session bridge used by the adaptive worker.",
-  "shell-version": ["48", "49", "50"],
-  "session-modes": ["user"]
-}

@@ -1033,35 +1033,8 @@ if [ -n "$ADAPTIVE_BLUR" ]; then
     if [ "$SETTINGS_ONLY" != 1 ] || [ "$INCREMENTAL" != 1 ]; then
         die "--adaptive-blur requires --settings-only --incremental"
     fi
-    # seed_glass_mode and load_glass_mode_memos are normal-install setup: they
-    # create and repair mode drawers.  A transient writer must only read those
-    # established answers.  The mode drawer outranks the legacy top-level memo
-    # exactly as load_glass_mode_memos does, then the tuned preset supplies 100
-    # when neither has been written yet.
-    _adaptive_normal_blur="${BLUR_STRENGTH:-}"
-    if [ -z "$_adaptive_normal_blur" ] && [ -n "${GLASS_MODE:-}" ] \
-       && [ "${GLASS_MODE}" != solid ] \
-       && [ -r "$CONF_DIR/modes/${GLASS_MODE}/blur-strength" ]; then
-        _adaptive_normal_blur="$(cat "$CONF_DIR/modes/${GLASS_MODE}/blur-strength" 2>/dev/null || true)"
-    fi
-    if [ -z "$_adaptive_normal_blur" ]; then
-        _adaptive_normal_blur="$(resolve_blur_strength 100)"
-    fi
-    case "$_adaptive_normal_blur" in
-        ''|*[!0-9]*) die "the remembered blur strength is not a whole percentage" ;;
-    esac
-    if [ "$_adaptive_normal_blur" -lt "$BLUR_STRENGTH_MIN" ] \
-       || [ "$_adaptive_normal_blur" -gt "$BLUR_STRENGTH_MAX" ]; then
-        die "the remembered blur strength is outside ${BLUR_STRENGTH_MIN}-${BLUR_STRENGTH_MAX}"
-    fi
     case "$ADAPTIVE_BLUR" in
-        active)
-            BLUR_STRENGTH=$(( _adaptive_normal_blur / 2 ))
-            [ "$BLUR_STRENGTH" -lt "$BLUR_STRENGTH_MIN" ] && BLUR_STRENGTH="$BLUR_STRENGTH_MIN"
-            ;;
-        restore)
-            BLUR_STRENGTH="$_adaptive_normal_blur"
-            ;;
+        active|restore) ;;
         *) die "--adaptive-blur wants active or restore" ;;
     esac
 fi
@@ -1382,11 +1355,7 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
                     app-blur) apply_app_blur ;;
                     css) install_css ;;
                     adaptive-blur)
-                        # The panel profile remains selectable in solid mode,
-                        # but Blur My Shell has stood down.  Keep this private
-                        # transition from recreating or writing its keys.
-                        if [ "$WANT_STYLING" = 1 ]; then apply_blur_strength
-                        else skip "solid mode — no transient blur to apply"; fi
+                        apply_adaptive_blur "$ADAPTIVE_BLUR"
                         ;;
                 esac
             done

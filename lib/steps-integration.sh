@@ -177,21 +177,20 @@ install_panel_blur_unit() {
 install_adaptive_performance() {
     step "Adaptive performance"
 
+    run rm -rf "$EXT_DIR/aura-glass-adaptive@aura-glass.local"
     # Settings-only Apply does not run install_extensions/enable_extensions,
-    # but the panel control is a core helper that must arrive with this local
-    # refresh too.  Full installs already install and enable it in their normal
-    # extension pass, so keep this reconciliation narrow to settings-only.
+    # but the Aura first-party helper must arrive with this local refresh too.
     if [ "${SETTINGS_ONLY:-0}" = 1 ]; then
-        install_aura_adaptive_ext
-        if [ -d "$EXT_DIR/$AURA_ADAPTIVE_EXT_UUID" ] || \
-           [ -d "/usr/share/gnome-shell/extensions/$AURA_ADAPTIVE_EXT_UUID" ]; then
-            if ! run gnome-extensions enable "$AURA_ADAPTIVE_EXT_UUID" 2>/dev/null; then
+        install_aura_ext
+        if [ -d "$EXT_DIR/$AURA_EXT_UUID" ] || \
+           [ -d "/usr/share/gnome-shell/extensions/$AURA_EXT_UUID" ]; then
+            if ! run gnome-extensions enable "$AURA_EXT_UUID" 2>/dev/null; then
                 if [ "${DRY_RUN:-0}" = 1 ]; then
-                    info "dry-run: add $AURA_ADAPTIVE_EXT_UUID to enabled-extensions for the next session"
-                elif enqueue_extension "$AURA_ADAPTIVE_EXT_UUID"; then
-                    ok "$AURA_ADAPTIVE_EXT_UUID queued — active after logout"
+                    info "dry-run: add $AURA_EXT_UUID to enabled-extensions for the next session"
+                elif enqueue_extension "$AURA_EXT_UUID"; then
+                    ok "$AURA_EXT_UUID queued — active after logout"
                 else
-                    warn "could not enable $AURA_ADAPTIVE_EXT_UUID"
+                    warn "could not enable $AURA_EXT_UUID"
                 fi
             fi
         fi
@@ -270,4 +269,10 @@ install_adaptive_performance() {
         run systemctl --user start aura-glass-adaptive.service >/dev/null 2>&1 || true
     fi
     ok "Auto watches fullscreen, battery and supported GPU load"
+
+    if [ -z "${ADAPTIVE_BLUR:-}" ] && [ "${DRY_RUN:-0}" != 1 ]; then
+        if [ -x "$HOME/.local/bin/aura-glass-adaptive" ]; then
+            "$HOME/.local/bin/aura-glass-adaptive" refresh >/dev/null 2>&1 || true
+        fi
+    fi
 }

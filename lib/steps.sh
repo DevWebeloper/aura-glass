@@ -38,13 +38,9 @@ BMS_UUID="blur-my-shell@aunetx"
 
 # First-party — no upstream repo or ref, since the source lives in
 # extensions/ next to this script. See install_aura_ext in
-# lib/steps-extensions.sh.
+# lib/steps-extensions.sh. It provides adaptive performance profile controls,
+# the focused window/fullscreen D-Bus bridge, and the window-menu blur toggle.
 AURA_EXT_UUID="aura-glass-blur@aura-glass.local"
-# Unlike the window-menu helper above, this panel helper owns the adaptive
-# profile picker and focused-fullscreen D-Bus bridge.  It is deliberately
-# independent of Blur My Shell: solid mode leaves it enabled so selecting Full
-# Glass or Auto is possible without first reopening the settings application.
-AURA_ADAPTIVE_EXT_UUID="aura-glass-adaptive@aura-glass.local"
 # Applied on top of that pin: `blur-on-overview: false` does not take the blur
 # out of the overview's window previews upstream, it only stops forcing window
 # actors visible. See the patch's own comments.
@@ -217,9 +213,7 @@ ext_description() {
         custom-osd@neuromorph)
             printf 'Custom OSD — the volume and brightness pill' ;;
         aura-glass-blur@aura-glass.local)
-            printf 'Aura Glass window menu — adds the per-app Blur This App toggle' ;;
-        aura-glass-adaptive@aura-glass.local)
-            printf 'Adaptive Performance — panel profiles and the focused-fullscreen bridge' ;;
+            printf 'Aura Glass helper — adaptive performance profile menu and per-app blur toggle' ;;
         just-perfection-desktop@just-perfection)
             printf 'Just Perfection — GNOME UI tweaker & visibility manager' ;;
         gnome-ui-tune@itstime.tech)

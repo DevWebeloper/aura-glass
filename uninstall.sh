@@ -408,6 +408,7 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/cursor-pack" \
           "$CONF_DIR/cursor-size" \
           "$CONF_DIR/adaptive-profile" "$CONF_DIR/adaptive-install" \
+          "$CONF_DIR/adaptive-fullscreen-apps" \
           "$CONF_DIR/adaptive-performance/active" \
           "$CONF_DIR/adaptive-performance/reason" \
           "$CONF_DIR/openbar-patch" "$CONF_DIR/custom-osd-patch"

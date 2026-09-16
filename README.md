@@ -90,6 +90,7 @@ aura-glass-apply
 - 🔊 **Minimalist Capsule OSD** — Distraction-free volume and brightness pill, blurring whatever wallpaper sits behind it.
 - 🔒 **GDM Login Screen Theming** — Optional matching blurred login screen (`--gdm`).
 - ⚡ **Lightweight "No Blur" Mode** — High-performance, opaque preset with the same sleek geometry for battery saving or low-power iGPUs.
+- 🚀 **Adaptive Performance Mode** — Top-bar quick profile switcher (**Auto**, **Full Glass**, **Performance**). In Auto mode, automatically eliminates blur overhead on battery discharge, sustained GPU load (≥80%), or focused fullscreen games, restoring normal glass seamlessly.
 - 📦 **Zero System Bloat** — Installs cleanly into `$HOME` (`~/.local/share/` and `~/.config/`). Uninstalls completely in one command.
 
 ---

@@ -79,7 +79,8 @@ substring_trap="openbar@neuromorph-nightly"  # a superstring of an owned UUID
 for u in "${own[@]}" custom-osd@neuromorph; do mkdir -p "$EXT_DIR/$u"; done
 
 # --- first entry: the record names exactly what was owned and enabled ---
-printf '%s\n' "${own[@]}" "$foreign" > "$FAKE_ENABLED"
+# AURA_EXT_UUID is enabled, but must NEVER be stood down (it provides the panel profile switcher).
+printf '%s\n' "${own[@]}" "$foreign" "$AURA_EXT_UUID" > "$FAKE_ENABLED"
 : > "$FAKE_LOG"
 stand_down_extensions >/dev/null
 got="$(sort "$record" 2>/dev/null)"
@@ -88,6 +89,8 @@ want="$(printf '%s\n' "${own[@]}" | sort)"
     "first entry: record should name exactly ${own[*]}, got: $(tr '\n' ' ' <<< "$got")")
 grep -qxF "disable:$foreign" "$FAKE_LOG" && failures+=(
     "first entry: $foreign is not ours, it must never reach gnome-extensions disable")
+grep -qxF "disable:$AURA_EXT_UUID" "$FAKE_LOG" && failures+=(
+    "first entry: $AURA_EXT_UUID must never reach gnome-extensions disable — it stays active across Solid mode")
 for u in "${own[@]}"; do
     grep -qxF "disable:$u" "$FAKE_LOG" || failures+=("first entry: $u should have been disabled, was not")
 done

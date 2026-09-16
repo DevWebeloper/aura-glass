@@ -154,6 +154,10 @@ step "incremental apply (tools/check-incremental-apply.py)" \
     python3 "$TMP/tools/check-incremental-apply.py"
 step "apply feedback (tools/check-apply-feedback.py)" \
     python3 "$TMP/tools/check-apply-feedback.py"
+step "adaptive worker (tools/check-adaptive-worker.py)" \
+    python3 "$TMP/tools/check-adaptive-worker.py"
+step "adaptive installer (tools/check-adaptive-installer.sh)" \
+    bash "$TMP/tools/check-adaptive-installer.sh"
 
 printf '\n'
 if [ "$fail" = 1 ]; then

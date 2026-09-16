@@ -323,7 +323,7 @@ command describes everything the install path can reach.
 
 ### The first-party extension
 
-`extensions/aura-glass-blur@aura-glass.local` does two things:
+`extensions/aura-glass-blur@aura-glass.local` does three things:
 
 1. Adds **Blur This App** to the window right-click menu, by monkeypatching
    `WindowMenu._buildMenu`. It reads and writes Blur My Shell's own
@@ -333,9 +333,29 @@ command describes everything the install path can reach.
    It adds nothing at all when Blur My Shell's schema is absent or its per-app
    blur is off.
 2. Exports `io.github.DevWebeloper.AuraGlass` on D-Bus (`ListWindows`,
-   `WindowsChanged`), which is the only way an unprivileged GTK app on Wayland
-   can know what windows exist — that is what the settings window's "Open now"
-   list uses.
+   `WindowsChanged`, `GetFocusState`, `GetFullscreen`, `FocusChanged`),
+   which is the only way an unprivileged GTK app on Wayland can know what windows
+   exist and whether the active window is fullscreen — used by the settings
+   window's "Open now" list and the adaptive service.
+3. Provides the **Adaptive Performance Mode** top-bar quick profile menu
+   (**Auto**, **Full Glass**, **Performance**). It updates its status icon and
+   reason live, invokes `aura-glass-adaptive profile` asynchronously, and stays
+   active even across Solid mode so users can restore glass anytime from the panel.
+
+### The adaptive performance service
+
+`bin/aura-glass-adaptive` and `systemd/aura-glass-adaptive.service` provide
+dynamic performance management:
+
+- Persists selected profile in `$CONF_DIR/adaptive-profile` (`auto` by default).
+- Persists selected fullscreen games in `$CONF_DIR/adaptive-fullscreen-apps`.
+- In `auto` profile, triggers Performance mode on battery discharge (`Discharging`),
+  sustained GPU load (≥80% for three 2-second samples, clearing below 65%), or
+  when a configured game is focused and fullscreen.
+- Transient transitions run `install.sh --settings-only --incremental --adaptive-blur active|restore`
+  under the writer operation lock, ensuring all blur surfaces (app windows, popups,
+  notifications, CSS) transition cleanly while leaving normal saved memos completely
+  immutable.
 
 ---
 

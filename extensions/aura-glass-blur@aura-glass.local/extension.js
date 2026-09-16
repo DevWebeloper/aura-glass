@@ -1,40 +1,32 @@
-/* aura-glass window-menu blur toggle, and a small D-Bus bridge for the
- * settings window's per-app blur page.
+/* aura-glass window-menu blur toggle, top-bar adaptive profile menu,
+ * and session D-Bus bridge for settings and adaptive performance.
  *
  * The per-app blur allow/block list Blur My Shell reads is otherwise editable
  * in exactly two places: --app-blur-allow/--app-blur-block on install.sh, and
- * the Per-app blur page in the aura-glass settings window. Both mean leaving
- * the window you actually want to toggle. This puts the same question where
- * it gets asked — right-click the titlebar, "Blur This App" — by monkeypatching
- * WindowMenu._buildMenu the way Just Perfection's screenshotInWindowMenuShow
- * already does in this project's own extension set.
+ * the Per-app blur page in the aura-glass settings window. This puts the same
+ * question right where it gets asked — right-click the titlebar, "Blur This App" —
+ * by monkeypatching WindowMenu._buildMenu.
  *
- * Ships no schema of its own. It reads and writes Blur My Shell's
- * org.gnome.shell.extensions.blur-my-shell.applications directly — 'blur',
- * 'enable-all', 'whitelist', 'blacklist' — the same keys apply_app_blur in
- * lib/steps-dconf.sh writes. The menu delegates changes to the operation
- * helper, which acquires the project writer lock and updates those keys plus
- * their memos through that canonical Bash function.
+ * This extension also hosts Aura Glass's top-bar adaptive profile menu (Auto,
+ * Full Glass, Performance) and exports the D-Bus bridge on
+ * io.github.DevWebeloper.AuraGlass at /io/github/DevWebeloper/AuraGlass.
+ * It answers ListWindows (for the settings app's "Open now" list), GetFocusState,
+ * and emits WindowsChanged and FocusChanged signals.
  *
- * Adds nothing at all when Blur My Shell's schema cannot be found, or when
- * applications/blur is off: a menu item that provably does nothing is worse
- * than no menu item.
- *
- * The D-Bus service (io.github.DevWebeloper.AuraGlass) is what the settings
- * window's Per-app blur page uses for "Open now": an unprivileged GTK app has
- * no other way, on Wayland, to know what windows exist. It answers ListWindows,
- * and fires WindowsChanged when the answer to ListWindows would differ. It is
- * exported whenever the extension is enabled, independent of whether Blur My
- * Shell is present — the settings window is what decides whether to call it, by
- * whether the bridge answers at all.
+ * It stays installed and enabled as the explicit exception to global Solid
+ * mode: in Solid mode, its window-menu blur toggle stands down because blur is
+ * off, but its panel menu remains available so selecting Auto or Full Glass can
+ * restore the themed desktop.
  */
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
+import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {WindowMenu} from 'resource:///org/gnome/shell/ui/windowMenu.js';
 import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -57,8 +49,39 @@ const DBUS_IFACE = `
       <arg type="a(ssu)" direction="out" name="windows"/>
     </method>
     <signal name="WindowsChanged"/>
+    <method name="GetFocusState">
+      <arg type="b" direction="out" name="fullscreen"/>
+      <arg type="s" direction="out" name="wm_class"/>
+    </method>
+    <method name="GetFullscreen">
+      <arg type="b" direction="out" name="fullscreen"/>
+    </method>
+    <signal name="FocusChanged">
+      <arg type="b" name="fullscreen"/>
+      <arg type="s" name="wm_class"/>
+    </signal>
   </interface>
 </node>`;
+
+const PROFILES = ['auto', 'full', 'performance'];
+const PROFILE_ICONS = {
+    auto: 'view-refresh-symbolic',
+    full: 'weather-clear-symbolic',
+    performance: 'system-run-symbolic',
+};
+
+function configPath(...parts) {
+    return GLib.build_filenamev([GLib.get_user_config_dir(), 'aura-glass', ...parts]);
+}
+
+function readState(...parts) {
+    try {
+        const [ok, bytes] = GLib.file_get_contents(configPath(...parts));
+        return ok ? new TextDecoder().decode(bytes).trim() : '';
+    } catch (error) {
+        return '';
+    }
+}
 
 // Mirrors Blur My Shell's own components/applications.js wildcardToRegex:
 // escape every regex metacharacter except * and ?, anchor at both ends,
@@ -133,6 +156,16 @@ function isBlurrable(frameType) {
 
 export default class AuraGlassBlurExtension extends Extension {
     enable() {
+        this._profileLabels = {
+            auto: _('Auto'),
+            full: _('Full Glass'),
+            performance: _('Performance'),
+        };
+        this._fullscreen = false;
+        this._focusedWmClass = '';
+        this._focusedWindow = null;
+        this._focusedWindowFullscreenId = 0;
+
         this._settings = this._openBmsApplicationsSettings();
         if (this._settings) {
             this._origBuildMenu = WindowMenu.prototype._buildMenu;
@@ -155,6 +188,12 @@ export default class AuraGlassBlurExtension extends Extension {
         this._destroyIds = new Map();
         for (const actor of global.get_window_actors())
             this._trackWindow(actor.get_meta_window());
+
+        this._focusWindowId = global.display.connect(
+            'focus-window', (_display, window) => this._watchFocusedWindow(window));
+        this._watchFocusedWindow(global.display.focusWindow ?? global.display.focus_window);
+
+        this._buildPanelMenu();
     }
 
     disable() {
@@ -163,6 +202,12 @@ export default class AuraGlassBlurExtension extends Extension {
             this._origBuildMenu = null;
         }
         this._settings = null;
+
+        if (this._focusWindowId) {
+            global.display.disconnect(this._focusWindowId);
+            this._focusWindowId = 0;
+        }
+        this._watchFocusedWindow(null);
 
         if (this._windowsChangedTimer) {
             GLib.source_remove(this._windowsChangedTimer);
@@ -178,6 +223,15 @@ export default class AuraGlassBlurExtension extends Extension {
             this._destroyIds = null;
         }
 
+        if (this._indicator) {
+            this._indicator.destroy();
+            this._indicator = null;
+        }
+        this._icon = null;
+        this._statusItem = null;
+        this._profileItems = null;
+        this._profileLabels = null;
+
         if (this._nameOwnerId) {
             Gio.bus_unown_name(this._nameOwnerId);
             this._nameOwnerId = 0;
@@ -185,6 +239,115 @@ export default class AuraGlassBlurExtension extends Extension {
         if (this._dbusImpl) {
             this._dbusImpl.unexport();
             this._dbusImpl = null;
+        }
+    }
+
+    _watchFocusedWindow(window) {
+        if (this._focusedWindow && this._focusedWindowFullscreenId) {
+            this._focusedWindow.disconnect(this._focusedWindowFullscreenId);
+            this._focusedWindowFullscreenId = 0;
+        }
+        this._focusedWindow = window ?? null;
+        if (this._focusedWindow) {
+            this._focusedWindowFullscreenId = this._focusedWindow.connect(
+                'notify::fullscreen', () => {
+                    this._updateFocusState();
+                });
+        }
+        this._updateFocusState();
+    }
+
+    _updateFocusState() {
+        const isFullscreen = Boolean(this._focusedWindow?.fullscreen);
+        const wmClass = this._focusedWindow ? (rootWindowClass(this._focusedWindow) || this._focusedWindow.get_wm_class() || '') : '';
+        if (isFullscreen === this._fullscreen && wmClass === this._focusedWmClass)
+            return;
+        this._fullscreen = isFullscreen;
+        this._focusedWmClass = wmClass;
+        if (this._dbusImpl) {
+            this._dbusImpl.emit_signal('FocusChanged',
+                new GLib.Variant('(bs)', [isFullscreen, wmClass]));
+        }
+    }
+
+    // ---- Panel Menu --------------------------------------------------------
+
+    _buildPanelMenu() {
+        this._indicator = new PanelMenu.Button(0.0, 'Aura Glass', false);
+        this._icon = new St.Icon({
+            style_class: 'system-status-icon',
+        });
+        this._indicator.add_child(this._icon);
+
+        this._statusItem = new PopupMenu.PopupMenuItem('', {reactive: false});
+        this._statusItem.setSensitive(false);
+        this._indicator.menu.addMenuItem(this._statusItem);
+        this._indicator.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        this._profileItems = {};
+        for (const profile of PROFILES) {
+            const item = new PopupMenu.PopupImageMenuItem(
+                this._profileLabels[profile], PROFILE_ICONS[profile]);
+            item.connect('activate', () => this._selectProfile(profile));
+            this._profileItems[profile] = item;
+            this._indicator.menu.addMenuItem(item);
+        }
+        this._indicator.menu.connect('open-state-changed', (_menu, open) => {
+            if (open)
+                this._refreshProfileState();
+        });
+        this._refreshProfileState();
+        Main.panel.addToStatusArea(this.metadata.uuid, this._indicator);
+    }
+
+    _refreshProfileState(statusOverride = null) {
+        const profile = readState('adaptive-profile');
+        this._profile = PROFILES.includes(profile) ? profile : 'auto';
+        const active = readState('adaptive-performance', 'active') === '1';
+        const reason = readState('adaptive-performance', 'reason') || 'normal';
+        const profileLabel = this._profileLabels?.[this._profile] ?? this._profile;
+        const status = statusOverride ?? (active
+            ? `${profileLabel} active — ${reason}`
+            : `${profileLabel} — ${reason}`);
+        this._setPresentation(status);
+    }
+
+    _setPresentation(status) {
+        if (this._icon)
+            this._icon.icon_name = PROFILE_ICONS[this._profile] || PROFILE_ICONS.auto;
+        if (this._statusItem)
+            this._statusItem.label.text = status;
+        if (!this._profileItems)
+            return;
+        for (const profile of PROFILES) {
+            this._profileItems[profile].setOrnament(profile === this._profile
+                ? PopupMenu.Ornament.DOT
+                : PopupMenu.Ornament.NONE);
+        }
+    }
+
+    _selectProfile(profile) {
+        this._profile = profile;
+        const profileLabel = this._profileLabels?.[profile] ?? profile;
+        this._setPresentation(`${profileLabel} — applying…`);
+        const local = GLib.build_filenamev([
+            GLib.get_home_dir(), '.local', 'bin', 'aura-glass-adaptive']);
+        const command = GLib.file_test(local, GLib.FileTest.IS_EXECUTABLE)
+            ? local : 'aura-glass-adaptive';
+        try {
+            const process = Gio.Subprocess.new(
+                [command, 'profile', profile],
+                Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE);
+            process.wait_check_async(null, (source, result) => {
+                try {
+                    source.wait_check_finish(result);
+                    this._refreshProfileState();
+                } catch (error) {
+                    this._setPresentation(`${profileLabel} — unavailable`);
+                }
+            });
+        } catch (error) {
+            this._setPresentation(`${profileLabel} — unavailable`);
         }
     }
 
@@ -227,7 +390,7 @@ export default class AuraGlassBlurExtension extends Extension {
         if (classes.length === 0)
             return;
 
-        if (!this._settings.get_boolean('blur'))
+        if (!this._settings || !this._settings.get_boolean('blur'))
             return;
 
         // The class this toggle writes into the lists: the rootmost entry in
@@ -397,6 +560,14 @@ export default class AuraGlassBlurExtension extends Extension {
         }
         return [...groups.entries()].map(
             ([wmClass, {name, count}]) => [wmClass, name, count]);
+    }
+
+    GetFocusState() {
+        return [Boolean(this._fullscreen), this._focusedWmClass || ''];
+    }
+
+    GetFullscreen() {
+        return [Boolean(this._fullscreen)];
     }
 
     // ---- keeping ListWindows fresh -----------------------------------------

@@ -890,6 +890,99 @@ PY
     fi
 }
 
+apply_adaptive_blur() {
+    local action="$1"
+    local base=/org/gnome/shell/extensions/blur-my-shell
+    local apply_cmd="$HOME/.local/bin/aura-glass-apply"
+    [ -x "$apply_cmd" ] || apply_cmd="$REPO_ROOT/bin/aura-glass-apply"
+
+    # Resolve normal mode and blur baseline
+    local normal_mode="${GLASS_MODE:-}"
+    if [ -z "$normal_mode" ] && [ -r "$CONF_DIR/glass-mode" ]; then
+        normal_mode="$(cat "$CONF_DIR/glass-mode" 2>/dev/null || true)"
+    fi
+    normal_mode="${normal_mode:-frosted}"
+
+    local normal_blur=1
+    if [ "$normal_mode" = solid ]; then
+        normal_blur=0
+    elif [ -r "$CONF_DIR/modes/$normal_mode/blur" ]; then
+        normal_blur="$(cat "$CONF_DIR/modes/$normal_mode/blur" 2>/dev/null || echo 1)"
+    elif [ -r "$CONF_DIR/blur" ]; then
+        normal_blur="$(cat "$CONF_DIR/blur" 2>/dev/null || echo 1)"
+    fi
+
+    if [ "$normal_blur" = 0 ]; then
+        skip "baseline is already no-blur — skipping adaptive transition"
+        return 0
+    fi
+
+    if [ "${WANT_STYLING:-1}" != 1 ]; then
+        skip "solid mode — no transient blur to adjust"
+        return 0
+    fi
+
+    case "$action" in
+        active)
+            step "Applying adaptive performance no-blur state"
+            if [ "${DRY_RUN:-0}" = 1 ]; then
+                info "dry-run: apply transient no-blur state across app windows, popups, notifications, and CSS"
+                return 0
+            fi
+            run dconf write "$base/applications/blur" false
+            run dconf write "$base/applications/opacity" 255
+            run dconf write "$base/popup/blur" false
+            run rm -f "$CONF_DIR/shell-popup-blur.css"
+            run dconf write "$base/popup/notification" false
+            run rm -f "$CONF_DIR/shell-notification-blur.css"
+            run install -Dm644 "$REPO_ROOT/css/shell-80-solid.css" "$CONF_DIR/shell-80-solid.css"
+            run rm -f "$CONF_DIR/gtk4-transparency.css"
+            if [ -x "$apply_cmd" ]; then
+                "$apply_cmd" | sed 's/^/    /'
+            fi
+            ok "adaptive no-blur state active (transient)"
+            ;;
+        restore)
+            step "Restoring normal blur configuration"
+            if [ "${DRY_RUN:-0}" = 1 ]; then
+                info "dry-run: restore normal blur configuration from saved memos"
+                return 0
+            fi
+            apply_app_blur
+            apply_app_opacity
+            apply_popup_blur
+            apply_notification_blur
+            apply_blur_strength
+
+            run rm -f "$CONF_DIR/shell-80-solid.css"
+            local want_popup="${WANT_POPUP_BLUR:-1}"
+            if [ -r "$CONF_DIR/popup-blur" ]; then want_popup="$(cat "$CONF_DIR/popup-blur" 2>/dev/null || echo 1)"; fi
+            if [ "$want_popup" = 1 ]; then
+                run install -Dm644 "$REPO_ROOT/css/shell-popup-blur.css" "$CONF_DIR/shell-popup-blur.css"
+            else
+                run rm -f "$CONF_DIR/shell-popup-blur.css"
+            fi
+
+            local want_notif="${WANT_NOTIFICATION_BLUR:-1}"
+            if [ -r "$CONF_DIR/notification-blur" ]; then want_notif="$(cat "$CONF_DIR/notification-blur" 2>/dev/null || echo 1)"; fi
+            if [ "$want_notif" = 1 ]; then
+                run install -Dm644 "$REPO_ROOT/css/shell-notification-blur.css" "$CONF_DIR/shell-notification-blur.css"
+            else
+                run rm -f "$CONF_DIR/shell-notification-blur.css"
+            fi
+
+            install_transparency_css
+            if [ -x "$apply_cmd" ]; then
+                "$apply_cmd" | sed 's/^/    /'
+            fi
+            ok "normal blur configuration restored"
+            ;;
+        *)
+            die "unknown adaptive-blur action '$action' — pick active or restore"
+            ;;
+    esac
+}
+
 # Which of the titlebar buttons a window gets. Two answers rather than the free
 # string the key takes: close alone, or all three. The rest of what
 # button-layout can express — reordering, moving them to the left, the spacer —

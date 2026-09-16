@@ -1,7 +1,7 @@
 {
   "uuid": "aura-glass-blur@aura-glass.local",
-  "name": "aura-glass window-menu blur toggle",
-  "description": "Adds \"Blur This App\" to the window right-click menu — the same per-app allow/block list the aura-glass settings window edits, reachable from wherever you actually notice you want it changed. Adds nothing when Blur My Shell is not installed or its per-app blur is switched off.",
+  "name": "Aura Glass Helper",
+  "description": "Adaptive performance profile controls on the top bar, focused window and fullscreen D-Bus bridge, and window-menu blur toggle for Aura Glass.",
   "shell-version": ["48", "49", "50"],
   "session-modes": ["user"]
 }

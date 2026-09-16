@@ -5601,8 +5601,38 @@ class Window(Adw.ApplicationWindow):
             self._app_installed_group.add(row)
             self._app_rows[wm] = row
 
+        # ---- fullscreen performance games ---------------------------------
+        self._adaptive_games = self._load_adaptive_games()
+        self._adaptive_game_rows = {}
+        self._adaptive_open_rows = {}
+        self._adaptive_games_group = Adw.PreferencesGroup(
+            title="Fullscreen performance games",
+            description="When running fullscreen in Auto profile, Aura Glass switches to Performance mode to eliminate blur overhead.")
+        self._adaptive_games_empty_row = Adw.ActionRow(
+            title="No games added yet",
+            subtitle="Add open windows below to switch to Performance mode when fullscreen",
+            sensitive=False)
+        self._adaptive_games_group.add(self._adaptive_games_empty_row)
+
+        self._adaptive_open_expander = Adw.ExpanderRow(
+            title="Add from open windows",
+            subtitle="Pick currently running games or apps")
+        refresh_button = Gtk.Button(
+            icon_name="view-refresh-symbolic",
+            valign=Gtk.Align.CENTER,
+            tooltip_text="Refresh open windows")
+        refresh_button.add_css_class("flat")
+        refresh_button.connect("clicked", lambda _b: self._refresh_adaptive_open_windows())
+        self._adaptive_open_expander.add_suffix(refresh_button)
+
+        self._adaptive_open_placeholder = Adw.ActionRow(
+            title="No other windows open right now", sensitive=False)
+        self._adaptive_open_expander.add_row(self._adaptive_open_placeholder)
+        self._adaptive_games_group.add(self._adaptive_open_expander)
+
         apps_page = Adw.PreferencesPage(vexpand=True)
         apps_page.add(self._app_open_group)
+        apps_page.add(self._adaptive_games_group)
         apps_page.add(self._app_installed_group)
 
         apps_tab = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -5627,7 +5657,9 @@ class Window(Adw.ApplicationWindow):
         box.append(self._app_stack)
 
         self._rebuild_app_list()
+        self._sync_adaptive_game_rows()
         self._refresh_app_open_group()
+        self._refresh_adaptive_open_windows()
         return box
 
     # ---- installed apps ---------------------------------------------------
@@ -5948,6 +5980,7 @@ class Window(Adw.ApplicationWindow):
         if not hasattr(self, "_app_open_group"):
             return
         self._refresh_app_open_group()
+        self._refresh_adaptive_open_windows()
 
     def _refresh_app_open_group(self):
         if not self._shell_bridge.available:
@@ -5977,6 +6010,118 @@ class Window(Adw.ApplicationWindow):
             self._app_open_wm_rows[wm] = row
 
         self._app_open_placeholder.set_visible(not self._app_open_wm_rows)
+
+    # ---- fullscreen performance games ----------------------------------------
+
+    def _load_adaptive_games(self):
+        path = os.path.join(CONF_DIR, "adaptive-fullscreen-apps")
+        if not os.path.exists(path):
+            return []
+        try:
+            with open(path, "r", encoding="utf-8") as stream:
+                return sorted({
+                    line.strip() for line in stream
+                    if line.strip() and not line.strip().startswith("#")
+                })
+        except (OSError, UnicodeDecodeError):
+            return []
+
+    def _save_adaptive_games(self):
+        os.makedirs(CONF_DIR, exist_ok=True)
+        temporary = os.path.join(CONF_DIR, ".adaptive-fullscreen-apps.tmp")
+        target = os.path.join(CONF_DIR, "adaptive-fullscreen-apps")
+        try:
+            with open(temporary, "w", encoding="utf-8") as stream:
+                for app in sorted(set(self._adaptive_games)):
+                    if app.strip():
+                        stream.write(app.strip() + "\n")
+            os.replace(temporary, target)
+        except OSError:
+            return
+        try:
+            subprocess.Popen(["aura-glass-adaptive", "refresh"])
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    def _sync_adaptive_game_rows(self):
+        for row in list(self._adaptive_game_rows.values()):
+            self._adaptive_games_group.remove(row)
+        self._adaptive_game_rows = {}
+
+        self._adaptive_games_group.remove(self._adaptive_open_expander)
+
+        self._adaptive_games_empty_row.set_visible(not self._adaptive_games)
+        for wm in self._adaptive_games:
+            row = Adw.ActionRow()
+            plain_row(row, app_name(wm), wm)
+            remove = Gtk.Button(
+                icon_name="user-trash-symbolic",
+                valign=Gtk.Align.CENTER,
+                tooltip_text="Remove from fullscreen games")
+            remove.add_css_class("flat")
+            remove.connect("clicked", self._on_adaptive_game_remove, wm)
+            row.add_suffix(remove)
+            self._adaptive_games_group.add(row)
+            self._adaptive_game_rows[wm] = row
+
+        self._adaptive_games_group.add(self._adaptive_open_expander)
+
+    def _refresh_adaptive_open_windows(self):
+        if not hasattr(self, "_adaptive_open_expander"):
+            return
+        if not self._shell_bridge.available:
+            self._adaptive_open_expander.set_visible(False)
+            return
+        self._adaptive_open_expander.set_visible(True)
+        self._shell_bridge.list_windows(self._on_adaptive_open_windows_listed)
+
+    def _on_adaptive_open_windows_listed(self, rows):
+        for row in list(self._adaptive_open_rows.values()):
+            self._adaptive_open_expander.remove(row)
+        self._adaptive_open_rows = {}
+
+        games_lower = {g.lower() for g in self._adaptive_games}
+        open_candidates = [
+            (wm, name, count) for wm, name, count in rows
+            if wm.lower() != SELF_WM_CLASS.lower() and wm.lower() not in games_lower
+        ]
+        open_candidates.sort(key=lambda r: (r[1] or r[0]).lower())
+
+        self._adaptive_open_placeholder.set_visible(not open_candidates)
+        for wm, name, count in open_candidates:
+            row = Adw.ActionRow()
+            title = name or wm
+            subtitle = wm if count <= 1 else "%s — %d windows" % (wm, count)
+            plain_row(row, title, subtitle)
+            add_btn = Gtk.Button(
+                icon_name="list-add-symbolic",
+                valign=Gtk.Align.CENTER,
+                tooltip_text="Add to fullscreen games")
+            add_btn.add_css_class("flat")
+            add_btn.connect("clicked", self._on_adaptive_game_add, wm)
+            row.add_suffix(add_btn)
+            row.set_activatable_widget(add_btn)
+            self._adaptive_open_expander.add_row(row)
+            self._adaptive_open_rows[wm] = row
+
+    def _on_adaptive_game_add(self, _button, wm):
+        clean_wm = wm.strip()
+        if not clean_wm or clean_wm in self._adaptive_games:
+            return
+        self._adaptive_games.append(clean_wm)
+        self._save_adaptive_games()
+        self._sync_adaptive_game_rows()
+        self._refresh_adaptive_open_windows()
+        self._toasts.add_toast(Adw.Toast(title="Added %s" % app_name(clean_wm)))
+
+    def _on_adaptive_game_remove(self, _button, wm):
+        if wm not in self._adaptive_games:
+            return
+        self._adaptive_games.remove(wm)
+        self._save_adaptive_games()
+        self._sync_adaptive_game_rows()
+        self._refresh_adaptive_open_windows()
+        self._toasts.add_toast(Adw.Toast(title="Removed %s" % app_name(wm)))
 
     # ---- typing a pattern by hand -------------------------------------------
 

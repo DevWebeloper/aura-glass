@@ -215,51 +215,28 @@ install_bms() {
 install_aura_ext() {
     local uuid="$AURA_EXT_UUID"
 
-    if [ "${WANT_WINDOW_MENU:-1}" != 1 ]; then
-        skip "$uuid not installed (--no-window-menu)"
-        return 0
-    fi
-    if [ "${WANT_BLUR:-1}" != 1 ]; then
-        skip "$uuid left out (--no-blur) — nothing for it to toggle"
-        return 0
-    fi
-
     if [ "${DRY_RUN:-0}" = 1 ]; then
         info "dry-run: copy extensions/$uuid to $EXT_DIR/$uuid"
         return 0
     fi
 
-    rm -rf "$EXT_DIR/$uuid"
-    mkdir -p "$EXT_DIR"
-    cp -a "$REPO_ROOT/extensions/$uuid" "$EXT_DIR/$uuid"
-    ok "$uuid"
-}
-
-# aura-glass-adaptive@aura-glass.local — the panel profile picker and the
-# session D-Bus bridge read by tools/aura_glass_adaptive.py.  This is a core
-# Aura helper rather than a Blur My Shell component: it stays installed and
-# enabled in solid mode, where its Full Glass and Auto choices are the direct
-# route back to a styled desktop.  Like the window-menu helper, it has no
-# schema of its own and is copied from this checkout rather than fetched.
-install_aura_adaptive_ext() {
-    local uuid="$AURA_ADAPTIVE_EXT_UUID"
-
-    if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: copy extensions/$uuid to $EXT_DIR/$uuid"
-        return 0
+    local changed=0
+    local target="$EXT_DIR/$uuid"
+    if [ ! -d "$target" ] || ! diff -rq "$REPO_ROOT/extensions/$uuid" "$target" >/dev/null 2>&1; then
+        changed=1
+        mkdir -p "$EXT_DIR"
+        rm -rf "$target"
+        cp -a "$REPO_ROOT/extensions/$uuid" "$target"
     fi
 
-    local tmp
-    tmp="$(mktemp -d)"
-    if ! cp -a "$REPO_ROOT/extensions/$uuid" "$tmp/$uuid"; then
-        rm -rf "$tmp"
-        warn "$uuid could not be copied — existing installation left untouched"
-        return 1
+    if [ "$changed" = 1 ]; then
+        # Reload the first-party extension after source changes, with next-login fallback
+        if gnome-extensions list --enabled 2>/dev/null | grep -qxF "$uuid"; then
+            if ! { run gnome-extensions disable "$uuid" 2>/dev/null && run gnome-extensions enable "$uuid" 2>/dev/null; }; then
+                info "$uuid live reload refused by GNOME Shell — will reload on next login"
+            fi
+        fi
     fi
-    mkdir -p "$EXT_DIR"
-    rm -rf "$EXT_DIR/$uuid"
-    mv "$tmp/$uuid" "$EXT_DIR/$uuid"
-    rm -rf "$tmp"
     ok "$uuid"
 }
 
@@ -526,10 +503,9 @@ enable_extensions() {
     # $BMS_UUID is named explicitly rather than left in EXT_CORE so that it is
     # enabled whichever source install_bms took it from — and so that solid
     # mode can leave it out without editing the shared list.
-    local want=("${EXT_CORE[@]}" "$AURA_ADAPTIVE_EXT_UUID" openbar@neuromorph) u
+    local want=("${EXT_CORE[@]}" "$AURA_EXT_UUID" openbar@neuromorph) u
     if [ "${WANT_BLUR:-1}" = 1 ]; then
         want+=("$BMS_UUID")
-        [ "${WANT_WINDOW_MENU:-1}" = 1 ] && want+=("$AURA_EXT_UUID")
     fi
     [ "${WANT_OSD:-1}" = 1 ] && want+=(custom-osd@neuromorph)
     if [ "${WANT_EXTRAS:-0}" = 1 ] && [ "${#EXT_EXTRA[@]}" -gt 0 ]; then
@@ -673,8 +649,8 @@ PY
 # touched in either direction — that is the whole point of computing the
 # intersection rather than disabling a list.
 glass_owned_extensions() {
-    # AURA_ADAPTIVE_EXT_UUID is intentionally absent: solid mode stands the
-    # themed extensions down, but its panel menu is how someone restores glass.
+    # AURA_EXT_UUID is intentionally absent: solid mode stands the themed
+    # extensions down, but its panel menu is how someone restores glass.
     printf '%s\n' "${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" \
         custom-osd@neuromorph "${EXT_EXTRA_ALL[@]}"
 }

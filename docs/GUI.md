@@ -92,7 +92,7 @@ list is active).
 | Glass | Appearance | The three modes as three tabs; each tab shows only its own mode's tuning, read from that mode's drawer |
 | Appearance | Appearance | Accent, icon and pointer packs, titlebar buttons and their style, interface font |
 | Corner rounding | Appearance | Seven presets drawn as little windows wearing their own corners, a reset, or eight per-surface spin rows with a live drawing |
-| Per-app blur | Appearance | A switch per installed app, an **Open now** list of live windows, a default for everything unchosen, and a Patterns tab for wildcards |
+| Per-app blur | Appearance | A switch per installed app, an **Open now** list of live windows, a default for everything unchosen, a **Fullscreen performance games** list to trigger Performance mode when gaming, and a Patterns tab for wildcards |
 | Extensions | System | Every catalogued extension with a switch and install/remove, plus the recommended and full packs |
 | Packages | System | What each pack on disk costs, and removal |
 | System | System | Dependencies, rounded-blur, panel blur fix, login screen, monitor sync |

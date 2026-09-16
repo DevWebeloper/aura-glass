@@ -58,7 +58,7 @@ install_if_changed() {
 # one. Not writing at all is what closes that window; there is then nothing to
 # restore and nothing to race.
 remembering() {
-    [ "${DRY_RUN:-0}" != 1 ] && [ "${PREVIEW_MODE:-0}" != 1 ]
+    [ "${DRY_RUN:-0}" != 1 ] && [ "${PREVIEW_MODE:-0}" != 1 ] && [ -z "${ADAPTIVE_BLUR:-}" ]
 }
 
 # confirm "question" [default_yes]

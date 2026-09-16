@@ -76,6 +76,15 @@ The first-party extension writes these two directly when someone uses **Blur
 This App** from the window menu — skipping that mirror would mean a toggle
 holding only until the next `install.sh`, which reads the stale memo over dconf.
 
+### Adaptive performance
+
+| File | Holds |
+|---|---|
+| `adaptive-profile` | `auto` \| `full` \| `performance` — profile selected in the Shell extension or via `aura-glass-adaptive profile` |
+| `adaptive-fullscreen-apps` | one `wm_class` per line — apps that switch to Performance mode when focused and fullscreen in `auto` profile |
+| `adaptive-performance/active` | `1` when adaptive performance no-blur state is currently active, `0` otherwise |
+| `adaptive-performance/reason` | active trigger causes (e.g. `battery`, `gpu`, `game`, `profile`, `battery, gpu`) |
+
 ### Assets
 
 | File | Holds |

@@ -35,19 +35,19 @@ aura-glass-adaptive refresh
 install.sh --settings-only --incremental --adaptive-blur active|restore --yes
 ```
 
-- [ ] Add private `--adaptive-blur active|restore` parsing and an incremental
+- [x] Add private `--adaptive-blur active|restore` parsing and an incremental
   action that calls the existing blur-strength writer only.
-- [ ] Resolve the normal mode/memo value before deriving the active value;
+- [x] Resolve the normal mode/memo value before deriving the active value;
   active writes `max(25, normal / 2)`, restore writes normal. Add a transient
   writer guard so neither action changes the normal blur-strength memo.
-- [ ] Create an adaptive worker that reads the profile memo, battery sysfs,
+- [x] Create an adaptive worker that reads the profile memo, battery sysfs,
   optional DRM `gpu_busy_percent`, and the Shell D-Bus fullscreen method.
   Model Auto, Full Glass, and Performance as explicit states with 80/65 GPU
   hysteresis and a sustained transition gate.
-- [ ] Write `active` and `reason` only after a successful transition. Use the
+- [x] Write `active` and `reason` only after a successful transition. Use the
   operation helper around the installer command, never around the monitoring
   loop. Treat unavailable hardware/D-Bus as no trigger.
-- [ ] Install/reconcile the launcher, worker, and user service through a new
+- [x] Install/reconcile the launcher, worker, and user service through a new
   integration function. Enable/start only in a graphical user session and
   disable the old unit cleanly when the feature is unavailable.
 
@@ -64,14 +64,14 @@ io.github.DevWebeloper.AuraGlass.Adaptive1.GetFullscreen() -> (b fullscreen)
 io.github.DevWebeloper.AuraGlass.Adaptive1.FullscreenChanged(b fullscreen)
 ```
 
-- [ ] Build a `PanelMenu.Button` with the three profiles, a profile-appropriate
+- [x] Build a `PanelMenu.Button` with the three profiles, a profile-appropriate
   symbolic icon, and active/reason status text loaded from Aura Glass state.
-- [ ] Track the focused Meta window and emit only changes to its fullscreen
+- [x] Track the focused Meta window and emit only changes to its fullscreen
   state. All subprocess calls from menu actions use asynchronous GJS APIs.
-- [ ] Add the extension as an Aura-owned core helper but deliberately keep it
+- [x] Add the extension as an Aura-owned core helper but deliberately keep it
   out of solid-mode stand-down so the panel menu can restore glass. Make its
   install, enable, catalogue description, and uninstall ownership explicit.
-- [ ] Ensure a missing extension or D-Bus owner degrades to no fullscreen
+- [x] Ensure a missing extension or D-Bus owner degrades to no fullscreen
   trigger instead of failing the service or blocking the panel.
 
 ### Task 3: Make Appearance controls contextual and rename package presentation
@@ -85,12 +85,12 @@ io.github.DevWebeloper.AuraGlass.Adaptive1.FullscreenChanged(b fullscreen)
 def _refill_contextual_choice(row, options, current, key): ...
 ```
 
-- [ ] Generalize the existing dependent icon-colour row rather than adding a
+- [x] Generalize the existing dependent icon-colour row rather than adding a
   second resolver. Icon family changes refill colour choices; cursor and
   titlebar rows refresh their enabled/current context from their metadata.
-- [ ] Preserve `keep`/`original` behavior, current cursor-size independence,
+- [x] Preserve `keep`/`original` behavior, current cursor-size independence,
   and installer flag emission. Do not add any Moga value or cursor download.
-- [ ] Change user-facing package labels and descriptions to Core, Minimal, and
+- [x] Change user-facing package labels and descriptions to Core, Minimal, and
   Complete Experience in the settings app, GTK setup wizard, terminal wizard,
   help, and README. Keep legacy command-line flags and underlying arrays
   unchanged so saved installations retain their membership.
@@ -107,17 +107,17 @@ Reapply settings: install.sh --settings-only -y
 Full reinstall with settings app: install.sh --force --gui --yes
 ```
 
-- [ ] Add a permanently visible Repair installation group to Updates with
+- [x] Add a permanently visible Repair installation group to Updates with
   separate buttons, clear scope copy, running-state interlocks, and log/status
   feedback consistent with the existing update operation.
-- [ ] Run Reapply settings through the existing in-window streamed command
+- [x] Run Reapply settings through the existing in-window streamed command
   path. Launch Full reinstall with settings app in a real terminal so any
   root-owned rounded-blur prompt remains usable; do not use `--full`.
-- [ ] Keep a pending release update's existing pull-and-full-install behavior
+- [x] Keep a pending release update's existing pull-and-full-install behavior
   unchanged.
-- [ ] Review the changed source manually for flag spelling, installed-path
+- [x] Review the changed source manually for flag spelling, installed-path
   ownership, Shell API compatibility, and user-facing labels. Do not run tests
   or check commands.
-- [ ] Apply the finished repository change to the live desktop with
+- [x] Apply the finished repository change to the live desktop with
   `./install.sh --settings-only -y`. Report the command outcome and any
   runtime state that cannot be confirmed without the prohibited test work.
