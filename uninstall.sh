@@ -249,7 +249,8 @@ found=0
 for u in aura-glass-panel-blur.service tahoe-glass-panel-blur.service bms-panel-blur-rebuild.service \
          aura-glass-icon-sync.service tahoe-glass-icon-sync.service \
          aura-glass-gdm-sync.service tahoe-glass-gdm-sync.service \
-         aura-glass-update-check.timer aura-glass-update-check.service; do
+         aura-glass-update-check.timer aura-glass-update-check.service \
+         aura-glass-adaptive.service; do
     [ -f "$HOME/.config/systemd/user/$u" ] || continue
     found=1
     run systemctl --user disable --now "$u" >/dev/null 2>&1 || true
@@ -270,6 +271,7 @@ if [ "$REMOVE_EXTENSIONS" = 1 ]; then
     # in /usr/share belongs to the system, not to us.
     for u in openbar@neuromorph custom-osd@neuromorph blur-my-shell@aunetx \
              aura-glass-blur@aura-glass.local \
+             aura-glass-adaptive@aura-glass.local \
              just-perfection-desktop@just-perfection gnome-ui-tune@itstime.tech \
              space-bar@luchrioh auto-accent-colour@Wartybix \
              Vitals@CoreCoding.com clipboard-indicator@tudmotu.com \
@@ -310,7 +312,8 @@ if [ "$REMOVE_ASSETS" = 1 ]; then
     # theme on disk leaves patched files behind with nothing to restore them.
     for d in "$HOME"/.local/share/icons/Colloid* "$HOME"/.local/share/icons/Reversal* \
              "$HOME"/.local/share/icons/Hatter* "$HOME"/.local/share/icons/MacTahoe* \
-             "$HOME"/.local/share/icons/aosp-cursors; do
+             "$HOME"/.local/share/icons/aosp-cursors \
+             "$HOME"/.local/share/icons/Aura-Glass-Moga-*; do
         [ -e "$d" ] && { run rm -rf "$d"; ok "removed $(basename "$d")"; }
     done
     # Everything --font downloaded lives under this one directory, and nothing
@@ -357,6 +360,7 @@ fi
 step "Removing aura-glass itself"
 run rm -f "$HOME/.local/bin/aura-glass-apply" "$HOME/.local/bin/aura-glass-icon-sync" \
           "$HOME/.local/bin/aura-glass-panel-blur" "$HOME/.local/bin/aura-glass-gdm-sync" \
+          "$HOME/.local/bin/aura-glass-adaptive" \
           "$HOME/.local/bin/aura-glass-settings" \
           "$HOME/.local/bin/aura-glass-open-once" \
           "$HOME/.local/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-icon-sync" \
@@ -403,6 +407,9 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/app-blur-block" \
           "$CONF_DIR/cursor-pack" \
           "$CONF_DIR/cursor-size" \
+          "$CONF_DIR/adaptive-profile" "$CONF_DIR/adaptive-install" \
+          "$CONF_DIR/adaptive-performance/active" \
+          "$CONF_DIR/adaptive-performance/reason" \
           "$CONF_DIR/openbar-patch" "$CONF_DIR/custom-osd-patch"
 if confirm "Delete $CONF_DIR (this also deletes the backups above)?" 0; then
     run rm -rf "$CONF_DIR"

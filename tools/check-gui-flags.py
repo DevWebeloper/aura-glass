@@ -394,6 +394,10 @@ CASES = [
 
     ("mactahoe pointer", FROSTED, state(cursors="mactahoe"),
      ["--cursors", "mactahoe"]),
+    ("moga pointer", FROSTED, state(cursors="moga"),
+     ["--cursors", "moga"]),
+    ("moga follows accent", state(cursors="moga", accent="purple"),
+     state(cursors="moga", accent="teal"), ["--accent", "teal"]),
 
     ("keep the pointer", FROSTED, state(cursors="keep"), ["--no-cursors"]),
 

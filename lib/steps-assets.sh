@@ -332,11 +332,40 @@ install_icons() {
     ok "$name"
 }
 
+install_moga_cursors() {
+    local accent="${ACCENT:-blue}" variant archive md5 url line src stage dest meta
+    step "Moga cursor refresh"
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        variant="$(python3 "$REPO_ROOT/tools/moga_cursor.py" variant "$accent")"
+        info "Moga cursor refresh: all accent variants (selected: $accent/$variant) -> $HOME/.local/share/icons/Aura-Glass-Moga-*"
+        return 0
+    fi
+    meta="$(mktemp)"
+    curl -fsSL -o "$meta" "$MOGA_PAGE_URL/loadFiles" || { rm -f "$meta"; die "could not download Moga release metadata"; }
+    for accent_name in $VALID_ACCENTS; do
+        variant="$(python3 "$REPO_ROOT/tools/moga_cursor.py" variant "$accent_name")" || { rm -f "$meta"; die "could not map accent '$accent_name' to a Moga cursor variant"; }
+        dest="$HOME/.local/share/icons/Aura-Glass-Moga-$variant"
+        if [ "${FORCE:-0}" != 1 ] && [ -d "$dest/cursors" ]; then skip "Aura-Glass-Moga-$variant already installed"; continue; fi
+        line="$(python3 "$REPO_ROOT/tools/moga_cursor.py" resolve "$accent_name" "$meta")" || { rm -f "$meta"; die "Moga release metadata did not contain the expected $variant archive"; }
+        IFS=$'\t' read -r variant archive md5 url <<<"$line"
+        src="$SRC_CACHE/moga-$variant"; fetch_zip_md5_pinned "$url" "$md5" "$src"
+        mapfile -t matches < <(find "$src" -type f -name index.theme -print)
+        [ "${#matches[@]}" -eq 1 ] || { rm -f "$meta"; die "Moga archive must contain exactly one index.theme"; }
+        [ -d "$(dirname "${matches[0]}")/cursors" ] || { rm -f "$meta"; die "Moga archive index.theme has no cursors directory"; }
+        stage="$(mktemp -d)"; cp -a "$(dirname "${matches[0]}")/." "$stage/"
+        sed -i "s/^Name=.*/Name=Aura Glass Moga $variant/" "$stage/index.theme"
+        mkdir -p "$HOME/.local/share/icons"; rm -rf "$dest"; mv "$stage" "$dest"
+        ok "Aura-Glass-Moga-$variant"
+    done
+    rm -f "$meta"
+}
+
 install_cursors() {
     # Adwaita's cursors ship with GNOME itself, so there is nothing to fetch,
     # nothing to keep pinned, and they are crisper and better hinted at every
     # size than the MacTahoe set. --cursors aosp and --cursors mactahoe are the
     # two that are fetched.
+    if [ "${CURSORS:-adwaita}" = moga ]; then install_moga_cursors; return 0; fi
     if [ "${CURSORS:-adwaita}" = adwaita ]; then
         step "Cursors"
         skip "using the stock Adwaita cursors (--cursors aosp or mactahoe to change)"

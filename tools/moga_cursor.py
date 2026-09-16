@@ -38,13 +38,11 @@ def resolve(accent, metadata_path):
         raise ValueError("could not read Moga source metadata: %s" % exc) from exc
 
     entries = [item for item in payload.get("files", [])
-               if item.get("name") == archive]
+               if item.get("name") == archive and str(item.get("active")) == "1"]
     if len(entries) != 1:
         raise ValueError("Moga metadata has %d entries named %s; expected one"
                          % (len(entries), archive))
     entry = entries[0]
-    if str(entry.get("active")) != "1":
-        raise ValueError("Moga release %s is not active" % archive)
     if entry.get("md5sum") != expected_md5:
         raise ValueError("Moga release %s has an unexpected MD5" % archive)
     encoded_url = entry.get("url")

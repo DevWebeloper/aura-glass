@@ -49,7 +49,8 @@ EOF
 # itself; the other two are the --recommended and --all-extras tiers.
 ext_tier() {
     local uuid="$1" u
-    for u in "${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" custom-osd@neuromorph; do
+    for u in "${EXT_CORE[@]}" "$AURA_EXT_UUID" "$AURA_ADAPTIVE_EXT_UUID" \
+             openbar@neuromorph "$BMS_UUID" custom-osd@neuromorph; do
         [ "$u" = "$uuid" ] && { printf 'core'; return; }
     done
     for u in "${EXT_EXTRA_RECOMMENDED[@]}"; do
@@ -79,7 +80,8 @@ ext_enabled() {
 # on: this runs rm -rf, and an unvetted argument is not something to aim it with.
 ext_known() {
     local uuid="$1" u
-    for u in "${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" \
+    for u in "${EXT_CORE[@]}" "$AURA_EXT_UUID" "$AURA_ADAPTIVE_EXT_UUID" \
+             openbar@neuromorph "$BMS_UUID" \
              custom-osd@neuromorph "${EXT_EXTRA_ALL[@]}"; do
         [ "$u" = "$uuid" ] && return 0
     done
@@ -91,7 +93,8 @@ json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 cmd_list() {
     local first=1 uuid
     printf '[\n'
-    for uuid in "${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" \
+    for uuid in "${EXT_CORE[@]}" "$AURA_EXT_UUID" "$AURA_ADAPTIVE_EXT_UUID" \
+                openbar@neuromorph "$BMS_UUID" \
                 custom-osd@neuromorph "${EXT_EXTRA_ALL[@]}"; do
         [ "$first" = 1 ] || printf ',\n'
         first=0
@@ -170,6 +173,8 @@ cmd_remove() {
 # own installers so a single-extension install matches what a full one does.
 cmd_install() {
     case "$1" in
+        "$AURA_EXT_UUID")       install_aura_ext ;;
+        "$AURA_ADAPTIVE_EXT_UUID") install_aura_adaptive_ext ;;
         "$BMS_UUID")            install_bms ;;
         openbar@neuromorph)     install_openbar ;;
         custom-osd@neuromorph)  install_custom_osd ;;

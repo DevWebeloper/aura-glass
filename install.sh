@@ -63,6 +63,7 @@ fi
 . "$REPO_ROOT/tokens/tokens.sh"
 
 ACCENT=""          # empty = remembered choice, then $ACCENT_DEFAULT
+ACCENT_EXPLICIT=""
 TYPED_FLAGS=()
 INCREMENTAL=0
 PLAN_JSON=0
@@ -119,6 +120,7 @@ ICONS=""            # empty = remembered choice, then colloid
 ICONS_EXPLICIT=""
 GRAIN=""          # empty keeps the preset's value, or the remembered choice
 BLUR_STRENGTH=""    # empty = remembered choice, then the tuned radii (100)
+ADAPTIVE_BLUR=""     # private transient writer: active | restore, never memoed
 POPUP_BRIGHTNESS=""      # empty = remembered choice, then the preset (115)
 NOTIFICATION_OPACITY=""  # empty = remembered choice, then the sheet (40)
 APP_TINT_COLOR=""   # empty = remembered choice, then black (#000000)
@@ -164,15 +166,14 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
     --interactive     launch the interactive setup wizard explicitly
     --accent COLOR    accent to build around (default: $ACCENT_DEFAULT, and
                       remembered for later runs). One of: $VALID_ACCENTS
-    --recommended     install the recommended optional extensions (Default)
-                      (Just Perfection, GNOME UI Tune, Space Bar, AppIndicator Support,
-                       Clipboard Indicator, Magic Lamp Effect)
-    --full            every optional piece at once: all 14 extra extensions,
-                      plus icons, cursors, OSD and panel-blur-fix
-    --extras          alias for --recommended
-    --all-extras      install all 14 optional extensions
-    --no-extras       minimal install with core look only (no optional extensions)
-    --minimal         same as --no-extras
+    --recommended     Core package: the foundation plus six curated optional
+                      extensions (the default)
+    --full            Complete Experience: every optional piece at once — all
+                      14 extra extensions, plus icons, cursors, OSD and panel-blur-fix
+    --extras          alias for --recommended (Core)
+    --all-extras      Complete Experience extension package: all 14 optionals
+    --no-extras       Minimal package: the foundation only, with no optionals
+    --minimal         alias for --no-extras (Minimal)
     --extensions LIST comma-separated extension UUIDs to install instead of a
                       pack, e.g. 'space-bar@luchrioh,Vitals@CoreCoding.com'.
                       Each must be one --all-extras would install. An empty list
@@ -213,7 +214,7 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
                       ($VALID_REVERSAL). Or original, for whatever was set
                       before aura-glass first ran here.
                       Remembered for later runs
-    --cursors WHICH   adwaita (default, ships with GNOME), aosp, mactahoe, or
+    --cursors WHICH   adwaita (default, ships with GNOME), aosp, mactahoe, moga, or
                       original (whatever was set before aura-glass first ran here)
     --cursor-size PX  pointer size in pixels, 16-128 (20 recommended for the
                       packs above). Left alone unless given. Remembered for
@@ -312,8 +313,8 @@ parse_flags() {
     TYPED_FLAGS+=("$1")
     case "$1" in
         --interactive)   FORCE_INTERACTIVE=1; shift ;;
-        --accent)        ACCENT="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
-        --accent=*)      ACCENT="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --accent)        ACCENT="${2:-}"; ACCENT_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --accent=*)      ACCENT="${1#*=}"; ACCENT_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --recommended|--extras)
                          WANT_EXTRAS=1; EXT_EXTRA=("${EXT_EXTRA_RECOMMENDED[@]}"); EXPLICIT_FLAGS=1; shift ;;
         --all-extras)    WANT_EXTRAS=1; EXT_EXTRA=("${EXT_EXTRA_ALL[@]}"); EXPLICIT_FLAGS=1; shift ;;
@@ -328,6 +329,8 @@ parse_flags() {
         --no-grain)      GRAIN=0; EXPLICIT_FLAGS=1; shift ;;
         --blur-strength) BLUR_STRENGTH="${2:-100}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --blur-strength=*) BLUR_STRENGTH="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --adaptive-blur) ADAPTIVE_BLUR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --adaptive-blur=*) ADAPTIVE_BLUR="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --popup-brightness) POPUP_BRIGHTNESS="${2:-100}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --popup-brightness=*) POPUP_BRIGHTNESS="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --notification-opacity) NOTIFICATION_OPACITY="${2:-40}"; EXPLICIT_FLAGS=1; shift 2 ;;
@@ -482,7 +485,7 @@ EOF
     # 0. Quick Start
     #
     #   ┌─ PARITY ────────────────────────────────────────────────────────────┐
-    #   │ This choice's twin is the "Best experience" / "Customize" pair on    │
+    #   │ This choice's twin is the "Complete Experience" / "Customize" pair  │
     #   │ the GUI wizard's welcome page (gui/aura_glass_setup_wizard.py,       │
     #   │ page_welcome and Answers.best). Both mean: the recommended look,     │
     #   │ every extension, and the login screen themed with monitor sync where │
@@ -490,7 +493,7 @@ EOF
     #   │ both places.                                                         │
     #   └───────────────────────────────────────────────────────────────────────┘
     printf '%sStep 0: Quick Start%s\n' "$C_BLD" "$C_OFF"
-    printf '  %s[1]%s Best experience %s[Default — recommended look, every extension, login screen themed]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '  %s[1]%s Complete Experience %s[Default — recommended look, every extension, login screen themed]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
     printf '  %s[2]%s Customize %s[Answer each question below]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
     printf '  Choice [1-2, default 1]: '
     read -r ans_quick || ans_quick="1"
@@ -511,7 +514,7 @@ EOF
             WANT_CURSORS=1
             WANT_OSD=1
             # Every extension: the same array --all-extras and the GUI
-            # wizard's "Everything" preset button both build.
+            # wizard's "Complete Experience" preset button both build.
             WANT_EXTRAS=1
             EXT_EXTRA=("${EXT_EXTRA_ALL[@]}")
             gdm_note=""
@@ -531,7 +534,7 @@ EOF
             # down this script) already land on frosted glass at 90% on a
             # fresh install with nothing overriding them — which is the same
             # answer Steps 1-2 below would collect by hand.
-            printf '  %s✓%s Best experience selected — recommended look, every extension%s\n\n' \
+            printf '  %s✓%s Complete Experience selected — recommended look, every extension%s\n\n' \
                 "$C_GRN" "$C_OFF" "$gdm_note"
             ;;
     esac
@@ -785,7 +788,7 @@ EOF
 
     # 4. Extensions
     printf '%sStep 4: Shell Extensions%s\n' "$C_BLD" "$C_OFF"
-    printf '  %sMandatory Core:%s User Themes, Blur My Shell, Open Bar\n' "$C_BLD" "$C_OFF"
+    printf '  %sFoundation:%s User Themes, Blur My Shell, Open Bar\n' "$C_BLD" "$C_OFF"
     printf '  Install Custom OSD? (minimal pill bar for volume & brightness) %s[Y/n]%s: ' "$C_DIM" "$C_OFF"
     read -r ans_osd || ans_osd="y"
     case "${ans_osd,,}" in
@@ -793,24 +796,24 @@ EOF
         *)    WANT_OSD=1; printf '  %s✓%s Custom OSD pill bar enabled\n' "$C_GRN" "$C_OFF" ;;
     esac
 
-    printf '\n  Optional Extensions Package:\n'
-    printf '    %s[1]%s Recommended Pack %s[Default — 6 curated essentials]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '\n  Extension Package:\n'
+    printf '    %s[1]%s Core %s[Default — foundation plus 6 curated extensions]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
     printf '        • AppIndicator Support (System tray icons for Steam, Discord, etc.)\n'
     printf '        • Space Bar (Workspace pill switcher in top bar)\n'
     printf '        • Clipboard Indicator (Clipboard history with search & Ctrl+Space)\n'
     printf '        • Magic Lamp Effect (macOS Genie window minimize effect)\n'
     printf '        • Just Perfection (GNOME UI tweaker & clean overview)\n'
     printf '        • GNOME UI Tune (300%% overview window thumbnails)\n'
-    printf '    %s[2]%s Full Suite %s[All 14 extra extensions]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[2]%s Complete Experience %s[Foundation plus all 14 optional extensions]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
     printf '    %s[3]%s Custom Selection %s[Pick extensions individually]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '    %s[4]%s Minimal %s[Core look only — no optional extensions]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[4]%s Minimal %s[Foundation only — no optional extensions]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
     printf '  Choice [1-4, default 1]: '
     read -r ans_pkg || ans_pkg="1"
     case "$ans_pkg" in
         2|full|all)
             WANT_EXTRAS=1
             EXT_EXTRA=("${EXT_EXTRA_ALL[@]}")
-            printf '  %s✓%s Full Suite selected (14 extensions)\n\n' "$C_GRN" "$C_OFF"
+            printf '  %s✓%s Complete Experience selected (14 optional extensions)\n\n' "$C_GRN" "$C_OFF"
             ;;
         3|custom)
             WANT_EXTRAS=1
@@ -835,12 +838,12 @@ EOF
         4|minimal|none)
             WANT_EXTRAS=0
             EXT_EXTRA=()
-            printf '  %s✓%s Minimal core only selected\n\n' "$C_GRN" "$C_OFF"
+            printf '  %s✓%s Minimal selected — foundation only\n\n' "$C_GRN" "$C_OFF"
             ;;
         *)
             WANT_EXTRAS=1
             EXT_EXTRA=("${EXT_EXTRA_RECOMMENDED[@]}")
-            printf '  %s✓%s Recommended Pack selected (6 extensions)\n\n' "$C_GRN" "$C_OFF"
+            printf '  %s✓%s Core selected (6 curated optional extensions)\n\n' "$C_GRN" "$C_OFF"
             ;;
     esac
 
@@ -976,8 +979,8 @@ if [ "$CURSORS" = keep ]; then
 fi
 CURSORS="${CURSORS:-adwaita}"
 case "$CURSORS" in
-    adwaita|aosp|mactahoe|original) ;;
-    *) die "unknown --cursors '$CURSORS' — pick adwaita, aosp, mactahoe or original" ;;
+    adwaita|aosp|mactahoe|moga|original) ;;
+    *) die "unknown --cursors '$CURSORS' — pick adwaita, aosp, mactahoe, moga or original" ;;
 esac
 
 # Independent of --cursors: the pointer theme and the pointer size are two
@@ -1020,8 +1023,53 @@ esac
 
 resolve_glass_mode
 apply_glass_mode
-seed_glass_mode
-load_glass_mode_memos
+
+# This is deliberately private to the adaptive worker.  It resolves the same
+# normal memo/full-preset answer that apply_blur_strength uses, then asks that
+# existing writer for a temporary value.  The writer guard in steps-dconf.sh
+# keeps either transition out of blur-strength, which remains the user's
+# normal baseline for the next restore and for every ordinary install.
+if [ -n "$ADAPTIVE_BLUR" ]; then
+    if [ "$SETTINGS_ONLY" != 1 ] || [ "$INCREMENTAL" != 1 ]; then
+        die "--adaptive-blur requires --settings-only --incremental"
+    fi
+    # seed_glass_mode and load_glass_mode_memos are normal-install setup: they
+    # create and repair mode drawers.  A transient writer must only read those
+    # established answers.  The mode drawer outranks the legacy top-level memo
+    # exactly as load_glass_mode_memos does, then the tuned preset supplies 100
+    # when neither has been written yet.
+    _adaptive_normal_blur="${BLUR_STRENGTH:-}"
+    if [ -z "$_adaptive_normal_blur" ] && [ -n "${GLASS_MODE:-}" ] \
+       && [ "${GLASS_MODE}" != solid ] \
+       && [ -r "$CONF_DIR/modes/${GLASS_MODE}/blur-strength" ]; then
+        _adaptive_normal_blur="$(cat "$CONF_DIR/modes/${GLASS_MODE}/blur-strength" 2>/dev/null || true)"
+    fi
+    if [ -z "$_adaptive_normal_blur" ]; then
+        _adaptive_normal_blur="$(resolve_blur_strength 100)"
+    fi
+    case "$_adaptive_normal_blur" in
+        ''|*[!0-9]*) die "the remembered blur strength is not a whole percentage" ;;
+    esac
+    if [ "$_adaptive_normal_blur" -lt "$BLUR_STRENGTH_MIN" ] \
+       || [ "$_adaptive_normal_blur" -gt "$BLUR_STRENGTH_MAX" ]; then
+        die "the remembered blur strength is outside ${BLUR_STRENGTH_MIN}-${BLUR_STRENGTH_MAX}"
+    fi
+    case "$ADAPTIVE_BLUR" in
+        active)
+            BLUR_STRENGTH=$(( _adaptive_normal_blur / 2 ))
+            [ "$BLUR_STRENGTH" -lt "$BLUR_STRENGTH_MIN" ] && BLUR_STRENGTH="$BLUR_STRENGTH_MIN"
+            ;;
+        restore)
+            BLUR_STRENGTH="$_adaptive_normal_blur"
+            ;;
+        *) die "--adaptive-blur wants active or restore" ;;
+    esac
+fi
+
+if [ -z "$ADAPTIVE_BLUR" ]; then
+    seed_glass_mode
+    load_glass_mode_memos
+fi
 
 if [ "${WANT_BLUR:-1}" = 0 ]; then
     APP_TRANSPARENCY=0
@@ -1265,7 +1313,8 @@ if [ "$PLAN_JSON" = 1 ]; then
     select_apply_actions
     current_fingerprint="$(apply_source_fingerprint)"
     saved_fingerprint="$(cat "$CONF_DIR/apply-source-fingerprint" 2>/dev/null || true)"
-    if [ "${APPLY_ACTIONS[0]}" != full ] && [ "$current_fingerprint" != "$saved_fingerprint" ]; then
+    if [ "${APPLY_ACTIONS[0]}" != full ] && [ "${APPLY_ACTIONS[0]}" != adaptive-blur ] \
+       && [ "$current_fingerprint" != "$saved_fingerprint" ]; then
         APPLY_ACTIONS=(full)
         APPLY_FALLBACK_REASON="installed source fingerprint is absent or changed"
     fi
@@ -1317,7 +1366,8 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
         select_apply_actions
         current_fingerprint="$(apply_source_fingerprint)"
         saved_fingerprint="$(cat "$CONF_DIR/apply-source-fingerprint" 2>/dev/null || true)"
-        if [ "${APPLY_ACTIONS[0]}" != full ] && [ "$current_fingerprint" != "$saved_fingerprint" ]; then
+        if [ "${APPLY_ACTIONS[0]}" != full ] && [ "${APPLY_ACTIONS[0]}" != adaptive-blur ] \
+           && [ "$current_fingerprint" != "$saved_fingerprint" ]; then
             APPLY_ACTIONS=(full)
             APPLY_FALLBACK_REASON="installed source fingerprint is absent or changed"
         fi
@@ -1326,10 +1376,18 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
             for action in "${APPLY_ACTIONS[@]}"; do
                 case "$action" in
                     accent) apply_accent ;;
+                    cursor-theme) apply_moga_cursor_theme ;;
                     cursor-size) apply_cursor_size ;;
                     window-buttons) apply_window_buttons ;;
                     app-blur) apply_app_blur ;;
                     css) install_css ;;
+                    adaptive-blur)
+                        # The panel profile remains selectable in solid mode,
+                        # but Blur My Shell has stood down.  Keep this private
+                        # transition from recreating or writing its keys.
+                        if [ "$WANT_STYLING" = 1 ]; then apply_blur_strength
+                        else skip "solid mode — no transient blur to apply"; fi
+                        ;;
                 esac
             done
             step "Done"
@@ -1343,7 +1401,7 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     # window can press without warning anyone. Switching between packs already
     # on disk does not download either: both steps skip when the theme is there.
     if [ -n "$ICONS_EXPLICIT" ] && [ "$WANT_ICONS" = 1 ]; then install_icons; fi
-    if [ -n "$CURSORS_EXPLICIT" ] && [ "$WANT_CURSORS" = 1 ]; then install_cursors; fi
+    if [ "$WANT_CURSORS" = 1 ] && { [ -n "$CURSORS_EXPLICIT" ] || { [ "${CURSORS:-}" = moga ] && [ -n "${ACCENT_EXPLICIT:-}" ]; }; }; then install_cursors; fi
     # Same bargain for the font: asking for one is asking for it to be
     # installed, and a font already resolvable needs no network either — see
     # install_fonts, which skips on fc-match rather than on this flag.
@@ -1380,6 +1438,7 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     # grounds install_gui is here on. Without it the window's switch for it
     # would write a memo that nothing acted on until the next full install.
     install_panel_blur_unit
+    install_adaptive_performance
     if [ "$INCREMENTAL" = 1 ] && [ "$DRY_RUN" != 1 ]; then
         apply_source_fingerprint > "$CONF_DIR/apply-source-fingerprint"
     fi
@@ -1446,6 +1505,7 @@ install_gui
 install_update_check
 flatpak_override
 install_panel_blur_unit
+install_adaptive_performance
 enable_extensions
 if [ "$WANT_GDM_MONITORS" = 1 ]; then
     sync_gdm_monitors

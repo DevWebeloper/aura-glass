@@ -1,0 +1,18 @@
+[Unit]
+# The worker observes session state and asks install.sh for a transient blur
+# application only when the desired active state changes.  It is deliberately
+# tied to the graphical session: the Shell D-Bus service and the dconf session
+# both belong to that target, and absent session hardware is not a reason to
+# run a background retry loop.
+Description=Adapt Aura Glass blur to fullscreen, battery and GPU load
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/aura-glass-adaptive
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

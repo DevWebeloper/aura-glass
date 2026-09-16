@@ -235,6 +235,34 @@ install_aura_ext() {
     ok "$uuid"
 }
 
+# aura-glass-adaptive@aura-glass.local — the panel profile picker and the
+# session D-Bus bridge read by tools/aura_glass_adaptive.py.  This is a core
+# Aura helper rather than a Blur My Shell component: it stays installed and
+# enabled in solid mode, where its Full Glass and Auto choices are the direct
+# route back to a styled desktop.  Like the window-menu helper, it has no
+# schema of its own and is copied from this checkout rather than fetched.
+install_aura_adaptive_ext() {
+    local uuid="$AURA_ADAPTIVE_EXT_UUID"
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: copy extensions/$uuid to $EXT_DIR/$uuid"
+        return 0
+    fi
+
+    local tmp
+    tmp="$(mktemp -d)"
+    if ! cp -a "$REPO_ROOT/extensions/$uuid" "$tmp/$uuid"; then
+        rm -rf "$tmp"
+        warn "$uuid could not be copied — existing installation left untouched"
+        return 1
+    fi
+    mkdir -p "$EXT_DIR"
+    rm -rf "$EXT_DIR/$uuid"
+    mv "$tmp/$uuid" "$EXT_DIR/$uuid"
+    rm -rf "$tmp"
+    ok "$uuid"
+}
+
 # Open Bar is the one extension with no GNOME 50 release. Upstream's last
 # commit targets 49, so on 50 it is built from that commit plus the patch in
 # patches/. On 49 and below the published build is used unchanged.
@@ -451,6 +479,7 @@ install_extensions() {
         skip "$BMS_UUID left out (--no-blur)"
     fi
     install_aura_ext
+    install_aura_adaptive_ext
     install_openbar
     install_custom_osd
 
@@ -460,12 +489,44 @@ install_extensions() {
     fi
 }
 
+# dconf can reach the running extension after it has constructed its components:
+# on a reload, PipelinesManager may still have only the default pipeline when
+# OverviewBlur creates its background actor. The later pipeline update adds the
+# named pipeline to the settings object but does not recreate that actor, so the
+# overview stays unblurred and logs "pipeline ... not found". Refresh only an
+# already-active instance after load_dconf has finished writing the complete
+# preset; a disabled instance is enabled later by enable_extensions with the
+# finished settings already in place.
+refresh_bms_after_dconf() {
+    [ "${WANT_BLUR:-1}" = 1 ] || return 0
+    [ -d "$EXT_DIR/$BMS_UUID" ] || return 0
+    gnome-extensions info "$BMS_UUID" 2>/dev/null | grep -q 'State: ACTIVE' || return 0
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: refresh active $BMS_UUID after loading its pipelines"
+        return 0
+    fi
+
+    if ! run gnome-extensions disable "$BMS_UUID" 2>/dev/null; then
+        warn "could not refresh active $BMS_UUID after loading its pipelines"
+        return 0
+    fi
+    # Give the shell one turn to tear down the old actors and D-Bus object before
+    # enabling the extension again; otherwise the reload can race its cleanup.
+    sleep 1
+    if ! run gnome-extensions enable "$BMS_UUID" 2>/dev/null; then
+        warn "could not re-enable $BMS_UUID after loading its pipelines"
+        return 0
+    fi
+    ok "$BMS_UUID refreshed after loading its pipelines"
+}
+
 enable_extensions() {
     step "Enabling extensions"
     # $BMS_UUID is named explicitly rather than left in EXT_CORE so that it is
     # enabled whichever source install_bms took it from — and so that solid
     # mode can leave it out without editing the shared list.
-    local want=("${EXT_CORE[@]}" openbar@neuromorph) u
+    local want=("${EXT_CORE[@]}" "$AURA_ADAPTIVE_EXT_UUID" openbar@neuromorph) u
     if [ "${WANT_BLUR:-1}" = 1 ]; then
         want+=("$BMS_UUID")
         [ "${WANT_WINDOW_MENU:-1}" = 1 ] && want+=("$AURA_EXT_UUID")
@@ -612,6 +673,8 @@ PY
 # touched in either direction — that is the whole point of computing the
 # intersection rather than disabling a list.
 glass_owned_extensions() {
+    # AURA_ADAPTIVE_EXT_UUID is intentionally absent: solid mode stands the
+    # themed extensions down, but its panel menu is how someone restores glass.
     printf '%s\n' "${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" \
         custom-osd@neuromorph "${EXT_EXTRA_ALL[@]}"
 }

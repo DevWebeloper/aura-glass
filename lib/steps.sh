@@ -40,6 +40,11 @@ BMS_UUID="blur-my-shell@aunetx"
 # extensions/ next to this script. See install_aura_ext in
 # lib/steps-extensions.sh.
 AURA_EXT_UUID="aura-glass-blur@aura-glass.local"
+# Unlike the window-menu helper above, this panel helper owns the adaptive
+# profile picker and focused-fullscreen D-Bus bridge.  It is deliberately
+# independent of Blur My Shell: solid mode leaves it enabled so selecting Full
+# Glass or Auto is possible without first reopening the settings application.
+AURA_ADAPTIVE_EXT_UUID="aura-glass-adaptive@aura-glass.local"
 # Applied on top of that pin: `blur-on-overview: false` does not take the blur
 # out of the overview's window previews upstream, it only stops forcing window
 # actors visible. See the patch's own comments.
@@ -102,6 +107,7 @@ HATTER_REF="89287fa3f1bdc25d94a2ef358ecd27696e1ee09a"
 AOSP_CURSORS_VERSION="1.3.1"
 AOSP_CURSORS_URL="https://github.com/Tech-Tac/aosp-cursors/releases/download/$AOSP_CURSORS_VERSION/aosp-cursors-linux-$AOSP_CURSORS_VERSION.tar.xz"
 AOSP_CURSORS_SHA256="d271d2be20a6d7ac13747e4d9224a28ddbf7e2c1fab2e805cdf03bde05a0a3ae"
+MOGA_PAGE_URL="https://www.gnome-look.org/p/2302110"
 
 # The three fonts --font can install. None of them is packaged widely enough to
 # assume, so each is fetched the way its upstream publishes it.
@@ -210,6 +216,10 @@ ext_description() {
             printf 'Blur My Shell — the blur behind windows, popups and the panel' ;;
         custom-osd@neuromorph)
             printf 'Custom OSD — the volume and brightness pill' ;;
+        aura-glass-blur@aura-glass.local)
+            printf 'Aura Glass window menu — adds the per-app Blur This App toggle' ;;
+        aura-glass-adaptive@aura-glass.local)
+            printf 'Adaptive Performance — panel profiles and the focused-fullscreen bridge' ;;
         just-perfection-desktop@just-perfection)
             printf 'Just Perfection — GNOME UI tweaker & visibility manager' ;;
         gnome-ui-tune@itstime.tech)

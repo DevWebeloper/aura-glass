@@ -148,6 +148,9 @@ CASES = [
      answers(icons="hatter", cursors="mactahoe"), False,
      BASE + FROSTED + ["--icons", "hatter", "--cursors", "mactahoe",
                        "--cursor-size", "20", "--osd"]),
+    ("moga pointers", answers(cursors="moga"), False,
+     BASE + FROSTED + ["--icons", "reversal", "--cursors", "moga",
+                       "--cursor-size", "20", "--osd"]),
 
     ("keep both packs", answers(want_icons=False, want_cursors=False), False,
      BASE + FROSTED + ["--no-icons", "--no-cursors", "--cursor-size", "20",

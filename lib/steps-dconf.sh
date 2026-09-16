@@ -57,6 +57,7 @@ load_dconf() {
     apply_app_opacity
     apply_radius_dconf
     sync_osd_profile
+    refresh_bms_after_dconf
 }
 
 # The seven of the eight corner radii that Blur My Shell rounds its blur
@@ -766,11 +767,29 @@ apply_popup_brightness() {
 BLUR_STRENGTH_MIN=25
 BLUR_STRENGTH_MAX=200
 
-apply_blur_strength() {
-    local want="${BLUR_STRENGTH:-}" memo="$CONF_DIR/blur-strength"
+# This is the one blur-strength resolver for both the normal writer and the
+# adaptive transition.  Normal installation leaves an unchosen value empty so
+# dconf/core.ini keeps its tuned 100%; the adaptive caller supplies that 100%
+# fallback because it has to calculate an actual temporary value from it.
+resolve_blur_strength() {
+    local fallback="${1-}" want="${BLUR_STRENGTH:-}" memo="$CONF_DIR/blur-strength"
     if [ -z "$want" ] && [ -f "$memo" ]; then
         want="$(cat "$memo" 2>/dev/null || true)"
     fi
+    printf '%s\n' "${want:-$fallback}"
+}
+
+apply_blur_strength() {
+    local want memo="$CONF_DIR/blur-strength"
+    # --no-blur leaves the rest of the theme intact but deliberately omits
+    # Blur My Shell.  A normal call keeps its established behaviour; only the
+    # private transient path has to stand down here, before it can recreate or
+    # write any of that extension's dconf keys.
+    if [ -n "${ADAPTIVE_BLUR:-}" ] && [ "${WANT_BLUR:-1}" != 1 ]; then
+        skip "no blur — no transient Blur My Shell strength to apply"
+        return 0
+    fi
+    want="$(resolve_blur_strength)"
     [ -n "$want" ] || return 0
 
     case "$want" in
@@ -782,15 +801,15 @@ apply_blur_strength() {
         return 0
     fi
 
-    # Nothing to do at the tuned values, and saying so is better than writing
-    # six keys back to what dconf load just wrote.
-    if [ "$want" = 100 ]; then
+    # Ordinary 100% follows dconf/core.ini already, so it need not rewrite six
+    # keys.  A transient restore is different: it follows an earlier adaptive
+    # downshift, and has to put those keys back to 100 without changing the
+    # user's blur-strength memo.
+    if [ "$want" = 100 ] && [ -z "${ADAPTIVE_BLUR:-}" ]; then
         if remembering; then
             mkdir -p "$CONF_DIR"
             printf '%s\n' "$want" > "$memo"
         fi
-        ok "blur strength at 100% — the tuned values"
-        return 0
     fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
@@ -813,35 +832,62 @@ apply_blur_strength() {
         run dconf write "$base/$name/sigma" "$scaled"
     done
 
-    python3 - "$want" <<'PY' || { warn "could not scale the blur pipelines"; return 0; }
+python3 - "$want" "$REPO_ROOT" <<'PY' || { warn "could not scale the blur pipelines"; return 0; }
+import os
 import re
 import subprocess
 import sys
 
-want = int(sys.argv[1]) / 100.0
+want_ratio = int(sys.argv[1]) / 100.0
+root = sys.argv[2]
 KEY = "/org/gnome/shell/extensions/blur-my-shell/pipelines"
+
+# Read baseline radii from core.ini so scaled values are anchored to the
+# canonical preset rather than compounding over successive runs.
+core_ini = os.path.join(root, "dconf", "core.ini")
+base_blob = ""
+if os.path.isfile(core_ini):
+    with open(core_ini, "r", encoding="utf-8") as stream:
+        for line in stream:
+            if line.startswith("pipelines="):
+                base_blob = line[len("pipelines="):].strip()
+                break
+
+pattern = r"(\{'type': <'native_static_gaussian_blur'>, 'id': <'([^']+)'>, 'params': <\{'unscaled_radius': <)([0-9.]+)(>)"
+baseline_radii = {match[1]: float(match[2]) for match in re.findall(pattern, base_blob)}
+
 cur = subprocess.run(["dconf", "read", KEY],
                      capture_output=True, text=True).stdout.strip()
+if not cur:
+    cur = base_blob
 if not cur:
     sys.exit(0)
 
 
 def scale(match):
-    # Floored at 1 for the same reason the sigmas above are: 0 is off, and off
-    # is a different question from faint.
-    return "%s%s%s" % (match.group(1),
-                       repr(max(1.0, round(float(match.group(2)) * want, 1))),
-                       match.group(3))
+    prefix = match.group(1)
+    effect_id = match.group(2)
+    suffix = match.group(4)
+    raw = float(match.group(3))
+    base_radius = baseline_radii.get(effect_id, raw)
+    target_radius = max(1.0, round(base_radius * want_ratio, 1))
+    return "%s%s%s" % (prefix, repr(target_radius), suffix)
 
 
-new = re.sub(r"('unscaled_radius': <)([0-9.]+)(>)", scale, cur)
+new = re.sub(pattern, scale, cur)
 if new != cur:
     subprocess.run(["dconf", "write", KEY, new], check=True)
 PY
 
-    mkdir -p "$CONF_DIR"
-    printf '%s\n' "$want" > "$memo"
-    ok "blur strength at ${want}% of the tuned radii (remembered for later runs)"
+    if [ "$want" = 100 ] && [ -z "${ADAPTIVE_BLUR:-}" ]; then
+        ok "blur strength at 100% — the tuned values"
+    elif [ -z "${ADAPTIVE_BLUR:-}" ] && remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$want" > "$memo"
+        ok "blur strength at ${want}% of the tuned radii (remembered for later runs)"
+    else
+        ok "blur strength at ${want}% of the tuned radii (transient adaptive value)"
+    fi
 }
 
 # Which of the titlebar buttons a window gets. Two answers rather than the free
@@ -909,6 +955,24 @@ apply_accent() {
         mkdir -p "$CONF_DIR"
         printf '%s\n' "$ACCENT" > "$CONF_DIR/accent"
     fi
+}
+
+moga_cursor_theme() {
+    local variant
+    variant="$(python3 "$REPO_ROOT/tools/moga_cursor.py" variant "${ACCENT:-blue}")" \
+        || die "could not map accent '${ACCENT:-blue}' to a Moga cursor variant"
+    printf 'Aura-Glass-Moga-%s\n' "$variant"
+}
+
+apply_moga_cursor_theme() {
+    local cursor
+    cursor="$(moga_cursor_theme)"
+    # A previous Moga install from an older Aura Glass version may have only
+    # installed one colour. Repair that state before selecting the new accent.
+    if [ ! -d "$HOME/.local/share/icons/$cursor/cursors" ]; then
+        install_moga_cursors
+    fi
+    run gsettings set org.gnome.desktop.interface cursor-theme "$cursor"
 }
 
 apply_gsettings() {
@@ -980,6 +1044,8 @@ apply_gsettings() {
         # The directory name, not the Name= in index.theme: the key names a
         # directory, and this pack calls itself "AOSP Cursors" inside the file.
         cursor='aosp-cursors'
+    elif [ "${CURSORS:-adwaita}" = moga ]; then
+        cursor="$(moga_cursor_theme)"
     elif [ "${CURSORS:-adwaita}" = original ]; then
         # Adwaita if nothing was recorded, which is also GNOME's own default —
         # so the fallback is the same answer uninstall.sh's gsettings reset

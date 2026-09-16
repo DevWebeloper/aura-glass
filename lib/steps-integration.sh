@@ -169,3 +169,105 @@ install_panel_blur_unit() {
     fi
     ok "panel blur rebuilds on every monitor change, and once at login"
 }
+
+# Adaptive performance is a session observer, not a second settings resolver:
+# its worker only asks install.sh to apply or restore a transient blur strength.
+# Keep its three artifacts together so --settings-only refreshes the installed
+# command and unit without fetching or changing any selected theme asset.
+install_adaptive_performance() {
+    step "Adaptive performance"
+
+    # Settings-only Apply does not run install_extensions/enable_extensions,
+    # but the panel control is a core helper that must arrive with this local
+    # refresh too.  Full installs already install and enable it in their normal
+    # extension pass, so keep this reconciliation narrow to settings-only.
+    if [ "${SETTINGS_ONLY:-0}" = 1 ]; then
+        install_aura_adaptive_ext
+        if [ -d "$EXT_DIR/$AURA_ADAPTIVE_EXT_UUID" ] || \
+           [ -d "/usr/share/gnome-shell/extensions/$AURA_ADAPTIVE_EXT_UUID" ]; then
+            if ! run gnome-extensions enable "$AURA_ADAPTIVE_EXT_UUID" 2>/dev/null; then
+                if [ "${DRY_RUN:-0}" = 1 ]; then
+                    info "dry-run: add $AURA_ADAPTIVE_EXT_UUID to enabled-extensions for the next session"
+                elif enqueue_extension "$AURA_ADAPTIVE_EXT_UUID"; then
+                    ok "$AURA_ADAPTIVE_EXT_UUID queued — active after logout"
+                else
+                    warn "could not enable $AURA_ADAPTIVE_EXT_UUID"
+                fi
+            fi
+        fi
+    fi
+
+    local command_changed=0 unit_changed=0
+    install_if_changed "$REPO_ROOT/bin/aura-glass-adaptive" \
+        "$HOME/.local/bin/aura-glass-adaptive" 755
+    command_changed="$INSTALL_CHANGED"
+    install_if_changed "$REPO_ROOT/tools/aura_glass_adaptive.py" \
+        "$HOME/.local/share/aura-glass/aura_glass_adaptive.py" 755
+    [ "$INSTALL_CHANGED" = 1 ] && command_changed=1
+    install_if_changed "$REPO_ROOT/systemd/aura-glass-adaptive.service" \
+        "$HOME/.config/systemd/user/aura-glass-adaptive.service" 644
+    unit_changed="$INSTALL_CHANGED"
+
+    # The profile is a user choice, so installation supplies Auto only once;
+    # runtime state deliberately lives below adaptive-performance/ instead.
+    if [ ! -r "$CONF_DIR/adaptive-profile" ] && [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' auto > "$CONF_DIR/adaptive-profile"
+    fi
+    # The worker applies through this checkout rather than through the optional
+    # settings window's repo-path memo.  --no-gui is a supported install, and
+    # the adaptive command must retain the same installer-owned writer there.
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$REPO_ROOT/install.sh" > "$CONF_DIR/adaptive-install"
+    fi
+
+    if [ -z "${ADAPTIVE_BLUR:-}" ] && [ "${DRY_RUN:-0}" != 1 ]; then
+        # A normal Apply has just reloaded the user's baseline.  Any prior
+        # transient marker describes dconf that no longer exists, so clear it
+        # before the worker samples again.
+        mkdir -p "$CONF_DIR/adaptive-performance"
+        printf '0\n' > "$CONF_DIR/adaptive-performance/active"
+        printf 'normal\n' > "$CONF_DIR/adaptive-performance/reason"
+    fi
+
+    [ "$unit_changed" = 1 ] && run systemctl --user daemon-reload
+    if [ "${WANT_STYLING:-1}" != 1 ] || [ "${WANT_BLUR:-1}" != 1 ]; then
+        # Solid leaves Blur My Shell out entirely.  Keep the Task 2 panel
+        # extension independent, but stop the worker so it cannot write BMS
+        # keys while the theme has deliberately stood down.
+        run systemctl --user disable --now aura-glass-adaptive.service >/dev/null 2>&1 || true
+        if [ "${DRY_RUN:-0}" != 1 ]; then
+            # Solid mode makes any prior transient downshift disappear with
+            # Blur My Shell.  Clear the runtime marker so returning to glass
+            # can apply a fresh battery/fullscreen/GPU decision instead of
+            # mistaking the old state for the live dconf state.
+            mkdir -p "$CONF_DIR/adaptive-performance"
+            printf '0\n' > "$CONF_DIR/adaptive-performance/active"
+            printf '%s\n' "$([ "${WANT_BLUR:-1}" = 1 ] && printf solid || printf no-blur)" \
+                > "$CONF_DIR/adaptive-performance/reason"
+        fi
+        skip "solid mode — adaptive blur worker stood down"
+        return 0
+    fi
+    if ! systemctl --user is-active --quiet graphical-session.target 2>/dev/null; then
+        # A service without the Shell session cannot ask the D-Bus fullscreen
+        # method, so do not leave an old unit active when Apply runs from a
+        # text-only user manager.
+        run systemctl --user disable --now aura-glass-adaptive.service >/dev/null 2>&1 || true
+        skip "not enabled outside a graphical session"
+        return 0
+    fi
+
+    if ! systemctl --user is-enabled --quiet aura-glass-adaptive.service 2>/dev/null; then
+        run systemctl --user enable aura-glass-adaptive.service >/dev/null 2>&1 || true
+    fi
+    if systemctl --user is-active --quiet aura-glass-adaptive.service 2>/dev/null; then
+        if [ "$command_changed" = 1 ] || [ "$unit_changed" = 1 ]; then
+            run systemctl --user restart aura-glass-adaptive.service >/dev/null 2>&1 || true
+        fi
+    else
+        run systemctl --user start aura-glass-adaptive.service >/dev/null 2>&1 || true
+    fi
+    ok "Auto watches fullscreen, battery and supported GPU load"
+}

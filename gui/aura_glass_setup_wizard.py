@@ -103,6 +103,7 @@ PACK_LINKS = {
     "hatter": "https://github.com/Mibea/Hatter",
     "mactahoe": "https://github.com/vinceliuice/MacTahoe-icon-theme",
     "aosp": "https://github.com/Tech-Tac/aosp-cursors",
+    "moga": "https://www.gnome-look.org/p/2302110",
 }
 
 # How each pack spells its own name, for the summary. .capitalize() was doing
@@ -115,6 +116,7 @@ PACK_NAMES = {
     "adwaita": "Adwaita",
     "aosp": "AOSP",
     "mactahoe": "MacTahoe",
+    "moga": "Moga Neon",
 }
 
 # The pages, in order. Two of them do not always apply — see Window._applies.
@@ -257,7 +259,7 @@ class Answers:
         self.cursor_size = "20"
         self.want_osd = True
         # None means "say nothing about extensions", which leaves install.sh on
-        # the recommended pack. Only a readable catalogue turns this into a list.
+        # the Core package. Only a readable catalogue turns this into a list.
         self.extensions = extensions
         self.gdm = False
         self.gdm_monitors = False
@@ -277,10 +279,10 @@ class Answers:
         accent and font from their memos, Reversal and AOSP recommended
         rather than install.sh's older bare defaults of Colloid and Adwaita.
         Only the three questions with no single obviously-right answer move:
-        every extension rather than the recommended tier (the same set
-        on_ext_preset's "Everything" button builds), GDM theming wherever
-        there is a GDM to theme, and the monitor sync only where it would fix
-        something — a single display has nothing for it to fix.
+        every extension rather than the Core tier (the same set
+        on_ext_preset's "Complete Experience" button builds), GDM theming
+        wherever there is a GDM to theme, and the monitor sync only where it
+        would fix something — a single display has nothing for it to fix.
         """
         answers = cls()
         answers.extensions = [e["uuid"] for e in catalogue
@@ -499,7 +501,7 @@ class Window(Adw.ApplicationWindow):
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
                       halign=Gtk.Align.CENTER)
-        best = Gtk.Button(label="Best experience")
+        best = Gtk.Button(label="Complete Experience")
         best.add_css_class("suggested-action")
         best.add_css_class("pill")
         best.set_tooltip_text(
@@ -692,7 +694,7 @@ class Window(Adw.ApplicationWindow):
         group = Adw.PreferencesGroup(
             title="Pointer theme",
             description="Adwaita is already on your machine — GNOME ships it. "
-                        "AOSP and MacTahoe are fetched from GitHub.")
+                        "AOSP and MacTahoe are fetched from GitHub; Moga Neon follows your accent.")
         current = self.answers.cursors if self.answers.want_cursors else "keep"
         self.radio_rows(group, [
             ("aosp", "AOSP — recommended",
@@ -703,6 +705,9 @@ class Window(Adw.ApplicationWindow):
             ("mactahoe", "MacTahoe",
              "macOS Tahoe style pointers. By vinceliuice",
              PACK_LINKS["mactahoe"]),
+            ("moga", "Moga Neon",
+             "Accent-matched neon pointers. By Moyash",
+             PACK_LINKS["moga"]),
             ("keep", "Default",
              "Leaves your current pointer theme alone, whatever set it", None),
         ], current, self.on_cursors)
@@ -756,16 +761,17 @@ class Window(Adw.ApplicationWindow):
         if not self.catalogue:
             group = Adw.PreferencesGroup(
                 title="Extensions",
-                description="Catalogue unreadable — installing the "
-                            "recommended set. Change it later in Settings.")
+                description="Catalogue unreadable — installing the Core "
+                            "package. Change it later in Settings.")
             group.add(Adw.ActionRow(
                 title="bin/aura-glass-ext did not answer", sensitive=False))
             page.add(group)
             return self.shell("extensions", "Extensions", page)
 
         core = Adw.PreferencesGroup(
-            title="Always installed",
-            description="What the look is built out of — not optional.")
+            title="Minimal",
+            description="The foundation installed with every package — no "
+                        "optional extensions.")
         for entry in self.catalogue:
             if entry["tier"] != "core":
                 continue
@@ -774,15 +780,15 @@ class Window(Adw.ApplicationWindow):
         page.add(core)
 
         actions = Adw.PreferencesGroup(
-            title="Optional extensions",
-            description="The recommended set starts on. None required, all "
-                        "changeable later.")
+            title="Extension package",
+            description="Core starts on. Minimal keeps only the foundation; "
+                        "everything is changeable later.")
         row = Adw.ActionRow(title="Select", subtitle="All at once")
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6,
                       valign=Gtk.Align.CENTER)
-        for label, tiers in (("Recommended", ("recommended",)),
-                             ("Everything", ("recommended", "full")),
-                             ("None", ())):
+        for label, tiers in (("Core", ("recommended",)),
+                             ("Complete Experience", ("recommended", "full")),
+                             ("Minimal", ())):
             button = Gtk.Button(label=label)
             button.connect("clicked", self.on_ext_preset, tiers)
             box.append(button)
@@ -792,10 +798,10 @@ class Window(Adw.ApplicationWindow):
 
         self.ext_switches = []
         for tier, title, description in (
-            ("recommended", "Recommended",
-             "The set install.sh fits by default."),
-            ("full", "Everything else",
-             "Installed on request, one at a time."),
+            ("recommended", "Core",
+             "Six curated additions to the Minimal foundation; the default."),
+            ("full", "Complete Experience",
+             "The remaining optional extensions, added on top of Core."),
         ):
             group = Adw.PreferencesGroup(title=title, description=description)
             for entry in self.catalogue:
@@ -874,12 +880,19 @@ class Window(Adw.ApplicationWindow):
             blur = "Solid — no blur anywhere"
             transparency = "Opaque"
 
-        if answers.extensions is None:
-            extras = "The recommended set"
-        elif answers.extensions:
-            extras = "%d selected" % len(answers.extensions)
+        selected = set(answers.extensions or [])
+        core = {e["uuid"] for e in self.catalogue
+                if e["tier"] == "recommended"}
+        complete = {e["uuid"] for e in self.catalogue
+                    if e["tier"] in ("recommended", "full")}
+        if answers.extensions is None or selected == core:
+            extras = "Core"
+        elif not selected:
+            extras = "Minimal"
+        elif selected == complete:
+            extras = "Complete Experience"
         else:
-            extras = "None"
+            extras = "%d selected (custom)" % len(selected)
 
         # Every tag here was genuinely pushed to get to this page — advance
         # pushes each applicable page in turn whether or not Skip was the
@@ -899,7 +912,7 @@ class Window(Adw.ApplicationWindow):
              else "Kept as it is", "cursors"),
             ("Volume pill", "Yes" if answers.want_osd else "GNOME's own OSD",
              "extensions"),
-            ("Optional extensions", extras, "extensions"),
+            ("Extension package", extras, "extensions"),
         ]
         if self.gdm_present:
             rows.append(("Login screen",

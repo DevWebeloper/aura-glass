@@ -432,6 +432,7 @@ CURSOR_PACKS = [
     ("adwaita", "Adwaita", "Ships with GNOME. Crisper at every size"),
     ("aosp", "AOSP", "Android's pointers, the setup wizard's recommendation"),
     ("mactahoe", "MacTahoe", "The macOS pointer set"),
+    ("moga", "Moga Neon", "Accent-matched neon pointers by Moyash"),
     ("keep", "Default", "Left alone — set from anywhere else, untouched here"),
     ("original", "Original", "Back to what was set before aura-glass first "
                              "ran"),
@@ -503,6 +504,24 @@ TITLEBUTTON_STYLES = [
      "No disc at all — the glyph brightens instead"),
 ]
 
+# Appearance selectors share one small piece of row metadata.  Icon colour is
+# the only dependent list today: the family decides which variants it can
+# offer.  The other rows are still registered here so rebuilding Appearance
+# refreshes their current value, subtitle and enabled state through the same
+# path rather than leaving a second, almost-identical resolver beside icons.
+#
+# "has-variants" deliberately makes the colour row unavailable for Default and
+# Original: their one Match the accent entry is a placeholder, not a colour
+# setting.  Cursor Default/Original and the titlebar's empty "leave it" value
+# remain ordinary choices, so their installer flags keep their existing meaning.
+CONTEXTUAL_CHOICE_METADATA = {
+    "icons": {"enabled_when": "available"},
+    "icon_color": {"enabled_when": "has-variants"},
+    "cursors": {"enabled_when": "available"},
+    "window_buttons": {"enabled_when": "available"},
+    "titlebutton_style": {"enabled_when": "available"},
+}
+
 # The sidebar: (id, title, icon, builder method), in the order shown.
 #
 # Order is not only presentation — the builders run in it, and a page whose
@@ -560,7 +579,8 @@ SEARCH_INDEX = {
     "packages": ["icon pack", "cursor pack", "remove pack", "disk"],
     "system": ["dependencies", "rounded blur library", "gdm", "login screen",
               "monitor", "panel blur", "password", "sudo"],
-    "updates": ["release", "version", "update check"],
+    "updates": ["release", "version", "update check", "repair", "reapply",
+                "reinstall", "settings app"],
     "uninstall": ["remove", "revert", "delete"],
 }
 
@@ -3344,6 +3364,8 @@ class Window(Adw.ApplicationWindow):
         # may allow, so each of them switches the other off for the duration.
         self._update_button.set_sensitive(False)
         self._reapply.set_sensitive(False)
+        self._repair_reapply.set_sensitive(False)
+        self._repair_full.set_sensitive(False)
         self._apply_text.set_label("Applying…")
         self._apply_spinner.set_visible(True)
         self._apply_status.remove_css_class("error")
@@ -3368,6 +3390,8 @@ class Window(Adw.ApplicationWindow):
     def _run_finished(self, ok, message):
         self._running = False
         self._reapply.set_sensitive(True)
+        self._repair_reapply.set_sensitive(self._repo is not None)
+        self._repair_full.set_sensitive(self._repo is not None)
         self._sync_updates()
         self._apply_spinner.set_visible(False)
         self._apply_text.set_label("Apply")
@@ -3468,29 +3492,40 @@ class Window(Adw.ApplicationWindow):
         """
         row = Adw.ComboRow(title=title, subtitle=subtitle)
         row.connect("notify::selected", self._on_changed, key)
-        self._refill_combo(row, options, current)
+        self._refill_contextual_choice(row, options, current, key)
         return row
 
-    def _refill_combo(self, row, options, current):
-        """Give a ComboRow a different set of options.
+    def _refill_contextual_choice(self, row, options, current, key):
+        """Refresh one contextual ComboRow from its registered metadata.
 
-        Used at build time and again whenever one row decides what another may
-        offer — the icon colour list, which each pack names differently. A
-        selection the new list does not have falls back to its first entry
-        rather than being kept and sent as something install.sh would reject.
+        Used at build time and again whenever one choice changes another's
+        context — icon family changes the colour variants it can offer. Cursor
+        and titlebar rows use this same path on reload, so Default/Original and
+        the empty titlebar-layout answer are restored from the row metadata,
+        not resolved a second way in the window. A selection the new list does
+        not have falls back to its first entry rather than being sent as
+        something install.sh would reject.
         """
+        metadata = CONTEXTUAL_CHOICE_METADATA.get(
+            key, {"enabled_when": "available"})
         model = Gtk.StringList()
         for _, label, _sub in options:
             model.append(label)
         row._ids = [o[0] for o in options]
         row._subs = [o[2] for o in options]
+        row._contextual_choice = metadata
+        row._contextual_options = options
         row.set_model(model)
         row.set_selected(row._ids.index(current) if current in row._ids else 0)
+        row.set_sensitive(
+            bool(options) and
+            (metadata["enabled_when"] != "has-variants" or len(options) > 1))
         self._sync_subtitle(row)
 
     def _sync_subtitle(self, row):
         i = row.get_selected()
         if 0 <= i < len(row._subs):
+            row._contextual_current = row._ids[i]
             row.set_subtitle(row._subs[i])
 
     def _build_appearance_page(self):
@@ -4533,13 +4568,13 @@ class Window(Adw.ApplicationWindow):
     # ---- extensions ---------------------------------------------------------
 
     EXT_TIERS = [
-        ("core", "Core",
-         "What the desktop is built out of. Turning one off changes the look "
-         "rather than trimming it, and none of them can be removed from here."),
-        ("recommended", "Recommended",
-         "The pack install.sh fits by default. None of it is required."),
-        ("full", "Everything else",
-         "The rest of --all-extras. Installed on request, one at a time."),
+        ("core", "Minimal",
+         "The foundation installed with every package. Turning one off changes "
+         "the look, and none of them can be removed from here."),
+        ("recommended", "Core",
+         "Six curated additions on top of Minimal. This is the default package."),
+        ("full", "Complete Experience",
+         "Every remaining optional extension, added on top of Core."),
     ]
 
     def _ext_catalogue(self):
@@ -4570,11 +4605,12 @@ class Window(Adw.ApplicationWindow):
             description="Apply as you click — no password needed, and "
                         "nothing for the Apply button to collect.")
         row = Adw.ActionRow(
-            title="Fit a pack",
+            title="Fit a package",
             subtitle="Installs and enables everything in it")
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6,
                       valign=Gtk.Align.CENTER)
-        for pack, label in (("recommended", "Recommended"), ("full", "All")):
+        for pack, label in (("recommended", "Core"),
+                            ("full", "Complete Experience")):
             button = Gtk.Button(label=label)
             button.connect("clicked", self._on_ext_pack, pack)
             box.append(button)
@@ -4634,9 +4670,9 @@ class Window(Adw.ApplicationWindow):
                                "install")
                 row.add_prefix(button)
             elif entry["tier"] != "core" and not entry["system"]:
-                # Core stays: removing what the theme is built out of from a
-                # page listing optional extras is a footgun, and turning it off
-                # is already the reversible way to get the same look.
+                # The foundation stays: removing what the theme is built out of
+                # from a page listing optional extras is a footgun, and turning
+                # it off is already the reversible way to get the same look.
                 button = Gtk.Button(icon_name="user-trash-symbolic",
                                     valign=Gtk.Align.CENTER,
                                     tooltip_text="Remove this extension")
@@ -4696,7 +4732,8 @@ class Window(Adw.ApplicationWindow):
                       title="Installing" if action == "install" else "Removing")
 
     def _on_ext_pack(self, _button, pack):
-        self._run_ext(pack, None, title="Fitting the %s pack" % pack)
+        label = {"recommended": "Core", "full": "Complete Experience"}[pack]
+        self._run_ext(pack, None, title="Fitting %s" % label)
 
     def _run_ext(self, action, uuid, title):
         if self._repo is None:
@@ -6039,6 +6076,37 @@ class Window(Adw.ApplicationWindow):
         updates.add(self._update_check_row)
         page.add(updates)
 
+        repair = Adw.PreferencesGroup(
+            title="Repair installation",
+            description="These use the current saved selection. Reapply is a "
+                        "settings-only refresh; Full reinstall replaces the "
+                        "installed files and keeps the settings app included.")
+
+        reapply_row = Adw.ActionRow(
+            title="Reapply settings",
+            subtitle="Reapplies saved dconf, CSS and GNOME settings without "
+                     "reinstalling the theme or extension packages")
+        self._repair_reapply = Gtk.Button(label="Reapply",
+                                          valign=Gtk.Align.CENTER,
+                                          sensitive=self._repo is not None)
+        self._repair_reapply.connect("clicked", self._on_reapply_settings)
+        reapply_row.add_suffix(self._repair_reapply)
+        repair.add(reapply_row)
+
+        reinstall_row = Adw.ActionRow(
+            title="Full reinstall with settings app",
+            subtitle="Reinstalls the current selection in a terminal so any "
+                     "password prompt remains usable; it does not select the "
+                     "Complete Experience package")
+        self._repair_full = Gtk.Button(label="Open terminal",
+                                       valign=Gtk.Align.CENTER,
+                                       sensitive=self._repo is not None)
+        self._repair_full.connect("clicked", self._on_full_reinstall)
+        reinstall_row.add_suffix(self._repair_full)
+        repair.add(reinstall_row)
+
+        page.add(repair)
+
         # An update is the one thing this window starts that is not quick: it
         # is a git pull and then the full installer, which fetches the theme,
         # the extensions and whatever a release added. So its output is shown
@@ -6197,11 +6265,6 @@ class Window(Adw.ApplicationWindow):
         self._tint_rows["frosted"]["app"].set_sensitive(live)
         self._tint_rows["frosted"]["link"].set_sensitive(live)
 
-        # Neither "keep" nor "original" is a pack with colours to pick from.
-        self._icon_color_row.set_sensitive(
-            self._icons_row._ids[self._icons_row.get_selected()]
-            not in ("keep", "original"))
-
     def _mark_dirty(self):
         args = self._current().flags_against(self._applied)
         self._apply.set_sensitive(bool(args) and self._repo is not None
@@ -6268,7 +6331,9 @@ class Window(Adw.ApplicationWindow):
             color = self._icon_color_row._ids[
                 self._icon_color_row.get_selected()]
             self._loading = True
-            self._refill_combo(self._icon_color_row, ICON_COLORS[family], color)
+            self._refill_contextual_choice(
+                self._icon_color_row, ICON_COLORS[family], color,
+                "icon_color")
             self._loading = False
 
         if key == "radius":
@@ -6347,18 +6412,21 @@ class Window(Adw.ApplicationWindow):
         self._allow[:] = self._applied.allow
         self._block[:] = self._applied.block
         family, color = split_icons(self._applied.icons)
-        self._icons_row.set_selected(self._icons_row._ids.index(family))
-        self._refill_combo(self._icon_color_row, ICON_COLORS[family], color)
-        self._cursors_row.set_selected(
-            self._cursors_row._ids.index(self._applied.cursors))
+        self._refill_contextual_choice(
+            self._icons_row, ICON_PACKS, family, "icons")
+        self._refill_contextual_choice(
+            self._icon_color_row, ICON_COLORS[family], color, "icon_color")
+        self._refill_contextual_choice(
+            self._cursors_row, CURSOR_PACKS, self._applied.cursors, "cursors")
         self._cursor_size_row.set_value(self._applied.cursor_size)
         self._font_row.set_selected(
             self._font_row._ids.index(self._applied.font))
-        self._window_buttons_row.set_selected(
-            self._window_buttons_row._ids.index(self._applied.window_buttons))
-        self._titlebutton_style_row.set_selected(
-            self._titlebutton_style_row._ids.index(
-                self._applied.titlebutton_style))
+        self._refill_contextual_choice(
+            self._window_buttons_row, WINDOW_BUTTON_LAYOUTS,
+            self._applied.window_buttons, "window_buttons")
+        self._refill_contextual_choice(
+            self._titlebutton_style_row, TITLEBUTTON_STYLES,
+            self._applied.titlebutton_style, "titlebutton_style")
         self._panel_blur_row.set_active(self._applied.panel_blur_fix)
         self._update_check_row.set_active(self._applied.update_check)
         self._loading = False
@@ -6421,7 +6489,7 @@ class Window(Adw.ApplicationWindow):
         elif pending:
             self._update_button_row.set_subtitle(
                 "Pulls %s and runs the full installer" % pending)
-            self._update_button.set_sensitive(True)
+            self._update_button.set_sensitive(not self._running)
 
     def _on_check_updates(self, _button):
         self._check_button.set_sensitive(False)
@@ -6497,6 +6565,8 @@ class Window(Adw.ApplicationWindow):
         self._running = True
         self._apply.set_sensitive(False)
         self._reapply.set_sensitive(False)
+        self._repair_reapply.set_sensitive(False)
+        self._repair_full.set_sensitive(False)
         self._apply_status.set_label("%s…" % doing)
         log_append(self._update_log, "$ git pull --ff-only && install.sh --yes")
 
@@ -6505,6 +6575,8 @@ class Window(Adw.ApplicationWindow):
             self._update_text.set_label("Install")
             self._running = False
             self._reapply.set_sensitive(True)
+            self._repair_reapply.set_sensitive(self._repo is not None)
+            self._repair_full.set_sensitive(self._repo is not None)
             # Whatever happened, Apply goes back to answering for itself — a
             # failed update must not leave it stuck off.
             self._mark_dirty()
@@ -6535,6 +6607,63 @@ class Window(Adw.ApplicationWindow):
 
     def _update_log_line(self, line):
         log_append(self._update_log, line)
+
+    def _on_reapply_settings(self, _button):
+        if self._running:
+            self._toasts.add_toast(Adw.Toast(
+                title="Another installer operation is already running"))
+            return
+        if self._repo is None:
+            self._banner_missing_repo()
+            return
+        if self._preview_active or self._preview_proc is not None or \
+                self._preview_timer or self._preview_terminal_requested:
+            self._toasts.add_toast(Adw.Toast(
+                title="Apply or revert the live preview before repairing"))
+            return
+
+        argv = ["bash", os.path.join(self._repo, "install.sh"),
+                "--settings-only", "-y"]
+        self._run_started("Reapplying the saved settings…")
+        log_append(self._apply_log, "$ install.sh --settings-only -y")
+
+        def done(ok, message):
+            if not ok:
+                failed = "Reapply settings failed"
+                if message:
+                    failed = "%s — %s" % (failed, message)
+                self._run_finished(False, failed)
+                self._toasts.add_toast(Adw.Toast(
+                    title="Could not reapply settings — see the details"))
+                return
+            self._applied = Settings()
+            self._reload()
+            said = self._applied_message()
+            self._run_finished(True, said)
+            self._toasts.add_toast(Adw.Toast(title="Settings reapplied"))
+
+        stream_command(argv, self._run_line, done)
+
+    def _on_full_reinstall(self, _button):
+        if self._running:
+            self._toasts.add_toast(Adw.Toast(
+                title="Another installer operation is already running"))
+            return
+        if self._repo is None:
+            self._banner_missing_repo()
+            return
+        if self._preview_active or self._preview_proc is not None or \
+                self._preview_timer or self._preview_terminal_requested:
+            self._toasts.add_toast(Adw.Toast(
+                title="Apply or revert the live preview before reinstalling"))
+            return
+        if self.run_in_terminal(
+                self._install_cmd("--force --gui --yes"),
+                "Full reinstall"):
+            self._apply_status.remove_css_class("error")
+            self._apply_status.set_label(
+                "Full reinstall opened in a terminal — follow its progress "
+                "there")
 
     # ---- actions ----------------------------------------------------------
 

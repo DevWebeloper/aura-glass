@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Select or refresh Aura Glass's adaptive-performance profile.
+#
+# The Python worker owns the sampling loop; this launcher follows the other
+# Aura Glass commands by keeping the PATH-facing name small and the worker in
+# the installed data directory.  A checkout override keeps development runs
+# pointed at the code being edited without changing the installed service.
+set -euo pipefail
+
+worker="${AURA_GLASS_ADAPTIVE_WORKER:-$HOME/.local/share/aura-glass/aura_glass_adaptive.py}"
+if [ ! -r "$worker" ]; then
+    checkout="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tools/aura_glass_adaptive.py"
+    [ -r "$checkout" ] && worker="$checkout"
+fi
+if [ ! -r "$worker" ]; then
+    printf 'aura-glass-adaptive: worker is not installed. Re-run install.sh.\n' >&2
+    exit 1
+fi
+
+exec python3 "$worker" "$@"

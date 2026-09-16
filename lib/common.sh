@@ -281,6 +281,18 @@ fetch_zip_pinned() {
     rm -rf "$tmp"
 }
 
+fetch_zip_md5_pinned() {
+    local url="$1" md5="$2" dest="$3"
+    if [ "${DRY_RUN:-0}" = 1 ]; then info "dry-run: download $url and unpack it into $dest"; return 0; fi
+    local tmp; tmp="$(mktemp -d)"
+    curl -fsSL -o "$tmp/archive.zip" "$url" || { rm -rf "$tmp"; die "could not download $url"; }
+    local got; got="$(md5sum "$tmp/archive.zip" | cut -d' ' -f1)"
+    [ "$got" = "$md5" ] || { rm -rf "$tmp"; die "$url does not match its pinned MD5 (expected $md5, got $got)"; }
+    rm -rf "$dest"; mkdir -p "$dest"
+    unzip -qo "$tmp/archive.zip" -d "$dest" -x '__MACOSX/*' '*/.DS_Store' || { rm -rf "$tmp"; die "could not unpack $url"; }
+    rm -rf "$tmp"
+}
+
 # Back up a file once, keeping the first (pre-aura-glass) copy forever.
 # The third argument names the backup, because several of the files we touch
 # are called gtk.css and would otherwise overwrite each other.

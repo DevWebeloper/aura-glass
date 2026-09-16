@@ -96,9 +96,25 @@ PY
 python3 "$ROOT/tools/moga_cursor.py" resolve purple "$metadata" >/dev/null 2>&1 \
     && fail "checksum-mismatched Purple release was accepted"
 
-if bash "$ROOT/install.sh" --settings-only --dry-run --cursors moga --accent teal -y \
-       >/dev/null 2>&1; then
-    fail "installer accepted --cursors moga before integration"
+incremental_actions="$(
+    cd "$ROOT"
+    CURSORS=moga
+    ACCENT_EXPLICIT=1
+    TYPED_FLAGS=(--accent)
+    source lib/steps-apply-plan.sh
+    select_apply_actions
+    printf '%s\n' "${APPLY_ACTIONS[*]}"
+)"
+[ "$incremental_actions" = "accent cursor-theme" ] \
+    || fail "incremental accent change for Moga selected '$incremental_actions', want 'accent cursor-theme'"
+
+if ! dry_run_output="$(bash "$ROOT/install.sh" --settings-only --dry-run --cursors moga --accent teal -y 2>&1)"; then
+    fail "installer rejected --cursors moga dry-run"
+else
+    grep -q "Moga cursor refresh" <<<"$dry_run_output" \
+        || fail "dry-run did not describe Moga cursor refresh"
+    grep -q "Aura-Glass-Moga-Cyan" <<<"$dry_run_output" \
+        || fail "dry-run did not select the teal/Cyan destination"
 fi
 
 if [ "${#failures[@]}" -gt 0 ]; then

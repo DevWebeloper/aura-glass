@@ -27,7 +27,7 @@ Running `./install.sh` launches an **interactive setup wizard** that lets you pi
 - 🪟 **Blur & visual depth** (Frosted Glass vs. Lightweight Solid Mode)
 - 💎 **App window transparency** (Off, 90% balanced, 82% deep, 94% subtle)
 - 🖱️ **Icon and pointer packs**, each with a link to the project it comes from
-- 🧩 **Extensions**, one switch each — or the recommended set in one click
+- 🧩 **Extensions**, one switch each — or the Core package in one click
 - 🔒 **GDM login screen theme** (Optional matching blurred login screen)
 
 The wizard opens in a **window**, with a Skip button on every question and nothing applied until you press Install. Close it and the install stops, having changed nothing. When it finishes, the window closes and the terminal carries on from there.
@@ -51,7 +51,7 @@ Installing also puts an **Aura Glass** entry in your Activities overview (or run
 - 📋 **Per-app blur, one switch each** — every installed app, plus **Open now** for whatever's actually on your desktop, blurred behind the moment you flip it (no Apply needed); pick a default for everything you haven't chosen — leave the rest unblurred, or blur everything but the heavy apps — and a choice made on one app survives flipping that default later, the same way the window-menu's own **Blur This App** does. Wildcards live in their own **Patterns** tab, with a blurred app's own dialogs and tool windows following it
 - 🖱️ **Icon and pointer packs** — Hatter, Colloid or Reversal in a colour of their own rather than the accent's, AOSP, Adwaita or MacTahoe, plus **Default** (yours, left alone) and **Original**
 - 🪟 **Titlebar buttons** — close alone, or all three, and a style picker: monochrome minimal (default), Adwaita discs, Material filled, or flat glyphs
-- 🧩 **Extensions** — every one this installs, with a switch each and install/remove, or fit the recommended or full pack in one click
+- 🧩 **Extensions** — every one this installs, with a switch each and install/remove, or fit the Core or Complete Experience package in one click
 - 📦 **Packages** — what each icon and pointer pack on disk costs you, and a button to remove the ones you stopped using: yours are deleted outright, and the ones your distribution installed name the package that owns them and hand it to your package manager in a terminal
 - 🖥️ **System** — dependencies, the rounded-blur library, the multi-monitor panel fix, the login screen theme and its monitor layout sync
 - 🔔 **Updates** — see your version, check for a new release, install it; on a branch you are testing it follows that branch's commits instead, and says so
@@ -101,7 +101,7 @@ For scripted setups or power users who prefer flags instead of the interactive w
 | Option | Description |
 |---|---|
 | `--interactive` | Force-launch the interactive setup wizard. |
-| `--full` | Install everything at once (core theme, icons, cursors, OSD, panel blur fix, and all reference extensions). |
+| `--full` | Install the Complete Experience at once (foundation, icons, cursors, OSD, panel blur fix, and all optional extensions). |
 | `--accent COLOR` | Set accent: `blue`, `teal`, `green`, `yellow`, `orange`, `red`, `pink`, `purple`, `slate` *(default: `purple`, remembered across runs)*. |
 | `--radius-preset P` | Corner rounding: `flat`, `sharp`, `adwaita`, `soft`, `medium`, `default` or `rounded`. Moves windows, menus, dialogs, notifications, buttons **and** the blur radius behind each of them together *(default: `default`, remembered across runs)*. `pill` was retired and still resolves to `rounded`, so an older memo keeps installing. |
 | `--settings-only` | Retune an existing install and nothing else — reapply the dconf preset, CSS and gsettings, leaving the theme and extensions alone. No root, and no network unless `--icons`/`--cursors`/`--font` ask for something you do not have. This is what `aura-glass-settings` runs. |
@@ -122,12 +122,12 @@ For scripted setups or power users who prefer flags instead of the interactive w
 | `--gdm-background PATH` | Custom image for the GDM login background *(defaults to your wallpaper)*. |
 | `--glass-mode M` | Pick the whole look in one flag: `frosted` (blur behind windows and popups, the default), `transparent` (translucent windows, no window blur) or `solid` (the theme stands down entirely). Remembered across runs, and each mode keeps its own opacity, tint, blur strength, popup blur and notification blur *(see details below)*. |
 | `--no-blur` | Opaque surfaces with identical geometry, still fully themed; saves ~30% GPU overhead for low-power laptops. Not the same as `--glass-mode solid` *(see details below)*. |
-| `--extras` / `--recommended` | Install the recommended reference extension suite. |
-| `--all-extras` | Install all 14 optional extensions. |
-| `--minimal` / `--no-extras` | Minimal install with core look only (no optional extensions). |
+| `--extras` / `--recommended` | Install the **Core** extension package: the foundation plus six curated optional extensions. |
+| `--all-extras` | Install the **Complete Experience** extension package: the foundation plus all 14 optional extensions. |
+| `--minimal` / `--no-extras` | Install **Minimal**: the foundation only, with no optional extensions. |
 | `--extensions LIST` | Comma-separated extension UUIDs to install instead of a pack, e.g. `space-bar@luchrioh,Vitals@CoreCoding.com`. Each must be one `--all-extras` would install; an empty list means the same as `--no-extras`. This is what the setup wizard's per-extension switches send. |
 | `--icons WHICH` | Choose icon set: `colloid` (default, matches accent), `hatter` (also matches accent) or `reversal-COLOUR` (the setup wizard's recommendation). Each takes a colour of its own too: `colloid-teal`, `hatter-slate`. |
-| `--cursors WHICH` | Choose pointer set: `adwaita` (default, ships with GNOME), `aosp` (the setup wizard's recommendation), `mactahoe`, or `original`. |
+| `--cursors WHICH` | Choose pointer set: `adwaita` (default, ships with GNOME), `aosp`, `mactahoe`, `moga` (accent-matched neon), or `original`. |
 | `--cursor-size PX` | Pointer size in pixels, 16-128 (20 recommended for the packs above). Left alone unless given, independent of `--cursors` — a `--no-cursors` choice to keep your own theme is not a choice about size. Remembered across runs. |
 | `--font WHICH` | Interface font: `system` (default — GNOME's own font, left alone), `misans`, `inter` or `sf-pro`. The font is downloaded into `~/.local/share/fonts/aura-glass` if it is not already on the machine, then set as the interface, document and titlebar font at whatever size those keys already carry. `--font system` puts back the font from before aura-glass first ran here. Remembered across runs. |
 | `--no-popup-blur` | Use flat translucent popups without background blur. |
@@ -301,6 +301,7 @@ This project is built on the incredible work of the open-source GNOME community.
 | **Icons & Cursors** | [Colloid-icon-theme][colloid] & [MacTahoe-icon-theme][mactahoe] | [@vinceliuice](https://github.com/vinceliuice) |
 | **Icons** | [Hatter][hatter] | [@Mibea](https://github.com/Mibea) |
 | **Cursors** | [aosp-cursors][aosp] | [@Tech-Tac](https://github.com/Tech-Tac) |
+| **Moga Cursors** | [Moga Neon][moga] | [@Moyash](https://www.pling.com/u/moyash) |
 | **Fonts** | [Inter][inter] (OFL) & [MiSans][misans] (Xiaomi's own licence) | [@rsms](https://github.com/rsms) / Xiaomi |
 | **User Themes** | [User Themes][ut] | GNOME Extensions Team |
 
@@ -329,6 +330,7 @@ whose licences do allow this, and `--font system` installs no font at all.
 [mactahoe]: https://github.com/vinceliuice/MacTahoe-icon-theme
 [hatter]: https://github.com/Mibea/Hatter
 [aosp]: https://github.com/Tech-Tac/aosp-cursors
+[moga]: https://www.gnome-look.org/p/2302110
 [inter]: https://github.com/rsms/inter
 [misans]: https://hyperos.mi.com/font/
 [sfmirror]: https://github.com/sahibjotsaggu/San-Francisco-Pro-Fonts

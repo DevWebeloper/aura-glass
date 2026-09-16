@@ -14,6 +14,7 @@ select_apply_actions() {
     for flag in "${TYPED_FLAGS[@]}"; do
         case "$flag" in
             --settings-only|--incremental|--plan-json|--yes|-y|--dry-run|-n) ;;
+            --adaptive-blur|--adaptive-blur=*) _apply_add adaptive-blur ;;
             --accent|--accent=*) _apply_add accent ;;
             --cursor-size|--cursor-size=*) _apply_add cursor-size ;;
             --window-buttons|--window-buttons=*) _apply_add window-buttons ;;
@@ -25,6 +26,13 @@ select_apply_actions() {
     if [ "${#APPLY_ACTIONS[@]}" = 0 ]; then
         APPLY_FALLBACK_REASON="no narrow setting was typed"
         APPLY_ACTIONS=(full)
+        return
+    fi
+    # The settings window sends only --accent for an accent edit. Moga is the
+    # one pointer pack whose selected theme name depends on that value, so the
+    # incremental path must update the cursor key beside the accent key.
+    if [ "${CURSORS:-}" = moga ] && [ -n "${ACCENT_EXPLICIT:-}" ]; then
+        _apply_add cursor-theme
     fi
 }
 
