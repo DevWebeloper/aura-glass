@@ -456,7 +456,6 @@ install_extensions() {
         skip "$BMS_UUID left out (--no-blur)"
     fi
     install_aura_ext
-    install_aura_adaptive_ext
     install_openbar
     install_custom_osd
 
