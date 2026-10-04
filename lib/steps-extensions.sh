@@ -179,6 +179,7 @@ install_bms() {
     # Settings live in dconf, not here, so nothing is lost. This runs only
     # after the zip exists and has been checked.
     rm -rf "$EXT_DIR/$BMS_UUID"
+    rm -rf "$HOME/.local/share/gnome-shell/extension-updates/$BMS_UUID"
     gnome-extensions install --force "$zip" >/dev/null \
         || die "installing Blur My Shell failed"
 

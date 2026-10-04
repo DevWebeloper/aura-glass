@@ -1,3 +1,14 @@
+diff --git a/metadata.json b/metadata.json
+index 830fa37..7ca5665 100644
+--- a/metadata.json
++++ b/metadata.json
+@@ -24,5 +24,5 @@
+         "github": "aunetx",
+         "kofi": "aunetx"
+     },
+-    "version": 73
++    "version": 999
+ }
 diff --git a/src/components/applications.js b/src/components/applications.js
 index ea51de9..eda61e2 100644
 --- a/src/components/applications.js
