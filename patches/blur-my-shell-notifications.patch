@@ -152,7 +152,7 @@ diff --git a/src/components/popup/message_stacks.js b/src/components/popup/messa
 index 52c796f..b1ce6f4 100644
 --- a/src/components/popup/message_stacks.js
 +++ b/src/components/popup/message_stacks.js
-@@ -1,13 +1,24 @@
+@@ -1,13 +1,21 @@
  import GLib from 'gi://GLib';
 +import { NativeDynamicBlurEffect } from '../../effects/native_dynamic_gaussian_blur.js';
  
@@ -166,9 +166,6 @@ index 52c796f..b1ce6f4 100644
 +// passes over the same pixels, so the surface keeps the banner and this keeps
 +// the history cards.
 +const BLUR_EXCLUDED_STYLE_CLASSES = ['notification-banner'];
-+const MESSAGE_CONTAINER_STYLE_CLASSES = ['message-list', 'message-view', 'message-notification-group'];
-+const INTERNAL_STYLE_CLASSES = ['bms-popup-blurred-widget', 'bms-popup-backgroundgroup'];
-+const INTERNAL_NAMES = ['bms-popup-blurred-widget', 'bms-popup-backgroundgroup'];
  
  export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
 -    constructor(connections) {
