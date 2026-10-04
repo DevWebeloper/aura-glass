@@ -1,5 +1,5 @@
 diff --git a/src/components/applications.js b/src/components/applications.js
-index 71e292d..4e1ad92 100644
+index eda61e2..670f742 100644
 --- a/src/components/applications.js
 +++ b/src/components/applications.js
 @@ -54,6 +54,17 @@ function matchesAnyPattern(value, patterns) {
@@ -20,7 +20,7 @@ index 71e292d..4e1ad92 100644
  export const ApplicationsBlur = class ApplicationsBlur {
      constructor(connections, settings, effects_manager) {
          this.connections = connections;
-@@ -264,6 +275,19 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -206,6 +217,19 @@ export const ApplicationsBlur = class ApplicationsBlur {
              _ => this.check_blur(meta_window)
          );
  
@@ -40,7 +40,7 @@ index 71e292d..4e1ad92 100644
          // update the clip, position, and/or size when the window changes
          this.connections.connect(
              meta_window, 'size-changed',
-@@ -346,6 +370,30 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -288,6 +312,30 @@ export const ApplicationsBlur = class ApplicationsBlur {
      /// Checks if the given actor needs to be blurred.
      /// Accepts only tracked meta window, be it blurred or not.
      ///
@@ -71,7 +71,7 @@ index 71e292d..4e1ad92 100644
      /// In order to be blurred, a window either:
      /// - is whitelisted in the user preferences if not enable-all
      /// - is not blacklisted if enable-all
-@@ -355,23 +403,31 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -297,23 +345,31 @@ export const ApplicationsBlur = class ApplicationsBlur {
      /// - ? matches any single character
      /// - Matching is case-insensitive
      check_blur(meta_window) {

@@ -33,7 +33,7 @@ UPSTREAM_THEME_NAME="Tahoe-Dark"
 THEME_NAME="Aura-Glass"
 
 BMS_REPO="https://github.com/aunetx/blur-my-shell.git"
-BMS_REF="7d1290bbcff9"            # master; no release carries the popup component
+BMS_REF="425761d55049"            # v73; upstream release with the popup component
 BMS_UUID="blur-my-shell@aunetx"
 
 # First-party — no upstream repo or ref, since the source lives in

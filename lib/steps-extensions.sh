@@ -2,8 +2,8 @@
 # aura-glass — installing and enabling the shell extensions.
 #
 # Three of them cannot come from extensions.gnome.org as they are. Blur My Shell
-# is built from a pinned commit because no release carries the popup component,
-# plus a patch of this project's own; Open Bar and Custom OSD are built from
+# is built from a pinned commit with overview, subwindow and notification
+# patches of this project's own; Open Bar and Custom OSD are built from
 # their last upstream commit plus a patch in patches/, because neither has a
 # GNOME 50 release. gnome-rounded-blur is not
 # an extension at all but the C library that lets the popup blur be dynamic, and
@@ -76,13 +76,11 @@ install_ext_ego() {
     return "$rc"
 }
 
-# Blur My Shell's published build (v72) has no popup component: menus, quick
-# settings, notifications, dialogs and the OSD get no blur at all. That is why
-# the css/shell-NN-*.css sheets paint their own flat translucency behind them,
-# and why the OSD used to carry a hand-rolled corner shader. Upstream's master has the
-# component; there is no release with it yet, so it is built from a pinned
-# commit. gnome-extensions pack and gnome-extensions install both write under
-# $HOME, so this needs no root.
+# Blur My Shell v73 carries the popup component upstream: menus, quick
+# settings, notifications, dialogs and the OSD get blur directly. We build from
+# pinned release v73 with our overview, subwindow and notification patches
+# applied on top. gnome-extensions pack and gnome-extensions install both write
+# under $HOME, so this needs no root.
 install_bms() {
     if [ "${WANT_BMS_GIT:-1}" != 1 ]; then
         install_ext_ego "$BMS_UUID" || true
@@ -95,10 +93,9 @@ install_bms() {
         return 0
     fi
 
-    # master still declares "version": 72, the same as the published build, so
-    # the version number cannot tell the two apart. Probe for the component and
-    # check the stamp — the directory test matters on its own because
-    # ./uninstall.sh --extensions removes the extension but leaves $CONF_DIR.
+    # Probe for the component and check the stamp — the directory test matters
+    # on its own because ./uninstall.sh --extensions removes the extension but
+    # leaves $CONF_DIR.
     if [ "${FORCE:-0}" != 1 ] \
        && [ -f "$EXT_DIR/$BMS_UUID/components/popup/index.js" ] \
        && [ "$(cat "$CONF_DIR/bms-ref" 2>/dev/null || true)" = "$BMS_REF" ] \
@@ -110,7 +107,7 @@ install_bms() {
         return 0
     fi
 
-    info "no release carries the popup component — building from $BMS_REF + patches/$BMS_PATCH + patches/$BMS_SUBWIN_PATCH + patches/$BMS_NOTIF_PATCH"
+    info "building Blur My Shell from $BMS_REF + patches/$BMS_PATCH + patches/$BMS_SUBWIN_PATCH + patches/$BMS_NOTIF_PATCH"
     local src="$SRC_CACHE/blur-my-shell"
     if [ -d "$src/.git" ]; then
         run git -C "$src" checkout --quiet -- . 2>/dev/null || true
