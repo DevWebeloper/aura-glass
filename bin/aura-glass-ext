@@ -50,7 +50,7 @@ EOF
 ext_tier() {
     local uuid="$1" u
     for u in "${EXT_CORE[@]}" "$AURA_EXT_UUID" \
-             openbar@neuromorph "$BMS_UUID" custom-osd@neuromorph; do
+             "$BMS_UUID" custom-osd@neuromorph; do
         [ "$u" = "$uuid" ] && { printf 'core'; return; }
     done
     for u in "${EXT_EXTRA_RECOMMENDED[@]}"; do
@@ -81,7 +81,7 @@ ext_enabled() {
 ext_known() {
     local uuid="$1" u
     for u in "${EXT_CORE[@]}" "$AURA_EXT_UUID" \
-             openbar@neuromorph "$BMS_UUID" \
+             "$BMS_UUID" \
              custom-osd@neuromorph "${EXT_EXTRA_ALL[@]}"; do
         [ "$u" = "$uuid" ] && return 0
     done
@@ -94,7 +94,7 @@ cmd_list() {
     local first=1 uuid
     printf '[\n'
     for uuid in "${EXT_CORE[@]}" "$AURA_EXT_UUID" \
-                openbar@neuromorph "$BMS_UUID" \
+                "$BMS_UUID" \
                 custom-osd@neuromorph "${EXT_EXTRA_ALL[@]}"; do
         [ "$first" = 1 ] || printf ',\n'
         first=0
@@ -175,7 +175,6 @@ cmd_install() {
     case "$1" in
         "$AURA_EXT_UUID")       install_aura_ext ;;
         "$BMS_UUID")            install_bms ;;
-        openbar@neuromorph)     install_openbar ;;
         custom-osd@neuromorph)  install_custom_osd ;;
         *)                      install_ext_ego "$1" ;;
     esac

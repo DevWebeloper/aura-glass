@@ -52,6 +52,10 @@ want "solid turns everything off and stands the styling down" \
      "solid blur=0 window=0 popup=0 transparency=0 styling=0" \
      --glass-mode solid
 
+want "performance turns blur off, 100% opacity, keeps styling on" \
+     "performance blur=0 window=0 popup=0 transparency=0 styling=1" \
+     --glass-mode performance
+
 want "an explicit popup flag beats the mode" \
      "transparent blur=1 window=0 popup=0 transparency=0.82 styling=1" \
      --glass-mode transparent --no-popup-blur --app-transparency 0.82

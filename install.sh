@@ -90,7 +90,7 @@ GLASS_MODE=""            # empty = the memo, then derived from the flags
 GLASS_MODE_EXPLICIT=""
 BLUR_EXPLICIT=""         # --blur / --no-blur were typed, so a mode must not move them
 WANT_STYLING=1           # 0 = the theme stands down (solid mode)
-VALID_GLASS_MODES="frosted transparent solid"
+VALID_GLASS_MODES="frosted transparent solid performance"
 WANT_WINDOW_BLUR=1
 WINDOW_BLUR_EXPLICIT=""
 APP_BLUR_SCOPE="gtk"     # gtk (default, whitelisted GTK/GNOME apps) | all
@@ -265,9 +265,11 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --all-apps-blur   blur behind all application windows (heavy on CPU/GPU)
     --no-window-blur  keep window blur off (opaque windows)
     --glass-mode M    frosted (blur behind windows and popups), transparent
-                      (translucent windows, no window blur) or solid (the theme
-                      stands down: no styling, stock shell, the extensions it
-                      enabled switched off and their settings left alone).
+                      (translucent windows, no window blur), performance
+                      (blur off, 100% opacity, customizable looks) or solid
+                      (the theme stands down: no styling, stock shell, the
+                      extensions it enabled switched off and their settings
+                      left alone).
                       Remembered; each mode keeps its own opacity and tint
     --no-blur         no blur anywhere, opaque surfaces instead of translucent
                       ones, with the rest of the theme intact (best for low-end
@@ -794,7 +796,7 @@ EOF
 
     # 4. Extensions
     printf '%sStep 4: Shell Extensions%s\n' "$C_BLD" "$C_OFF"
-    printf '  %sFoundation:%s User Themes, Blur My Shell, Open Bar\n' "$C_BLD" "$C_OFF"
+    printf '  %sFoundation:%s User Themes, Blur My Shell\n' "$C_BLD" "$C_OFF"
     printf '  Install Custom OSD? (minimal pill bar for volume & brightness) %s[Y/n]%s: ' "$C_DIM" "$C_OFF"
     read -r ans_osd || ans_osd="y"
     case "${ans_osd,,}" in

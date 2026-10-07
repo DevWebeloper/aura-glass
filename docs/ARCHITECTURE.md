@@ -291,8 +291,8 @@ Design table and rationale: [superpowers/specs/2026-08-18-glass-modes-design.md]
 
 Three tiers, all catalogued in `lib/steps.sh`:
 
-- **core** — `user-theme@…` from the extensions site, plus three built from a
-  pinned commit: `blur-my-shell@aunetx`, `openbar@neuromorph`,
+- **core** — `user-theme@…` from the extensions site, plus two built from a
+  pinned commit: `blur-my-shell@aunetx`,
   `custom-osd@neuromorph`.
 - **recommended** (`EXT_EXTRA_RECOMMENDED`) — six.
 - **full** (`EXT_EXTRA_ALL`) — fourteen.
@@ -312,8 +312,8 @@ Three patches are applied on top of the Blur My Shell pin, in order:
 | `blur-my-shell-subwindows.patch` | upstream's `check_blur` matched one frame-type set excluding `ATTACHED` and `UTILITY`, leaving a blurred app's dialogs and tool palettes unblurred |
 | `blur-my-shell-notifications.patch` | splits notification banners and history cards onto their own `notification` key, gated independently of menus and dialogs |
 
-`patches/openbar-gnome50.patch` and `patches/custom-osd-gnome50.patch` carry
-those two extensions to GNOME 50.
+`patches/custom-osd-gnome50.patch` carries
+Custom OSD to GNOME 50 and 51.
 
 `bin/aura-glass-ext` is the catalogue reachable one UUID at a time
 (`list | install | remove | enable | disable | recommended | full`). The settings
@@ -361,8 +361,8 @@ dynamic performance management:
 
 ## 7. dconf and gsettings
 
-`dconf/core.ini` (468 lines) is **every extension's settings** as one preset:
-openbar geometry, Blur My Shell pipelines and sigmas, custom-osd, just-perfection
+`dconf/core.ini` is **core extension settings** as one preset:
+Blur My Shell pipelines and sigmas, custom-osd,
 and the rest. `dconf/extras.ini` covers the optional extensions.
 `dconf/solid.ini` is loaded on top of core by `--no-blur`.
 

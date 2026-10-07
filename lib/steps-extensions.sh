@@ -235,49 +235,6 @@ install_aura_ext() {
             fi
         fi
     fi
-    ok "$uuid"
-}
-
-# Open Bar is the one extension with no GNOME 50 release. Upstream's last
-# commit targets 49, so on 50 it is built from that commit plus the patch in
-# patches/. On 49 and below the published build is used unchanged.
-install_openbar() {
-    local uuid="openbar@neuromorph"
-
-    if [ "$GNOME_MAJOR" -lt 50 ]; then
-        install_ext_ego "$uuid"
-        return
-    fi
-
-    if [ -d "$EXT_DIR/$uuid" ] && ext_supports_shell "$EXT_DIR/$uuid" "$GNOME_MAJOR" \
-       && patch_stamp_current openbar-patch "$REPO_ROOT/patches/openbar-gnome50.patch" \
-       && [ "${FORCE:-0}" != 1 ]; then
-        skip "$uuid already patched for GNOME $GNOME_MAJOR"
-        return 0
-    fi
-
-    info "no GNOME 50 release exists — building from $OPENBAR_REF + patches/openbar-gnome50.patch"
-    local src="$SRC_CACHE/openbar"
-    clone_pinned "$OPENBAR_REPO" "$OPENBAR_REF" "$src"
-
-    if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: apply patch, copy to $EXT_DIR/$uuid, compile schemas"
-        return 0
-    fi
-
-    git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/openbar-gnome50.patch" \
-        || die "the Open Bar patch did not apply — upstream may have moved"
-
-    rm -rf "$EXT_DIR/$uuid"
-    mkdir -p "$EXT_DIR"
-    cp -a "$src/$uuid" "$EXT_DIR/$uuid"
-
-    if [ -d "$EXT_DIR/$uuid/schemas" ]; then
-        glib-compile-schemas "$EXT_DIR/$uuid/schemas" \
-            || die "failed to compile Open Bar's gsettings schemas"
-    fi
-    patch_stamp_write openbar-patch "$REPO_ROOT/patches/openbar-gnome50.patch"
-    ok "$uuid (patched for GNOME $GNOME_MAJOR)"
 }
 
 # Custom OSD is what turns the volume and brightness popup into the bar on its
@@ -460,7 +417,6 @@ install_extensions() {
         skip "$BMS_UUID left out (--no-blur)"
     fi
     install_aura_ext
-    install_openbar
     install_custom_osd
 
     if [ "${WANT_EXTRAS:-0}" = 1 ] && [ "${#EXT_EXTRA[@]}" -gt 0 ]; then
@@ -572,7 +528,7 @@ enable_extensions() {
     # $BMS_UUID is named explicitly rather than left in EXT_CORE so that it is
     # enabled whichever source install_bms took it from — and so that solid
     # mode can leave it out without editing the shared list.
-    local want=("${EXT_CORE[@]}" "$AURA_EXT_UUID" openbar@neuromorph) u
+    local want=("${EXT_CORE[@]}" "$AURA_EXT_UUID") u
     if [ "${WANT_BLUR:-1}" = 1 ]; then
         want+=("$BMS_UUID")
     fi
@@ -756,6 +712,7 @@ PY
 # Automatically disable extensions that have been retired from the theme
 disable_retired_extensions() {
     local retired=(
+        openbar@neuromorph
         just-perfection-desktop@just-perfection
         gnome-ui-tune@itstime.tech
         space-bar@luchrioh
@@ -787,7 +744,7 @@ disable_retired_extensions() {
 glass_owned_extensions() {
     # AURA_EXT_UUID is intentionally absent: solid mode stands the themed
     # extensions down, but its panel menu is how someone restores glass.
-    printf '%s\n' "${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" \
+    printf '%s\n' "${EXT_CORE[@]}" "$BMS_UUID" \
         custom-osd@neuromorph "${EXT_EXTRA_ALL[@]}"
 }
 

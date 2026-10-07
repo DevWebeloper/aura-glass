@@ -136,7 +136,7 @@ apply_app_tint_color() {
         return 0
     fi
 
-    if [ "$want" != "#000000" ]; then
+    if [ "$want" != "#000000" ] && [ -f "$CONF_DIR/gtk4-transparency.css" ]; then
         python3 "$REPO_ROOT/tools/apply-tint-color.py" \
             "$CONF_DIR/gtk4-transparency.css" "$want" | sed 's/^/    /' \
             || { warn "could not tint the app windows"; return 0; }

@@ -70,9 +70,6 @@ ROUNDEDBLUR_REF="9c7efb7ac5de"    # v1.0.1
 PARU_AUR_REPO="https://aur.archlinux.org/paru-bin.git"
 YAY_AUR_REPO="https://aur.archlinux.org/yay-bin.git"
 
-OPENBAR_REPO="https://github.com/neuromorph/openbar.git"
-OPENBAR_REF="01fb24217e0c"       # last upstream commit; patched for GNOME 50
-
 CUSTOMOSD_REPO="https://github.com/neuromorph/custom-osd.git"
 CUSTOMOSD_REF="334ac17e9348"     # last upstream commit; patched for GNOME 50
 
@@ -144,8 +141,8 @@ BACKUP_DIR="$CONF_DIR/backups"
 SRC_CACHE="$HOME/.cache/aura-glass/src"
 
 # Everything the look actually needs that comes straight from the extensions
-# site. openbar, custom-osd and blur-my-shell are absent because each is built
-# from a pinned commit instead — see install_openbar, install_custom_osd and
+# site. custom-osd and blur-my-shell are absent because each is built
+# from a pinned commit instead — see install_custom_osd and
 # install_bms.
 EXT_CORE=(
     user-theme@gnome-shell-extensions.gcampax.github.com
@@ -191,8 +188,6 @@ ext_description() {
         # too, and a row titled with a bare UUID is not a description.
         user-theme@gnome-shell-extensions.gcampax.github.com)
             printf 'User Themes — lets the shell load a theme from your home directory' ;;
-        openbar@neuromorph)
-            printf 'Open Bar — paints the panel, menus and popups this theme styles' ;;
         blur-my-shell@aunetx)
             printf 'Blur My Shell — the blur behind windows, popups and the panel' ;;
         custom-osd@neuromorph)

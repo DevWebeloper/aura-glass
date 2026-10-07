@@ -43,7 +43,7 @@ import re
 import sys
 
 HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
-RGBA = re.compile(r"rgba\((\d+), *(\d+), *(\d+), *([0-9.]+)\)")
+RGBA = re.compile(r"rgba?\((\d+), *(\d+), *(\d+)(?:, *([0-9.]+))?\)")
 
 MAX_CHANNEL = 96      # anything brighter is an overlay, not a ground
 MAX_SPREAD = 12       # anything less neutral is already a colour
@@ -77,20 +77,29 @@ def main():
             high, low = max(channels), min(channels)
             if high > MAX_CHANNEL or high - low > MAX_SPREAD:
                 return match.group(0)
+            alpha = match.group(4)
             if high == 0:
                 if not is_bg:
                     return match.group(0)
                 # Pure black background ground: give it a subtle dark ground lightness
                 out = colorsys.hls_to_rgb(hue, 0.08, saturation)
-                return "rgba(%d, %d, %d, %s)" % (round(out[0] * 255),
-                                                 round(out[1] * 255),
-                                                 round(out[2] * 255), match.group(4))
+                if alpha is not None:
+                    return "rgba(%d, %d, %d, %s)" % (round(out[0] * 255),
+                                                     round(out[1] * 255),
+                                                     round(out[2] * 255), alpha)
+                return "rgb(%d, %d, %d)" % (round(out[0] * 255),
+                                            round(out[1] * 255),
+                                            round(out[2] * 255))
             # The literal's own lightness, kept exactly; the hue and saturation are
             # the tint's.
             out = colorsys.hls_to_rgb(hue, (high + low) / 2.0 / 255.0, saturation)
-            return "rgba(%d, %d, %d, %s)" % (round(out[0] * 255),
-                                             round(out[1] * 255),
-                                             round(out[2] * 255), match.group(4))
+            if alpha is not None:
+                return "rgba(%d, %d, %d, %s)" % (round(out[0] * 255),
+                                                 round(out[1] * 255),
+                                                 round(out[2] * 255), alpha)
+            return "rgb(%d, %d, %d)" % (round(out[0] * 255),
+                                        round(out[1] * 255),
+                                        round(out[2] * 255))
         return RGBA.sub(tint, line)
 
     total, touched = 0, 0

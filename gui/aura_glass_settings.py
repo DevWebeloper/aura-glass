@@ -477,9 +477,9 @@ FONTS = [
 # is allowed to hold.
 BLUR_SCOPES = ("gtk", "all", "none")
 
-# The three modes, in the order the tabs show them. Solid is last because it is
+# The four modes, in the order the tabs show them. Solid is last because it is
 # the one that takes the theme away.
-GLASS_MODES = ["frosted", "transparent", "solid"]
+GLASS_MODES = ["frosted", "transparent", "performance", "solid"]
 
 # Titlebar buttons. Two answers rather than the free string the key takes: see
 # apply_window_buttons in lib/steps-dconf.sh for why the rest of what
@@ -2125,8 +2125,17 @@ class Settings:
             # a mode can have that nothing else would catch.
             if self.blur and self.scope == "none" and self.transparency != "0":
                 self.glass_mode = "transparent"
+            elif not self.blur:
+                self.glass_mode = "performance"
             else:
                 self.glass_mode = "frosted"
+
+        if self.glass_mode == "performance":
+            self.transparency = "0"
+            self.scope = "none"
+            self.popup_blur = False
+            self.notification_blur = False
+            self.blur = False
 
         # The colour each half of the desktop darkens toward under its alpha,
         # and how far every blur reaches. Black and 100 are the shipped answers
@@ -2244,6 +2253,10 @@ class Settings:
                 level = "0.82"
                 tint_default = disk_app_tint or "#0b0b0f"
                 shell_default = disk_shell_tint or "#0b0b0f"
+            elif mode == "performance":
+                level = "0"
+                tint_default = disk_app_tint or "#000000"
+                shell_default = disk_shell_tint or "#000000"
             else:
                 level = disk_transparency or "0"
                 tint_default = disk_app_tint or "#000000"
@@ -2265,6 +2278,16 @@ class Settings:
                     disk_ground or str(NOTIFICATION_OPACITY_DEFAULT)))
             except ValueError:
                 ground = NOTIFICATION_OPACITY_DEFAULT
+
+            if mode == "performance":
+                def_popup = "0"
+                def_notif = "0"
+                def_scope = "none"
+            else:
+                def_popup = disk_popup or "1"
+                def_notif = disk_notification or "1"
+                def_scope = disk_scope or "gtk"
+
             self.modes[mode] = {
                 "transparency": read_mode_memo(mode, "app-transparency", level),
                 "app_tint": read_mode_memo(mode, "app-tint-color", tint_default),
@@ -2273,12 +2296,10 @@ class Settings:
                 "blur_strength": strength,
                 "popup_brightness": brightness,
                 "notification_opacity": ground,
-                "popup_blur": read_mode_memo(mode, "popup-blur",
-                                             disk_popup or "1") != "0",
+                "popup_blur": read_mode_memo(mode, "popup-blur", def_popup) != "0",
                 "notification_blur": read_mode_memo(
-                    mode, "notification-blur", disk_notification or "1") != "0",
-                "scope": read_mode_memo(mode, "app-blur-scope",
-                                        disk_scope or "gtk"),
+                    mode, "notification-blur", def_notif) != "0",
+                "scope": read_mode_memo(mode, "app-blur-scope", def_scope),
             }
 
         # The mode in force is the live state whatever its drawer says: the
@@ -2431,13 +2452,14 @@ class Settings:
             else:
                 args += ["--app-transparency", self.transparency]
 
-        if self.popup_blur != popup_base:
-            args.append("--popup-blur" if self.popup_blur
-                        else "--no-popup-blur")
+        if self.glass_mode != "performance":
+            if self.popup_blur != popup_base:
+                args.append("--popup-blur" if self.popup_blur
+                            else "--no-popup-blur")
 
-        if self.notification_blur != notification_base:
-            args.append("--notification-blur" if self.notification_blur
-                        else "--no-notification-blur")
+            if self.notification_blur != notification_base:
+                args.append("--notification-blur" if self.notification_blur
+                            else "--no-notification-blur")
 
         # The two tints. Sent as the value rather than as an on/off, because
         # black is a value in its own right — it is the state the sheets ship
@@ -2457,7 +2479,7 @@ class Settings:
         # tint are — every mode's drawer seeds it to the same 100, and nothing
         # in apply_glass_mode ever moves it — so unlike them it stays a plain
         # comparison against `other`, never the drawer.
-        if self.blur_strength != other.blur_strength:
+        if self.glass_mode != "performance" and self.blur_strength != other.blur_strength:
             args += ["--blur-strength", str(self.blur_strength)]
 
         # Beside the strength and compared the same way, for the same reason
@@ -4118,6 +4140,9 @@ class Window(Adw.ApplicationWindow):
             self._build_transparent_page(), "transparent", "Transparent",
             "view-reveal-symbolic")
         self._mode_stack.add_titled_with_icon(
+            self._build_performance_page(), "performance", "Performance",
+            "system-run-symbolic")
+        self._mode_stack.add_titled_with_icon(
             self._build_solid_page(), "solid", "Solid",
             "checkbox-symbolic")
         self._mode_stack.set_visible_child_name(self._applied.glass_mode)
@@ -4430,6 +4455,30 @@ class Window(Adw.ApplicationWindow):
         self._sync_transparency_value(scale)
         scale.connect("value-changed", self._on_scale_changed)
         return scale
+
+    # ---- performance ------------------------------------------------------
+
+    def _build_performance_page(self):
+        """Blur shaders disabled and surfaces fully opaque for maximum responsiveness.
+
+        Keeps full Aura Glass shape language, geometry, corner radii, and styling,
+        with customizable tints, popup brightness, and notification ground.
+        """
+        page = Adw.PreferencesPage()
+
+        page.add(self._build_tint_group(
+            "performance",
+            description="What the surfaces are tinted toward."))
+        page.add(self._build_popup_brightness_group("performance"))
+        page.add(self._build_notification_ground_group("performance"))
+
+        page.add(tip_card(
+            "<b>Maximum responsiveness with full Aura Glass styling.</b>\n"
+            "Blur shaders are disabled and windows and popups are 100% opaque "
+            "for zero GPU overhead. Theme geometry, corner radii, accents, and "
+            "custom tints remain active."))
+
+        return self._mode_tab("performance", page)
 
     # ---- solid ------------------------------------------------------------
 
@@ -5902,7 +5951,8 @@ class Window(Adw.ApplicationWindow):
         _app_effective_scope / _glass_mode the window-menu toggle already
         agrees with.
         """
-        solid = self._glass_mode() == "solid"
+        mode = self._glass_mode()
+        solid = mode in ("solid", "performance")
         scope = self._app_effective_scope()
         idle = (not solid) and scope == "none"
         live = not solid and not idle
@@ -5914,9 +5964,15 @@ class Window(Adw.ApplicationWindow):
             widget.set_sensitive(live)
 
         self._app_banner.set_revealed(solid or idle)
-        if solid:
+        if mode == "solid":
             self._app_banner.set_title(
                 "Solid mode has no blur at all — turn on Frosted to choose "
+                "apps.")
+            self._app_banner.set_button_label("Switch to Frosted")
+            self._app_banner_action = "frosted"
+        elif mode == "performance":
+            self._app_banner.set_title(
+                "Performance mode has no blur at all — turn on Frosted to choose "
                 "apps.")
             self._app_banner.set_button_label("Switch to Frosted")
             self._app_banner_action = "frosted"
@@ -6479,7 +6535,7 @@ class Window(Adw.ApplicationWindow):
         # tab's, which hold that other mode's settings and are not what this
         # Apply is about.
         s.glass_mode = self._glass_mode()
-        s.blur = s.glass_mode != "solid"
+        s.blur = s.glass_mode not in ("solid", "performance")
         if s.glass_mode == "solid":
             # This tab has no tint rows, no strength bar and no opacity, so the
             # applied values come through untouched rather than being read off
@@ -6491,6 +6547,19 @@ class Window(Adw.ApplicationWindow):
             s.blur_strength = self._applied.blur_strength
             s.popup_brightness = self._applied.popup_brightness
             s.notification_opacity = self._applied.notification_opacity
+            s.scope = "none"
+            s.transparency = "0"
+            s.popup_blur = False
+            s.notification_blur = False
+        elif s.glass_mode == "performance":
+            tints = self._tints["performance"]
+            s.app_tint = tints["app"]
+            s.shell_tint = tints["shell"]
+            s.blur_strength = self._applied.blur_strength
+            s.popup_brightness = int(round(
+                self._brightness_scales["performance"].get_value()))
+            s.notification_opacity = int(round(
+                self._ground_scales["performance"].get_value()))
             s.scope = "none"
             s.transparency = "0"
             s.popup_blur = False
@@ -6706,11 +6775,14 @@ class Window(Adw.ApplicationWindow):
             rows["app"]._button.set_rgba(parse_hex(tints["app"]))
             rows["shell"]._button.set_rgba(parse_hex(tints["shell"]))
             rows["link"].set_active(tints["app"] == tints["shell"])
-            self._strength_scales[mode].set_value(drawer["blur_strength"])
-            self._brightness_scales[mode].set_value(
-                drawer["popup_brightness"])
-            self._ground_scales[mode].set_value(
-                drawer["notification_opacity"])
+            if mode in self._strength_scales:
+                self._strength_scales[mode].set_value(drawer["blur_strength"])
+            if mode in self._brightness_scales:
+                self._brightness_scales[mode].set_value(
+                    drawer["popup_brightness"])
+            if mode in self._ground_scales:
+                self._ground_scales[mode].set_value(
+                    drawer["notification_opacity"])
 
         # In place rather than rebound: the per-app page's rows read
         # self._allow / self._block straight off this window on every rebuild,

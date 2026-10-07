@@ -59,7 +59,7 @@ out = [
         "'%s'" % u for u in
         ["user-theme@gnome-shell-extensions.gcampax.github.com"]
         + ([] if os.environ.get("TG_SOLID") == "1" else ["blur-my-shell@aunetx"])
-        + ["openbar@neuromorph", "custom-osd@neuromorph",
+        + ["custom-osd@neuromorph",
            os.environ["TG_DRIVER_UUID"]]),
     "disable-user-extensions=false",
     "",
@@ -141,7 +141,7 @@ say "shell is up on wayland display '$TG_DISPLAY'"
 say "extension state"
 python3 "$REPO_ROOT/tools/preview-extensions.py" \
     user-theme@gnome-shell-extensions.gcampax.github.com \
-    blur-my-shell@aunetx openbar@neuromorph custom-osd@neuromorph
+    blur-my-shell@aunetx custom-osd@neuromorph
 
 shot() {
     python3 "$REPO_ROOT/tools/preview-shot.py" "$SHOTS/$1.png" >/dev/null 2>&1 \

@@ -105,7 +105,7 @@ holding only until the next `install.sh`, which reads the stale memo over dconf.
 | `update-available` | the version a check found, so the window can offer it |
 | `rounded-blur` | the `gnome-rounded-blur` build stamp |
 | `bms-ref` / `bms-source` | the Blur My Shell commit installed, and `git` or `ego` |
-| `openbar-patch` / `custom-osd-patch` | patch stamps, so a re-run knows the patch is already in |
+| `custom-osd-patch` | patch stamp, so a re-run knows the patch is already in |
 | `gdm-installed` | `dynamic` when the login screen was themed |
 | `gdm-monitors-synced` | present = the monitor layout was pushed to GDM |
 | `accent-from-wallpaper` | set when `auto-accent-colour` was installed, so the accent row can warn |
@@ -213,7 +213,6 @@ The subtrees touched:
 ```
 /org/gnome/shell/extensions/blur-my-shell/…      panel, popup, applications,
                                                  overview, window-list, dash-to-dock
-/org/gnome/shell/extensions/openbar/…            bar geometry, menu styling
 /org/gnome/shell/extensions/custom-osd/…         the volume/brightness pill
 /org/gnome/shell/extensions/just-perfection/…    and the rest of extras.ini
 ```

@@ -28,9 +28,9 @@ json="$(bash "$ROOT/bin/aura-glass-ext" list)" \
     || { echo "aura-glass-ext list failed"; exit 1; }
 
 # Every UUID the install path can reach, which is what the window has to be able
-# to show. BMS_UUID, openbar and custom-osd are named the way enable_extensions
+# to show. BMS_UUID and custom-osd are named the way enable_extensions
 # names them: they are installed unconditionally rather than sitting in a tier.
-expected=("${EXT_CORE[@]}" openbar@neuromorph "$BMS_UUID" custom-osd@neuromorph
+expected=("${EXT_CORE[@]}" "$BMS_UUID" custom-osd@neuromorph
           "$AURA_EXT_UUID"
           "${EXT_EXTRA_ALL[@]}")
 

@@ -52,11 +52,6 @@ load_dconf() {
         fi
     fi
 
-    # Open Bar regenerates its stylesheet when this key changes, so toggling it
-    # is what makes the preset take effect without a restart.
-    run dconf write /org/gnome/shell/extensions/openbar/trigger-reload false
-    run dconf write /org/gnome/shell/extensions/openbar/trigger-reload true
-
     apply_grain
     apply_blur_strength
     apply_popup_brightness
@@ -559,45 +554,6 @@ apply_notification_blur() {
 
     run dconf write "$base/popup/notification" true
     ok "notification blur on — banners and history cards blur independently"
-    clear_openbar_notification_override
-}
-
-# Open Bar generates a stylesheet of its own into
-# $XDG_RUNTIME_DIR/io.github.neuromorph.openbar/stylesheet.css, and its "apply
-# to menus and notifications" switch puts a
-# `.notification-banner { background-color: ... !important }` into it. St loads
-# every extension stylesheet after the user theme and settles a tie by load
-# order rather than by weight, so that one rule outranks this project's banner
-# fill however it is written — !important does not reach it, and neither does
-# raising the selector to `.notification-banner.message`. The banner then sits
-# at Open Bar's own menu opacity, 0.92 out of the box, and the blur behind it
-# survives only in the margin ring outside the fill: a banner that reads as a
-# flat slab while the history cards, which match .message and never
-# .notification-banner, blur correctly and make it look like a bug in here.
-#
-# The switch gates exactly one block of Open Bar's sheet — the banner, the
-# notification buttons and the summary counter — so clearing it costs that
-# override and nothing else of Open Bar's look. It only runs on the path that
-# has just turned notification blur on; turning blur off again leaves the
-# switch alone rather than restoring an override the user may not want back.
-clear_openbar_notification_override() {
-    local u=openbar@neuromorph
-    local key=/org/gnome/shell/extensions/openbar/apply-menu-notif
-
-    [ -d "$EXT_DIR/$u" ] || return 0
-    [ "$(dconf read "$key" 2>/dev/null || true)" = true ] || return 0
-
-    run dconf write "$key" false
-
-    # Open Bar rewrites that sheet when it starts rather than on every key it
-    # owns, so the file on disk keeps the banner rule until the extension is
-    # cycled — and cycling is only meaningful while it is actually running.
-    if gnome-extensions info "$u" 2>/dev/null | grep -q 'State: ACTIVE'; then
-        run gnome-extensions disable "$u" 2>/dev/null || true
-        run gnome-extensions enable "$u" 2>/dev/null || true
-    fi
-
-    ok "Open Bar's notification styling switched off — its banner fill outranked the blur"
 }
 
 # Custom OSD keeps a set of named profiles beside the live settings, and its
@@ -946,6 +902,13 @@ apply_adaptive_blur() {
             run rm -f "$CONF_DIR/shell-notification-blur.css"
             run install -Dm644 "$REPO_ROOT/css/shell-80-solid.css" "$CONF_DIR/shell-80-solid.css"
             run rm -f "$CONF_DIR/gtk4-transparency.css"
+            if [ -d "$CONF_DIR/modes/performance" ]; then
+                local perf_shell
+                perf_shell="$(cat "$CONF_DIR/modes/performance/shell-tint-color" 2>/dev/null || true)"
+                if [ -n "$perf_shell" ]; then
+                    SHELL_TINT_COLOR="$perf_shell" apply_shell_tint_color
+                fi
+            fi
             if [ -x "$apply_cmd" ]; then
                 "$apply_cmd" | sed 's/^/    /'
             fi
@@ -978,6 +941,16 @@ apply_adaptive_blur() {
                 run install -Dm644 "$REPO_ROOT/css/shell-notification-blur.css" "$CONF_DIR/shell-notification-blur.css"
             else
                 run rm -f "$CONF_DIR/shell-notification-blur.css"
+            fi
+
+            local norm_shell=""
+            if [ -r "$CONF_DIR/modes/$normal_mode/shell-tint-color" ]; then
+                norm_shell="$(cat "$CONF_DIR/modes/$normal_mode/shell-tint-color" 2>/dev/null || true)"
+            elif [ -r "$CONF_DIR/shell-tint-color" ]; then
+                norm_shell="$(cat "$CONF_DIR/shell-tint-color" 2>/dev/null || true)"
+            fi
+            if [ -n "$norm_shell" ]; then
+                SHELL_TINT_COLOR="$norm_shell" apply_shell_tint_color
             fi
 
             install_transparency_css

@@ -70,13 +70,13 @@ source "$ROOT/lib/steps-extensions.sh"
 record="$CONF_DIR/modes/solid/disabled-extensions"
 DRY_RUN=0
 
-own=(user-theme@gnome-shell-extensions.gcampax.github.com openbar@neuromorph "$BMS_UUID")
+own=(user-theme@gnome-shell-extensions.gcampax.github.com custom-osd@neuromorph "$BMS_UUID")
 foreign="app-hider@lynith.dev"            # the user's own — never ours to touch
-substring_trap="openbar@neuromorph-nightly"  # a superstring of an owned UUID
+substring_trap="custom-osd@neuromorph-nightly"  # a superstring of an owned UUID
 
 # "installed" for every UUID restore_extensions will be asked about, so the
 # "no longer installed" skip never masks what is actually under test.
-for u in "${own[@]}" custom-osd@neuromorph; do mkdir -p "$EXT_DIR/$u"; done
+for u in "${own[@]}" hotedge@jonathan.jdoda.ca; do mkdir -p "$EXT_DIR/$u"; done
 
 # --- first entry: the record names exactly what was owned and enabled ---
 # AURA_EXT_UUID is enabled, but must NEVER be stood down (it provides the panel profile switcher).
@@ -127,7 +127,7 @@ before="$(cat "$record")"
 : > "$FAKE_LOG"
 stand_down_extensions >/dev/null
 [ -s "$FAKE_LOG" ] && failures+=(
-    "substring UUID $substring_trap reached gnome-extensions disable — it is not openbar@neuromorph")
+    "substring UUID $substring_trap reached gnome-extensions disable — it is not custom-osd@neuromorph")
 after="$(cat "$record")"
 [ "$before" = "$after" ] || failures+=("the substring case should leave the record untouched, it changed")
 

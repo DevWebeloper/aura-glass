@@ -64,8 +64,7 @@ StDrawingArea {
  * Setting padding directly on the :windowmax panel keeps the left and right icons
  * at the exact same horizontal position across both desktop and fullscreen.
  */
-#panel:windowmax,
-#panel.openbar:windowmax {
+#panel:windowmax {
   padding: 0 15px !important;
   padding-left: 15px !important;
   padding-right: 15px !important;

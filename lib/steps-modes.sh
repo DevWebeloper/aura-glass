@@ -23,6 +23,8 @@
 glass_mode_from_state() {
     if [ "${WANT_STYLING:-1}" = 0 ]; then
         printf 'solid\n'
+    elif [ "${GLASS_MODE:-}" = performance ]; then
+        printf 'performance\n'
     elif [ "${WANT_BLUR:-1}" = 1 ] && [ "${WANT_WINDOW_BLUR:-1}" = 0 ] \
          && [ "${APP_TRANSPARENCY:-0}" != 0 ]; then
         printf 'transparent\n'
@@ -72,6 +74,20 @@ apply_glass_mode() {
                 APP_BLUR_SCOPE="none"
             fi
             [ -n "${POPUP_BLUR_EXPLICIT:-}" ]  || WANT_POPUP_BLUR=1
+            WANT_STYLING=1
+            ;;
+        performance)
+            [ -n "${BLUR_EXPLICIT:-}" ]        || WANT_BLUR=0
+            if [ -z "${WINDOW_BLUR_EXPLICIT:-}" ]; then
+                WANT_WINDOW_BLUR=0
+                APP_BLUR_SCOPE="none"
+            fi
+            [ -n "${POPUP_BLUR_EXPLICIT:-}" ]  || WANT_POPUP_BLUR=0
+            [ -n "${NOTIFICATION_BLUR_EXPLICIT:-}" ] || WANT_NOTIFICATION_BLUR=0
+            if [ -z "${APP_TRANSPARENCY_EXPLICIT:-}" ]; then
+                APP_TRANSPARENCY=0
+                APP_OPACITY=255
+            fi
             WANT_STYLING=1
             ;;
         solid)
@@ -210,6 +226,13 @@ seed_glass_mode() {
         mode_memo_write app-transparency "0.82"
         mode_memo_write app-tint-color   "${disk_app:-#0b0b0f}"
         mode_memo_write shell-tint-color "${disk_shell:-#0b0b0f}"
+    elif [ "${GLASS_MODE:-}" = performance ]; then
+        mode_memo_write app-transparency "0"
+        mode_memo_write app-tint-color   "${disk_app:-#000000}"
+        mode_memo_write shell-tint-color "${disk_shell:-#000000}"
+        mode_memo_write app-blur-scope   "none"
+        mode_memo_write popup-blur       "0"
+        mode_memo_write notification-blur "0"
     else
         mode_memo_write app-transparency "${disk_level:-0}"
         mode_memo_write app-tint-color   "${disk_app:-#000000}"
@@ -223,8 +246,10 @@ seed_glass_mode() {
     # a mode was opened.
     mode_memo_write popup-brightness "${disk_brightness:-115}"
     mode_memo_write notification-opacity "${disk_ground:-40}"
-    mode_memo_write popup-blur       "${disk_popup:-1}"
-    mode_memo_write notification-blur "${disk_notification:-1}"
+    if [ "${GLASS_MODE:-}" != performance ]; then
+        mode_memo_write popup-blur       "${disk_popup:-1}"
+        mode_memo_write notification-blur "${disk_notification:-1}"
+    fi
 }
 
 # The drawer into this run's variables. Only where the flag was not given, on
@@ -264,11 +289,15 @@ load_glass_mode_memos() {
     # next line that tests the marker, then lose to whatever the top-level
     # memo (tuned for a different mode) happens to hold.
     if [ -z "${POPUP_BLUR_EXPLICIT:-}" ]; then
-        WANT_POPUP_BLUR="$(mode_memo_read popup-blur 1)"
+        local def_pb=1
+        [ "${GLASS_MODE}" = performance ] && def_pb=0
+        WANT_POPUP_BLUR="$(mode_memo_read popup-blur "$def_pb")"
         POPUP_BLUR_EXPLICIT=1
     fi
     if [ -z "${NOTIFICATION_BLUR_EXPLICIT:-}" ]; then
-        WANT_NOTIFICATION_BLUR="$(mode_memo_read notification-blur 1)"
+        local def_nb=1
+        [ "${GLASS_MODE}" = performance ] && def_nb=0
+        WANT_NOTIFICATION_BLUR="$(mode_memo_read notification-blur "$def_nb")"
         NOTIFICATION_BLUR_EXPLICIT=1
     fi
     # Transparent has no scope to remember: not blurring behind windows is what
