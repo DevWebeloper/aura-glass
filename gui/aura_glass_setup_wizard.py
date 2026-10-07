@@ -250,7 +250,7 @@ class Answers:
         # answer rather than relying on one.
         self.icons = "reversal"
         self.want_cursors = True
-        self.cursors = "aosp"
+        self.cursors = "moga"
         # Independent of the pair above: pointer theme and pointer size are
         # two different gsettings keys, so "leave my theme alone" is not a
         # statement about size. 20 is the wizard's own recommendation, not
@@ -348,9 +348,9 @@ class Window(Adw.ApplicationWindow):
         self.gdm_present = gdm_present
         self.catalogue = ext_catalogue(repo)
 
-        recommended = [e["uuid"] for e in self.catalogue
-                       if e["tier"] == "recommended"] or None
-        self.answers = Answers(recommended)
+        full_experience = [e["uuid"] for e in self.catalogue
+                           if e["tier"] in ("recommended", "full")] or None
+        self.answers = Answers(full_experience)
         self.defaults = self.answers.copy()
 
         self.nav = Adw.NavigationView()
@@ -697,7 +697,10 @@ class Window(Adw.ApplicationWindow):
                         "AOSP and MacTahoe are fetched from GitHub; Moga Neon follows your accent.")
         current = self.answers.cursors if self.answers.want_cursors else "keep"
         self.radio_rows(group, [
-            ("aosp", "AOSP — recommended",
+            ("moga", "Moga Neon — recommended",
+             "Accent-matched neon pointers. By Moyash",
+             PACK_LINKS["moga"]),
+            ("aosp", "AOSP",
              "Android's pointers, scalable with a soft shadow. By Tech-Tac",
              PACK_LINKS["aosp"]),
             ("adwaita", "Adwaita",
@@ -705,9 +708,6 @@ class Window(Adw.ApplicationWindow):
             ("mactahoe", "MacTahoe",
              "macOS Tahoe style pointers. By vinceliuice",
              PACK_LINKS["mactahoe"]),
-            ("moga", "Moga Neon",
-             "Accent-matched neon pointers. By Moyash",
-             PACK_LINKS["moga"]),
             ("keep", "Default",
              "Leaves your current pointer theme alone, whatever set it", None),
         ], current, self.on_cursors)
@@ -768,71 +768,30 @@ class Window(Adw.ApplicationWindow):
             page.add(group)
             return self.shell("extensions", "Extensions", page)
 
-        core = Adw.PreferencesGroup(
-            title="Minimal",
-            description="The foundation installed with every package — no "
-                        "optional extensions.")
-        for entry in self.catalogue:
-            if entry["tier"] != "core":
-                continue
-            core.add(plain_row(Adw.ActionRow(sensitive=False),
-                               entry["description"], entry["uuid"]))
-        page.add(core)
-
         actions = Adw.PreferencesGroup(
             title="Extension package",
-            description="Core starts on. Minimal keeps only the foundation; "
-                        "everything is changeable later.")
-        row = Adw.ActionRow(title="Select", subtitle="All at once")
-        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6,
-                      valign=Gtk.Align.CENTER)
-        for label, tiers in (("Core", ("recommended",)),
-                             ("Complete Experience", ("recommended", "full")),
-                             ("Minimal", ())):
-            button = Gtk.Button(label=label)
-            button.connect("clicked", self.on_ext_preset, tiers)
-            box.append(button)
-        row.add_suffix(box)
-        actions.add(row)
+            description="Choose your extensions package. Everything is changeable later in Settings.")
+        current = "full" if (self.answers.extensions is None or len(self.answers.extensions) > 0) else "minimal"
+        self.radio_rows(actions, [
+            ("full", "Full Experience — recommended",
+             "Foundation plus all optional extensions (tray icons, tiling, effects, clipboard)",
+             None),
+            ("minimal", "Minimal",
+             "Foundation only (blur, panel & user themes) — no optional extensions",
+             None),
+        ], current, self.on_ext_preset_picked)
         page.add(actions)
-
-        self.ext_switches = []
-        for tier, title, description in (
-            ("recommended", "Core",
-             "Six curated additions to the Minimal foundation; the default."),
-            ("full", "Complete Experience",
-             "The remaining optional extensions, added on top of Core."),
-        ):
-            group = Adw.PreferencesGroup(title=title, description=description)
-            for entry in self.catalogue:
-                if entry["tier"] != tier:
-                    continue
-                switch = plain_row(
-                    Adw.SwitchRow(
-                        active=entry["uuid"] in (self.answers.extensions or [])),
-                    entry["description"], entry["uuid"])
-                switch.connect("notify::active", self.on_ext_toggled,
-                               entry["uuid"])
-                self.ext_switches.append((entry["uuid"], switch))
-                group.add(switch)
-            page.add(group)
 
         return self.shell("extensions", "Extensions", page)
 
-    def on_ext_toggled(self, row, _param, uuid):
-        chosen = list(self.answers.extensions or [])
-        if row.get_active():
-            if uuid not in chosen:
-                chosen.append(uuid)
-        elif uuid in chosen:
-            chosen.remove(uuid)
-        self.answers.extensions = chosen
-
-    def on_ext_preset(self, _button, tiers):
-        chosen = [e["uuid"] for e in self.catalogue if e["tier"] in tiers]
-        self.answers.extensions = chosen
-        for uuid, row in self.ext_switches:
-            row.set_active(uuid in chosen)
+    def on_ext_preset_picked(self, value):
+        if value == "full":
+            self.answers.extensions = [
+                e["uuid"] for e in self.catalogue
+                if e["tier"] in ("recommended", "full")
+            ]
+        else:
+            self.answers.extensions = []
 
     def page_gdm(self):
         page = Adw.PreferencesPage()
@@ -885,12 +844,12 @@ class Window(Adw.ApplicationWindow):
                 if e["tier"] == "recommended"}
         complete = {e["uuid"] for e in self.catalogue
                     if e["tier"] in ("recommended", "full")}
-        if answers.extensions is None or selected == core:
-            extras = "Core"
-        elif not selected:
+        if not selected:
             extras = "Minimal"
-        elif selected == complete:
-            extras = "Complete Experience"
+        elif selected == complete or answers.extensions is None:
+            extras = "Full Experience"
+        elif selected == core:
+            extras = "Core"
         else:
             extras = "%d selected (custom)" % len(selected)
 

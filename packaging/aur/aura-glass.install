@@ -1,0 +1,20 @@
+post_install() {
+    echo ":: Aura Glass is now installed on your system."
+    echo ":: To setup and apply Aura Glass for your user session, run:"
+    echo "     aura-glass"
+    echo ":: Or launch 'Aura Glass Settings' from your application menu."
+}
+
+post_upgrade() {
+    echo ":: Aura Glass has been upgraded."
+    echo ":: To re-apply updated styles and presets to your running session, run:"
+    echo "     aura-glass-apply"
+    echo ":: Or re-tune your settings with:"
+    echo "     aura-glass --settings-only -y"
+}
+
+post_remove() {
+    echo ":: Aura Glass package files have been removed from /usr."
+    echo ":: To revert user themes and dconf settings, each user can run:"
+    echo "     ~/.config/aura-glass/uninstall.sh   (if present)"
+}

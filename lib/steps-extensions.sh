@@ -385,10 +385,6 @@ install_rounded_blur() {
 
     info "this is the one part of aura-glass that installs outside \$HOME:"
     info "    $cmd"
-    if ! confirm_always "Install gnome-rounded-blur? It needs root."; then
-        skip "not installed — popup blur stays static, and still rounded"
-        return 0
-    fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
         info "dry-run: $cmd"
@@ -422,7 +418,7 @@ install_rounded_blur() {
 rounded_blur_stamp() {
     [ "${DRY_RUN:-0}" = 1 ] && return 0
     mkdir -p "$CONF_DIR"
-    printf '%s\n' "$(pkg-config --modversion libmutter-18 2>/dev/null || gnome_major)" \
+    printf '%s\n' "$(pkg-config --modversion "libmutter-$GNOME_MAJOR" 2>/dev/null || pkg-config --modversion libmutter-18 2>/dev/null || gnome_major)" \
         > "$CONF_DIR/rounded-blur"
 }
 
@@ -443,6 +439,16 @@ rounded_blur_staleness_check() {
 
 install_extensions() {
     step "Installing shell extensions"
+    # Allow safe extensions that haven't updated metadata yet for newer GNOME releases to load.
+    run gsettings set org.gnome.shell disable-extension-version-validation true
+    disable_retired_extensions
+
+    declare -g -A PRE_INSTALLED_EXTS=()
+    local d
+    for d in "$EXT_DIR"/* /usr/share/gnome-shell/extensions/*; do
+        [ -d "$d" ] && PRE_INSTALLED_EXTS["$(basename "$d")"]=1
+    done
+
     local u
     for u in "${EXT_CORE[@]}"; do install_ext_ego "$u" || true; done
     # Solid mode does not install Blur My Shell at all. Disabling its components
@@ -461,6 +467,67 @@ install_extensions() {
         step "Installing optional extensions (${#EXT_EXTRA[@]} selected)"
         for u in "${EXT_EXTRA[@]}"; do install_ext_ego "$u" || true; done
     fi
+    patch_copyous_extension
+}
+
+patch_copyous_extension() {
+    local target="$EXT_DIR/copyous@boerdereinar.dev"
+    [ -d "$target" ] || return 0
+    local file="$target/lib/ui/items/clipboardItem.js"
+    [ -f "$file" ] || return 0
+    if grep -q "Shell.GLSLEffect || Clutter.Effect" "$file"; then
+        return 0
+    fi
+    info "Patching Copyous for GNOME 50/51 GLSLEffect compatibility..."
+    python3 - "$file" "$target/metadata.json" <<'PY' || true
+import sys, json
+
+js_path, meta_path = sys.argv[1], sys.argv[2]
+try:
+    with open(js_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    if "const BaseEffect" not in content and "let HoleEffect = class HoleEffect extends Shell.GLSLEffect" in content:
+        content = content.replace(
+            "let HoleEffect = class HoleEffect extends Shell.GLSLEffect {",
+            "const BaseEffect = Shell.GLSLEffect || Clutter.Effect;\nlet HoleEffect = class HoleEffect extends BaseEffect {"
+        )
+        content = content.replace(
+            "this._sizeLocation = this.get_uniform_location('size');",
+            "if (Shell.GLSLEffect) {\n\t\t\tthis._sizeLocation = this.get_uniform_location('size');"
+        )
+        content = content.replace(
+            "target.connect('notify::allocation', () => this.queue_repaint());",
+            "target.connect('notify::allocation', () => this.queue_repaint());\n\t\t}"
+        )
+        content = content.replace(
+            "vfunc_paint_target(node, paintContext) {",
+            "vfunc_paint_target(node, paintContext) {\n\t\tif (!Shell.GLSLEffect) return;"
+        )
+        content = content.replace(
+            "vfunc_build_pipeline() {",
+            "vfunc_build_pipeline() {\n\t\tif (!Shell.GLSLEffect) return;"
+        )
+        with open(js_path, "w", encoding="utf-8") as f:
+            f.write(content)
+except Exception:
+    pass
+
+try:
+    with open(meta_path, "r", encoding="utf-8") as f:
+        meta = json.load(f)
+    shells = meta.get("shell-version", [])
+    changed = False
+    for v in ["50", "51"]:
+        if v not in shells:
+            shells.append(v)
+            changed = True
+    if changed:
+        meta["shell-version"] = shells
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
+except Exception:
+    pass
+PY
 }
 
 # dconf can reach the running extension after it has constructed its components:
@@ -497,6 +564,11 @@ refresh_bms_after_dconf() {
 
 enable_extensions() {
     step "Enabling extensions"
+    local is_update=0
+    if [ -f "$CONF_DIR/repo-path" ] || [ -f "$CONF_DIR/accent" ]; then
+        is_update=1
+    fi
+
     # $BMS_UUID is named explicitly rather than left in EXT_CORE so that it is
     # enabled whichever source install_bms took it from — and so that solid
     # mode can leave it out without editing the shared list.
@@ -515,6 +587,14 @@ enable_extensions() {
         # buys them an install and not an enable.
         if ext_never_auto_enabled "$u"; then
             skip "$u installed but not enabled — it would overwrite the accent"
+            continue
+        fi
+        if is_in_disabled_extensions "$u"; then
+            skip "$u is in disabled-extensions — keeping disabled"
+            continue
+        fi
+        if [ "$is_update" = 1 ] && [ -n "${PRE_INSTALLED_EXTS[$u]:-}" ] && ! is_extension_enabled "$u"; then
+            skip "$u was disabled by the user — keeping disabled"
             continue
         fi
         if [ ! -d "$EXT_DIR/$u" ] && [ ! -d "/usr/share/gnome-shell/extensions/$u" ]; then
@@ -637,6 +717,65 @@ items.append(uuid)
 new = "[" + ", ".join("'" + i + "'" for i in items) + "]"
 subprocess.run(["gsettings", "set", *KEY, new], check=True)
 PY
+}
+
+# Check if a UUID is currently listed in enabled-extensions
+is_extension_enabled() {
+    python3 - "$1" <<'PY'
+import subprocess, sys
+uuid = sys.argv[1]
+KEY = ["org.gnome.shell", "enabled-extensions"]
+cur = subprocess.run(["gsettings", "get", *KEY], capture_output=True, text=True).stdout.strip()
+if cur.startswith("@as "):
+    cur = cur[4:]
+try:
+    items = [x.strip().strip("'\"") for x in cur.strip("[]").split(",") if x.strip()]
+except Exception:
+    items = []
+sys.exit(0 if uuid in items else 1)
+PY
+}
+
+# Check if a UUID is currently in disabled-extensions
+is_in_disabled_extensions() {
+    python3 - "$1" <<'PY'
+import subprocess, sys
+uuid = sys.argv[1]
+KEY = ["org.gnome.shell", "disabled-extensions"]
+cur = subprocess.run(["gsettings", "get", *KEY], capture_output=True, text=True).stdout.strip()
+if cur.startswith("@as "):
+    cur = cur[4:]
+try:
+    items = [x.strip().strip("'\"") for x in cur.strip("[]").split(",") if x.strip()]
+except Exception:
+    items = []
+sys.exit(0 if uuid in items else 1)
+PY
+}
+
+# Automatically disable extensions that have been retired from the theme
+disable_retired_extensions() {
+    local retired=(
+        just-perfection-desktop@just-perfection
+        gnome-ui-tune@itstime.tech
+        space-bar@luchrioh
+        clipboard-indicator@tudmotu.com
+        auto-accent-colour@Wartybix
+        ddterm@amezin.github.com
+        xwayland-indicator@swsnr.de
+        add-to-steam@pupper.space
+    )
+    local u
+    for u in "${retired[@]}"; do
+        if [ "${DRY_RUN:-0}" = 1 ]; then
+            continue
+        fi
+        if is_extension_enabled "$u"; then
+            run gnome-extensions disable "$u" 2>/dev/null || true
+            dequeue_extension "$u" || true
+            ok "disabled retired extension: $u"
+        fi
+    done
 }
 
 # ---- standing the extensions down ---------------------------------------

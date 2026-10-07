@@ -60,7 +60,7 @@ def rebuild():
     # false/true handshake. An external repeated false write while false is
     # still inherently indistinguishable from ours; dconf has no ownership API.
     operation = os.environ.get("AURA_GLASS_OPERATION", "aura-glass-operation")
-    command = 'dconf write "$1" false; sleep 1; dconf write "$1" true'
+    command = 'dconf write "$1" false; sleep 0.1; dconf write "$1" true'
     result = subprocess.run([operation, "run", "--", "bash", "-c", command, "_", KEY],
                             text=True, timeout=35)
     if result.returncode:

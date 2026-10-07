@@ -15,7 +15,7 @@ theme's generated CSS, loads a dconf preset, and writes gsettings. Everything
 lands under `$HOME` except three optional root steps (dependencies, the
 `gnome-rounded-blur` library, the GDM login screen).
 
-Targets GNOME Shell 48 / 49 / 50, Wayland preferred. Arch/CachyOS, Fedora,
+Targets GNOME Shell 48 / 49 / 50 / 51, Wayland preferred. Arch/CachyOS, Fedora,
 Ubuntu/Debian.
 
 ---

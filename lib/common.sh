@@ -131,6 +131,10 @@ multi_monitor_detected() {
 # prompt_logout — asks whether to log out now (default No).
 # If confirmed, logs out of the current desktop session.
 prompt_logout() {
+    if [ "${FROM_GUI_WIZARD:-0}" = 1 ]; then
+        info "Please log out and back in to complete setup."
+        return 0
+    fi
     if ! confirm_always "Log out now?"; then
         return 0
     fi

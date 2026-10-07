@@ -70,26 +70,41 @@ def main():
               "it)" % colour)
         return 0
 
-    def tint(match):
-        channels = [int(match.group(i)) for i in (1, 2, 3)]
-        high, low = max(channels), min(channels)
-        if high > MAX_CHANNEL or high - low > MAX_SPREAD or high == 0:
-            return match.group(0)
-        # The literal's own lightness, kept exactly; the hue and saturation are
-        # the tint's.
-        out = colorsys.hls_to_rgb(hue, (high + low) / 2.0 / 255.0, saturation)
-        return "rgba(%d, %d, %d, %s)" % (round(out[0] * 255),
-                                         round(out[1] * 255),
-                                         round(out[2] * 255), match.group(4))
+    def tint_line(line):
+        is_bg = "background-color" in line or "background:" in line
+        def tint(match):
+            channels = [int(match.group(i)) for i in (1, 2, 3)]
+            high, low = max(channels), min(channels)
+            if high > MAX_CHANNEL or high - low > MAX_SPREAD:
+                return match.group(0)
+            if high == 0:
+                if not is_bg:
+                    return match.group(0)
+                # Pure black background ground: give it a subtle dark ground lightness
+                out = colorsys.hls_to_rgb(hue, 0.08, saturation)
+                return "rgba(%d, %d, %d, %s)" % (round(out[0] * 255),
+                                                 round(out[1] * 255),
+                                                 round(out[2] * 255), match.group(4))
+            # The literal's own lightness, kept exactly; the hue and saturation are
+            # the tint's.
+            out = colorsys.hls_to_rgb(hue, (high + low) / 2.0 / 255.0, saturation)
+            return "rgba(%d, %d, %d, %s)" % (round(out[0] * 255),
+                                             round(out[1] * 255),
+                                             round(out[2] * 255), match.group(4))
+        return RGBA.sub(tint, line)
 
     total, touched = 0, 0
     for path in sorted(glob.glob(os.path.join(conf, "shell-*.css"))):
-        text = open(path, encoding="utf-8").read()
-        new, count = RGBA.subn(tint, text)
+        lines = open(path, encoding="utf-8").readlines()
+        new_lines = [tint_line(line) for line in lines]
+        new = "".join(new_lines)
+        text = "".join(lines)
         if new != text:
             open(path, "w", encoding="utf-8").write(new)
             touched += 1
-        total += sum(1 for m in RGBA.finditer(text) if tint(m) != m.group(0))
+        for old_l, new_l in zip(lines, new_lines):
+            if old_l != new_l:
+                total += 1
 
     print("shell tint %s applied to %d ground%s in %d sheet%s"
           % (colour, total, "" if total == 1 else "s",

@@ -158,42 +158,27 @@ EXT_CORE=(
 # place rather than shadowed by a second copy under $HOME that would then drift
 # from whatever the system ships.
 EXT_EXTRA_RECOMMENDED=(
-    just-perfection-desktop@just-perfection
-    gnome-ui-tune@itstime.tech
-    space-bar@luchrioh
     appindicatorsupport@rgcjonas.gmail.com
-    clipboard-indicator@tudmotu.com
     compiz-alike-magic-lamp-effect@hermes83.github.com
+    tiling-assistant@leleat-on-github
+    hotedge@jonathan.jdoda.ca
+    kiwimenu@kemma
+    copyous@boerdereinar.dev
 )
 
 EXT_EXTRA_ALL=(
-    just-perfection-desktop@just-perfection
-    gnome-ui-tune@itstime.tech
-    space-bar@luchrioh
     appindicatorsupport@rgcjonas.gmail.com
-    clipboard-indicator@tudmotu.com
     compiz-alike-magic-lamp-effect@hermes83.github.com
-    Vitals@CoreCoding.com
-    auto-accent-colour@Wartybix
-    ddterm@amezin.github.com
-    kiwimenu@kemma
+    tiling-assistant@leleat-on-github
     hotedge@jonathan.jdoda.ca
+    kiwimenu@kemma
+    copyous@boerdereinar.dev
+    Vitals@CoreCoding.com
     restartto@tiagoporsch.github.io
-    xwayland-indicator@swsnr.de
-    add-to-steam@pupper.space
 )
 
-# Catalogued and installable, but never switched on by a pack. Auto Accent
-# Colour rewrites org.gnome.desktop.interface accent-color from the wallpaper
-# every time the wallpaper changes — and that key is the one thing the wizard
-# asks for by name, so with this on the accent someone picked is replaced by
-# whatever their wallpaper averages to (orange, for a warm one) within a
-# session. It stays in EXT_EXTRA_ALL so the settings window still lists it and
-# can install it for anyone who would rather the wallpaper decided; what it does
-# not get is to arrive switched on behind an --all-extras.
-EXT_NO_AUTO_ENABLE=(
-    auto-accent-colour@Wartybix
-)
+# Catalogued and installable, but never switched on by a pack.
+EXT_NO_AUTO_ENABLE=()
 
 # Active selection of extra extensions (defaults to recommended pack)
 EXT_EXTRA=("${EXT_EXTRA_RECOMMENDED[@]}")
@@ -214,34 +199,22 @@ ext_description() {
             printf 'Custom OSD — the volume and brightness pill' ;;
         aura-glass-blur@aura-glass.local)
             printf 'Aura Glass helper — adaptive performance profile menu and per-app blur toggle' ;;
-        just-perfection-desktop@just-perfection)
-            printf 'Just Perfection — GNOME UI tweaker & visibility manager' ;;
-        gnome-ui-tune@itstime.tech)
-            printf 'GNOME UI Tune — Overview 300%% thumbnail enlargement & tweaks' ;;
-        space-bar@luchrioh)
-            printf 'Space Bar — macOS/i3-style workspace pill indicator in panel' ;;
         appindicatorsupport@rgcjonas.gmail.com)
             printf 'AppIndicator Support — System tray icons (Steam, Discord, Slack, etc.)' ;;
-        clipboard-indicator@tudmotu.com)
-            printf 'Clipboard Indicator — Top-bar clipboard history with search & hotkey' ;;
         compiz-alike-magic-lamp-effect@hermes83.github.com)
             printf 'Magic Lamp Effect — macOS Genie window minimize animation' ;;
-        Vitals@CoreCoding.com)
-            printf 'Vitals — Live CPU, RAM, temp, load & network monitor in panel' ;;
-        auto-accent-colour@Wartybix)
-            printf 'Auto Accent Colour — Automatically syncs accent color with wallpaper' ;;
-        ddterm@amezin.github.com)
-            printf 'ddterm — Drop-down terminal toggleable with global hotkey' ;;
-        kiwimenu@kemma)
-            printf 'Kiwi Menu — macOS-style Applications menu on left of top bar' ;;
+        tiling-assistant@leleat-on-github)
+            printf 'Tiling Assistant — Window snap assist and 2x2 quarter tiling' ;;
         hotedge@jonathan.jdoda.ca)
             printf 'Hot Edge — Triggers dock/overview by touching bottom screen edge' ;;
+        kiwimenu@kemma)
+            printf 'Kiwi Menu — macOS-style Applications menu on left of top bar' ;;
+        copyous@boerdereinar.dev)
+            printf 'Copyous — Modern clipboard history manager with preview' ;;
+        Vitals@CoreCoding.com)
+            printf 'Vitals — Live CPU, RAM, temp, load & network monitor in panel' ;;
         restartto@tiagoporsch.github.io)
             printf 'Restart To — Adds UEFI/BIOS reboot entries in power menu' ;;
-        xwayland-indicator@swsnr.de)
-            printf 'XWayland Indicator — Indicator icon for legacy XWayland apps' ;;
-        add-to-steam@pupper.space)
-            printf 'Add to Steam — Shortcut to add non-Steam games/apps to Steam' ;;
         *)
             printf '%s' "$1" ;;
     esac
@@ -262,8 +235,8 @@ preflight() {
     GNOME_MAJOR="$(gnome_major)" || die "gnome-shell not found"
     if [ "$GNOME_MAJOR" -lt 48 ]; then
         die "GNOME $GNOME_MAJOR is older than this project supports (48+)"
-    elif [ "$GNOME_MAJOR" -gt 50 ]; then
-        warn "GNOME $GNOME_MAJOR is newer than this was tested against (48-50)"
+    elif [ "$GNOME_MAJOR" -gt 51 ]; then
+        warn "GNOME $GNOME_MAJOR is newer than this was tested against (48-51)"
     fi
     ok "GNOME Shell $GNOME_MAJOR"
 

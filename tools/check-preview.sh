@@ -170,11 +170,12 @@ echo "4) apps changes only the per-app blur dconf keys, and writes no memo"
 # install.sh run does), so what is already on disk is the one input that is
 # guaranteed a no-op here.
 CTIMES_BEFORE="$(memo_ctimes)"
+SHEETS_BEFORE="$(hash_sheets)"
 allow_now="$(tr '\n' ',' < "$CONF_DIR/app-blur-allow" 2>/dev/null | sed 's/,$//')"
 block_now="$(tr '\n' ',' < "$CONF_DIR/app-blur-block" 2>/dev/null | sed 's/,$//')"
 "$SCRIPT" apps --allow "$allow_now" --block "$block_now" \
     --window-blur "$window_blur" --scope "$scope" >/dev/null
-[ "$(hash_sheets)" = "$BASELINE_HASH" ] \
+[ "$(hash_sheets)" = "$SHEETS_BEFORE" ] \
     || fail "apps touched the installed CSS sheets"
 [ "$(memo_snapshot)" = "$BASELINE_MEMOS" ] \
     || fail "apps changed a \$CONF_DIR memo"

@@ -24,10 +24,11 @@ detect_distro() {
     fi
 
     case " $id $id_like " in
-        *" arch "*|*" cachyos "*|*" archarm "*) DISTRO_FAMILY="arch" ;;
-        *" fedora "*|*" rhel "*)                DISTRO_FAMILY="fedora" ;;
-        *" debian "*|*" ubuntu "*)              DISTRO_FAMILY="debian" ;;
-        *)                                      DISTRO_FAMILY="unknown" ;;
+        *" arch "*|*" cachyos "*|*" archarm "*|*" endeavouros "*|*" manjaro "*|*" garuda "*) DISTRO_FAMILY="arch" ;;
+        *" fedora "*|*" rhel "*|*" nobara "*|*" centos "*|*" almalinux "*|*" rocky "*)       DISTRO_FAMILY="fedora" ;;
+        *" debian "*|*" ubuntu "*|*" pop "*|*" linuxmint "*|*" elementary "*|*" zorin "*)    DISTRO_FAMILY="debian" ;;
+        *" suse "*|*" opensuse "*|*" opensuse-tumbleweed "*|*" opensuse-leap "*)              DISTRO_FAMILY="suse" ;;
+        *)                                                                                    DISTRO_FAMILY="unknown" ;;
     esac
 }
 
@@ -61,6 +62,12 @@ declare -A PKG_DEBIAN=(
     [msgfmt]=gettext [python3]=python3 [glib-compile-resources]=libglib2.0-dev-bin
     [xmllint]=libxml2-utils
 )
+declare -A PKG_SUSE=(
+    [git]=git [curl]=curl [unzip]=unzip [sassc]=sassc
+    [gsettings]=glib2-tools [dconf]=dconf [gnome-extensions]=gnome-shell
+    [msgfmt]=gettext-runtime [python3]=python3 [glib-compile-resources]=glib2-devel
+    [xmllint]=libxml2-tools
+)
 
 REQUIRED_CMDS=(git curl unzip sassc gsettings dconf gnome-extensions python3 glib-compile-resources)
 
@@ -87,6 +94,7 @@ PY
 GUI_TOOLKIT_PKGS_ARCH="python-gobject libadwaita"
 GUI_TOOLKIT_PKGS_FEDORA="python3-gobject libadwaita"
 GUI_TOOLKIT_PKGS_DEBIAN="python3-gi gir1.2-adw-1"
+GUI_TOOLKIT_PKGS_SUSE="python3-gobject typelib-1_0-Adw-1"
 
 # Printed as a suggestion — never run. install_gui uses this, because by the time
 # it runs the install is already under way and the window it wants is optional.
@@ -95,6 +103,7 @@ gui_toolkit_hint() {
         arch)   printf 'sudo pacman -S --needed %s' "$GUI_TOOLKIT_PKGS_ARCH" ;;
         fedora) printf 'sudo dnf install %s' "$GUI_TOOLKIT_PKGS_FEDORA" ;;
         debian) printf 'sudo apt install %s' "$GUI_TOOLKIT_PKGS_DEBIAN" ;;
+        suse)   printf 'sudo zypper install %s' "$GUI_TOOLKIT_PKGS_SUSE" ;;
         *)      printf 'install PyGObject and libadwaita 1 for your distro' ;;
     esac
 }
@@ -116,6 +125,7 @@ ensure_gui_toolkit() {
         arch)   pkgs="$GUI_TOOLKIT_PKGS_ARCH" ;;
         fedora) pkgs="$GUI_TOOLKIT_PKGS_FEDORA" ;;
         debian) pkgs="$GUI_TOOLKIT_PKGS_DEBIAN" ;;
+        suse)   pkgs="$GUI_TOOLKIT_PKGS_SUSE" ;;
         *)      return 1 ;;
     esac
 
@@ -128,6 +138,7 @@ ensure_gui_toolkit() {
         arch)   run sudo pacman -S --needed --noconfirm $pkgs ;;
         fedora) run sudo dnf install -y $pkgs ;;
         debian) run sudo apt-get install -y $pkgs ;;
+        suse)   run sudo zypper --non-interactive install $pkgs ;;
     esac
 
     gui_toolkit_present
@@ -180,16 +191,24 @@ install_deps() {
             run sudo pacman -S --needed --noconfirm $pkgs
             ;;
         fedora)
+            local dnf_cmd="dnf"
+            have dnf5 && dnf_cmd="dnf5"
             local pkgs; pkgs="$(install_hint PKG_FEDORA "${missing[@]}")"
-            info "would run: sudo dnf install $pkgs"
-            confirm "Install these with dnf?" 1 || { warn "skipping — install them yourself, then re-run"; return 1; }
-            run sudo dnf install -y $pkgs
+            info "would run: sudo $dnf_cmd install $pkgs"
+            confirm "Install these with $dnf_cmd?" 1 || { warn "skipping — install them yourself, then re-run"; return 1; }
+            run sudo "$dnf_cmd" install -y $pkgs
             ;;
         debian)
             local pkgs; pkgs="$(install_hint PKG_DEBIAN "${missing[@]}")"
             info "would run: sudo apt install $pkgs"
             confirm "Install these with apt?" 1 || { warn "skipping — install them yourself, then re-run"; return 1; }
             run sudo apt-get install -y $pkgs
+            ;;
+        suse)
+            local pkgs; pkgs="$(install_hint PKG_SUSE "${missing[@]}")"
+            info "would run: sudo zypper install $pkgs"
+            confirm "Install these with zypper?" 1 || { warn "skipping — install them yourself, then re-run"; return 1; }
+            run sudo zypper --non-interactive install $pkgs
             ;;
         *)
             warn "unknown distro — install these yourself: ${missing[*]}"
@@ -235,7 +254,7 @@ pkg_owner() {
             # rather than a failure worth reporting.
             pacman -Qoq "$path" 2>/dev/null | head -n1
             ;;
-        fedora)
+        fedora|suse)
             have rpm || return 1
             rpm -qf --queryformat '%{NAME}\n' "$path" 2>/dev/null | head -n1
             ;;
@@ -267,8 +286,13 @@ pkg_remove_cmd() {
             done
             printf 'sudo pacman -Rns %s' "$pkg"
             ;;
-        fedora) printf 'sudo dnf remove %s' "$pkg" ;;
+        fedora)
+            local dnf_cmd="dnf"
+            have dnf5 && dnf_cmd="dnf5"
+            printf 'sudo %s remove %s' "$dnf_cmd" "$pkg"
+            ;;
         debian) printf 'sudo apt remove %s' "$pkg" ;;
+        suse)   printf 'sudo zypper remove %s' "$pkg" ;;
         *)      return 1 ;;
     esac
 }

@@ -306,6 +306,11 @@ install_icons() {
                 warn "no icon theme was recorded before aura-glass — using Adwaita"
             fi
             return 0 ;;
+        colloid|colloid-*) ;;
+        *)
+            step "Icons"
+            ok "$ICONS already present on system"
+            return 0 ;;
     esac
 
     local color; color="$(colloid_color)"
@@ -406,6 +411,12 @@ install_cursors() {
                   "$HOME/.local/share/icons/aosp-cursors"
         fi
         ok "aosp-cursors"
+        return 0
+    fi
+
+    if [ "${CURSORS:-adwaita}" != mactahoe ]; then
+        step "Cursors"
+        ok "$CURSORS already installed on system"
         return 0
     fi
 

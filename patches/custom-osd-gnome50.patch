@@ -1,5 +1,5 @@
 diff --git a/extension.js b/extension.js
-index 27fbac8..0740354 100644
+index 27fbac8..d3a0001 100644
 --- a/extension.js
 +++ b/extension.js
 @@ -14,6 +14,50 @@ import {Extension, gettext as _, pgettext} from 'resource:///org/gnome/shell/ext
@@ -150,7 +150,20 @@ index 27fbac8..0740354 100644
          GLib.source_remove(osdW._blurTimeoutId);
          osdW._blurTimeoutId = null;
        }
-@@ -462,13 +512,7 @@ export default class CustomOSDExtension extends Extension {
+@@ -436,6 +486,12 @@ export default class CustomOSDExtension extends Extension {
+     this.progressRing = false;
+     this.progressSVGId = [];
+     this.isClippedRedrawsSet = false;
++    this._startupGracePeriod = true;
++    this._startupTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 3500, () => {
++      this._startupGracePeriod = false;
++      this._startupTimeoutId = null;
++      return GLib.SOURCE_REMOVE;
++    });
+ 
+     this._resources = Gio.Resource.load(this.path + '/resources/custom-osd.gresource');
+     Gio.resources_register(this._resources);
+@@ -462,13 +518,7 @@ export default class CustomOSDExtension extends Extension {
  
      // Check if Clipped Redraws flag is set externally (e.g. by Blur My Shell)
      this.redrawFlagTimeoutId = setTimeout( () => {
@@ -165,18 +178,51 @@ index 27fbac8..0740354 100644
      }, 2000);
  
   
-@@ -572,8 +616,8 @@ export default class CustomOSDExtension extends Extension {
+@@ -477,7 +527,17 @@ export default class CustomOSDExtension extends Extension {
+       "show",
+       function () {
+   
+-        let monitor = Main.layoutManager.monitors[this._monitorIndex];
++        if (!Main.sessionMode.hasWindows || Main.sessionMode.isLocked || custOSD._startupGracePeriod) {
++          this.cancel();
++          return;
++        }
++
++        let monitor = Main.layoutManager.monitors ? Main.layoutManager.monitors[this._monitorIndex] : null;
++        if (!monitor || monitor.width <= 0 || monitor.height <= 0) {
++          this.cancel();
++          return;
++        }
++
+         let monitors = custOSD._settings.get_string("monitors");
+   
+         if (monitors == "primary" && monitor != Main.layoutManager.primaryMonitor){
+@@ -566,14 +626,22 @@ export default class CustomOSDExtension extends Extension {
+           this._hbox.set_height(-1);
+ 
+         let hbxH = this._hbox.height;
++        if (hbxH <= 0) {
++          let [, natH] = this._hbox.get_preferred_height(-1);
++          hbxH = natH > 0 ? natH : 55;
++        }
+ 
+         if(bgeffect == 'progress-ring')
+           br2 = br1;
  
          this._hbox.style += ` border-radius: ${br1*hbxH/2/100}px ${br2*hbxH/2/100}px;`;
  
 -        let hbxW = this._hbox.width; 
 -        
 +        let hbxW = this._hbox.width;
++        if (hbxW <= 0) {
++          let [, natW] = this._hbox.get_preferred_width(hbxH);
++          hbxW = natW > 0 ? natW : 150;
++        }
 +
          if(bgeffect == 'progress-ring') {
            custOSD.progressRing = true;
            custOSD.height = hbxH;
-@@ -601,14 +645,14 @@ export default class CustomOSDExtension extends Extension {
+@@ -601,14 +669,14 @@ export default class CustomOSDExtension extends Extension {
          let transY = -v_percent * (monitor.height - hbxH)/100.0;
          this._hbox.translation_y = transY;
  
@@ -195,11 +241,23 @@ index 27fbac8..0740354 100644
                  GLib.source_remove(this._blurTimeoutId);
                  this._blurTimeoutId = null;
                });
+@@ -648,6 +716,11 @@ export default class CustomOSDExtension extends Extension {
+     this._custOSDIcon = null;
+     this._timeOSDIcon = null;
+ 
++    if (this._startupTimeoutId) {
++      GLib.source_remove(this._startupTimeoutId);
++      this._startupTimeoutId = null;
++    }
++
+     if (this.redrawFlagTimeoutId) {
+       clearTimeout(this.redrawFlagTimeoutId);
+       this.redrawFlagTimeoutId = null;
 diff --git a/metadata.json b/metadata.json
-index 8e79e77..137644b 100644
+index 8e79e77..60ba290 100644
 --- a/metadata.json
 +++ b/metadata.json
-@@ -5,7 +5,11 @@
+@@ -5,7 +5,12 @@
    "description": "Fully customize your OSD ( On Screen Display ) pop ups like Volume , Brightness or Caffeine , Lock Keys etc. Move, orient, resize, numeric %, choose monitor, set hide-delay and style to match your theme and liking. You can also select any combination of components to display: icon, text-label, level-bar, numeric %. ",
    "shell-version": [
      "45",
@@ -208,7 +266,8 @@ index 8e79e77..137644b 100644
 +    "47",
 +    "48",
 +    "49",
-+    "50"
++    "50",
++    "51"
    ],
    "url": "https://github.com/neuromorph/custom-osd",
    "gettext-domain": "custom-osd",

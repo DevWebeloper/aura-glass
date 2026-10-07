@@ -23,7 +23,7 @@ tools/install-hooks.sh     # once per clone
 ./install.sh               # you need an installed theme to develop against
 ```
 
-You need a GNOME 48/49/50 desktop to work on this meaningfully. There is no
+You need a GNOME 48/49/50/51 desktop to work on this meaningfully. There is no
 build step and no dependency beyond bash, python3 and git — plus PyGObject and
 libadwaita if you touch `gui/`.
 

@@ -55,19 +55,19 @@ failures = []
 _EMPTY = tempfile.TemporaryDirectory()
 wiz.CONF_DIR = _EMPTY.name
 
-RECOMMENDED = ["just-perfection-desktop@just-perfection",
-               "gnome-ui-tune@itstime.tech"]
+RECOMMENDED = ["appindicatorsupport@rgcjonas.gmail.com",
+               "compiz-alike-magic-lamp-effect@hermes83.github.com"]
 
 # A small stand-in catalogue for Answers.best, covering all three tiers so the
 # case below can assert core is excluded and the other two are not.
 BEST_CATALOGUE = [
     {"uuid": "user-theme@gnome-shell-extensions.gcampax.github.com",
      "tier": "core"},
-    {"uuid": "just-perfection-desktop@just-perfection",
+    {"uuid": "appindicatorsupport@rgcjonas.gmail.com",
      "tier": "recommended"},
     {"uuid": "Vitals@CoreCoding.com", "tier": "full"},
 ]
-BEST_EXTENSIONS = ["just-perfection-desktop@just-perfection",
+BEST_EXTENSIONS = ["appindicatorsupport@rgcjonas.gmail.com",
                    "Vitals@CoreCoding.com"]
 
 
@@ -89,7 +89,7 @@ FROSTED = ["--gtk-apps-blur", "--app-transparency", "0.90", "--popup-blur"]
 # the wizard states its answer on every run rather than leaving the packs to the
 # installer, so these are the two names the defaults case has to send. The size
 # is a third, independent answer — the wizard's own 20px recommendation.
-PACKS = ["--icons", "reversal", "--cursors", "aosp", "--cursor-size", "20",
+PACKS = ["--icons", "reversal", "--cursors", "moga", "--cursor-size", "20",
          "--osd"]
 
 # (description, the answers, whether there is a GDM, expected argv)
@@ -122,7 +122,7 @@ CASES = [
      BASE + ["--no-blur"] + PACKS),
 
     ("solid keeps its own packs", answers(blur=False, want_icons=False), False,
-     BASE + ["--no-blur", "--no-icons", "--cursors", "aosp", "--cursor-size",
+     BASE + ["--no-blur", "--no-icons", "--cursors", "moga", "--cursor-size",
              "20", "--osd"]),
 
     ("every window blurred", answers(scope="all"), False,
@@ -148,8 +148,8 @@ CASES = [
      answers(icons="hatter", cursors="mactahoe"), False,
      BASE + FROSTED + ["--icons", "hatter", "--cursors", "mactahoe",
                        "--cursor-size", "20", "--osd"]),
-    ("moga pointers", answers(cursors="moga"), False,
-     BASE + FROSTED + ["--icons", "reversal", "--cursors", "moga",
+    ("aosp pointers", answers(cursors="aosp"), False,
+     BASE + FROSTED + ["--icons", "reversal", "--cursors", "aosp",
                        "--cursor-size", "20", "--osd"]),
 
     ("keep both packs", answers(want_icons=False, want_cursors=False), False,
@@ -160,15 +160,15 @@ CASES = [
     # statement about its size, and the reverse holds too.
     ("keep the pointer size, theme untouched",
      answers(cursor_size="24", want_cursor_size=False), False,
-     BASE + FROSTED + ["--icons", "reversal", "--cursors", "aosp", "--osd"]),
+     BASE + FROSTED + ["--icons", "reversal", "--cursors", "moga", "--osd"]),
 
     ("a larger pointer, theme unchanged",
      answers(cursor_size="32"), False,
-     BASE + FROSTED + ["--icons", "reversal", "--cursors", "aosp",
+     BASE + FROSTED + ["--icons", "reversal", "--cursors", "moga",
                        "--cursor-size", "32", "--osd"]),
 
     ("stock OSD", answers(want_osd=False), False,
-     BASE + FROSTED + ["--icons", "reversal", "--cursors", "aosp",
+     BASE + FROSTED + ["--icons", "reversal", "--cursors", "moga",
                        "--cursor-size", "20", "--no-osd"]),
 
     # A catalogue that could not be read leaves this None, which sends no

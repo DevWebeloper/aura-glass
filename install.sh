@@ -80,7 +80,9 @@ WANT_OSD=1
 WANT_PANEL_BLUR_FIX=""
 PANEL_BLUR_FIX_EXPLICIT=""
 WANT_GDM=0
+GDM_EXPLICIT=""
 WANT_GDM_MONITORS=0
+GDM_MONITORS_EXPLICIT=""
 GDM_BG="default"
 WANT_BMS_GIT=1
 WANT_BLUR=1
@@ -152,7 +154,7 @@ VALID_HATTER="$VALID_ACCENTS yaru"
 
 usage() {
     cat <<EOF
-${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-50
+${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
 
   ${C_BLD}usage${C_OFF}
     ./install.sh [options]
@@ -396,12 +398,12 @@ parse_flags() {
                          APP_TRANSPARENCY="${1#*=}"; APP_TRANSPARENCY_EXPLICIT=1; EXPLICIT_FLAGS=1; APP_OPACITY_EXPLICIT=1; shift ;;
         --no-app-transparency|--no-window-opacity|--no-window-transparency)
                          APP_TRANSPARENCY=0; APP_TRANSPARENCY_EXPLICIT=1; APP_OPACITY=255; EXPLICIT_FLAGS=1; APP_OPACITY_EXPLICIT=1; shift ;;
-        --gdm)           WANT_GDM=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-gdm)        WANT_GDM=0; EXPLICIT_FLAGS=1; shift ;;
-        --gdm-monitors|--sync-monitors) WANT_GDM_MONITORS=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-gdm-monitors) WANT_GDM_MONITORS=0; EXPLICIT_FLAGS=1; shift ;;
-        --gdm-background) GDM_BG="${2:-default}"; WANT_GDM=1; EXPLICIT_FLAGS=1; shift 2 ;;
-        --gdm-background=*) GDM_BG="${1#*=}"; WANT_GDM=1; EXPLICIT_FLAGS=1; shift ;;
+        --gdm)           WANT_GDM=1; GDM_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-gdm)        WANT_GDM=0; GDM_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --gdm-monitors|--sync-monitors) WANT_GDM_MONITORS=1; GDM_MONITORS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-gdm-monitors) WANT_GDM_MONITORS=0; GDM_MONITORS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --gdm-background) GDM_BG="${2:-default}"; WANT_GDM=1; GDM_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --gdm-background=*) GDM_BG="${1#*=}"; WANT_GDM=1; GDM_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --gui)           WANT_GUI=1; EXPLICIT_FLAGS=1; shift ;;
         --no-gui)        WANT_GUI=0; EXPLICIT_FLAGS=1; shift ;;
         --window-menu)   WANT_WINDOW_MENU=1; EXPLICIT_FLAGS=1; shift ;;
@@ -467,7 +469,11 @@ if { [ "$EXPLICIT_FLAGS" = 0 ] || [ "$FORCE_INTERACTIVE" = 1 ]; } && [ "$ASSUME_
     WIZARD_RC=0
     run_setup_wizard || WIZARD_RC=$?
     case "$WIZARD_RC" in
-        0) parse_flags "${WIZARD_ARGS[@]}" ;;
+        0)
+            parse_flags "${WIZARD_ARGS[@]}"
+            ASSUME_YES=1
+            FROM_GUI_WIZARD=1
+            ;;
         1) printf '\n  Installation cancelled.\n\n'; exit 0 ;;
     esac
 fi
@@ -477,7 +483,7 @@ if [ "$WIZARD_RC" = 2 ]; then
     cat <<EOF
 
 ${C_BLD}┌─────────────────────────────────────────────────────────────┐${C_OFF}
-${C_BLD}│  aura-glass — Fluid Frosted Glass Desktop for GNOME 48-50   │${C_OFF}
+${C_BLD}│  aura-glass — Fluid Frosted Glass Desktop for GNOME 48-51   │${C_OFF}
 ${C_BLD}└─────────────────────────────────────────────────────────────┘${C_OFF}
 
 EOF
@@ -799,12 +805,12 @@ EOF
     printf '\n  Extension Package:\n'
     printf '    %s[1]%s Core %s[Default — foundation plus 6 curated extensions]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
     printf '        • AppIndicator Support (System tray icons for Steam, Discord, etc.)\n'
-    printf '        • Space Bar (Workspace pill switcher in top bar)\n'
-    printf '        • Clipboard Indicator (Clipboard history with search & Ctrl+Space)\n'
     printf '        • Magic Lamp Effect (macOS Genie window minimize effect)\n'
-    printf '        • Just Perfection (GNOME UI tweaker & clean overview)\n'
-    printf '        • GNOME UI Tune (300%% overview window thumbnails)\n'
-    printf '    %s[2]%s Complete Experience %s[Foundation plus all 14 optional extensions]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '        • Tiling Assistant (Window snap assist & 2x2 quarter tiling)\n'
+    printf '        • Hot Edge (Overview/dock trigger by touching bottom edge)\n'
+    printf '        • Kiwi Menu (macOS-style Applications menu in top bar)\n'
+    printf '        • Copyous (Modern clipboard history manager)\n'
+    printf '    %s[2]%s Complete Experience %s[Foundation plus all 8 optional extensions]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
     printf '    %s[3]%s Custom Selection %s[Pick extensions individually]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
     printf '    %s[4]%s Minimal %s[Foundation only — no optional extensions]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
     printf '  Choice [1-4, default 1]: '
@@ -813,7 +819,7 @@ EOF
         2|full|all)
             WANT_EXTRAS=1
             EXT_EXTRA=("${EXT_EXTRA_ALL[@]}")
-            printf '  %s✓%s Complete Experience selected (14 optional extensions)\n\n' "$C_GRN" "$C_OFF"
+            printf '  %s✓%s Complete Experience selected (8 optional extensions)\n\n' "$C_GRN" "$C_OFF"
             ;;
         3|custom)
             WANT_EXTRAS=1
@@ -980,7 +986,15 @@ fi
 CURSORS="${CURSORS:-adwaita}"
 case "$CURSORS" in
     adwaita|aosp|mactahoe|moga|original) ;;
-    *) die "unknown --cursors '$CURSORS' — pick adwaita, aosp, mactahoe, moga or original" ;;
+    *)
+        if [ -d "$HOME/.local/share/icons/$CURSORS" ] \
+           || [ -d "/usr/share/icons/$CURSORS" ] \
+           || [ -d "$HOME/.icons/$CURSORS" ]; then
+            :
+        else
+            die "unknown --cursors '$CURSORS' — pick adwaita, aosp, mactahoe, moga, original, or an installed cursor theme"
+        fi
+        ;;
 esac
 
 # Independent of --cursors: the pointer theme and the pointer size are two
@@ -1111,6 +1125,14 @@ if [ -z "$WANT_PANEL_BLUR_FIX" ]; then
     else
         WANT_PANEL_BLUR_FIX=0
     fi
+fi
+
+# Resolve remembered GDM choice on updates or runs without explicit GDM flags
+if [ -z "$GDM_EXPLICIT" ] && [ -r "$CONF_DIR/gdm-installed" ]; then
+    WANT_GDM=1
+fi
+if [ -z "$GDM_MONITORS_EXPLICIT" ] && [ -r "$CONF_DIR/gdm-monitors-synced" ]; then
+    WANT_GDM_MONITORS=1
 fi
 
 if [ -z "$RADIUS_PRESET_EXPLICIT" ] && [ -r "$CONF_DIR/radius-preset" ]; then
@@ -1257,7 +1279,15 @@ case "$ICONS" in
             *" ${ICONS#hatter-} "*) ;;
             *) die "unknown Hatter colour '${ICONS#hatter-}' — pick one of: $VALID_HATTER" ;;
         esac ;;
-    *) die "unknown --icons '$ICONS' — colloid, reversal, hatter, original, or a pack with -COLOUR" ;;
+    *)
+        if [ -d "$HOME/.local/share/icons/$ICONS" ] \
+           || [ -d "/usr/share/icons/$ICONS" ] \
+           || [ -d "$HOME/.icons/$ICONS" ]; then
+            :
+        else
+            die "unknown --icons '$ICONS' — colloid, reversal, hatter, original, or an installed icon theme"
+        fi
+        ;;
 esac
 
 case " $VALID_ACCENTS " in
@@ -1305,6 +1335,22 @@ printf '\n%s  aura-glass%s  %saccent %s%s\n' \
 [ "$DRY_RUN" = 1 ] && printf '%s  dry run — nothing will be changed%s\n' "$C_DIM" "$C_OFF"
 
 preflight
+
+# Request sudo credentials upfront once if any system-wide component requires root
+if [ "${SETTINGS_ONLY:-0}" = 0 ] && [ "${DRY_RUN:-0}" = 0 ] && [ "$EUID" -ne 0 ]; then
+    need_root=0
+    [ "${WANT_GDM:-0}" = 1 ] && need_root=1
+    [ "${WANT_GDM_MONITORS:-0}" = 1 ] && need_root=1
+    [ "${WANT_BLUR:-1}" = 1 ] && need_root=1
+    if [ "$need_root" = 1 ]; then
+        info "Authenticating sudo upfront for system components..."
+        if sudo -v; then
+            ( while true; do sudo -n true; sleep 50; kill -0 "$$" || exit; done ) 2>/dev/null &
+            SUDO_KEEP_ALIVE_PID=$!
+            trap 'kill $SUDO_KEEP_ALIVE_PID 2>/dev/null || true' EXIT
+        fi
+    fi
+fi
 
 # Retuning an existing install is the three steps that read a flag and write a
 # setting. Everything skipped here either fetches something (the theme, the
@@ -1408,6 +1454,10 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     # would write a memo that nothing acted on until the next full install.
     install_panel_blur_unit
     install_adaptive_performance
+    if [ -r "$CONF_DIR/gdm-installed" ] || [ -r "$CONF_DIR/gdm-monitors-synced" ]; then
+        install_gdm_sync_unit
+        "$REPO_ROOT/bin/aura-glass-gdm-sync" --once >/dev/null 2>&1 || true
+    fi
     if [ "$INCREMENTAL" = 1 ] && [ "$DRY_RUN" != 1 ]; then
         apply_source_fingerprint > "$CONF_DIR/apply-source-fingerprint"
     fi

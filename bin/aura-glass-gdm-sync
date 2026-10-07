@@ -95,6 +95,13 @@ sync_monitors() {
     done
 }
 
+# One-shot sync mode
+if [ "${1:-}" = "--once" ] || [ "${1:-}" = "-1" ]; then
+    sync_wallpaper || true
+    sync_monitors || true
+    exit 0
+fi
+
 # Initial sync on session start
 sync_wallpaper || true
 sync_monitors || true

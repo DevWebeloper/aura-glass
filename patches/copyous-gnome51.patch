@@ -1,0 +1,62 @@
+diff --git a/lib/ui/items/clipboardItem.js b/lib/ui/items/clipboardItem.js
+index 98bc72a..5a92d83 100644
+--- a/lib/ui/items/clipboardItem.js
++++ b/lib/ui/items/clipboardItem.js
+@@ -300,24 +300,31 @@ export { ClipboardItem };
+ 
+ // Based on https://gitlab.gnome.org/GNOME/mutter/-/blob/8b5c757bea75b7712bbe09c2018a8eb15b4d22cc/src/compositor/meta-background-content.c
+-let HoleEffect = class HoleEffect extends Shell.GLSLEffect {
++const BaseEffect = Shell.GLSLEffect || Clutter.Effect;
++let HoleEffect = class HoleEffect extends BaseEffect {
+ 	target;
+ 	_sizeLocation;
+ 	_holeBoxLocation;
+ 
+ 	constructor(target) {
+ 		super();
+ 		this.target = target;
+-		this._sizeLocation = this.get_uniform_location('size');
+-		this._holeBoxLocation = this.get_uniform_location('hole_box');
+-		target.connect('notify::allocation', () => this.queue_repaint());
++		if (Shell.GLSLEffect) {
++			this._sizeLocation = this.get_uniform_location('size');
++			this._holeBoxLocation = this.get_uniform_location('hole_box');
++			target.connect('notify::allocation', () => this.queue_repaint());
++		}
+ 	}
+ 
+ 	vfunc_paint_target(node, paintContext) {
+-		const size = this.actor.get_transformed_size();
+-		this.set_uniform_float(this._sizeLocation, 2, size);
+-		const position = this.target.apply_relative_transform_to_point(this.actor, new Graphene.Point3D());
+-		const [width, height] = this.target.get_transformed_size();
+-		this.set_uniform_float(this._holeBoxLocation, 4, [position.x - 1.5, position.y + 1, width + 2, height + 1]);
+-		super.vfunc_paint_target(node, paintContext);
++		if (Shell.GLSLEffect) {
++			const size = this.actor.get_transformed_size();
++			this.set_uniform_float(this._sizeLocation, 2, size);
++			const position = this.target.apply_relative_transform_to_point(this.actor, new Graphene.Point3D());
++			const [width, height] = this.target.get_transformed_size();
++			this.set_uniform_float(this._holeBoxLocation, 4, [position.x - 1.5, position.y + 1, width + 2, height + 1]);
++			super.vfunc_paint_target(node, paintContext);
++		}
+ 	}
+ 
+ 	vfunc_build_pipeline() {
++		if (!Shell.GLSLEffect) return;
+ 		const dec = `
+diff --git a/metadata.json b/metadata.json
+index 451b6ea..83adfa9 100644
+--- a/metadata.json
++++ b/metadata.json
+@@ -10,7 +10,9 @@
+   "shell-version": [
+     "45",
+     "46",
+     "47",
+-    "48"
++    "48",
++    "50",
++    "51"
+   ],
+   "url": "https://github.com/boerdereinar/copyous",

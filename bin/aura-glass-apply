@@ -175,6 +175,30 @@ revive "$GTK4_CSS"      "gtk4-gtk.css"
 revive "$GTK4_DARK_CSS" "gtk4-gtk-dark.css"
 revive "$GTK3_CSS"      "gtk3-gtk.css"
 
+# Seed missing targets from the installed theme if they were removed (e.g. by
+# a minimal uninstall) so Reapply reliably restores styling without needing a
+# full theme re-clone.
+ensure_targets() {
+    mkdir -p "$HOME/.config/gtk-4.0" "$HOME/.config/gtk-3.0"
+    if [ ! -f "$GTK4_CSS" ] && [ -f "$HOME/.themes/$THEME/gtk-4.0/gtk.css" ]; then
+        cp "$HOME/.themes/$THEME/gtk-4.0/gtk.css" "$GTK4_CSS"
+        echo "seeded $GTK4_CSS from ~/.themes/$THEME"
+    fi
+    if [ ! -f "$GTK4_DARK_CSS" ] && [ -f "$HOME/.themes/$THEME/gtk-4.0/gtk-dark.css" ]; then
+        cp "$HOME/.themes/$THEME/gtk-4.0/gtk-dark.css" "$GTK4_DARK_CSS"
+        echo "seeded $GTK4_DARK_CSS from ~/.themes/$THEME"
+    fi
+    if [ ! -f "$GTK3_CSS" ]; then
+        if [ -f "$HOME/.themes/$THEME/gtk-3.0/gtk.css" ]; then
+            cp "$HOME/.themes/$THEME/gtk-3.0/gtk.css" "$GTK3_CSS"
+            echo "seeded $GTK3_CSS from ~/.themes/$THEME"
+        else
+            touch "$GTK3_CSS"
+        fi
+    fi
+}
+ensure_targets
+
 # apply TARGET FLATTEN SNIPPET... — one marked block per target, concatenating
 # every snippet that is actually present. Optional sheets are installed and
 # removed by install.sh rather than switched on here, so a missing one simply
@@ -478,6 +502,18 @@ elif { [ "$SHELL_TARGET_CHANGED" = 1 ] || [ "$FORCE_RELOAD" = 1 ]; } && [ -d "$S
         GSETTINGS_SCHEMA_DIR="$SD" gsettings set org.gnome.shell.extensions.user-theme name "$cur"
         SHELL_RELOAD="reloaded"
         echo "shell theme reloaded ($cur)"
+    elif [ "$FORCE_RELOAD" = 1 ] && [ -d "$HOME/.themes/$THEME" ]; then
+        GSETTINGS_SCHEMA_DIR="$SD" gsettings set org.gnome.shell.extensions.user-theme name "$THEME"
+        SHELL_RELOAD="reloaded"
+        echo "shell theme set and reloaded ($THEME)"
+    fi
+    if [ "$FORCE_RELOAD" = 1 ] && [ -d "$HOME/.themes/$THEME" ]; then
+        gtk_cur=$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null || echo "''")
+        gtk_cur=${gtk_cur#\'}; gtk_cur=${gtk_cur%\'}
+        if [ "$gtk_cur" != "$THEME" ]; then
+            gsettings set org.gnome.desktop.interface gtk-theme "$THEME" 2>/dev/null || true
+            echo "gtk-theme set to $THEME"
+        fi
     fi
 fi
 

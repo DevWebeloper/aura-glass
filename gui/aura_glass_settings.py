@@ -416,7 +416,7 @@ def split_icons(value):
         return value, ""
     family, _, color = value.partition("-")
     if family not in ("colloid", "reversal", "hatter"):
-        return "colloid", ""
+        return value, ""
     if color not in [c[0] for c in ICON_COLORS[family]]:
         color = ""
     return family, color
@@ -426,7 +426,9 @@ def join_icons(family, color):
     """The other way, and the spelling install.sh's --icons takes."""
     if family in ("keep", "original") or not color:
         return family
-    return "%s-%s" % (family, color)
+    if family in ("colloid", "reversal", "hatter"):
+        return "%s-%s" % (family, color)
+    return family
 
 CURSOR_PACKS = [
     ("adwaita", "Adwaita", "Ships with GNOME. Crisper at every size"),
@@ -689,6 +691,149 @@ def installed_packs():
                     continue
                 seen.add(name)
                 yield name, path, mine
+
+
+def is_cursor_pack_installed(pack_id):
+    if pack_id == "adwaita":
+        return True
+    if pack_id == "aosp":
+        return any(os.path.isdir(os.path.join(r, "aosp-cursors")) for r in PACK_DIRS_SYSTEM + PACK_DIRS_MINE)
+    if pack_id == "mactahoe":
+        for r in PACK_DIRS_SYSTEM + PACK_DIRS_MINE:
+            if os.path.isdir(os.path.join(r, "MacTahoe-dark")) or os.path.isdir(os.path.join(r, "MacTahoe")):
+                return True
+        return False
+    if pack_id == "moga":
+        for r in PACK_DIRS_MINE + PACK_DIRS_SYSTEM:
+            if not os.path.exists(r):
+                continue
+            try:
+                for entry in os.listdir(r):
+                    if entry.startswith("Aura-Glass-Moga-") or entry.startswith("Moga-Neon"):
+                        return True
+            except OSError:
+                pass
+        return False
+    for r in PACK_DIRS_MINE + PACK_DIRS_SYSTEM:
+        if os.path.isdir(os.path.join(r, pack_id, "cursors")) or os.path.exists(os.path.join(r, pack_id, "cursor.theme")):
+            return True
+    return False
+
+
+def is_icon_pack_installed(pack_id):
+    if pack_id in ("colloid", "reversal", "hatter"):
+        prefix = pack_id
+    else:
+        for r in PACK_DIRS_MINE + PACK_DIRS_SYSTEM:
+            if os.path.isdir(os.path.join(r, pack_id)):
+                return True
+        return False
+
+    for r in PACK_DIRS_MINE + PACK_DIRS_SYSTEM:
+        if not os.path.exists(r):
+            continue
+        try:
+            for entry in os.listdir(r):
+                if entry.lower().startswith(prefix):
+                    return True
+        except OSError:
+            pass
+    return False
+
+
+def find_system_cursor_themes():
+    found = {}
+    known = {"adwaita", "adwaitalegacy", "mactahoe", "mactahoe-dark", "mactahoe-light",
+             "aosp-cursors", "default", "hicolor", "locolor"}
+    for root in PACK_DIRS_MINE + PACK_DIRS_SYSTEM:
+        if not os.path.exists(root):
+            continue
+        try:
+            for name in os.listdir(root):
+                path = os.path.join(root, name)
+                if not os.path.isdir(path):
+                    continue
+                if name.lower() in known or name.startswith("Aura-Glass-Moga-") or name.startswith("Moga-"):
+                    continue
+                if os.path.isdir(os.path.join(path, "cursors")) or os.path.exists(os.path.join(path, "cursor.theme")):
+                    if name not in found:
+                        found[name] = path
+        except OSError:
+            pass
+    return sorted(found.keys())
+
+
+def find_system_icon_themes():
+    found = {}
+    known = {"colloid", "reversal", "hatter", "default", "hicolor", "locolor", "adwaita", "mactahoe"}
+    for root in PACK_DIRS_MINE + PACK_DIRS_SYSTEM:
+        if not os.path.exists(root):
+            continue
+        try:
+            for name in os.listdir(root):
+                path = os.path.join(root, name)
+                if not os.path.isdir(path):
+                    continue
+                lower = name.lower()
+                if any(lower.startswith(k) for k in known) or name.startswith("Aura-Glass-Moga-") or name.startswith("Moga-"):
+                    continue
+                theme_file = os.path.join(path, "index.theme")
+                if os.path.exists(theme_file):
+                    if os.path.isdir(os.path.join(path, "cursors")) and not any(
+                        os.path.isdir(os.path.join(path, sub)) for sub in ("scalable", "16x16", "24x24", "32x32", "48x48", "64x64", "128x128", "apps", "places")
+                    ):
+                        continue
+                    try:
+                        content = open(theme_file, encoding="utf-8", errors="ignore").read()
+                        if "Directories=" in content and any(sub in content for sub in ("apps", "places", "status", "categories", "scalable")):
+                            if name not in found:
+                                found[name] = path
+                    except Exception:
+                        pass
+        except OSError:
+            pass
+    return sorted(found.keys())
+
+
+def get_cursor_packs():
+    base_packs = [
+        ("moga", "Moga Neon", "Accent-matched neon pointers by Moyash"),
+        ("adwaita", "Adwaita", "Ships with GNOME. Crisper at every size"),
+        ("aosp", "AOSP", "Android's pointers, the setup wizard's recommendation"),
+        ("mactahoe", "MacTahoe", "The macOS pointer set"),
+    ]
+    options = []
+    for pid, label, desc in base_packs:
+        installed = is_cursor_pack_installed(pid)
+        indicator = "[✓ Installed]" if installed else "[⬇ Needs download]"
+        options.append((pid, f"{label} {indicator}", desc))
+
+    for sys_cursor in find_system_cursor_themes():
+        options.append((sys_cursor, f"{sys_cursor} [✓ Installed]", "System cursor theme"))
+
+    options.append(("keep", "Default", "Left alone — set from anywhere else, untouched here"))
+    options.append(("original", "Original", "Back to what was set before aura-glass first ran"))
+    return options
+
+
+def get_icon_packs():
+    base_packs = [
+        ("reversal", "Reversal", "macOS-style circular icons, the setup wizard's recommendation"),
+        ("colloid", "Colloid", "Folder icons in a colour of their own"),
+        ("hatter", "Hatter", "Rounded squares, in the accent's colour"),
+    ]
+    options = []
+    for pid, label, desc in base_packs:
+        installed = is_icon_pack_installed(pid)
+        indicator = "[✓ Installed]" if installed else "[⬇ Needs download]"
+        options.append((pid, f"{label} {indicator}", desc))
+
+    for sys_icon in find_system_icon_themes():
+        options.append((sys_icon, f"{sys_icon} [✓ Installed]", "System icon theme"))
+
+    options.append(("keep", "Default", "Left alone — set from anywhere else, untouched here"))
+    options.append(("original", "Original", "Back to what was set before aura-glass first ran"))
+    return options
 
 
 def dir_size(path):
@@ -2023,9 +2168,10 @@ class Settings:
         # survive to the next run or that run sets the key again.
         icons = read_memo("icon-pack", "colloid") or "colloid"
         self.icons = join_icons(*split_icons(icons))
-        self.cursors = read_memo("cursor-pack", "adwaita") or "adwaita"
-        if self.cursors not in [c[0] for c in CURSOR_PACKS]:
-            self.cursors = "adwaita"
+        self.cursors = read_memo("cursor-pack", "moga") or "moga"
+        cursor_ids = [c[0] for c in get_cursor_packs()]
+        if self.cursors not in cursor_ids:
+            self.cursors = "moga" if "moga" in cursor_ids else "adwaita"
         # Independent of the theme above — a different gsettings key, see
         # read_cursor_size.
         self.cursor_size = read_cursor_size()
@@ -3046,9 +3192,14 @@ class Window(Adw.ApplicationWindow):
         pending_popover = Gtk.Popover(child=pending_scroller)
         self._pending_button.set_popover(pending_popover)
 
+        self._log_toggle_btn = Gtk.Button(label="Show Log", valign=Gtk.Align.CENTER)
+        self._log_toggle_btn.add_css_class("flat")
+        self._log_toggle_btn.connect("clicked", self._on_toggle_apply_log)
+
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         row.append(self._apply_status)
         row.append(self._pending_button)
+        row.append(self._log_toggle_btn)
         row.append(self._apply)
 
         # Its own line above the Apply row, not folded into apply_status: that
@@ -3370,9 +3521,19 @@ class Window(Adw.ApplicationWindow):
         self._apply_spinner.set_visible(True)
         self._apply_status.remove_css_class("error")
         self._apply_status.set_label(message)
-        self._apply_reveal.set_reveal_child(False)
-        self._apply_expander.set_expanded(False)
+        if not self._apply_reveal.get_reveal_child():
+            self._apply_reveal.set_reveal_child(False)
+            self._apply_expander.set_expanded(False)
+            self._log_toggle_btn.set_label("Show Log")
+        else:
+            self._log_toggle_btn.set_label("Hide Log")
         self._apply_log.get_buffer().set_text("")
+
+    def _on_toggle_apply_log(self, _button):
+        revealed = not self._apply_reveal.get_reveal_child()
+        self._apply_reveal.set_reveal_child(revealed)
+        self._apply_expander.set_expanded(revealed)
+        self._log_toggle_btn.set_label("Hide Log" if revealed else "Show Log")
 
     def _run_line(self, line):
         """One line of install.sh's output: into the log, and onto the status."""
@@ -3402,6 +3563,7 @@ class Window(Adw.ApplicationWindow):
             self._apply_status.add_css_class("error")
             self._apply_expander.set_expanded(True)
             self._apply_reveal.set_reveal_child(True)
+            self._log_toggle_btn.set_label("Hide Log")
         self._mark_dirty()
 
     def _applied_message(self):
@@ -3574,17 +3736,17 @@ class Window(Adw.ApplicationWindow):
                         "network.")
         family, color = split_icons(self._applied.icons)
         self._icons_row = self._combo(
-            "Icon pack", "", ICON_PACKS, family, "icons")
+            "Icon pack", "", get_icon_packs(), family, "icons")
         packs.add(self._icons_row)
 
         # Its own row rather than nine entries folded into the pack list: the
         # colour is not the accent, and a pack list that spelled out every
         # colour would say it was.
         self._icon_color_row = self._combo(
-            "Icon colour", "", ICON_COLORS[family], color, "icon_color")
+            "Icon colour", "", ICON_COLORS.get(family, [ICON_COLOR_FOLLOW]), color, "icon_color")
         packs.add(self._icon_color_row)
         self._cursors_row = self._combo(
-            "Pointer", "", CURSOR_PACKS, self._applied.cursors, "cursors")
+            "Pointer", "", get_cursor_packs(), self._applied.cursors, "cursors")
         packs.add(self._cursors_row)
 
         # Its own row and its own flag, not folded into the pack above: the
@@ -6477,7 +6639,7 @@ class Window(Adw.ApplicationWindow):
                 self._icon_color_row.get_selected()]
             self._loading = True
             self._refill_contextual_choice(
-                self._icon_color_row, ICON_COLORS[family], color,
+                self._icon_color_row, ICON_COLORS.get(family, [ICON_COLOR_FOLLOW]), color,
                 "icon_color")
             self._loading = False
 
@@ -6558,11 +6720,11 @@ class Window(Adw.ApplicationWindow):
         self._block[:] = self._applied.block
         family, color = split_icons(self._applied.icons)
         self._refill_contextual_choice(
-            self._icons_row, ICON_PACKS, family, "icons")
+            self._icons_row, get_icon_packs(), family, "icons")
         self._refill_contextual_choice(
-            self._icon_color_row, ICON_COLORS[family], color, "icon_color")
+            self._icon_color_row, ICON_COLORS.get(family, [ICON_COLOR_FOLLOW]), color, "icon_color")
         self._refill_contextual_choice(
-            self._cursors_row, CURSOR_PACKS, self._applied.cursors, "cursors")
+            self._cursors_row, get_cursor_packs(), self._applied.cursors, "cursors")
         self._cursor_size_row.set_value(self._applied.cursor_size)
         self._font_row.set_selected(
             self._font_row._ids.index(self._applied.font))

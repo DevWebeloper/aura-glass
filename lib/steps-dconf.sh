@@ -13,34 +13,43 @@
 load_dconf() {
     step "Loading the dconf preset"
 
-    if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: dconf load /org/gnome/shell/extensions/ < dconf/core.ini"
+    local is_update=0
+    if [ -f "$CONF_DIR/repo-path" ] || [ -f "$CONF_DIR/accent" ]; then
+        is_update=1
+    fi
+
+    if [ "$is_update" = 1 ] && [ "${FORCE:-0}" != 1 ]; then
+        ok "existing extension settings preserved (theme update)"
     else
-        dconf load /org/gnome/shell/extensions/ < "$REPO_ROOT/dconf/core.ini" \
-            || die "dconf load failed"
-    fi
-    ok "core look loaded"
-
-    # Applied over the top rather than as a separate preset, so solid mode is
-    # one overlay to read and to review rather than a second full copy of every
-    # key that would then have to be kept in step with core.ini.
-    if [ "${WANT_BLUR:-1}" != 1 ]; then
         if [ "${DRY_RUN:-0}" = 1 ]; then
-            info "dry-run: dconf load /org/gnome/shell/extensions/ < dconf/solid.ini"
+            info "dry-run: dconf load /org/gnome/shell/extensions/ < dconf/core.ini"
         else
-            dconf load /org/gnome/shell/extensions/ < "$REPO_ROOT/dconf/solid.ini" \
-                || die "dconf load of the solid preset failed"
+            dconf load /org/gnome/shell/extensions/ < "$REPO_ROOT/dconf/core.ini" \
+                || die "dconf load failed"
         fi
-        ok "solid mode loaded — no blur, opaque surfaces"
-    fi
+        ok "core look loaded"
 
-    if [ "${WANT_EXTRAS:-0}" = 1 ]; then
-        if [ "${DRY_RUN:-0}" = 1 ]; then
-            info "dry-run: dconf load /org/gnome/shell/extensions/ < dconf/extras.ini"
-        else
-            dconf load /org/gnome/shell/extensions/ < "$REPO_ROOT/dconf/extras.ini" || true
+        # Applied over the top rather than as a separate preset, so solid mode is
+        # one overlay to read and to review rather than a second full copy of every
+        # key that would then have to be kept in step with core.ini.
+        if [ "${WANT_BLUR:-1}" != 1 ]; then
+            if [ "${DRY_RUN:-0}" = 1 ]; then
+                info "dry-run: dconf load /org/gnome/shell/extensions/ < dconf/solid.ini"
+            else
+                dconf load /org/gnome/shell/extensions/ < "$REPO_ROOT/dconf/solid.ini" \
+                    || die "dconf load of the solid preset failed"
+            fi
+            ok "solid mode loaded — no blur, opaque surfaces"
         fi
-        ok "optional extension settings loaded"
+
+        if [ "${WANT_EXTRAS:-0}" = 1 ]; then
+            if [ "${DRY_RUN:-0}" = 1 ]; then
+                info "dry-run: dconf load /org/gnome/shell/extensions/ < dconf/extras.ini"
+            else
+                dconf load /org/gnome/shell/extensions/ < "$REPO_ROOT/dconf/extras.ini" || true
+            fi
+            ok "optional extension settings loaded"
+        fi
     fi
 
     # Open Bar regenerates its stylesheet when this key changes, so toggling it
@@ -1145,6 +1154,10 @@ apply_gsettings() {
         # would give.
         local o; o="$(gsettings_original cursor-theme)"
         cursor="${o:-Adwaita}"
+    elif [ -d "$HOME/.local/share/icons/$CURSORS" ] \
+         || [ -d "/usr/share/icons/$CURSORS" ] \
+         || [ -d "$HOME/.icons/$CURSORS" ]; then
+        cursor="$CURSORS"
     else
         cursor='Adwaita'
     fi
@@ -1170,6 +1183,7 @@ apply_gsettings() {
     apply_window_buttons
     apply_cursor_size
     apply_font
+    run gsettings set org.gnome.shell disable-extension-version-validation true
 
     # "left alone" rather than a name, because there is no name to give: the
     # key was not read and not written, and printing what it happens to hold

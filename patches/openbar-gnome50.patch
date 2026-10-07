@@ -71,13 +71,14 @@ diff --git a/openbar@neuromorph/metadata.json b/openbar@neuromorph/metadata.json
 index 8f543f7..c43c704 100644
 --- a/openbar@neuromorph/metadata.json
 +++ b/openbar@neuromorph/metadata.json
-@@ -12,7 +12,8 @@
+@@ -12,7 +12,9 @@
      "46",
      "47",
      "48",
 -    "49"
 +    "49",
-+    "50"
++    "50",
++    "51"
    ],
    "url": "https://github.com/neuromorph/openbar",
    "uuid": "openbar@neuromorph",

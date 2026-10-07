@@ -1,0 +1,81 @@
+# Maintainer: DevWebeloper <https://github.com/DevWebeloper>
+pkgname=aura-glass-git
+_pkgname=aura-glass
+pkgver=2.4.0.r12.g3a1bcde
+pkgrel=1
+pkgdesc="A fluid frosted-glass desktop environment and theme suite for GNOME 48-51"
+arch=('any')
+url="https://github.com/DevWebeloper/aura-glass"
+license=('GPL-3.0-or-later')
+depends=(
+    'bash'
+    'glib2'
+    'dconf'
+    'gnome-shell'
+    'python'
+    'sassc'
+    'unzip'
+    'curl'
+    'git'
+    'libxml2'
+)
+optdepends=(
+    'python-gobject: for Aura Glass Settings GUI and setup wizard'
+    'libadwaita: for Aura Glass Settings GUI and setup wizard'
+    'gettext: for compiling extension translations'
+    'imagemagick: for enhanced wallpaper rendering and dynamic GDM sync'
+    'python-pillow: for dynamic GDM login screen wallpaper blurring'
+)
+provides=("$_pkgname")
+conflicts=("$_pkgname")
+source=("git+https://github.com/DevWebeloper/aura-glass.git")
+sha256sums=('SKIP')
+
+pkgver() {
+    cd "$srcdir/$_pkgname"
+    git describe --long --tags --always 2>/dev/null | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' || echo "1.0.0"
+}
+
+package() {
+    cd "$srcdir/$_pkgname"
+
+    # Install core project to /usr/share/aura-glass
+    local destdir="$pkgdir/usr/share/$_pkgname"
+    install -dm755 "$destdir"
+    cp -r --preserve=mode,timestamps \
+        bin css dconf extensions gui lib patches systemd tokens tools install.sh uninstall.sh \
+        "$destdir/"
+
+    # Global wrappers
+    install -dm755 "$pkgdir/usr/bin"
+    ln -sf "/usr/share/$_pkgname/bin/aura-glass-apply" "$pkgdir/usr/bin/aura-glass-apply"
+    ln -sf "/usr/share/$_pkgname/bin/aura-glass-operation" "$pkgdir/usr/bin/aura-glass-operation"
+
+    # Wrapper to launch the setup or settings window
+    cat <<'EOF' > "$pkgdir/usr/bin/aura-glass"
+#!/usr/bin/env bash
+exec /usr/share/aura-glass/install.sh "$@"
+EOF
+    chmod 755 "$pkgdir/usr/bin/aura-glass"
+
+    cat <<'EOF' > "$pkgdir/usr/bin/aura-glass-settings"
+#!/usr/bin/env bash
+exec python3 /usr/share/aura-glass/gui/aura_glass_settings.py "$@"
+EOF
+    chmod 755 "$pkgdir/usr/bin/aura-glass-settings"
+
+    # Desktop entry & icon
+    install -dm755 "$pkgdir/usr/share/applications"
+    if [ -f "$destdir/gui/aura-glass-settings.desktop" ]; then
+        install -Dm644 "$destdir/gui/aura-glass-settings.desktop" "$pkgdir/usr/share/applications/aura-glass-settings.desktop"
+    fi
+    if [ -f "$destdir/gui/assets/aura-glass.svg" ]; then
+        install -Dm644 "$destdir/gui/assets/aura-glass.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/aura-glass.svg"
+    fi
+
+    # Documentation and license
+    install -dm755 "$pkgdir/usr/share/doc/$_pkgname"
+    for doc in README.md CONTRIBUTING.md docs/*; do
+        [ -f "$doc" ] && install -Dm644 "$doc" "$pkgdir/usr/share/doc/$_pkgname/"
+    done
+}

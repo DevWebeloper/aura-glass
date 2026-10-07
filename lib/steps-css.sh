@@ -160,6 +160,14 @@ apply_shell_tint_color() {
     if [ -z "$want" ] && [ -r "$memo" ]; then
         want="$(cat "$memo" 2>/dev/null || true)"
     fi
+    # If shell tint is not explicitly set, inherit app tint color
+    if [ -z "$want" ]; then
+        if [ -n "${APP_TINT_COLOR:-}" ]; then
+            want="$APP_TINT_COLOR"
+        elif [ -r "$CONF_DIR/app-tint-color" ]; then
+            want="$(cat "$CONF_DIR/app-tint-color" 2>/dev/null || true)"
+        fi
+    fi
     [ -n "$want" ] || return 0
 
     case "$want" in
@@ -233,6 +241,41 @@ apply_notification_opacity() {
         printf '%s\n' "$want" > "$memo"
     fi
     ok "arriving banners at ${want}% ground (remembered for later runs)"
+}
+
+apply_popup_transparency() {
+    local level="${APP_TRANSPARENCY:-0}"
+    local sheet="$CONF_DIR/shell-popup-blur.css"
+    [ -f "$sheet" ] || return 0
+    [ "$level" = 0 ] || [ "$level" = "0.0" ] || [ "$level" = "0.00" ] && return 0
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: scale popup background alpha proportionally with $level"
+        return 0
+    fi
+
+    python3 - "$sheet" "$level" <<'PY' || true
+import sys, re
+sheet = sys.argv[1]
+try:
+    level = float(sys.argv[2])
+except Exception:
+    sys.exit(0)
+if level <= 0 or level >= 1.5:
+    sys.exit(0)
+
+ratio = level / 0.90
+def repl(m):
+    r, g, b, a = m.group(1), m.group(2), m.group(3), float(m.group(4))
+    new_a = max(0.10, min(0.85, round(a * ratio, 2)))
+    return f"rgba({r}, {g}, {b}, {new_a:.2f})"
+
+with open(sheet, "r", encoding="utf-8") as f:
+    content = f.read()
+new_content = re.sub(r"rgba\((\d+),\s*(\d+),\s*(\d+),\s*(0\.\d+)\)", repl, content)
+with open(sheet, "w", encoding="utf-8") as f:
+    f.write(new_content)
+PY
 }
 
 install_transparency_css() {
@@ -463,6 +506,7 @@ install_css() {
     # and popup ones are decided, so whichever set is installed is the set that
     # gets the colour.
     apply_shell_tint_color
+    apply_popup_transparency
     # The other rewriter over that same sheet, and independent of the tint above
     # it: that one owns a literal's colour channels, this one owns its alpha, so
     # the order between the two does not matter and neither undoes the other.
