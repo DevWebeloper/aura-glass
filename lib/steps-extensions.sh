@@ -388,10 +388,9 @@ rounded_blur_staleness_check() {
     found="$(dconf read /org/gnome/shell/extensions/blur-my-shell/rounded-blur-found 2>/dev/null || true)"
     [ "$found" = false ] || return 0
     warn "gnome-rounded-blur is installed here, but the shell is not finding it."
-    warn "Mutter has probably been updated — it has to be rebuilt against it:"
+    warn "Mutter has probably been updated — it can be rebuilt against it:"
     warn "    ./install.sh --rounded-blur --force"
-    warn "Until then the popup blur falls back to static. Still rounded, but it"
-    warn "samples the wallpaper rather than the window behind it."
+    warn "Popup blur remains dynamic, but without native shader corner rounding."
 }
 
 install_extensions() {

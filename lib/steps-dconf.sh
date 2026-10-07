@@ -211,11 +211,8 @@ apply_app_opacity() {
 # flagless re-install would quietly turn popup blur back on over a deliberate
 # --no-popup-blur. Same reason --grain and --icons are remembered.
 #
-# static-blur, because the right value depends on the machine. Rounded corners
-# on a dynamic blur need the gnome-rounded-blur library; a static blur rounds
-# itself. So when the library is missing this falls back to static, and the
-# corners stay round instead of going square. It self-heals: install the
-# library, re-run, and it flips back to dynamic.
+# static-blur is kept false: popup and Quick Settings blur is always dynamic,
+# sampling the live surface behind menus and Quick Settings in real time.
 # Which windows the applications component treats, as wm_class patterns.
 #
 # Blur My Shell compiles these and matches a window's wm_class against them
@@ -499,21 +496,11 @@ apply_popup_blur() {
         return 0
     fi
 
-    # Written by Blur My Shell at every enable, so on a first install — before
-    # the shell has ever loaded this build — it is absent and we start static.
-    # The next run picks the library up.
-    local found
-    found="$(dconf read "$base/rounded-blur-found" 2>/dev/null || true)"
-
+    # Popup and Quick Settings blur is always dynamic — it tracks whatever is
+    # behind the menu or Quick Settings in real time.
     run dconf write "$base/popup/blur" true
-    if [ "$found" = true ]; then
-        run dconf write "$base/popup/static-blur" false
-        ok "popup blur on, dynamic — it tracks whatever is behind the popup"
-    else
-        run dconf write "$base/popup/static-blur" true
-        ok "popup blur on, static — rounded, but sampling the wallpaper"
-        info "install gnome-rounded-blur (--rounded-blur) for blur that tracks windows"
-    fi
+    run dconf write "$base/popup/static-blur" false
+    ok "popup blur on, dynamic — it tracks whatever is behind Quick Settings and menus"
 }
 
 # Notification banners and the history cards in the date menu, gated by the
