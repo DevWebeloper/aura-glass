@@ -88,7 +88,7 @@ def state(**kw):
                         "popup_brightness": 115, "notification_opacity": 40,
                         "popup_blur": True, "notification_blur": True,
                         "scope": "gtk"},
-        "performance": {"transparency": "0", "app_tint": "#000000",
+        "performance": {"transparency": "0.99", "app_tint": "#000000",
                         "shell_tint": "#000000", "blur_strength": 100,
                         "popup_brightness": 115, "notification_opacity": 40,
                         "popup_blur": False, "notification_blur": False,
@@ -102,7 +102,7 @@ def state(**kw):
 
 FROSTED = state()
 SOLID = state(blur=False)
-PERFORMANCE = state(glass_mode="performance", blur=False, transparency="0",
+PERFORMANCE = state(glass_mode="performance", blur=False, transparency="0.99",
                     scope="none", popup_blur=False, notification_blur=False)
 
 # (description, state on disk, state the widgets are asking for, expected argv)
@@ -216,20 +216,20 @@ CASES = [
      ["--radius-preset", "sharp", "--glass-mode", "solid"]),
 
     ("frosted -> performance", FROSTED,
-     state(glass_mode="performance", blur=False, transparency="0",
+     state(glass_mode="performance", blur=False, transparency="0.99",
            scope="none", popup_blur=False, notification_blur=False),
      ["--glass-mode", "performance"]),
 
     ("performance -> frosted",
-     state(glass_mode="performance", blur=False, transparency="0",
+     state(glass_mode="performance", blur=False, transparency="0.99",
            scope="none", popup_blur=False, notification_blur=False,
            modes={"frosted": {"transparency": "0.90"}}),
      state(), ["--glass-mode", "frosted"]),
 
     ("shell tint edited inside performance",
-     state(glass_mode="performance", blur=False, transparency="0",
+     state(glass_mode="performance", blur=False, transparency="0.99",
            scope="none", popup_blur=False, notification_blur=False),
-     state(glass_mode="performance", blur=False, transparency="0",
+     state(glass_mode="performance", blur=False, transparency="0.99",
            scope="none", popup_blur=False, notification_blur=False,
            shell_tint="#101820"),
      ["--shell-tint-color", "#101820"]),

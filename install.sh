@@ -1061,8 +1061,13 @@ if [ -z "$ADAPTIVE_BLUR" ]; then
 fi
 
 if [ "${WANT_BLUR:-1}" = 0 ]; then
-    APP_TRANSPARENCY=0
-    APP_OPACITY=255
+    if [ "${GLASS_MODE:-}" = performance ]; then
+        APP_TRANSPARENCY="${APP_TRANSPARENCY:-0.99}"
+        APP_OPACITY="${APP_OPACITY:-252}"
+    else
+        APP_TRANSPARENCY=0
+        APP_OPACITY=255
+    fi
 elif [ -z "$APP_TRANSPARENCY" ]; then
     if [ -r "$CONF_DIR/app-transparency" ]; then
         APP_TRANSPARENCY="$(cat "$CONF_DIR/app-transparency" 2>/dev/null || true)"

@@ -85,8 +85,8 @@ apply_glass_mode() {
             [ -n "${POPUP_BLUR_EXPLICIT:-}" ]  || WANT_POPUP_BLUR=0
             [ -n "${NOTIFICATION_BLUR_EXPLICIT:-}" ] || WANT_NOTIFICATION_BLUR=0
             if [ -z "${APP_TRANSPARENCY_EXPLICIT:-}" ]; then
-                APP_TRANSPARENCY=0
-                APP_OPACITY=255
+                APP_TRANSPARENCY=0.99
+                APP_OPACITY=252
             fi
             WANT_STYLING=1
             ;;
@@ -227,7 +227,7 @@ seed_glass_mode() {
         mode_memo_write app-tint-color   "${disk_app:-#0b0b0f}"
         mode_memo_write shell-tint-color "${disk_shell:-#0b0b0f}"
     elif [ "${GLASS_MODE:-}" = performance ]; then
-        mode_memo_write app-transparency "0"
+        mode_memo_write app-transparency "0.99"
         mode_memo_write app-tint-color   "${disk_app:-#000000}"
         mode_memo_write shell-tint-color "${disk_shell:-#000000}"
         mode_memo_write app-blur-scope   "none"
@@ -261,7 +261,9 @@ load_glass_mode_memos() {
     # A value install.sh would refuse is treated as an empty drawer rather than
     # passed along: the flag it would become dies in the parser, which is a
     # failure a long way from the file that caused it.
-    local level; level="$(mode_memo_read app-transparency 0)"
+    local def_t=0
+    [ "${GLASS_MODE}" = performance ] && def_t=0.99
+    local level; level="$(mode_memo_read app-transparency "$def_t")"
     case "$level" in
         0|0.[0-9][0-9]|1.00) ;;
         *) warn "$(mode_memo_path app-transparency) holds '$level' — reseeding this mode"
@@ -270,7 +272,7 @@ load_glass_mode_memos() {
     esac
 
     [ -n "${APP_TRANSPARENCY_EXPLICIT:-}" ] || [ -n "${APP_TRANSPARENCY:-}" ] \
-        || APP_TRANSPARENCY="$(mode_memo_read app-transparency 0)"
+        || APP_TRANSPARENCY="$(mode_memo_read app-transparency "$def_t")"
     [ -n "${APP_TINT_COLOR:-}" ]   || APP_TINT_COLOR="$(mode_memo_read app-tint-color '#000000')"
     [ -n "${SHELL_TINT_COLOR:-}" ] || SHELL_TINT_COLOR="$(mode_memo_read shell-tint-color '#000000')"
     [ -n "${BLUR_STRENGTH:-}" ]    || BLUR_STRENGTH="$(mode_memo_read blur-strength 100)"

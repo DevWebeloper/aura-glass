@@ -2131,7 +2131,7 @@ class Settings:
                 self.glass_mode = "frosted"
 
         if self.glass_mode == "performance":
-            self.transparency = "0"
+            self.transparency = "0.99"
             self.scope = "none"
             self.popup_blur = False
             self.notification_blur = False
@@ -2254,7 +2254,7 @@ class Settings:
                 tint_default = disk_app_tint or "#0b0b0f"
                 shell_default = disk_shell_tint or "#0b0b0f"
             elif mode == "performance":
-                level = "0"
+                level = "0.99"
                 tint_default = disk_app_tint or "#000000"
                 shell_default = disk_shell_tint or "#000000"
             else:
@@ -6561,7 +6561,7 @@ class Window(Adw.ApplicationWindow):
             s.notification_opacity = int(round(
                 self._ground_scales["performance"].get_value()))
             s.scope = "none"
-            s.transparency = "0"
+            s.transparency = "0.99"
             s.popup_blur = False
             s.notification_blur = False
         else:
