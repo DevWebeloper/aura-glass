@@ -111,8 +111,7 @@
 window,
 window.background,
 .background,
-windowhandle,
-#NautilusFileChooser.background {
+windowhandle {
   background-color: alpha(@tg_tint_window, 0.92);
   background-color: color-mix(in srgb, var(--tg-tint-window) 92%, transparent);
 }
@@ -324,14 +323,8 @@ window.solid-csd .titlebar.default-decoration:backdrop windowhandle {
  * what puts the two back in agreement.
  */
 headerbar,
-headerbar.titlebar,
-.titlebar,
-window headerbar,
 headerbar windowhandle,
 headerbar:backdrop,
-headerbar.titlebar:backdrop,
-.titlebar:backdrop,
-window headerbar:backdrop,
 headerbar:backdrop windowhandle {
   background-color: transparent;
   background-image: none;
@@ -458,8 +451,6 @@ toolbarview > revealer.top-bar > windowhandle:backdrop {
 }
 
 .content-pane,
-toastoverlay > overlay-split-view > widget.background,
-widget > overlay-split-view > widget.background,
 #right_box,
 #right_box scrolledwindow,
 #right_box viewport,
