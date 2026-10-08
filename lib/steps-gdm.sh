@@ -233,6 +233,20 @@ install_gdm() {
         sed -i 's|assets/background.png|file:///usr/share/backgrounds/aura-gdm.png|g' \
             "$src"/src/main/gnome-shell/gnome-shell-*.css 2>/dev/null || true
 
+        # Patch login auth prompt & dialog styles so GDM correctly aligns password entry and submit arrow
+        if [ -f "$REPO_ROOT/css/shell-50-dialogs.css" ]; then
+            for css_file in "$src"/other/gdm/theme/gnome-shell-*.css; do
+                if [ -f "$css_file" ] && ! grep -q "login-dialog-button.next-button" "$css_file"; then
+                    cat "$REPO_ROOT/css/shell-50-dialogs.css" >> "$css_file"
+                fi
+            done
+            for scss_file in "$src"/src/main/gnome-shell/_shell-base.scss; do
+                if [ -f "$scss_file" ] && ! grep -q "login-dialog-button.next-button" "$scss_file"; then
+                    cat "$REPO_ROOT/css/shell-50-dialogs.css" >> "$scss_file"
+                fi
+            done
+        fi
+
         # Neutralize WhiteSur internal network & system package checks that can freeze/hang
         sed -i 's/prepare_deps/true/g' "$src"/libs/*.sh 2>/dev/null || true
         sed -i 's/get_utc_epoch_time/true/g' "$src"/libs/*.sh 2>/dev/null || true

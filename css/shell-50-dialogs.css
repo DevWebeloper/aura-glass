@@ -79,3 +79,136 @@
   background-color: -st-accent-color;
   box-shadow: inset 0 0 0 99px rgba(255, 255, 255, 0.12) !important;
 }
+
+/* ---------- Login and Unlock screen authentication prompt ----------
+ * GNOME Shell 46+ (through 51+) in js/gdm/authPrompt.js wraps the password
+ * entry and submit action inside a Clutter.BinLayout (.login-dialog-prompt-entry-area).
+ * The entry (.login-dialog-prompt-entry) contains the password text and the
+ * peek-password eye icon (StIcon.peek-password). The submit action
+ * (.login-dialog-default-button-well) sits at x_align: END and contains
+ * .login-dialog-button.next-button with 'go-next-symbolic' (the arrow).
+ *
+ * Without explicit sizing and padding, .next-button inherits the stock .button
+ * style (padding: 3px 24px) and its StIcon defaults to 48px, placing a giant
+ * submit button directly on top of the 16px peek-password eye icon at the
+ * right edge of the entry.
+ *
+ * Fix this layout:
+ * 1. Reserve 48px padding on the trailing edge of .login-dialog-prompt-entry
+ *    so the peek-password eye icon sits inside the content box to the left of
+ *    the submit button with a clean 16px gap.
+ * 2. Position .login-dialog-default-button-well 8px from the trailing edge.
+ * 3. Style .login-dialog-button.next-button as a 24x24px circular icon button
+ *    with a 16px icon, transparent background, and subtle hover/active states,
+ *    aligning it harmoniously beside the 16px eye icon with zero overlap.
+ */
+.login-dialog-prompt-entry-area {
+  margin: 0.5em 0;
+}
+
+.login-dialog .login-dialog-prompt-entry,
+.unlock-dialog .login-dialog-prompt-entry,
+.login-dialog-prompt-entry {
+  padding-right: 48px !important;
+}
+
+.login-dialog .login-dialog-prompt-entry:rtl,
+.unlock-dialog .login-dialog-prompt-entry:rtl,
+.login-dialog-prompt-entry:rtl {
+  padding-right: 16px !important;
+  padding-left: 48px !important;
+}
+
+.login-dialog-default-button-well,
+.login-dialog .login-dialog-default-button-well,
+.unlock-dialog .login-dialog-default-button-well {
+  margin-right: 8px;
+}
+
+.login-dialog-default-button-well:rtl,
+.login-dialog .login-dialog-default-button-well:rtl,
+.unlock-dialog .login-dialog-default-button-well:rtl {
+  margin-right: 0;
+  margin-left: 8px;
+}
+
+.login-dialog-button.next-button,
+.login-dialog .login-dialog-button.next-button,
+.unlock-dialog .login-dialog-button.next-button {
+  background-color: transparent !important;
+  background-image: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  icon-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  border-radius: 9999px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.login-dialog-button.next-button StIcon,
+.login-dialog .login-dialog-button.next-button StIcon,
+.unlock-dialog .login-dialog-button.next-button StIcon {
+  icon-size: 16px;
+  padding: 0;
+  margin: 0;
+}
+
+.login-dialog-button.next-button:default,
+.login-dialog .login-dialog-button.next-button:default,
+.unlock-dialog .login-dialog-button.next-button:default {
+  background-color: transparent !important;
+  background-image: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.login-dialog-button.next-button:hover,
+.login-dialog-button.next-button:focus,
+.login-dialog .login-dialog-button.next-button:hover,
+.login-dialog .login-dialog-button.next-button:focus,
+.unlock-dialog .login-dialog-button.next-button:hover,
+.unlock-dialog .login-dialog-button.next-button:focus {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.16) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.login-dialog-button.next-button:active,
+.login-dialog .login-dialog-button.next-button:active,
+.unlock-dialog .login-dialog-button.next-button:active {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.28) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.login-dialog-button.next-button:insensitive,
+.login-dialog .login-dialog-button.next-button:insensitive,
+.unlock-dialog .login-dialog-button.next-button:insensitive {
+  color: rgba(255, 255, 255, 0.25) !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Ensure peek-password eye icon is properly sized and styled */
+.login-dialog StEntry StIcon.peek-password,
+.unlock-dialog StEntry StIcon.peek-password,
+StEntry StIcon.peek-password {
+  icon-size: 16px;
+  padding: 0 4px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.login-dialog StEntry StIcon.peek-password:hover,
+.unlock-dialog StEntry StIcon.peek-password:hover,
+StEntry StIcon.peek-password:hover {
+  color: #ffffff;
+}
+
