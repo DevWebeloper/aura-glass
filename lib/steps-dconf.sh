@@ -211,8 +211,10 @@ apply_app_opacity() {
 # flagless re-install would quietly turn popup blur back on over a deliberate
 # --no-popup-blur. Same reason --grain and --icons are remembered.
 #
-# static-blur is kept false: popup and Quick Settings blur is always dynamic,
-# sampling the live surface behind menus and Quick Settings in real time.
+# static-blur is kept false: popup and Quick Settings blur is dynamic,
+# sampling whatever is behind the menu in real time. Corner rounding is handled
+# natively when gnome-rounded-blur is available, or via Blur My Shell's corner
+# shader fallback.
 # Which windows the applications component treats, as wm_class patterns.
 #
 # Blur My Shell compiles these and matches a window's wm_class against them
@@ -496,11 +498,9 @@ apply_popup_blur() {
         return 0
     fi
 
-    # Popup and Quick Settings blur is always dynamic — it tracks whatever is
-    # behind the menu or Quick Settings in real time.
     run dconf write "$base/popup/blur" true
     run dconf write "$base/popup/static-blur" false
-    ok "popup blur on, dynamic — it tracks whatever is behind Quick Settings and menus"
+    ok "popup blur on, dynamic — sampling live surface behind popups"
 }
 
 # Notification banners and the history cards in the date menu, gated by the
@@ -1026,6 +1026,27 @@ moga_cursor_theme() {
     printf 'Aura-Glass-Moga-%s\n' "$variant"
 }
 
+sync_cursor_theme_files() {
+    local cursor="$1"
+    [ -n "$cursor" ] || return 0
+    [ "${DRY_RUN:-0}" = 1 ] && return 0
+
+    mkdir -p "$HOME/.icons/default" "$HOME/.local/share/icons/default"
+    printf '[Icon Theme]\nName=Default\nComment=Default Cursor Theme\nInherits=%s\n' "$cursor" > "$HOME/.icons/default/index.theme"
+    printf '[Icon Theme]\nName=Default\nComment=Default Cursor Theme\nInherits=%s\n' "$cursor" > "$HOME/.local/share/icons/default/index.theme"
+
+    # Expose custom cursor theme directories directly under ~/.icons for XWayland and legacy apps
+    for c in "$HOME/.local/share/icons"/Aura-Glass-Moga-* "$HOME/.local/share/icons"/MacTahoe* "$HOME/.local/share/icons"/aosp*; do
+        [ -d "$c" ] || continue
+        ln -sfn "$c" "$HOME/.icons/$(basename "$c")"
+    done
+
+    if [ -f "$HOME/.config/gtk-3.0/settings.ini" ]; then
+        sed -i "/^gtk-cursor-theme-name=/d" "$HOME/.config/gtk-3.0/settings.ini"
+        sed -i "/^\[Settings\]/a gtk-cursor-theme-name=$cursor" "$HOME/.config/gtk-3.0/settings.ini"
+    fi
+}
+
 apply_moga_cursor_theme() {
     local cursor
     cursor="$(moga_cursor_theme)"
@@ -1035,6 +1056,7 @@ apply_moga_cursor_theme() {
         install_moga_cursors
     fi
     run gsettings set org.gnome.desktop.interface cursor-theme "$cursor"
+    sync_cursor_theme_files "$cursor"
 }
 
 apply_gsettings() {
@@ -1123,6 +1145,7 @@ apply_gsettings() {
     fi
     if [ -n "$cursor" ]; then
         run gsettings set org.gnome.desktop.interface cursor-theme "$cursor"
+        sync_cursor_theme_files "$cursor"
     fi
 
     # Remembered like the accent above and for the same reason: a later flagless

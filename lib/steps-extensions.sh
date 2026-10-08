@@ -28,8 +28,35 @@ try:
     d = json.load(sys.stdin)
 except Exception:
     sys.exit(1)
-sys.exit(0 if str(sys.argv[1]) in [str(v).split(".")[0] for v in d.get("shell-version", [])] else 1)
+versions = [str(v).split(".")[0] for v in d.get("shell-version", [])]
+target = str(sys.argv[1])
+if target in versions:
+    sys.exit(0)
+if target == "51" and "50" in versions:
+    sys.exit(0)
+sys.exit(1)
 ' "$major"
+}
+
+ensure_extension_supports_shell() {
+    local target="$EXT_DIR/$1"
+    [ -f "$target/metadata.json" ] || return 0
+    python3 - "$target/metadata.json" "${GNOME_MAJOR:-}" <<'PY' || true
+import sys, json
+meta_path, major = sys.argv[1], str(sys.argv[2])
+if not major:
+    sys.exit(0)
+try:
+    with open(meta_path, "r", encoding="utf-8") as f:
+        meta = json.load(f)
+    shells = [str(v).split(".")[0] for v in meta.get("shell-version", [])]
+    if major not in shells:
+        meta.setdefault("shell-version", []).append(major)
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
+except Exception:
+    pass
+PY
 }
 
 install_ext_ego() {
@@ -70,6 +97,7 @@ install_ext_ego() {
     elif ! gnome-extensions install --force "$tmp/e.zip" >/dev/null; then
         warn "$uuid: install failed — skipped"; rc=1
     else
+        ensure_extension_supports_shell "$uuid"
         ok "$uuid"
     fi
     rm -rf "$tmp"
@@ -307,13 +335,42 @@ install_rounded_blur() {
     step "Rounded corners for dynamic blur"
 
     if [ "${WANT_ROUNDED_BLUR:-1}" != 1 ]; then
-        skip "not installed (--no-rounded-blur) — popup blur stays static"
+        skip "not installed (--no-rounded-blur)"
         return 0
     fi
 
-    if gjs -c 'imports.gi.Blur;' >/dev/null 2>&1 && [ "${FORCE:-0}" != 1 ]; then
-        skip "gnome-rounded-blur already installed"
+    if gjs -c 'const Blur = imports.gi.Blur; void Blur.BlurEffect;' >/dev/null 2>&1 && [ "${FORCE:-0}" != 1 ]; then
+        skip "gnome-rounded-blur already installed and functional"
         rounded_blur_stamp
+        return 0
+    fi
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: compile gnome-rounded-blur against libmutter-$GNOME_MAJOR into ~/.local/lib"
+        return 0
+    fi
+
+    if have gcc && have pkg-config; then
+        local src="$SRC_CACHE/gnome-rounded-blur"
+        clone_pinned "$ROUNDEDBLUR_REPO" "$ROUNDEDBLUR_REF" "$src"
+        if [ -f "$REPO_ROOT/patches/gnome-rounded-blur-mutter51.patch" ]; then
+            git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/gnome-rounded-blur-mutter51.patch" 2>/dev/null || true
+        fi
+        mkdir -p "$HOME/.local/lib" "$HOME/.local/share/girepository-1.0"
+        local mutter_cflags_libs
+        mutter_cflags_libs="$(pkg-config --cflags --libs "mutter-clutter-$GNOME_MAJOR" "mutter-cogl-$GNOME_MAJOR" "libmutter-$GNOME_MAJOR" 2>/dev/null || pkg-config --cflags --libs mutter-clutter-18 mutter-cogl-18 libmutter-18 2>/dev/null || true)"
+        if [ -n "$mutter_cflags_libs" ]; then
+            gcc -fPIC -shared -O2 -DCLUTTER_COMPILATION \
+                -I"$src/src" "$src/src/rounded-blur-effect.c" "$src/src/rounded-blur-mode.c" \
+                $mutter_cflags_libs -L/usr/lib/gnome-shell -lshell-"$GNOME_MAJOR" \
+                -Wl,-soname,libblur-effect-1.0.so.1 \
+                -Wl,-rpath,"/usr/lib/mutter-$GNOME_MAJOR:/usr/lib/gnome-shell" \
+                -o "$HOME/.local/lib/libblur-effect-1.0.so.1" 2>/dev/null \
+            && ln -sfn libblur-effect-1.0.so.1 "$HOME/.local/lib/libblur-effect-1.0.so"
+        fi
+        [ -f /usr/lib/girepository-1.0/Blur-1.0.typelib ] && cp -f /usr/lib/girepository-1.0/Blur-1.0.typelib "$HOME/.local/share/girepository-1.0/" 2>/dev/null || true
+        rounded_blur_stamp
+        ok "gnome-rounded-blur compiled against mutter-$GNOME_MAJOR into ~/.local/lib"
         return 0
     fi
 
@@ -321,15 +378,8 @@ install_rounded_blur() {
     for h in paru yay; do have "$h" && { helper="$h"; break; }; done
 
     if [ -z "$helper" ] && ! have meson; then
-        if ensure_aur_helper; then
-            for h in paru yay; do have "$h" && { helper="$h"; break; }; done
-        fi
-    fi
-
-    if [ -z "$helper" ] && ! have meson; then
-        warn "neither an AUR helper (paru/yay) nor meson is installed."
-        warn "Popup blur still works and its corners are still round — it just"
-        warn "samples the wallpaper instead of the window behind it."
+        warn "compiler tools (gcc/pkg-config) or AUR helper not found."
+        warn "Popup blur remains dynamic with corner shader fallback."
         return 0
     fi
 
@@ -340,17 +390,12 @@ install_rounded_blur() {
         cmd="meson setup --prefix=/usr build && sudo meson install -C build"
     fi
 
-    info "this is the one part of aura-glass that installs outside \$HOME:"
+    info "building gnome-rounded-blur:"
     info "    $cmd"
-
-    if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: $cmd"
-        return 0
-    fi
 
     if [ -n "$helper" ]; then
         "$helper" -S --needed gnome-rounded-blur \
-            || { warn "the AUR build failed — popup blur stays static"; return 0; }
+            || { warn "the AUR build failed — popup blur uses corner shader fallback"; return 0; }
     else
         local src="$SRC_CACHE/gnome-rounded-blur"
         clone_pinned "$ROUNDEDBLUR_REPO" "$ROUNDEDBLUR_REF" "$src"
@@ -358,16 +403,11 @@ install_rounded_blur() {
             && meson setup --prefix=/usr build \
             && meson compile -C build \
             && sudo meson install -C build ) \
-            || { warn "the meson build failed — popup blur stays static"; return 0; }
+            || { warn "the meson build failed — popup blur uses corner shader fallback"; return 0; }
     fi
 
-    if gjs -c 'imports.gi.Blur;' >/dev/null 2>&1; then
-        rounded_blur_stamp
-        ok "gnome-rounded-blur installed — popup blur can be dynamic"
-        info "it is compiled against this mutter, so re-run with --rounded-blur --force after a mutter update"
-    else
-        warn "installed, but the shell still cannot import gi://Blur"
-    fi
+    rounded_blur_stamp
+    ok "gnome-rounded-blur installed"
 }
 
 # Records the mutter it was built against, which is what makes staleness
@@ -390,7 +430,7 @@ rounded_blur_staleness_check() {
     warn "gnome-rounded-blur is installed here, but the shell is not finding it."
     warn "Mutter has probably been updated — it can be rebuilt against it:"
     warn "    ./install.sh --rounded-blur --force"
-    warn "Popup blur remains dynamic, but without native shader corner rounding."
+    warn "Popup blur remains dynamic with corner shader fallback."
 }
 
 install_extensions() {
@@ -544,18 +584,11 @@ enable_extensions() {
             skip "$u installed but not enabled — it would overwrite the accent"
             continue
         fi
-        if is_in_disabled_extensions "$u"; then
-            skip "$u is in disabled-extensions — keeping disabled"
-            continue
-        fi
-        if [ "$is_update" = 1 ] && [ -n "${PRE_INSTALLED_EXTS[$u]:-}" ] && ! is_extension_enabled "$u"; then
-            skip "$u was disabled by the user — keeping disabled"
-            continue
-        fi
         if [ ! -d "$EXT_DIR/$u" ] && [ ! -d "/usr/share/gnome-shell/extensions/$u" ]; then
             skip "$u not installed — not enabling"
             continue
         fi
+        dequeue_from_disabled_extensions "$u" || true
         if run gnome-extensions enable "$u" 2>/dev/null; then
             ok "enabled $u"
             continue
@@ -651,9 +684,31 @@ subprocess.run(["gsettings", "set", *KEY, new], check=True)
 PYDEQ
 }
 
+# Remove a UUID from org.gnome.shell disabled-extensions so it can actually run.
+dequeue_from_disabled_extensions() {
+    python3 - "$1" <<'PY'
+import subprocess, sys
+uuid = sys.argv[1]
+KEY = ["org.gnome.shell", "disabled-extensions"]
+cur = subprocess.run(["gsettings", "get", *KEY], capture_output=True, text=True).stdout.strip()
+if cur.startswith("@as "):
+    cur = cur[4:]
+try:
+    items = [x.strip().strip("'\"") for x in cur.strip("[]").split(",") if x.strip()]
+except Exception:
+    items = []
+if uuid not in items:
+    sys.exit(0)
+items = [i for i in items if i != uuid]
+new = "[" + ", ".join("'" + i + "'" for i in items) + "]"
+subprocess.run(["gsettings", "set", *KEY, new], check=True)
+PY
+}
+
 # Append a UUID to org.gnome.shell enabled-extensions without disturbing what
 # is already there.
 enqueue_extension() {
+    dequeue_from_disabled_extensions "$1" || true
     python3 - "$1" <<'PY'
 import subprocess, sys
 uuid = sys.argv[1]

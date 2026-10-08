@@ -149,10 +149,11 @@ index 4b68d7e..0eaa66c 100644
  
      _get_keyboard_actors() {
 diff --git a/src/components/popup/message_stacks.js b/src/components/popup/message_stacks.js
-index 52c796f..b1ce6f4 100644
+index 52c796f..b5f9e6d 100644
 --- a/src/components/popup/message_stacks.js
 +++ b/src/components/popup/message_stacks.js
-@@ -1,13 +1,21 @@
+@@ -1,13 +1,22 @@
++import { CornerEffect } from '../../effects/corner.js';
  import GLib from 'gi://GLib';
 +import { NativeDynamicBlurEffect } from '../../effects/native_dynamic_gaussian_blur.js';
  
@@ -175,7 +176,7 @@ index 52c796f..b1ce6f4 100644
          this.containers = new Set();
          this.groups = new Set();
          this.messages = new Set();
-@@ -88,6 +99,7 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
+@@ -88,6 +97,7 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
  
          this.messages.add(message);
          this.update_message(message);
@@ -183,7 +184,7 @@ index 52c796f..b1ce6f4 100644
  
          this.connect(
              message,
-@@ -112,12 +124,96 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
+@@ -112,12 +122,102 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
              'destroy',
              () => {
                  this.cancel_update(message);
@@ -233,11 +234,6 @@ index 52c796f..b1ce6f4 100644
 +    attach_blur(message) {
 +        if (!this.settings?.popup?.NOTIFICATION)
 +            return;
-+        // Without gnome-rounded-blur the effect cannot round its corners, and a
-+        // square blur patch behind a 20px-rounded card is worse than no blur at
-+        // all -- the cards fall back to riding the popover's surface.
-+        if (!NativeDynamicBlurEffect?.supports_corner_radius)
-+            return;
 +        if (this.has_any_style_class(message, BLUR_EXCLUDED_STYLE_CLASSES))
 +            return;
 +
@@ -251,6 +247,15 @@ index 52c796f..b1ce6f4 100644
 +                unscaled_corner_radius: this.settings.popup.NOTIFICATION_CORNER_RADIUS,
 +            });
 +            message.add_effect_with_name(MESSAGE_BLUR_EFFECT_NAME, effect);
++
++            if (!NativeDynamicBlurEffect?.supports_corner_radius) {
++                if (!message.get_effect(MESSAGE_CORNER_EFFECT_NAME)) {
++                    const corner = new CornerEffect({
++                        radius: this.settings.popup.NOTIFICATION_CORNER_RADIUS,
++                    });
++                    message.add_effect_with_name(MESSAGE_CORNER_EFFECT_NAME, corner);
++                }
++            }
 +        } catch (e) { }
 +    }
 +
@@ -265,6 +270,8 @@ index 52c796f..b1ce6f4 100644
 +            // check that keeps this quiet for those.
 +            if (message.get_effect(MESSAGE_BLUR_EFFECT_NAME))
 +                message.remove_effect_by_name(MESSAGE_BLUR_EFFECT_NAME);
++            if (message.get_effect(MESSAGE_CORNER_EFFECT_NAME))
++                message.remove_effect_by_name(MESSAGE_CORNER_EFFECT_NAME);
 +        } catch (e) { }
 +    }
 +
@@ -280,7 +287,7 @@ index 52c796f..b1ce6f4 100644
      track_group(group) {
          if (!this.watch_actor(group) || this.groups.has(group))
              return;
-@@ -592,7 +688,10 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
+@@ -592,7 +692,10 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
      disable() {
          this.update_ids.forEach(id => GLib.source_remove(id));
          this.update_ids.clear();
@@ -368,6 +375,57 @@ index 1616c83..108acd9 100644
      get_corner_radius(target, root_actor) {
          return POPUP_CORNER_RADII.find(radius =>
              this.has_any_style_class(target, radius.style_classes)
+diff --git a/src/conveniences/dummy_pipeline.js b/src/conveniences/dummy_pipeline.js
+index 4d71d46..f9d6ce2 100644
+--- a/src/conveniences/dummy_pipeline.js
++++ b/src/conveniences/dummy_pipeline.js
+@@ -54,9 +54,11 @@ export const DummyPipeline = class DummyPipeline {
+         );
+ 
+         // add the effect to the actor
+-        if (this.actor)
++        if (this.actor) {
+             this.actor.add_effect(this.effect);
+-        else
++            if (this.corner_effect)
++                this.actor.add_effect(this.corner_effect);
++        } else
+             this._warn(`could not add effect to actor, actor does not exist anymore`);
+     }
+ 
+@@ -72,6 +74,12 @@ export const DummyPipeline = class DummyPipeline {
+         // create the effect
+         this.effect = this.effects_manager.new_native_dynamic_gaussian_blur_effect(params);
+ 
++        if (!this.effect.constructor.supports_corner_radius) {
++            this.corner_effect = this.effects_manager.new_corner_effect({
++                radius: this.corner_radius_getter(),
++            });
++        }
++
+         // connect to settings changes, using the true gsettings object
+         this._sigma_changed_id = this.settings.settings.connect('changed::sigma', () => this.update_effect());
+         this._brightness_changed_id = this.settings.settings.connect('changed::brightness', () => this.update_effect());
+@@ -97,6 +105,8 @@ export const DummyPipeline = class DummyPipeline {
+         this.effect.unscaled_radius = this.get_unscaled_radius();
+         this.effect.brightness = this.get_brightness();
+         this.effect.unscaled_corner_radius = this.corner_radius_getter();
++        if (this.corner_effect)
++            this.corner_effect.radius = this.corner_radius_getter();
+     }
+ 
+     get_unscaled_radius() {
+@@ -118,6 +128,10 @@ export const DummyPipeline = class DummyPipeline {
+             this.effects_manager.remove(this.effect);
+         this.effect = null;
+ 
++        if (this.corner_effect)
++            this.effects_manager.remove(this.corner_effect);
++        this.corner_effect = null;
++
+         if (this._sigma_changed_id)
+             this.settings.settings.disconnect(this._sigma_changed_id);
+         if (this._brightness_changed_id)
 diff --git a/src/conveniences/keys.js b/src/conveniences/keys.js
 index 0876d16..9856a99 100644
 --- a/src/conveniences/keys.js
@@ -380,6 +438,27 @@ index 0876d16..9856a99 100644
              { type: Type.B, name: "static-blur" },
              { type: Type.S, name: "pipeline" },
              { type: Type.I, name: "sigma" },
+diff --git a/src/conveniences/utils.js b/src/conveniences/utils.js
+index b7bcff3..aa7369d 100644
+--- a/src/conveniences/utils.js
++++ b/src/conveniences/utils.js
+@@ -11,6 +11,16 @@ export async function import_in_shell_only(module) {
+     if (IS_IN_PREFERENCES)
+         return null;
+     try {
++        if (module === 'gi://Blur') {
++            try {
++                const GIRepository = (await import('gi://GIRepository')).default;
++                const repo = GIRepository.Repository.dup_default ?
++                    GIRepository.Repository.dup_default() :
++                    new GIRepository.Repository();
++                repo.prepend_search_path(`${GLib.get_home_dir()}/.local/share/girepository-1.0`);
++                repo.prepend_library_path(`${GLib.get_home_dir()}/.local/lib`);
++            } catch (e) { }
++        }
+         const imported = await import(module);
+         return imported.default ?? imported;
+     } catch (e) {
 diff --git a/src/extension.js b/src/extension.js
 index fff8644..748987f 100644
 --- a/src/extension.js

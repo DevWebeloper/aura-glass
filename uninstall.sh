@@ -224,6 +224,14 @@ run gsettings reset org.gnome.desktop.interface accent-color
 run gsettings reset org.gnome.desktop.interface font-name
 run gsettings reset org.gnome.desktop.interface document-font-name
 run gsettings reset org.gnome.desktop.wm.preferences titlebar-font
+if [ -f "$HOME/.config/gtk-3.0/settings.ini" ]; then
+    run sed -i "/^gtk-cursor-theme-name=Aura-Glass-Moga-/d;/^gtk-cursor-theme-name=MacTahoe/d" "$HOME/.config/gtk-3.0/settings.ini"
+fi
+for idx in "$HOME/.icons/default/index.theme" "$HOME/.local/share/icons/default/index.theme"; do
+    if [ -f "$idx" ] && grep -qE "Inherits=Aura-Glass-Moga-|Inherits=MacTahoe" "$idx" 2>/dev/null; then
+        run rm -f "$idx"
+    fi
+done
 ok "back to the GNOME defaults (window buttons left intact)"
 
 step "Resetting extension settings to GNOME defaults"
@@ -265,6 +273,46 @@ fi
 
 # -------------------------------------------------------------- extensions --
 
+dequeue_extension() {
+    python3 - "$1" <<'PYDEQ'
+import subprocess, sys
+uuid = sys.argv[1]
+KEY = ["org.gnome.shell", "enabled-extensions"]
+cur = subprocess.run(["gsettings", "get", *KEY], capture_output=True, text=True).stdout.strip()
+if cur.startswith("@as "):
+    cur = cur[4:]
+try:
+    items = [x.strip().strip("'\"") for x in cur.strip("[]").split(",") if x.strip()]
+except Exception:
+    items = []
+if uuid not in items:
+    sys.exit(0)
+items = [i for i in items if i != uuid]
+new = "[" + ", ".join("'" + i + "'" for i in items) + "]"
+subprocess.run(["gsettings", "set", *KEY, new], check=True)
+PYDEQ
+}
+
+dequeue_from_disabled_extensions() {
+    python3 - "$1" <<'PY'
+import subprocess, sys
+uuid = sys.argv[1]
+KEY = ["org.gnome.shell", "disabled-extensions"]
+cur = subprocess.run(["gsettings", "get", *KEY], capture_output=True, text=True).stdout.strip()
+if cur.startswith("@as "):
+    cur = cur[4:]
+try:
+    items = [x.strip().strip("'\"") for x in cur.strip("[]").split(",") if x.strip()]
+except Exception:
+    items = []
+if uuid not in items:
+    sys.exit(0)
+items = [i for i in items if i != uuid]
+new = "[" + ", ".join("'" + i + "'" for i in items) + "]"
+subprocess.run(["gsettings", "set", *KEY, new], check=True)
+PY
+}
+
 if [ "$REMOVE_EXTENSIONS" = 1 ]; then
     step "Removing extensions"
     # Only the ones installed under $HOME are touched: a distro-packaged copy
@@ -282,6 +330,8 @@ if [ "$REMOVE_EXTENSIONS" = 1 ]; then
              add-to-steam@pupper.space; do
         if [ -d "$EXT_DIR/$u" ]; then
             run gnome-extensions disable "$u" 2>/dev/null || true
+            dequeue_extension "$u" 2>/dev/null || true
+            dequeue_from_disabled_extensions "$u" 2>/dev/null || true
             run rm -rf "$EXT_DIR/$u"
             ok "removed $u"
         else
@@ -315,6 +365,12 @@ if [ "$REMOVE_ASSETS" = 1 ]; then
              "$HOME"/.local/share/icons/aosp-cursors \
              "$HOME"/.local/share/icons/Aura-Glass-Moga-*; do
         [ -e "$d" ] && { run rm -rf "$d"; ok "removed $(basename "$d")"; }
+    done
+    for d in "$HOME"/.icons/Aura-Glass-Moga-* "$HOME"/.icons/MacTahoe* "$HOME"/.icons/aosp-cursors; do
+        if [ -e "$d" ] || [ -L "$d" ]; then
+            run rm -rf "$d"
+            ok "removed $(basename "$d") from ~/.icons"
+        fi
     done
     # Everything --font downloaded lives under this one directory, and nothing
     # else does — a font installed by the distro or dropped in by hand sits

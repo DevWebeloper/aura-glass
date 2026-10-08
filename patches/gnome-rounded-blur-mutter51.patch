@@ -1,0 +1,61 @@
+diff --git a/src/rounded-blur-effect.c b/src/rounded-blur-effect.c
+index b06552b..530e168 100644
+--- a/src/rounded-blur-effect.c
++++ b/src/rounded-blur-effect.c
+@@ -20,6 +20,32 @@
+ 
+ #include "rounded-blur-effect.h"
+ 
++typedef struct _ShellGlobal ShellGlobal;
++ShellGlobal *shell_global_get (void);
++ClutterStage *shell_global_get_stage (ShellGlobal *global);
++
++static CoglContext *
++get_cogl_context (void)
++{
++  ShellGlobal *global = shell_global_get ();
++  if (global)
++    {
++      ClutterStage *stage = shell_global_get_stage (global);
++      if (stage)
++        {
++          ClutterContext *c_ctx = clutter_actor_get_context (CLUTTER_ACTOR (stage));
++          if (c_ctx)
++            {
++              ClutterBackend *backend = clutter_context_get_backend (c_ctx);
++              if (backend)
++                return clutter_backend_get_cogl_context (backend);
++            }
++        }
++    }
++  return NULL;
++}
++
++
+ //#include <cogl/cogl.h>
+ 
+ //#include "bsm-enum-types.h"
+@@ -118,10 +144,7 @@ create_base_pipeline (void)
+ 
+   if (G_UNLIKELY (base_pipeline == NULL))
+     {
+-       ClutterBackend *backend = clutter_get_default_backend ();
+-      
+-      CoglContext *ctx =
+-        clutter_backend_get_cogl_context (backend);
++      CoglContext *ctx = get_cogl_context ();
+       
+         
+       
+@@ -243,10 +266,7 @@ update_fbo (FramebufferData *data,
+             unsigned int     height,
+             float            downscale_factor)
+ {
+-   ClutterBackend *backend = clutter_get_default_backend ();
+-  
+-  CoglContext *ctx =
+-    clutter_backend_get_cogl_context (backend);
++  CoglContext *ctx = get_cogl_context ();
+   
+     
+   

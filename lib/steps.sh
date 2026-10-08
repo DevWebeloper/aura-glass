@@ -278,12 +278,12 @@ install_theme() {
     # -d installs the dark theme into ~/.themes, -la writes the libadwaita
     # override into ~/.config/gtk-4.0. Both are per-user, so this needs no
     # root. </dev/null keeps its gum prompts quiet.
-    info "running the theme's own installer (dark + libadwaita override)"
+    info "running base theme installer (dark + libadwaita override)"
     if [ "${DRY_RUN:-0}" = 1 ]; then
         info "dry-run: $src/install.sh -d -la"
     else
-        ( cd "$src" && ./install.sh -d -la ) </dev/null \
-            || die "the Tahoe theme installer failed"
+        ( cd "$src" && ./install.sh -d -la ) >/dev/null 2>&1 </dev/null \
+            || die "the base theme installer failed"
     fi
 
     [ "${DRY_RUN:-0}" = 1 ] || [ -d "$HOME/.themes/$UPSTREAM_THEME_NAME" ] \
