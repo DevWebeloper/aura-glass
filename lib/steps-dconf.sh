@@ -15,10 +15,19 @@ load_dconf() {
 
     local is_update=0
     if [ -f "$CONF_DIR/repo-path" ] || [ -f "$CONF_DIR/accent" ]; then
-        is_update=1
+        if [ ! -f "$CONF_DIR/uninstalled" ]; then
+            is_update=1
+        fi
     fi
 
-    if [ "$is_update" = 1 ] && [ "${FORCE:-0}" != 1 ]; then
+    # Even on update, if core dconf keys are completely missing (e.g. after a
+    # minimal uninstall reset), reload the preset so Blur My Shell pipelines exist.
+    local has_core_dconf=0
+    if [ -n "$(dconf read /org/gnome/shell/extensions/blur-my-shell/pipelines 2>/dev/null || true)" ]; then
+        has_core_dconf=1
+    fi
+
+    if [ "$is_update" = 1 ] && [ "$has_core_dconf" = 1 ] && [ "${FORCE:-0}" != 1 ]; then
         ok "existing extension settings preserved (theme update)"
     else
         if [ "${DRY_RUN:-0}" = 1 ]; then
@@ -180,6 +189,12 @@ apply_app_opacity() {
     local opacity="${APP_OPACITY:-255}" memo="$CONF_DIR/app-opacity"
 
     if [ "${WANT_BLUR:-1}" != 1 ] || [ "${WANT_WINDOW_BLUR:-1}" != 1 ]; then
+        if [ "${GLASS_MODE:-}" = performance ] && [ -n "${APP_OPACITY:-}" ]; then
+            if remembering; then
+                mkdir -p "$CONF_DIR"
+                printf '%s\n' "$opacity" > "$memo"
+            fi
+        fi
         run dconf write "$base/applications/opacity" 255
         return 0
     fi
@@ -1005,6 +1020,14 @@ apply_cursor_size() {
     if [ "${DRY_RUN:-0}" != 1 ]; then
         mkdir -p "$CONF_DIR"
         printf '%s\n' "$want" > "$memo"
+        if [ -f "$HOME/.config/gtk-3.0/settings.ini" ]; then
+            sed -i "/^gtk-cursor-theme-size=/d" "$HOME/.config/gtk-3.0/settings.ini"
+            sed -i "/^\[Settings\]/a gtk-cursor-theme-size=$want" "$HOME/.config/gtk-3.0/settings.ini"
+        fi
+        if [ -f "$HOME/.config/gtk-4.0/settings.ini" ]; then
+            sed -i "/^gtk-cursor-theme-size=/d" "$HOME/.config/gtk-4.0/settings.ini"
+            sed -i "/^\[Settings\]/a gtk-cursor-theme-size=$want" "$HOME/.config/gtk-4.0/settings.ini"
+        fi
     fi
 }
 
@@ -1019,10 +1042,24 @@ apply_accent() {
     fi
 }
 
+moga_variant_for_accent() {
+    case "${1:-blue}" in
+        blue)   printf 'Blue\n' ;;
+        teal)   printf 'Cyan\n' ;;
+        green)  printf 'Green\n' ;;
+        yellow) printf 'Yellow\n' ;;
+        orange) printf 'Orange\n' ;;
+        red)    printf 'Red\n' ;;
+        pink)   printf 'Rose\n' ;;
+        purple) printf 'Purple\n' ;;
+        slate)  printf 'Sky\n' ;;
+        *)      printf 'Blue\n' ;;
+    esac
+}
+
 moga_cursor_theme() {
     local variant
-    variant="$(python3 "$REPO_ROOT/tools/moga_cursor.py" variant "${ACCENT:-blue}")" \
-        || die "could not map accent '${ACCENT:-blue}' to a Moga cursor variant"
+    variant="$(moga_variant_for_accent "${ACCENT:-blue}")"
     printf 'Aura-Glass-Moga-%s\n' "$variant"
 }
 
@@ -1030,6 +1067,10 @@ sync_cursor_theme_files() {
     local cursor="$1"
     [ -n "$cursor" ] || return 0
     [ "${DRY_RUN:-0}" = 1 ] && return 0
+
+    if [ -d "$HOME/.local/share/icons/$cursor/cursors" ]; then
+        ensure_scalable_cursors "$HOME/.local/share/icons/$cursor"
+    fi
 
     mkdir -p "$HOME/.icons/default" "$HOME/.local/share/icons/default"
     printf '[Icon Theme]\nName=Default\nComment=Default Cursor Theme\nInherits=%s\n' "$cursor" > "$HOME/.icons/default/index.theme"
@@ -1045,18 +1086,69 @@ sync_cursor_theme_files() {
         sed -i "/^gtk-cursor-theme-name=/d" "$HOME/.config/gtk-3.0/settings.ini"
         sed -i "/^\[Settings\]/a gtk-cursor-theme-name=$cursor" "$HOME/.config/gtk-3.0/settings.ini"
     fi
+    if [ -f "$HOME/.config/gtk-4.0/settings.ini" ]; then
+        sed -i "/^gtk-cursor-theme-name=/d" "$HOME/.config/gtk-4.0/settings.ini"
+        sed -i "/^\[Settings\]/a gtk-cursor-theme-name=$cursor" "$HOME/.config/gtk-4.0/settings.ini"
+    fi
+}
+
+apply_cursor_theme() {
+    local want="${CURSORS:-adwaita}" memo="$CONF_DIR/cursor-pack" cursor=""
+    if [ -z "${CURSORS:-}" ] && [ -r "$memo" ]; then
+        want="$(cat "$memo" 2>/dev/null || true)"
+    fi
+
+    if [ "${WANT_CURSORS:-1}" != 1 ] || [ "$want" = keep ]; then
+        cursor=""
+    elif [ "$want" = mactahoe ] \
+       && { [ -d "$HOME/.local/share/icons/MacTahoe-dark" ] \
+            || [ -d "/usr/share/icons/MacTahoe-dark" ]; }; then
+        cursor='MacTahoe-dark'
+    elif [ "$want" = aosp ] \
+       && { [ -d "$HOME/.local/share/icons/aosp-cursors" ] \
+            || [ -d "/usr/share/icons/aosp-cursors" ]; }; then
+        cursor='aosp-cursors'
+    elif [ "$want" = moga ]; then
+        cursor="$(moga_cursor_theme)"
+        if [ ! -d "$HOME/.local/share/icons/$cursor/cursors" ]; then
+            install_moga_cursors
+        fi
+    elif [ "$want" = original ]; then
+        local o; o="$(gsettings_original cursor-theme)"
+        cursor="${o:-Adwaita}"
+    elif [ -d "$HOME/.local/share/icons/$want" ] \
+         || [ -d "/usr/share/icons/$want" ] \
+         || [ -d "$HOME/.icons/$want" ]; then
+        cursor="$want"
+    else
+        cursor='Adwaita'
+    fi
+
+    if [ -n "$cursor" ]; then
+        if declare -f ensure_scalable_cursors >/dev/null 2>&1 \
+           && [ -d "$HOME/.local/share/icons/$cursor" ] \
+           && [ ! -d "$HOME/.local/share/icons/$cursor/cursors_scalable" ]; then
+            ensure_scalable_cursors "$HOME/.local/share/icons/$cursor"
+        fi
+        run gsettings set org.gnome.desktop.interface cursor-theme "$cursor"
+        sync_cursor_theme_files "$cursor"
+        APPLIED_CURSOR="$cursor"
+    else
+        APPLIED_CURSOR=""
+    fi
+
+    if [ "${DRY_RUN:-0}" != 1 ]; then
+        mkdir -p "$CONF_DIR"
+        if [ "${WANT_CURSORS:-1}" = 1 ] && [ "$want" != keep ]; then
+            printf '%s\n' "$want" > "$memo"
+        else
+            printf '%s\n' keep > "$memo"
+        fi
+    fi
 }
 
 apply_moga_cursor_theme() {
-    local cursor
-    cursor="$(moga_cursor_theme)"
-    # A previous Moga install from an older Aura Glass version may have only
-    # installed one colour. Repair that state before selecting the new accent.
-    if [ ! -d "$HOME/.local/share/icons/$cursor/cursors" ]; then
-        install_moga_cursors
-    fi
-    run gsettings set org.gnome.desktop.interface cursor-theme "$cursor"
-    sync_cursor_theme_files "$cursor"
+    CURSORS=moga apply_cursor_theme
 }
 
 apply_gsettings() {
@@ -1113,53 +1205,7 @@ apply_gsettings() {
         fi
     fi
 
-    # Empty means the pointer is not ours to write, the same way as the icons
-    # above: --no-cursors leaves whatever is set, from wherever it was set.
-    local cursor=""
-    if [ "${WANT_CURSORS:-1}" != 1 ]; then
-        cursor=""
-    elif [ "${CURSORS:-adwaita}" = mactahoe ] \
-       && { [ -d "$HOME/.local/share/icons/MacTahoe-dark" ] \
-            || [ -d "/usr/share/icons/MacTahoe-dark" ]; }; then
-        cursor='MacTahoe-dark'
-    elif [ "${CURSORS:-adwaita}" = aosp ] \
-       && { [ -d "$HOME/.local/share/icons/aosp-cursors" ] \
-            || [ -d "/usr/share/icons/aosp-cursors" ]; }; then
-        # The directory name, not the Name= in index.theme: the key names a
-        # directory, and this pack calls itself "AOSP Cursors" inside the file.
-        cursor='aosp-cursors'
-    elif [ "${CURSORS:-adwaita}" = moga ]; then
-        cursor="$(moga_cursor_theme)"
-    elif [ "${CURSORS:-adwaita}" = original ]; then
-        # Adwaita if nothing was recorded, which is also GNOME's own default —
-        # so the fallback is the same answer uninstall.sh's gsettings reset
-        # would give.
-        local o; o="$(gsettings_original cursor-theme)"
-        cursor="${o:-Adwaita}"
-    elif [ -d "$HOME/.local/share/icons/$CURSORS" ] \
-         || [ -d "/usr/share/icons/$CURSORS" ] \
-         || [ -d "$HOME/.icons/$CURSORS" ]; then
-        cursor="$CURSORS"
-    else
-        cursor='Adwaita'
-    fi
-    if [ -n "$cursor" ]; then
-        run gsettings set org.gnome.desktop.interface cursor-theme "$cursor"
-        sync_cursor_theme_files "$cursor"
-    fi
-
-    # Remembered like the accent above and for the same reason: a later flagless
-    # run has no other way to know which pack was chosen, and would come back to
-    # the Adwaita default over a deliberate --cursors mactahoe. "keep" is a
-    # choice like the others and is remembered like the others, or the next run
-    # would go back to setting the key.
-    if [ "${DRY_RUN:-0}" != 1 ]; then
-        if [ "${WANT_CURSORS:-1}" = 1 ]; then
-            printf '%s\n' "${CURSORS:-adwaita}" > "$CONF_DIR/cursor-pack"
-        else
-            printf '%s\n' keep > "$CONF_DIR/cursor-pack"
-        fi
-    fi
+    apply_cursor_theme
 
     # Here rather than in load_dconf: it is a gsettings key like the four above,
     # and this is the step that runs in the --settings-only path with them.
@@ -1171,7 +1217,7 @@ apply_gsettings() {
     # "left alone" rather than a name, because there is no name to give: the
     # key was not read and not written, and printing what it happens to hold
     # would read like this run had set it.
-    local icon_say="${icons:-left alone}" cursor_say="${cursor:-left alone}"
+    local icon_say="${icons:-left alone}" cursor_say="${APPLIED_CURSOR:-left alone}"
     local font_say; font_say="$(font_family)"; font_say="${font_say:-system}"
     if [ "${WANT_STYLING:-1}" = 1 ]; then
         ok "gtk-theme=$THEME_NAME  icons=$icon_say  cursor=$cursor_say  accent=$ACCENT  font=$font_say"

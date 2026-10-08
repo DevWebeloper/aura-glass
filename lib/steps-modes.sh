@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# aura-glass — the three glass modes.
+# aura-glass — the glass modes (frosted and performance).
 #
 # A mode is not a fourth kind of setting — it is a name for a combination of the
 # blur, transparency and styling flags install.sh already has, plus a drawer to
@@ -11,23 +11,13 @@
 # remembered mode, then a mode derived from the state the flags leave behind.
 # The rule is the ordinary one — an explicit answer beats an inferred one — and
 # it is why apply_glass_mode tests every *_EXPLICIT before it moves anything.
-# Frosted and transparent apply that by leaving an explicit sub-flag's answer
-# alone; solid has no tuning left to concede once the theme has stood down, so
-# it applies the same rule by refusing the run instead of silently overruling
-# one.
+# Frosted and performance apply that by leaving an explicit sub-flag's answer
+# alone.
 
-# The mode the resolved state amounts to, which is what gets remembered. Solid
-# is the styling being down rather than the blur being off: --no-blur on its own
-# is an opaque theme, not a theme that has stood down, and remembering it as
-# solid would stand the styling down on the next flagless run.
+# The mode the resolved state amounts to, which is what gets remembered.
 glass_mode_from_state() {
-    if [ "${WANT_STYLING:-1}" = 0 ]; then
-        printf 'solid\n'
-    elif [ "${GLASS_MODE:-}" = performance ]; then
+    if [ "${GLASS_MODE:-}" = performance ]; then
         printf 'performance\n'
-    elif [ "${WANT_BLUR:-1}" = 1 ] && [ "${WANT_WINDOW_BLUR:-1}" = 0 ] \
-         && [ "${APP_TRANSPARENCY:-0}" != 0 ]; then
-        printf 'transparent\n'
     else
         printf 'frosted\n'
     fi
@@ -42,11 +32,6 @@ resolve_glass_mode() {
         return 0
     fi
 
-    # The marker is the honest answer for solid: it is the state the desktop is
-    # actually in, and it outranks a memo that a hand-edited install could have
-    # left disagreeing with it.
-    if [ -f "$CONF_DIR/styling-off" ]; then GLASS_MODE="solid"; return 0; fi
-
     if [ -r "$CONF_DIR/glass-mode" ]; then
         GLASS_MODE="$(cat "$CONF_DIR/glass-mode" 2>/dev/null || true)"
         case " $VALID_GLASS_MODES " in
@@ -57,22 +42,12 @@ resolve_glass_mode() {
 }
 
 # The table in the design doc, in code. Only ever writes a value whose flag was
-# not given: --glass-mode transparent --no-popup-blur is a mode with one of its
-# answers overruled, not a contradiction.
+# not given: an explicit flag overrules the mode.
 apply_glass_mode() {
     case "${GLASS_MODE:-}" in
         frosted)
             [ -n "${BLUR_EXPLICIT:-}" ]        || WANT_BLUR=1
             [ -n "${WINDOW_BLUR_EXPLICIT:-}" ] || WANT_WINDOW_BLUR=1
-            [ -n "${POPUP_BLUR_EXPLICIT:-}" ]  || WANT_POPUP_BLUR=1
-            WANT_STYLING=1
-            ;;
-        transparent)
-            [ -n "${BLUR_EXPLICIT:-}" ]        || WANT_BLUR=1
-            if [ -z "${WINDOW_BLUR_EXPLICIT:-}" ]; then
-                WANT_WINDOW_BLUR=0
-                APP_BLUR_SCOPE="none"
-            fi
             [ -n "${POPUP_BLUR_EXPLICIT:-}" ]  || WANT_POPUP_BLUR=1
             WANT_STYLING=1
             ;;
@@ -89,52 +64,6 @@ apply_glass_mode() {
                 APP_OPACITY=252
             fi
             WANT_STYLING=1
-            ;;
-        solid)
-            # Solid leaves Blur My Shell out entirely and installs no
-            # translucency, so there is nothing left for --blur, --popup-blur or
-            # --app-transparency to reach — refused rather than silently
-            # discarded, the same call install.sh's own conflict check already
-            # makes for --window-blur. Checked before anything below moves a
-            # flag, so the die fires against what the user actually typed.
-            if [ -n "${BLUR_EXPLICIT:-}" ] && [ "$WANT_BLUR" = 1 ]; then
-                die "--glass-mode solid and --blur contradict each other — solid mode leaves Blur My Shell out entirely, so there is no blur for --blur to turn on. Pick one."
-            fi
-            if [ -n "${POPUP_BLUR_EXPLICIT:-}" ] && [ "$WANT_POPUP_BLUR" = 1 ]; then
-                die "--glass-mode solid and --popup-blur contradict each other — solid mode leaves Blur My Shell out entirely, so there is no blur for --popup-blur to turn on. Pick one."
-            fi
-            if [ -n "${NOTIFICATION_BLUR_EXPLICIT:-}" ] && [ "$WANT_NOTIFICATION_BLUR" = 1 ]; then
-                die "--glass-mode solid and --notification-blur contradict each other — solid mode leaves Blur My Shell out entirely, so there is no blur for --notification-blur to turn on. Pick one."
-            fi
-            if [ -n "${APP_TRANSPARENCY_EXPLICIT:-}" ]; then
-                # Not a plain != 0: this runs before install.sh's own
-                # transparency normalisation, deliberately, because a mode has
-                # to resolve before the level it implies gets normalised — so
-                # an off-shaped answer can still arrive spelled any of the ways
-                # that normalisation later folds to 0 rather than as the
-                # literal digit. Matched against that same set of spellings,
-                # so --app-transparency 0.0 / 0% / off / none / no is the same
-                # request as solid, not a contradiction of it.
-                case "$APP_TRANSPARENCY" in
-                    0|0.0|0%|off|none|no) ;;
-                    *) die "--glass-mode solid and --app-transparency contradict each other — solid mode installs no translucency, so there is nothing for --app-transparency to set. Pick one." ;;
-                esac
-            fi
-            WANT_BLUR=0
-            WANT_POPUP_BLUR=0
-            POPUP_BLUR_EXPLICIT=1
-            WANT_NOTIFICATION_BLUR=0
-            NOTIFICATION_BLUR_EXPLICIT=1
-            # Window blur is the one flag in this list left unguarded here: an
-            # explicit --window-blur is refused a step later, by install.sh's
-            # own conflict check, which already names the mode when it fires.
-            # Refusing it here too would just be that same check running twice
-            # — so it is left standing, for that check to see and act on.
-            [ -n "${WINDOW_BLUR_EXPLICIT:-}" ] || { WANT_WINDOW_BLUR=0; WINDOW_BLUR_EXPLICIT=1; }
-            WANT_ROUNDED_BLUR=0
-            APP_TRANSPARENCY=0
-            APP_OPACITY=255
-            WANT_STYLING=0
             ;;
         *)  # No mode to apply: a run driven by bare flags, on a machine that
             # has never been told about modes. The flags stand as given.
@@ -197,7 +126,6 @@ seed_glass_mode() {
     local dir="$CONF_DIR/modes/${GLASS_MODE:-frosted}"
     [ -d "$dir" ] && return 0
     mkdir -p "$dir"
-    [ "${GLASS_MODE:-}" = solid ] && return 0
 
     local disk_level disk_app disk_shell disk_strength disk_scope disk_popup disk_notification
     local disk_brightness disk_ground
@@ -211,22 +139,7 @@ seed_glass_mode() {
     disk_brightness="$(cat "$CONF_DIR/popup-brightness" 2>/dev/null || true)"
     disk_ground="$(cat "$CONF_DIR/notification-opacity" 2>/dev/null || true)"
 
-    if [ "${GLASS_MODE:-}" = transparent ]; then
-        # Unconditional, not a fallback for an empty disk_level: the shared
-        # top-level memo is frosted's tab, tuned for a blurred window behind
-        # it, and a value living there — 0.88, 0, anything — was never
-        # transparent's to inherit. Transparent has no history before it has
-        # a drawer of its own, so its first seed is always this darker level.
-        # The tint below is inherited despite that, and the asymmetry is the
-        # point: a tint is a colour preference that travels with the user
-        # regardless of mode, while the level is coupled to whether there is
-        # blur behind the window, which is exactly the thing that changes
-        # between modes — so one carries over and the other is the mode's
-        # own answer.
-        mode_memo_write app-transparency "0.82"
-        mode_memo_write app-tint-color   "${disk_app:-#0b0b0f}"
-        mode_memo_write shell-tint-color "${disk_shell:-#0b0b0f}"
-    elif [ "${GLASS_MODE:-}" = performance ]; then
+    if [ "${GLASS_MODE:-}" = performance ]; then
         mode_memo_write app-transparency "0.99"
         mode_memo_write app-tint-color   "${disk_app:-#000000}"
         mode_memo_write shell-tint-color "${disk_shell:-#000000}"
@@ -256,7 +169,6 @@ seed_glass_mode() {
 # the same precedence rule apply_glass_mode follows.
 load_glass_mode_memos() {
     [ -n "${GLASS_MODE:-}" ] || return 0
-    [ "${GLASS_MODE}" = solid ] && return 0
 
     # A value install.sh would refuse is treated as an empty drawer rather than
     # passed along: the flag it would become dies in the parser, which is a

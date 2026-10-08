@@ -172,12 +172,13 @@ cmd_set() {
 
     local session="" app_tint="" shell_tint="" transparency="" radius_preset="" \
         radius_custom="" blur_strength="" popup_brightness="" notification_opacity="" \
-        popup_blur="" notification_blur="" window_blur="" scope="" \
+        popup_blur="" notification_blur="" window_blur="" scope="" glass_mode="" \
         app_blur_allow="" app_blur_allow_given=0 \
         app_blur_block="" app_blur_block_given=0
     while [ $# -gt 0 ]; do
         case "$1" in
             --session) session="$2"; shift 2 ;;
+            --glass-mode) glass_mode="$2"; shift 2 ;;
             --app-tint) app_tint="$2"; shift 2 ;;
             --shell-tint) shell_tint="$2"; shift 2 ;;
             --transparency) transparency="$2"; shift 2 ;;
@@ -202,11 +203,18 @@ cmd_set() {
     # header for why not writing beats writing and restoring.
     export PREVIEW_MODE=1
 
-    # Frosted or transparent only — solid mode removes the whole theme rather
-    # than tuning it, and is applied, never previewed.
-    export WANT_BLUR=1
-    export WANT_POPUP_BLUR="${popup_blur:-1}"
-    export WANT_NOTIFICATION_BLUR="${notification_blur:-1}"
+    if [ "${glass_mode:-}" = performance ] || { [ "${window_blur:-1}" = 0 ] && [ "${popup_blur:-1}" = 0 ] && [ "${notification_blur:-1}" = 0 ]; }; then
+        export WANT_BLUR=0
+        export WANT_POPUP_BLUR=0
+        export WANT_NOTIFICATION_BLUR=0
+        export WANT_WINDOW_BLUR=0
+        export APP_BLUR_SCOPE="none"
+        export GLASS_MODE="performance"
+    else
+        export WANT_BLUR=1
+        export WANT_POPUP_BLUR="${popup_blur:-1}"
+        export WANT_NOTIFICATION_BLUR="${notification_blur:-1}"
+    fi
     export APP_TRANSPARENCY="${transparency:-0}"
     [ -n "$app_tint" ] && export APP_TINT_COLOR="$app_tint"
     [ -n "$shell_tint" ] && export SHELL_TINT_COLOR="$shell_tint"

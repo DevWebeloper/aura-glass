@@ -117,46 +117,7 @@ distro.sh             distro detection, dependency install, AUR helper bootstrap
 
 ---
 
-## Before you commit
 
-Enable the hooks once per clone:
-
-```bash
-tools/install-hooks.sh
-```
-
-The pre-commit hook checks the **staged tree** (not the working tree) and runs
-shell + Python syntax plus fifteen project checkers. Run them by hand any time:
-
-```bash
-tools/check-tokens.sh          # every duplicated value still agrees
-tools/check-cascade.sh         # every css/ sheet is installed, applied, previewed, in order
-tools/check-radius-preset.sh   # a preset moves the radii and nothing else
-tools/check-glass-modes.sh     # --glass-mode resolves to the documented flag table
-tools/check-solid-extensions.sh
-tools/check-styling-off.sh
-tools/check-migration.sh
-tools/check-ext-catalogue.sh
-tools/check-app-blur-lists.sh
-tools/check-update-check.sh
-python3 tools/check-gui-flags.py       # window emits flags install.sh accepts
-python3 tools/check-wizard-flags.py
-python3 tools/check-gui-radius.py      # window's radius copy matches tokens.sh
-python3 tools/check-terminal-spawn.py
-python3 tools/check-update-channel.py
-```
-
-Full detail on what each one asserts: [docs/TESTING.md](docs/TESTING.md).
-
-Visual work goes through the headless preview harness instead of a logout:
-
-```bash
-tools/preview.sh                       # screenshot the current tree
-tools/preview.sh --solid               # the --no-blur look
-python3 tools/check-shots.py --mode glass --accept   # adopt this run as baseline
-```
-
----
 
 ## Conventions
 
@@ -184,6 +145,8 @@ run and a live preview leave nothing behind.
 anything `lib/distro.sh` does not probe for. `gui/` never writes theme files —
 it composes a command line and runs `install.sh --settings-only`.
 
+**Tools.** Do not create new tools or scripts in `tools/`, and do not use or invoke `tools/` from the theme installer, `lib/`, `bin/`, or anywhere in the theme runtime. Never run `.sh` scripts in `tools/`. All theme behavior and asset management must live directly in Bash (`install.sh`, `lib/`) or native theme configuration.
+
 ---
 
 ## Common tasks
@@ -208,7 +171,7 @@ it composes a command line and runs `install.sh --settings-only`.
    `bin/aura-glass-apply`, at the position its cascade needs.
 3. `install_css` in `lib/steps-css.sh` globs the numbered sheets; an optional
    sheet (installed or removed by flag) needs its own branch there.
-4. Run `tools/check-cascade.sh`.
+4. Test on the live desktop with `./install.sh --settings-only -y`.
 
 ### Change a radius or a blur sigma
 
@@ -216,15 +179,13 @@ it composes a command line and runs `install.sh --settings-only`.
 2. Edit every consumer its comment names.
 3. If it is a radius, update the preset rows *and* `RADIUS_PRESET_ROWS` /
    bounds in `gui/aura_glass_settings.py`.
-4. `tools/check-tokens.sh && python3 tools/check-gui-radius.py`.
-5. Raise a radius against a screenshot (`tools/preview.sh`), never an estimate.
+4. Apply with `./install.sh --settings-only -y` and verify visually on the live desktop.
 
 ### Add an extension
 
 Add the UUID to `EXT_EXTRA_RECOMMENDED` / `EXT_EXTRA_ALL` in `lib/steps.sh`,
-give it an `ext_description`, and run `tools/check-ext-catalogue.sh` — the
-settings window builds its list from `aura-glass-ext list`, so an undescribed
-UUID is an empty row.
+give it an `ext_description` — the settings window builds its list from
+`aura-glass-ext list`, so an undescribed UUID is an empty row.
 
 ---
 

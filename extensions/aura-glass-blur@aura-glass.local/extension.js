@@ -39,6 +39,9 @@ const BMS_SCHEMA_ID = 'org.gnome.shell.extensions.blur-my-shell.applications';
 // gui/aura_glass_settings.py (SELF_WM_CLASS) and checked against this one by
 // tools/check-app-blur-lists.sh.
 const SELF_WM_CLASS = 'io.github.DevWebeloper.AuraGlassSettings';
+// The top-bar indicator uses Aura Glass's own application icon rather than
+// cycling through profile status glyphs, keeping a recognizable identity in the panel.
+const APP_ICON = SELF_WM_CLASS;
 
 const DBUS_NAME = 'io.github.DevWebeloper.AuraGlass';
 const DBUS_PATH = '/io/github/DevWebeloper/AuraGlass';
@@ -56,6 +59,10 @@ const DBUS_IFACE = `
     <method name="GetFullscreen">
       <arg type="b" direction="out" name="fullscreen"/>
     </method>
+    <method name="SetWindowOpacity">
+      <arg type="u" direction="in" name="opacity"/>
+    </method>
+    <method name="RefreshOpacity"/>
     <signal name="FocusChanged">
       <arg type="b" name="fullscreen"/>
       <arg type="s" name="wm_class"/>
@@ -194,9 +201,20 @@ export default class AuraGlassBlurExtension extends Extension {
         this._watchFocusedWindow(global.display.focusWindow ?? global.display.focus_window);
 
         this._buildPanelMenu();
+        this._initOpacityMonitor();
     }
 
     disable() {
+        if (this._confMonitorId) {
+            this._confMonitor.disconnect(this._confMonitorId);
+            this._confMonitorId = 0;
+        }
+        if (this._confMonitor) {
+            this._confMonitor.cancel();
+            this._confMonitor = null;
+        }
+        this.setWindowOpacityAll(255);
+
         if (this._origBuildMenu) {
             WindowMenu.prototype._buildMenu = this._origBuildMenu;
             this._origBuildMenu = null;
@@ -275,6 +293,7 @@ export default class AuraGlassBlurExtension extends Extension {
     _buildPanelMenu() {
         this._indicator = new PanelMenu.Button(0.0, 'Aura Glass', false);
         this._icon = new St.Icon({
+            icon_name: APP_ICON,
             style_class: 'system-status-icon',
         });
         this._indicator.add_child(this._icon);
@@ -314,7 +333,7 @@ export default class AuraGlassBlurExtension extends Extension {
 
     _setPresentation(status) {
         if (this._icon)
-            this._icon.icon_name = PROFILE_ICONS[this._profile] || PROFILE_ICONS.auto;
+            this._icon.icon_name = APP_ICON;
         if (this._statusItem)
             this._statusItem.label.text = status;
         if (!this._profileItems)
@@ -575,6 +594,10 @@ export default class AuraGlassBlurExtension extends Extension {
     _trackWindow(window) {
         if (!window || this._destroyIds.has(window))
             return;
+        const actor = window.get_compositor_private?.();
+        if (actor && this._currentActorOpacity !== undefined) {
+            this._applyWindowActorOpacity(actor, this._currentActorOpacity);
+        }
         const id = window.connect('unmanaged', () => {
             this._destroyIds.delete(window);
             this._scheduleWindowsChanged();
@@ -597,5 +620,93 @@ export default class AuraGlassBlurExtension extends Extension {
                     this._dbusImpl.emit_signal('WindowsChanged', null);
                 return GLib.SOURCE_REMOVE;
             });
+    }
+
+    // ---- Window actor opacity (live without restart) -----------------------
+
+    _initOpacityMonitor() {
+        this._currentActorOpacity = 255;
+        this._updateOpacityFromConfig();
+        try {
+            const confDir = Gio.File.new_for_path(configPath());
+            this._confMonitor = confDir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
+            this._confMonitorId = this._confMonitor.connect('changed', (_mon, file, _other, eventType) => {
+                if (eventType === Gio.FileMonitorEvent.CHANGES_DONE_HINT ||
+                    eventType === Gio.FileMonitorEvent.CREATED ||
+                    eventType === Gio.FileMonitorEvent.CHANGED) {
+                    const name = file?.get_basename();
+                    if (name === 'app-opacity' || name === 'app-transparency' || name === 'glass-mode') {
+                        this._updateOpacityFromConfig();
+                    }
+                }
+            });
+        } catch (e) {
+            // Monitor directory failed or unsupported
+        }
+    }
+
+    _updateOpacityFromConfig() {
+        const mode = readState('glass-mode') || 'frosted';
+        if (mode === 'solid') {
+            this.setWindowOpacityAll(255);
+            return;
+        }
+
+        if (mode === 'performance') {
+            const opStr = readState('app-opacity');
+            let opacity = 252;
+            if (opStr) {
+                const parsed = parseInt(opStr, 10);
+                if (!isNaN(parsed) && parsed >= 0 && parsed <= 255)
+                    opacity = parsed;
+            } else {
+                const trStr = readState('modes', 'performance', 'app-transparency') || readState('app-transparency');
+                if (trStr) {
+                    const parsed = parseFloat(trStr);
+                    if (!isNaN(parsed) && parsed > 0 && parsed <= 1.0)
+                        opacity = Math.round(parsed * 255);
+                }
+            }
+            this.setWindowOpacityAll(opacity);
+            return;
+        }
+
+        this.setWindowOpacityAll(255);
+    }
+
+    SetWindowOpacity(opacity) {
+        const val = Math.max(0, Math.min(255, opacity));
+        this.setWindowOpacityAll(val);
+    }
+
+    RefreshOpacity() {
+        this._updateOpacityFromConfig();
+    }
+
+    setWindowOpacityAll(opacity) {
+        this._currentActorOpacity = opacity;
+        for (const actor of global.get_window_actors()) {
+            this._applyWindowActorOpacity(actor, opacity);
+        }
+    }
+
+    _applyWindowActorOpacity(actor, opacity) {
+        if (!actor)
+            return;
+        const window = actor.get_meta_window?.();
+        if (window && !isBlurrable(window.get_frame_type()))
+            return;
+
+        const BLUR_ACTOR_NAMES = new Set(['blur-actor', 'bms-application-blurred-widget']);
+        let childUpdated = false;
+        actor.get_children?.().forEach(child => {
+            if (!BLUR_ACTOR_NAMES.has(child.name)) {
+                if (child.opacity !== opacity)
+                    child.opacity = opacity;
+                childUpdated = true;
+            }
+        });
+        if (!childUpdated && actor.opacity !== opacity)
+            actor.opacity = opacity;
     }
 }

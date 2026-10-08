@@ -467,7 +467,9 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/adaptive-fullscreen-apps" \
           "$CONF_DIR/adaptive-performance/active" \
           "$CONF_DIR/adaptive-performance/reason" \
-          "$CONF_DIR/openbar-patch" "$CONF_DIR/custom-osd-patch"
+          "$CONF_DIR/openbar-patch" "$CONF_DIR/custom-osd-patch" \
+          "$CONF_DIR/accent" "$CONF_DIR/glass-mode"
+[ -d "$CONF_DIR" ] && run touch "$CONF_DIR/uninstalled"
 if confirm "Delete $CONF_DIR (this also deletes the backups above)?" 0; then
     run rm -rf "$CONF_DIR"
     ok "removed"

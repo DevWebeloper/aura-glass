@@ -17,6 +17,7 @@ select_apply_actions() {
             --adaptive-blur|--adaptive-blur=*) _apply_add adaptive-blur ;;
             --accent|--accent=*) _apply_add accent ;;
             --cursor-size|--cursor-size=*) _apply_add cursor-size ;;
+            --cursors|--cursors=*|--no-cursors) _apply_add cursor-theme ;;
             --window-buttons|--window-buttons=*) _apply_add window-buttons ;;
             --app-blur-allow|--app-blur-allow=*|--app-blur-block|--app-blur-block=*) _apply_add app-blur ;;
             --app-tint-color|--app-tint-color=*|--shell-tint-color|--shell-tint-color=*|--app-transparency|--app-transparency=*|--no-app-transparency|--notification-opacity|--notification-opacity=*|--titlebar-button-style|--titlebar-button-style=*) _apply_add css ;;

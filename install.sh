@@ -90,7 +90,7 @@ GLASS_MODE=""            # empty = the memo, then derived from the flags
 GLASS_MODE_EXPLICIT=""
 BLUR_EXPLICIT=""         # --blur / --no-blur were typed, so a mode must not move them
 WANT_STYLING=1           # 0 = the theme stands down (solid mode)
-VALID_GLASS_MODES="frosted transparent solid performance"
+VALID_GLASS_MODES="frosted performance"
 WANT_WINDOW_BLUR=1
 WINDOW_BLUR_EXPLICIT=""
 APP_BLUR_SCOPE="gtk"     # gtk (default, whitelisted GTK/GNOME apps) | all
@@ -264,17 +264,13 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --gtk-apps-blur   blur behind GTK / GNOME applications only (Files, Settings, Terminal - default, low CPU)
     --all-apps-blur   blur behind all application windows (heavy on CPU/GPU)
     --no-window-blur  keep window blur off (opaque windows)
-    --glass-mode M    frosted (blur behind windows and popups), transparent
-                      (translucent windows, no window blur), performance
-                      (blur off, 100% opacity, customizable looks) or solid
-                      (the theme stands down: no styling, stock shell, the
-                      extensions it enabled switched off and their settings
-                      left alone).
+    --glass-mode M    frosted (blur behind windows and popups) or performance
+                      (blur shaders disabled, zero GPU overhead, customizable
+                      looks).
                       Remembered; each mode keeps its own opacity and tint
     --no-blur         no blur anywhere, opaque surfaces instead of translucent
                       ones, with the rest of the theme intact (best for low-end
-                      GPUs or battery saver). Not the same as --glass-mode
-                      solid, which stands the theme down altogether
+                      GPUs or battery saver)
     --no-rounded-blur skip gnome-rounded-blur library (popup blur falls back to static)
     --gdm             theme the GDM login screen with blurred Aura Glass style (requires sudo)
     --gdm-background PATH
@@ -576,107 +572,88 @@ EOF
     esac
     printf '  %s✓%s Accent set to %s%s%s\n\n' "$C_GRN" "$C_OFF" "$C_BLD" "$ACCENT" "$C_OFF"
 
-    # 2. Glass Mode. Solid is deliberately not offered here: standing the whole
-    # theme down is not a step in installing it, and the settings window is
-    # where a desktop already wearing the theme goes to take it off. The mode
-    # is set explicitly rather than left to be derived, so that the answer
-    # given here outranks a mode remembered from an earlier run.
-    printf '%sStep 2: Glass Mode%s\n' "$C_BLD" "$C_OFF"
-    printf '  %s[1]%s Frosted Glass %s[Default — blur on top bar, popups, menus, and OSD]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '  %s[2]%s Transparent %s[Translucent windows, no blur behind them — the wallpaper shows through]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '  Choice [1-2, default 1]: '
-    read -r ans_blur || ans_blur="1"
-    case "$ans_blur" in
-        2|transparent)
-            GLASS_MODE="transparent"
-            GLASS_MODE_EXPLICIT=1
-            # Nothing further to ask: no window blur is what this mode is, and
-            # its opacity and tint come from its own drawer rather than from
-            # the questions the frosted branch goes on to ask.
-            printf '  %s✓%s Transparent mode selected\n\n' "$C_GRN" "$C_OFF"
+    # 2. Blur & Transparency Options. Frosted glass is the default and only mode
+    # offered during setup; Performance mode can be selected later in the
+    # Aura Glass settings app if desired.
+    GLASS_MODE="frosted"
+    GLASS_MODE_EXPLICIT=1
+    WANT_BLUR=1
+    printf '%sStep 2: Blur & Transparency Options%s\n' "$C_BLD" "$C_OFF"
+
+    # Question 1: Popup & Menu blur (default: Yes)
+    printf '  Enable blur behind popups, menus & top bar? %s[Y/n, default: Y]%s: ' "$C_DIM" "$C_OFF"
+    read -r ans_popup || ans_popup="y"
+    case "${ans_popup,,}" in
+        n|no)
+            WANT_POPUP_BLUR=0
+            POPUP_BLUR_EXPLICIT=1
+            printf '  %s✓%s Popup blur disabled (flat menus)\n' "$C_GRN" "$C_OFF"
             ;;
         *)
-            GLASS_MODE="frosted"
-            GLASS_MODE_EXPLICIT=1
-            WANT_BLUR=1
-            printf '  %s✓%s Frosted glass selected\n' "$C_GRN" "$C_OFF"
-
-            # Question 1: Popup & Menu blur (default: Yes)
-            printf '  Enable blur behind popups, menus & top bar? %s[Y/n, default: Y]%s: ' "$C_DIM" "$C_OFF"
-            read -r ans_popup || ans_popup="y"
-            case "${ans_popup,,}" in
-                n|no)
-                    WANT_POPUP_BLUR=0
-                    POPUP_BLUR_EXPLICIT=1
-                    printf '  %s✓%s Popup blur disabled (flat menus)\n' "$C_GRN" "$C_OFF"
-                    ;;
-                *)
-                    WANT_POPUP_BLUR=1
-                    POPUP_BLUR_EXPLICIT=1
-                    printf '  %s✓%s Popup blur enabled\n' "$C_GRN" "$C_OFF"
-                    ;;
-            esac
-
-            # Question 2: App window blur target scope
-            printf '\n  App Window Blur Target:\n'
-            printf '    %s[1]%s GTK / GNOME Applications only %s[Default — Files, Settings, Terminal (Low CPU)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-            printf '    %s[2]%s All Applications %s[Heavy — blurs browsers, Electron, Discord]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-            printf '    %s[3]%s No blur on windows %s[95%% subtle translucency, crisp text, 0 CPU overhead]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-            printf '  Choice [1-3, default: 1]: '
-            read -r ans_scope || ans_scope="1"
-            case "$ans_scope" in
-                3|disabled|off|none|no|n|no-blur)
-                    WANT_WINDOW_BLUR=0
-                    WINDOW_BLUR_EXPLICIT=1
-                    APP_BLUR_SCOPE="none"
-                    APP_BLUR_SCOPE_EXPLICIT=1
-                    APP_TRANSPARENCY=0.95
-                    APP_OPACITY=255
-                    printf '  %s✓%s Window blur disabled; app transparency set to 95%% (readable text)\n\n' "$C_GRN" "$C_OFF"
-                    ;;
-                2|all|every)
-                    WANT_WINDOW_BLUR=1
-                    WINDOW_BLUR_EXPLICIT=1
-                    APP_BLUR_SCOPE="all"
-                    APP_BLUR_SCOPE_EXPLICIT=1
-                    printf '  %s✓%s Window blur enabled for ALL applications (Heavy CPU/GPU)\n' "$C_GRN" "$C_OFF"
-                    ;;
-                *)
-                    WANT_WINDOW_BLUR=1
-                    WINDOW_BLUR_EXPLICIT=1
-                    APP_BLUR_SCOPE="gtk"
-                    APP_BLUR_SCOPE_EXPLICIT=1
-                    printf '  %s✓%s Window blur enabled for GTK / GNOME applications only\n' "$C_GRN" "$C_OFF"
-                    ;;
-            esac
-
-            if [ "$WANT_WINDOW_BLUR" = 1 ]; then
-                printf '\n  Choose Window Transparency Level:\n'
-                printf '    %s[1]%s 90%% Opacity %s[Default — balanced frosted glass (230)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-                printf '    %s[2]%s 82%% Opacity %s[Deep glass, more transparent (210)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-                printf '    %s[3]%s 95%% Opacity %s[Subtle glass, crisp and readable text (242)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-                printf '  Choice [1-3 or %%, default: 1 (90%%)]: '
-                read -r ans_trans || ans_trans="1"
-                case "$ans_trans" in
-                    2|82|82%|0.82|210)
-                        APP_TRANSPARENCY=0.82
-                        APP_OPACITY=210
-                        printf '  %s✓%s Window transparency set to 82%% (Deep Glass, 210)\n\n' "$C_GRN" "$C_OFF"
-                        ;;
-                    3|95|95%|0.95|242|94|94%|0.94|240)
-                        APP_TRANSPARENCY=0.95
-                        APP_OPACITY=242
-                        printf '  %s✓%s Window transparency set to 95%% (Subtle Glass, 242)\n\n' "$C_GRN" "$C_OFF"
-                        ;;
-                    *)
-                        APP_TRANSPARENCY=0.90
-                        APP_OPACITY=230
-                        printf '  %s✓%s Window transparency set to 90%% (Balanced Glass, 230)\n\n' "$C_GRN" "$C_OFF"
-                        ;;
-                esac
-            fi
+            WANT_POPUP_BLUR=1
+            POPUP_BLUR_EXPLICIT=1
+            printf '  %s✓%s Popup blur enabled\n' "$C_GRN" "$C_OFF"
             ;;
     esac
+
+    # Question 2: App window blur target scope
+    printf '\n  App Window Blur Target:\n'
+    printf '    %s[1]%s GTK / GNOME Applications only %s[Default — Files, Settings, Terminal (Low CPU)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[2]%s All Applications %s[Heavy — blurs browsers, Electron, Discord]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[3]%s No blur on windows %s[95%% subtle translucency, crisp text, 0 CPU overhead]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '  Choice [1-3, default: 1]: '
+    read -r ans_scope || ans_scope="1"
+    case "$ans_scope" in
+        3|disabled|off|none|no|n|no-blur)
+            WANT_WINDOW_BLUR=0
+            WINDOW_BLUR_EXPLICIT=1
+            APP_BLUR_SCOPE="none"
+            APP_BLUR_SCOPE_EXPLICIT=1
+            APP_TRANSPARENCY=0.95
+            APP_OPACITY=255
+            printf '  %s✓%s Window blur disabled; app transparency set to 95%% (readable text)\n\n' "$C_GRN" "$C_OFF"
+            ;;
+        2|all|every)
+            WANT_WINDOW_BLUR=1
+            WINDOW_BLUR_EXPLICIT=1
+            APP_BLUR_SCOPE="all"
+            APP_BLUR_SCOPE_EXPLICIT=1
+            printf '  %s✓%s Window blur enabled for ALL applications (Heavy CPU/GPU)\n' "$C_GRN" "$C_OFF"
+            ;;
+        *)
+            WANT_WINDOW_BLUR=1
+            WINDOW_BLUR_EXPLICIT=1
+            APP_BLUR_SCOPE="gtk"
+            APP_BLUR_SCOPE_EXPLICIT=1
+            printf '  %s✓%s Window blur enabled for GTK / GNOME applications only\n' "$C_GRN" "$C_OFF"
+            ;;
+    esac
+
+    if [ "$WANT_WINDOW_BLUR" = 1 ]; then
+        printf '\n  Choose Window Transparency Level:\n'
+        printf '    %s[1]%s 90%% Opacity %s[Default — balanced frosted glass (230)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+        printf '    %s[2]%s 82%% Opacity %s[Deep glass, more transparent (210)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+        printf '    %s[3]%s 95%% Opacity %s[Subtle glass, crisp and readable text (242)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+        printf '  Choice [1-3 or %%, default: 1 (90%%)]: '
+        read -r ans_trans || ans_trans="1"
+        case "$ans_trans" in
+            2|82|82%|0.82|210)
+                APP_TRANSPARENCY=0.82
+                APP_OPACITY=210
+                printf '  %s✓%s Window transparency set to 82%% (Deep Glass, 210)\n\n' "$C_GRN" "$C_OFF"
+                ;;
+            3|95|95%|0.95|242|94|94%|0.94|240)
+                APP_TRANSPARENCY=0.95
+                APP_OPACITY=242
+                printf '  %s✓%s Window transparency set to 95%% (Subtle Glass, 242)\n\n' "$C_GRN" "$C_OFF"
+                ;;
+            *)
+                APP_TRANSPARENCY=0.90
+                APP_OPACITY=230
+                printf '  %s✓%s Window transparency set to 90%% (Balanced Glass, 230)\n\n' "$C_GRN" "$C_OFF"
+                ;;
+        esac
+    fi
 
     # 3. Icons & Cursors
     printf '%sStep 3: Icons, Cursors & Font%s\n' "$C_BLD" "$C_OFF"
@@ -1308,10 +1285,7 @@ esac
 # writing that line meant, and apply_app_blur would otherwise write a dconf key
 # for an extension this mode deliberately leaves out.
 if [ "$WANT_BLUR" != 1 ] && [ "$WANT_WINDOW_BLUR" = 1 ]; then
-    if [ "${GLASS_MODE:-}" = solid ]; then
-        die "--glass-mode solid and --window-blur contradict each other — solid mode stands the theme down entirely, so there is no blur to put behind a window. Pick one."
-    fi
-    die "--no-blur and --window-blur contradict each other — --no-blur leaves Blur My Shell out entirely, so there is nothing to blur behind a window. Pick one."
+    die "--no-blur and --window-blur contradict each other — --no-blur disables blur entirely, so there is nothing to blur behind a window. Pick one."
 fi
 
 # The GUI consumes this protocol directly. Handle it before the normal banner
@@ -1348,7 +1322,7 @@ if [ "${SETTINGS_ONLY:-0}" = 0 ] && [ "${DRY_RUN:-0}" = 0 ] && [ "$EUID" -ne 0 ]
     need_root=0
     [ "${WANT_GDM:-0}" = 1 ] && need_root=1
     [ "${WANT_GDM_MONITORS:-0}" = 1 ] && need_root=1
-    [ "${WANT_BLUR:-1}" = 1 ] && need_root=1
+    [ "${WANT_ROUNDED_BLUR:-1}" = 1 ] && need_root=1
     if [ "$need_root" = 1 ]; then
         info "Authenticating sudo upfront for system components..."
         if sudo -v; then
@@ -1358,6 +1332,8 @@ if [ "${SETTINGS_ONLY:-0}" = 0 ] && [ "${DRY_RUN:-0}" = 0 ] && [ "$EUID" -ne 0 ]
         fi
     fi
 fi
+
+[ -d "$CONF_DIR" ] && rm -f "$CONF_DIR/uninstalled"
 
 # Retuning an existing install is the three steps that read a flag and write a
 # setting. Everything skipped here either fetches something (the theme, the
@@ -1398,11 +1374,14 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
             APPLY_FALLBACK_REASON="installed source fingerprint is absent or changed"
         fi
         if [ "${APPLY_ACTIONS[0]}" != full ]; then
+            if [ "$WANT_CURSORS" = 1 ] && { [ -n "$CURSORS_EXPLICIT" ] || { [ "${CURSORS:-}" = moga ] && [ -n "${ACCENT_EXPLICIT:-}" ]; }; }; then
+                install_cursors
+            fi
             step "Applying changed settings only"
             for action in "${APPLY_ACTIONS[@]}"; do
                 case "$action" in
                     accent) apply_accent ;;
-                    cursor-theme) apply_moga_cursor_theme ;;
+                    cursor-theme) apply_cursor_theme ;;
                     cursor-size) apply_cursor_size ;;
                     window-buttons) apply_window_buttons ;;
                     app-blur) apply_app_blur ;;
@@ -1449,6 +1428,11 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
         stand_down_extensions
     else
         restore_extensions
+        disable_retired_extensions
+        if [ "$WANT_STYLING" = 1 ]; then
+            dequeue_from_disabled_extensions "user-theme@gnome-shell-extensions.gcampax.github.com" || true
+            run gnome-extensions enable "user-theme@gnome-shell-extensions.gcampax.github.com" 2>/dev/null || true
+        fi
     fi
     remember_glass_mode
     # Included because it is local, quick and needs nothing: it also refreshes
@@ -1499,12 +1483,7 @@ install_extensions
 # Before load_dconf, so apply_popup_blur sees the result. On a first install it
 # will still pick static: Blur My Shell only writes rounded-blur-found once the
 # shell has loaded this build, which is the next login.
-if [ "$WANT_BLUR" = 1 ]; then
-    install_rounded_blur
-else
-    step "Blur"
-    skip "no blur (--no-blur) — opaque surfaces, and Blur My Shell left out"
-fi
+install_rounded_blur
 if [ "$WANT_ICONS" = 1 ]; then install_icons; else step "Icons"; skip "left alone (--no-icons)"; fi
 if [ "$WANT_CURSORS" = 1 ]; then install_cursors; else step "Cursors"; skip "left alone (--no-cursors)"; fi
 install_fonts

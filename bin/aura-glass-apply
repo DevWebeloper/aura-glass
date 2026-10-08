@@ -196,6 +196,16 @@ ensure_targets() {
             touch "$GTK3_CSS"
         fi
     fi
+    local repo_root
+    repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd || true)"
+    if [ -n "$repo_root" ] && [ -d "$repo_root/css" ] && [ ! -f "$DIR/shell-00-flat.css" ]; then
+        mkdir -p "$DIR"
+        for s in "$repo_root"/css/shell-[0-9][0-9]-*.css "$repo_root"/css/gtk4-[0-9][0-9]-*.css; do
+            [ -f "$s" ] && cp -f "$s" "$DIR/" 2>/dev/null || true
+        done
+        [ -f "$repo_root/css/gtk3-tweaks.css" ] && cp -f "$repo_root/css/gtk3-tweaks.css" "$DIR/" 2>/dev/null || true
+        echo "seeded CSS snippets into $DIR from $repo_root/css"
+    fi
 }
 ensure_targets
 

@@ -44,48 +44,20 @@ want "frosted resolves to blur on, window blur on, styling on" \
      "frosted blur=1 window=1 popup=1 transparency=0.90 styling=1" \
      --glass-mode frosted --app-transparency 0.90
 
-want "transparent drops the window blur and keeps the popups" \
-     "transparent blur=1 window=0 popup=1 transparency=0.82 styling=1" \
-     --glass-mode transparent --app-transparency 0.82
-
-want "solid turns everything off and stands the styling down" \
-     "solid blur=0 window=0 popup=0 transparency=0 styling=0" \
-     --glass-mode solid
-
 want "performance turns blur off, 99% opacity, keeps styling on" \
      "performance blur=0 window=0 popup=0 transparency=0.99 styling=1" \
      --glass-mode performance
-
-want "an explicit popup flag beats the mode" \
-     "transparent blur=1 window=0 popup=0 transparency=0.82 styling=1" \
-     --glass-mode transparent --no-popup-blur --app-transparency 0.82
 
 want "bare --no-blur is opaque but still themed" \
      "frosted blur=0 window=0 popup=0 transparency=0 styling=1" \
      --no-blur
 
-want "solid accepts an explicit --app-transparency already spelled off (0.0)" \
-     "solid blur=0 window=0 popup=0 transparency=0 styling=0" \
-     --glass-mode solid --app-transparency 0.0
-
-want "solid accepts an explicit --app-transparency already spelled off (off)" \
-     "solid blur=0 window=0 popup=0 transparency=0 styling=0" \
-     --glass-mode solid --app-transparency off
-
-if in_scratch --glass-mode solid --window-blur >/dev/null 2>&1; then
-    failures+=("--glass-mode solid --window-blur was accepted, it must be refused")
+if in_scratch --glass-mode solid >/dev/null 2>&1; then
+    failures+=("--glass-mode solid was accepted, it must be refused")
 fi
 
-if in_scratch --glass-mode solid --blur >/dev/null 2>&1; then
-    failures+=("--glass-mode solid --blur was accepted, it must be refused")
-fi
-
-if in_scratch --glass-mode solid --popup-blur >/dev/null 2>&1; then
-    failures+=("--glass-mode solid --popup-blur was accepted, it must be refused")
-fi
-
-if in_scratch --glass-mode solid --app-transparency 0.85 >/dev/null 2>&1; then
-    failures+=("--glass-mode solid --app-transparency 0.85 was accepted, it must be refused")
+if in_scratch --glass-mode transparent >/dev/null 2>&1; then
+    failures+=("--glass-mode transparent was accepted, it must be refused")
 fi
 
 if in_scratch --glass-mode frostd >/dev/null 2>&1; then
@@ -122,13 +94,13 @@ seeded="$(cat "$scratch/.config/aura-glass/modes/frosted/blur-strength" 2>/dev/n
 [ "$seeded" = "150" ] || failures+=(
     "seeding frosted should take the blur strength already on disk, got '$seeded'")
 
-in_scratch --glass-mode transparent >/dev/null 2>&1
-seeded="$(cat "$scratch/.config/aura-glass/modes/transparent/app-transparency" 2>/dev/null || true)"
-[ "$seeded" = "0.82" ] || failures+=(
-    "seeding transparent should give it its own darker level, got '$seeded'")
-seeded="$(cat "$scratch/.config/aura-glass/modes/transparent/app-tint-color" 2>/dev/null || true)"
-[ "$seeded" = "#0b0b0f" ] || failures+=(
-    "seeding transparent should give it its own tint, got '$seeded'")
+in_scratch --glass-mode performance >/dev/null 2>&1
+seeded="$(cat "$scratch/.config/aura-glass/modes/performance/app-transparency" 2>/dev/null || true)"
+[ "$seeded" = "0.99" ] || failures+=(
+    "seeding performance should give it 0.99 level, got '$seeded'")
+seeded="$(cat "$scratch/.config/aura-glass/modes/performance/app-blur-scope" 2>/dev/null || true)"
+[ "$seeded" = "none" ] || failures+=(
+    "seeding performance should give it 'none' blur scope, got '$seeded'")
 
 # Diverge the shared top-level memos from what frosted's own drawer holds —
 # what a plain flagless run, or a real (non-dry) run of another mode, would
@@ -180,36 +152,6 @@ case "$raw" in
     *) failures+=("switching back to frosted should restore shell-tint-color #224488 (line not seen)") ;;
 esac
 
-# Solid leaves the packs and the accent alone and puts the two theme keys back.
-# Matched against the specific dry-run line each assertion is about, rather
-# than anywhere in the whole run's output, so a regression in one line cannot
-# hide behind an unrelated line elsewhere that happens to share a word.
-out="$(in_scratch --glass-mode solid)"
-case "$out" in
-    *"dry-run: gsettings reset org.gnome.desktop.interface gtk-theme"*) ;;
-    *) failures+=("solid should reset gtk-theme, the run never mentions it") ;;
-esac
-case "$out" in
-    *"dry-run: dconf load /org/gnome/shell/extensions/ < dconf/core.ini"*)
-        failures+=("solid should not load the dconf preset — it would rewrite the extensions' own settings") ;;
-esac
-case "$out" in
-    *"dry-run: gsettings set org.gnome.desktop.interface icon-theme"*) ;;
-    *) failures+=("solid should still set the icon theme — the packs stay") ;;
-esac
-
-# Solid also stands the extensions down, and the way back is silent on any
-# other mode — restore_extensions returns immediately with no record on disk.
-out="$(in_scratch --glass-mode solid)"
-case "$out" in
-    *"Standing the extensions down"*) ;;
-    *) failures+=("solid should stand the extensions down, the run never mentions it") ;;
-esac
-case "$out" in
-    *"dconf reset"*)
-        failures+=("solid must not reset any extension's settings") ;;
-esac
-
 out="$(in_scratch --glass-mode frosted)"
 case "$out" in
     *"Standing the extensions down"*)
@@ -221,4 +163,4 @@ if [ "${#failures[@]}" -gt 0 ]; then
     printf '  %s\n' "${failures[@]}"
     exit 1
 fi
-printf 'glass mode check passed — 7 resolutions, 5 refusals, 6 drawer keys round-tripped, solid'"'"'s theme keys confirmed, and its extensions stood down\n'
+printf 'glass mode check passed — resolutions, refusals and drawer keys round-tripped\n'

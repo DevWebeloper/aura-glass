@@ -477,9 +477,8 @@ FONTS = [
 # is allowed to hold.
 BLUR_SCOPES = ("gtk", "all", "none")
 
-# The four modes, in the order the tabs show them. Solid is last because it is
-# the one that takes the theme away.
-GLASS_MODES = ["frosted", "transparent", "performance", "solid"]
+# The two modes, in the order the tabs show them.
+GLASS_MODES = ["frosted", "performance"]
 
 # Titlebar buttons. Two answers rather than the free string the key takes: see
 # apply_window_buttons in lib/steps-dconf.sh for why the rest of what
@@ -566,7 +565,7 @@ NAV_SECTIONS = [
 # simply saying what is on it, the same trade-off EXT_TIERS already makes
 # elsewhere in this file.
 SEARCH_INDEX = {
-    "glass": ["frosted", "transparent", "solid", "blur", "tint", "opacity",
+    "glass": ["frosted", "performance", "blur", "tint", "opacity",
              "transparency", "popup blur", "window blur", "scope",
              "notification", "notifications", "banner"],
     "appearance": ["accent", "colour", "color", "font", "icon", "cursor",
@@ -2095,16 +2094,12 @@ class Settings:
         # it. A machine from before modes existed has neither, so the mode is
         # read out of what is installed — which is exactly what the window used
         # to do for the one switch this replaces.
-        if os.path.exists(os.path.join(CONF_DIR, "styling-off")):
-            self.glass_mode = "solid"
-        else:
-            mode = read_memo("glass-mode", "") or ""
-            if mode not in GLASS_MODES:
-                mode = ""
-            self.glass_mode = mode
+        mode = read_memo("glass-mode", "") or ""
+        if mode not in GLASS_MODES:
+            mode = ""
+        self.glass_mode = mode
 
-        # Solid mode has no memo of its own for the blur: install_css encodes it
-        # by whether the solid sheet is installed at all.
+        # Blur is determined by whether the blur sheet is active.
         self.blur = not os.path.exists(
             os.path.join(CONF_DIR, "shell-80-solid.css"))
 
@@ -2123,15 +2118,13 @@ class Settings:
             # lib/steps-modes.sh: the two have to agree, because the window
             # showing one tab while install.sh resolves another is the one bug
             # a mode can have that nothing else would catch.
-            if self.blur and self.scope == "none" and self.transparency != "0":
-                self.glass_mode = "transparent"
-            elif not self.blur:
+            if not self.blur:
                 self.glass_mode = "performance"
             else:
                 self.glass_mode = "frosted"
 
         if self.glass_mode == "performance":
-            self.transparency = "0.99"
+            self.transparency = read_mode_memo("performance", "app-transparency", "0.99") or "0.99"
             self.scope = "none"
             self.popup_blur = False
             self.notification_blur = False
@@ -2243,17 +2236,7 @@ class Settings:
 
         self.modes = {}
         for mode in GLASS_MODES:
-            if mode == "solid":
-                continue
-            # Transparent's level is the one field seed_glass_mode does not
-            # inherit from disk: frosted's own level is tuned for a blurred
-            # window behind it, and was never transparent's to start from, so
-            # its seed is always the darker constant, unconditionally.
-            if mode == "transparent":
-                level = "0.82"
-                tint_default = disk_app_tint or "#0b0b0f"
-                shell_default = disk_shell_tint or "#0b0b0f"
-            elif mode == "performance":
+            if mode == "performance":
                 level = "0.99"
                 tint_default = disk_app_tint or "#000000"
                 shell_default = disk_shell_tint or "#000000"
@@ -2387,26 +2370,11 @@ class Settings:
 
         # The mode first, and the flags it already implies are not restated.
         # install.sh resolves a mode into exactly these, so sending both would
-        # be the same sentence twice — and in solid's case the second half is
-        # the combination install.sh refuses outright.
+        # be redundant.
         mode_changed = self.glass_mode != other.glass_mode
         if mode_changed:
             args += ["--glass-mode", self.glass_mode]
 
-        if self.glass_mode == "solid":
-            return args
-
-        # Solid keeps no settings of its own — every field below reads, while
-        # solid is in force, as whatever apply_glass_mode's solid branch
-        # forced it to the moment WANT_STYLING went to 0 (APP_TRANSPARENCY=0,
-        # popup and window blur off), not a preference anyone chose. An
-        # earlier version of this function returned here whenever `other`
-        # was solid, sending nothing past the mode flag — which happened to
-        # be right for the tab exactly as its drawer left it, and silently
-        # wrong the moment someone dragged that tab's opacity before pressing
-        # Apply: the edit matched neither `other` (solid's forced 0) nor
-        # anything else this function looked at, so it never went out.
-        #
         # The honest baseline once the mode has moved is the drawer of the
         # mode being entered, not `other` itself: self.modes[mode] in
         # Settings.__init__ populates it from exactly the files install.sh's
@@ -2414,10 +2382,7 @@ class Settings:
         # says nothing about a field, so comparing against it tells the truth
         # about whether the widgets are asking for something the drawer does
         # not already hold — nothing to send when they are not, the edit when
-        # they are. A mode with no entry — nothing on this path should
-        # produce one, since solid is handled above and Settings.__init__
-        # seeds every other mode unconditionally — falls back to `other`
-        # rather than raising.
+        # they are.
         into = other.modes.get(self.glass_mode) if mode_changed else None
 
         def base(field):
@@ -2430,9 +2395,7 @@ class Settings:
         app_tint_base = base("app_tint")
         shell_tint_base = base("shell_tint")
 
-        # Only frosted has a scope to send: not blurring behind windows is
-        # what transparent is, and --glass-mode transparent has already said
-        # so.
+        # Only frosted has a scope to send: performance has blur disabled.
         if self.glass_mode == "frosted" and self.scope != scope_base:
             args.append({"gtk": "--gtk-apps-blur",
                          "all": "--all-apps-blur",
@@ -2440,10 +2403,7 @@ class Settings:
 
         # --no-window-blur moves the level to 0.95 unless the level is given,
         # so the level goes after the scope flag and always states itself
-        # when either one is not what the baseline already holds. The scope
-        # half only matters for frosted, for the same reason the flag above
-        # is frosted-only — transparent has no scope flag of its own to move
-        # it.
+        # when either one is not what the baseline already holds.
         if (self.transparency != transparency_base
                 or (self.glass_mode == "frosted"
                     and self.scope != scope_base)):
@@ -3298,9 +3258,6 @@ class Window(Adw.ApplicationWindow):
         """
         if not self._preview_enabled or self._repo is None or self._running:
             return
-        if self._glass_mode() == "solid":
-            self._preview_revert()
-            return
         pending = [a for a in args if a in self._PREVIEWABLE_FLAGS]
         if not pending:
             self._preview_revert()
@@ -3339,13 +3296,13 @@ class Window(Adw.ApplicationWindow):
                      q(",".join(current.block)), q(window_blur), q(scope)))
         else:
             cmd = ("session=$(%s begin) && %s set --session \"$session\" "
-                  "--app-tint %s --shell-tint %s "
+                  "--glass-mode %s --app-tint %s --shell-tint %s "
                   "--transparency %s --radius-custom %s --blur-strength %s "
                   "--popup-brightness %s --notification-opacity %s "
                   "--popup-blur %s --notification-blur %s "
                   "--window-blur %s --scope %s "
                   "--app-blur-allow %s --app-blur-block %s"
-                  % (q(script), q(script), q(current.app_tint),
+                  % (q(script), q(script), q(current.glass_mode), q(current.app_tint),
                      q(current.shell_tint), q(current.transparency),
                      q(",".join(str(v) for v in current.radius_custom)),
                      q(str(current.blur_strength)),
@@ -3469,6 +3426,8 @@ class Window(Adw.ApplicationWindow):
             self._preview_session = None
             self._sync_preview_bar()
             self._clear_preview_css()
+            if hasattr(self, "_applied") and getattr(self._applied, "glass_mode", None) == "performance":
+                self._sync_live_window_opacity(level_to_percent(self._applied.transparency))
             if self._recovering_preview:
                 self._recovering_preview = False
                 self._toasts.add_toast(Adw.Toast(
@@ -3598,6 +3557,8 @@ class Window(Adw.ApplicationWindow):
         """
         if self._needs_logout:
             return "Applied — log out and back in to finish"
+        if getattr(self._applied, "glass_mode", None) == "performance":
+            return "Applied — live across all windows, menus and popups"
         return "Applied — restart any open GTK app for the GTK side"
 
     def _on_section(self, _list, row):
@@ -4137,14 +4098,8 @@ class Window(Adw.ApplicationWindow):
             self._build_frosted_page(), "frosted", "Frosted glass",
             "weather-fog-symbolic")
         self._mode_stack.add_titled_with_icon(
-            self._build_transparent_page(), "transparent", "Transparent",
-            "view-reveal-symbolic")
-        self._mode_stack.add_titled_with_icon(
             self._build_performance_page(), "performance", "Performance",
             "system-run-symbolic")
-        self._mode_stack.add_titled_with_icon(
-            self._build_solid_page(), "solid", "Solid",
-            "checkbox-symbolic")
         self._mode_stack.set_visible_child_name(self._applied.glass_mode)
         self._mode_stack.set_vexpand(True)
         # After the child is set, so putting the window on the installed mode is
@@ -4350,79 +4305,9 @@ class Window(Adw.ApplicationWindow):
             "<b>Blur is the most expensive thing in this window.</b> It costs "
             "GPU and battery — more on integrated graphics or a 4K screen. If "
             "the desktop feels slow, turn off <b>Blur behind all application "
-            "windows</b> first, then try Transparent, then Solid."))
+            "windows</b> first, or switch to Performance."))
 
         return self._mode_tab("frosted", page)
-
-    # ---- transparent ------------------------------------------------------
-
-    def _build_transparent_page(self):
-        """Translucent windows with nothing blurred behind them.
-
-        Two controls and a switch. There is no translucency on/off here: turning
-        it off is asking for a different mode, and the tab bar is where that is
-        asked. The level and the tint are this mode's own — they are not the
-        ones the frosted tab shows, and moving one here does not move that one.
-
-        Tint, opacity and blur amount lead the page for the same reason they
-        lead the frosted one: they are what this tab is for.
-        """
-        transparent = self._applied.modes["transparent"]
-        page = Adw.PreferencesPage()
-
-        page.add(self._build_tint_group("transparent"))
-
-        group = Adw.PreferencesGroup(
-            title="Transparency",
-            description="How much of the desktop comes through an app window.")
-
-        self._t_transparency_scale = self._opacity_scale(
-            level_to_percent(transparent["transparency"]))
-
-        row = Adw.ActionRow(title="Opacity", subtitle=OPACITY_SUBTITLE)
-        row.add_suffix(self._t_transparency_scale._readout)
-        group.add(row)
-
-        # The bar last and loose in the group, for the reason the frosted tab
-        # gives at more length: a group puts every non-row child after its list
-        # box, so this is only under the row that names it while the row that
-        # names it is the last one in the group.
-        bar = Gtk.Box(margin_start=12, margin_end=12, margin_top=4,
-                      margin_bottom=4)
-        bar.append(self._t_transparency_scale)
-        group.add(bar)
-        page.add(group)
-
-        page.add(self._build_blur_strength_group(
-            "transparent",
-            description="How far the popup and panel blur reaches — the only "
-                        "blur this mode has."))
-        page.add(self._build_popup_brightness_group("transparent"))
-        page.add(self._build_notification_ground_group("transparent"))
-
-        popups = Adw.PreferencesGroup(title="Popups")
-        self._t_popup_row = Adw.SwitchRow(
-            title="Blur behind menus and the top bar",
-            subtitle=POPUP_BLUR_SUBTITLE,
-            active=transparent["popup_blur"])
-        self._t_popup_row.connect("notify::active", self._on_changed,
-                                  "popup_blur")
-        popups.add(self._t_popup_row)
-
-        self._t_notification_row = Adw.SwitchRow(
-            title=NOTIFICATION_BLUR_TITLE,
-            subtitle=NOTIFICATION_BLUR_SUBTITLE,
-            active=transparent["notification_blur"])
-        self._t_notification_row.connect("notify::active", self._on_changed,
-                                         "notification_blur")
-        popups.add(self._t_notification_row)
-        page.add(popups)
-
-        page.add(tip_card(
-            "Windows let the wallpaper through without the GPU cost of "
-            "blurring it. Text needs contrast to hold up, so 70% is still "
-            "the floor."))
-        return self._mode_tab("transparent", page)
 
     def _opacity_scale(self, percent):
         """One opacity bar, with the label that reports it kept on its side.
@@ -4459,66 +4344,44 @@ class Window(Adw.ApplicationWindow):
     # ---- performance ------------------------------------------------------
 
     def _build_performance_page(self):
-        """Blur shaders disabled and surfaces fully opaque for maximum responsiveness.
+        """Blur shaders disabled for maximum responsiveness.
 
         Keeps full Aura Glass shape language, geometry, corner radii, and styling,
-        with customizable tints, popup brightness, and notification ground.
+        with customizable tints and adjustable opacity for windows, popups and menus.
         """
+        performance = self._applied.modes["performance"]
         page = Adw.PreferencesPage()
 
         page.add(self._build_tint_group(
             "performance",
             description="What the surfaces are tinted toward."))
-        page.add(self._build_popup_brightness_group("performance"))
-        page.add(self._build_notification_ground_group("performance"))
+
+        group = Adw.PreferencesGroup(
+            title="Transparency",
+            description="How much of the desktop comes through windows, popups and menus.")
+
+        self._p_transparency_scale = self._opacity_scale(
+            level_to_percent(performance["transparency"]))
+
+        row = Adw.ActionRow(
+            title="Windows, popups and menus opacity",
+            subtitle="Applied immediately across running apps, menus and shell popups")
+        row.add_suffix(self._p_transparency_scale._readout)
+        group.add(row)
+
+        bar = Gtk.Box(margin_start=12, margin_end=12, margin_top=4,
+                      margin_bottom=4)
+        bar.append(self._p_transparency_scale)
+        group.add(bar)
+        page.add(group)
 
         page.add(tip_card(
             "<b>Maximum responsiveness with full Aura Glass styling.</b>\n"
-            "Blur shaders are disabled and windows and popups are 100% opaque "
-            "for zero GPU overhead. Theme geometry, corner radii, accents, and "
-            "custom tints remain active."))
+            "Blur shaders are disabled and windows, popups and menus have adjustable "
+            "opacity (99% by default) for zero GPU overhead. Theme geometry, corner radii, "
+            "accents, and custom tints remain active."))
 
         return self._mode_tab("performance", page)
-
-    # ---- solid ------------------------------------------------------------
-
-    def _build_solid_page(self):
-        """No controls: this tab is a description of what standing down means.
-
-        It is the tab someone reaches because something is wrong, so it says
-        what it takes away and what it leaves in the order those questions get
-        asked, and it does not editorialise about performance — the frosted tab
-        already does that.
-        """
-        page = Adw.PreferencesPage()
-        page.add(tip_card(
-            "<b>The theme stands down.</b> Your desktop goes back to GNOME's "
-            "own look — for when something's wrong and you want it back while "
-            "you work out what.\n\nNothing is deleted. Coming back is picking "
-            "another tab and pressing Apply."))
-
-        goes = Adw.PreferencesGroup(title="What it takes away")
-        for title, subtitle in (
-            ("The stylesheets", "Backed-up GTK and shell CSS come back"),
-            ("The shell and GTK themes", "Both go back to GNOME's defaults"),
-            ("The extensions this installed",
-             "Switched off, not removed — settings are kept"),
-        ):
-            goes.add(Adw.ActionRow(title=title, subtitle=subtitle))
-        page.add(goes)
-
-        stays = Adw.PreferencesGroup(title="What it leaves")
-        for title, subtitle in (
-            ("Your icons and pointer", "Stay installed and selected"),
-            ("Your accent colour", "A GNOME setting, not this theme's"),
-            ("Every setting in the other two tabs",
-             "Opacity, tint, blur strength and the per-app lists"),
-            ("Extensions you installed yourself",
-             "Only the ones this project installs are switched off"),
-        ):
-            stays.add(Adw.ActionRow(title=title, subtitle=subtitle))
-        page.add(stays)
-        return self._mode_tab("solid", page)
 
     # ---- the tint ---------------------------------------------------------
 
@@ -5907,10 +5770,8 @@ class Window(Adw.ApplicationWindow):
     def _app_effective_scope(self):
         """The scope blur_state should read, given the mode the tabs show.
 
-        Mirrors _list_is_consulted: solid has no blur at all, and only
-        frosted has a window-blur scope in the first place — transparent and
-        solid both answer "none" here for the same reason _list_is_consulted
-        answers False for either list while they are showing.
+        Performance has no blur at all, and only frosted has a window-blur scope
+        in the first place.
         """
         if self._glass_mode() != "frosted":
             return "none"
@@ -5952,10 +5813,10 @@ class Window(Adw.ApplicationWindow):
         agrees with.
         """
         mode = self._glass_mode()
-        solid = mode in ("solid", "performance")
+        perf = mode == "performance"
         scope = self._app_effective_scope()
-        idle = (not solid) and scope == "none"
-        live = not solid and not idle
+        idle = (not perf) and scope == "none"
+        live = not perf and not idle
 
         # self._app_head carries the default toggle and the starting-point
         # buttons — one set_sensitive on the box reaches all of them, since
@@ -5963,14 +5824,8 @@ class Window(Adw.ApplicationWindow):
         for widget in (self._app_head, self._app_switcher, self._app_stack):
             widget.set_sensitive(live)
 
-        self._app_banner.set_revealed(solid or idle)
-        if mode == "solid":
-            self._app_banner.set_title(
-                "Solid mode has no blur at all — turn on Frosted to choose "
-                "apps.")
-            self._app_banner.set_button_label("Switch to Frosted")
-            self._app_banner_action = "frosted"
-        elif mode == "performance":
+        self._app_banner.set_revealed(perf or idle)
+        if mode == "performance":
             self._app_banner.set_title(
                 "Performance mode has no blur at all — turn on Frosted to choose "
                 "apps.")
@@ -6535,33 +6390,17 @@ class Window(Adw.ApplicationWindow):
         # tab's, which hold that other mode's settings and are not what this
         # Apply is about.
         s.glass_mode = self._glass_mode()
-        s.blur = s.glass_mode not in ("solid", "performance")
-        if s.glass_mode == "solid":
-            # This tab has no tint rows, no strength bar and no opacity, so the
-            # applied values come through untouched rather than being read off
-            # widgets that are not there — and what solid forces is what it
-            # forces. flags_against returns on the mode flag alone for solid, so
-            # none of this is ever sent.
-            s.app_tint = self._applied.app_tint
-            s.shell_tint = self._applied.shell_tint
-            s.blur_strength = self._applied.blur_strength
-            s.popup_brightness = self._applied.popup_brightness
-            s.notification_opacity = self._applied.notification_opacity
-            s.scope = "none"
-            s.transparency = "0"
-            s.popup_blur = False
-            s.notification_blur = False
-        elif s.glass_mode == "performance":
+        s.blur = s.glass_mode != "performance"
+        if s.glass_mode == "performance":
             tints = self._tints["performance"]
             s.app_tint = tints["app"]
             s.shell_tint = tints["shell"]
             s.blur_strength = self._applied.blur_strength
-            s.popup_brightness = int(round(
-                self._brightness_scales["performance"].get_value()))
-            s.notification_opacity = int(round(
-                self._ground_scales["performance"].get_value()))
+            s.popup_brightness = self._applied.popup_brightness
+            s.notification_opacity = self._applied.notification_opacity
             s.scope = "none"
-            s.transparency = "0.99"
+            s.transparency = percent_to_level(
+                round(self._p_transparency_scale.get_value()))
             s.popup_blur = False
             s.notification_blur = False
         else:
@@ -6574,22 +6413,13 @@ class Window(Adw.ApplicationWindow):
                 self._brightness_scales[s.glass_mode].get_value()))
             s.notification_opacity = int(round(
                 self._ground_scales[s.glass_mode].get_value()))
-            if s.glass_mode == "transparent":
-                # No scope and no off switch. Not blurring behind a window is
-                # what this mode is, and a level of 0 is not a state it has.
-                s.scope = "none"
-                s.transparency = percent_to_level(
-                    round(self._t_transparency_scale.get_value()))
-                s.popup_blur = self._t_popup_row.get_active()
-                s.notification_blur = self._t_notification_row.get_active()
-            else:
-                s.scope = self._scope()
-                s.transparency = (
-                    percent_to_level(
-                        round(self._transparency_scale.get_value()))
-                    if self._transparency_on.get_active() else "0")
-                s.popup_blur = self._popup_row.get_active()
-                s.notification_blur = self._notification_row.get_active()
+            s.scope = self._scope()
+            s.transparency = (
+                percent_to_level(
+                    round(self._transparency_scale.get_value()))
+                if self._transparency_on.get_active() else "0")
+            s.popup_blur = self._popup_row.get_active()
+            s.notification_blur = self._notification_row.get_active()
         s.allow = list(self._allow)
         s.block = list(self._block)
         s.icons = join_icons(
@@ -6613,18 +6443,7 @@ class Window(Adw.ApplicationWindow):
         """Only the rows that depend on another row in the same tab.
 
         Every glass row here is the frosted tab's, and is named as that tab's
-        rather than looked up through whichever tab is showing. They exist
-        whatever the mode is, so keeping them in step costs nothing and is
-        right whenever the tab comes back into view; the transparent tab has no
-        row that dims another, because its translucency is the mode rather than
-        a switch; and solid has no controls at all. Returning early on solid —
-        the obvious way to keep this off a tab with nothing in it — would have
-        taken the icon row at the bottom with it, and that one has nothing to
-        do with glass.
-
-        What this used to do as well was dim four rows to say "solid mode is
-        on, so none of this applies". Solid is a tab now, and a control that
-        does not apply is in another one.
+        rather than looked up through whichever tab is showing.
         """
         # Nothing to widen when there is no window blur to widen.
         self._blur_all_row.set_sensitive(self._window_blur_row.get_active())
@@ -6685,11 +6504,32 @@ class Window(Adw.ApplicationWindow):
     def _sync_transparency_value(self, scale):
         scale._readout.set_label("%d%%" % round(scale.get_value()))
 
+    def _sync_live_window_opacity(self, percent):
+        opacity = int(round(percent / 100.0 * 255))
+        try:
+            Gio.DBus.session.call(
+                "io.github.DevWebeloper.AuraGlass",
+                "/io/github/DevWebeloper/AuraGlass",
+                "io.github.DevWebeloper.AuraGlass",
+                "SetWindowOpacity",
+                GLib.Variant("(u)", (opacity,)),
+                None,
+                Gio.DBusCallFlags.NONE,
+                500,
+                None,
+                None,
+                None
+            )
+        except Exception:
+            pass
+
     def _on_scale_changed(self, scale):
         # Outside the loading guard: the readout has to follow the bar even when
         # the bar was moved by _reload rather than by a hand. The bar that moved
         # rather than a bar this method names: two tabs have one each.
         self._sync_transparency_value(scale)
+        if getattr(self, "_p_transparency_scale", None) is not None and scale == self._p_transparency_scale:
+            self._sync_live_window_opacity(scale.get_value())
         if self._loading:
             return
         self._mark_dirty()
@@ -6759,13 +6599,11 @@ class Window(Adw.ApplicationWindow):
         self._popup_row.set_active(frosted["popup_blur"])
         self._notification_row.set_active(frosted["notification_blur"])
 
-        transparent = self._applied.modes["transparent"]
-        # No such guard here: this mode has no off, so its level is always a
-        # level and there is nothing to come back to.
-        self._t_transparency_scale.set_value(
-            level_to_percent(transparent["transparency"]))
-        self._t_popup_row.set_active(transparent["popup_blur"])
-        self._t_notification_row.set_active(transparent["notification_blur"])
+
+        performance = self._applied.modes["performance"]
+        if hasattr(self, "_p_transparency_scale"):
+            self._p_transparency_scale.set_value(
+                level_to_percent(performance["transparency"]))
 
         for mode, tints in self._tints.items():
             drawer = self._applied.modes[mode]

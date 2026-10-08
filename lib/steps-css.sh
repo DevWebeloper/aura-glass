@@ -246,7 +246,8 @@ apply_notification_opacity() {
 apply_popup_transparency() {
     local level="${APP_TRANSPARENCY:-0}"
     local sheet="$CONF_DIR/shell-popup-blur.css"
-    [ -f "$sheet" ] || return 0
+    local solid_sheet="$CONF_DIR/shell-80-solid.css"
+    [ -f "$sheet" ] || [ -f "$solid_sheet" ] || return 0
     [ "$level" = 0 ] || [ "$level" = "0.0" ] || [ "$level" = "0.00" ] && return 0
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
@@ -254,20 +255,23 @@ apply_popup_transparency() {
         return 0
     fi
 
-    python3 - "$sheet" "$level" <<'PY' || true
+    if [ -f "$sheet" ]; then
+        python3 - "$sheet" "$level" 0.90 0.85 <<'PY' || true
 import sys, re
-sheet = sys.argv[1]
+sheet, level_s, base_s, max_s = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 try:
-    level = float(sys.argv[2])
+    level = float(level_s)
+    base = float(base_s)
+    max_a = float(max_s)
 except Exception:
     sys.exit(0)
 if level <= 0 or level >= 1.5:
     sys.exit(0)
 
-ratio = level / 0.90
+ratio = level / base
 def repl(m):
     r, g, b, a = m.group(1), m.group(2), m.group(3), float(m.group(4))
-    new_a = max(0.10, min(0.85, round(a * ratio, 2)))
+    new_a = max(0.10, min(max_a, round(a * ratio, 2)))
     return f"rgba({r}, {g}, {b}, {new_a:.2f})"
 
 with open(sheet, "r", encoding="utf-8") as f:
@@ -276,6 +280,34 @@ new_content = re.sub(r"rgba\((\d+),\s*(\d+),\s*(\d+),\s*(0\.\d+)\)", repl, conte
 with open(sheet, "w", encoding="utf-8") as f:
     f.write(new_content)
 PY
+    fi
+
+    if [ -f "$solid_sheet" ]; then
+        python3 - "$solid_sheet" "$level" 0.99 1.00 <<'PY' || true
+import sys, re
+sheet, level_s, base_s, max_s = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+try:
+    level = float(level_s)
+    base = float(base_s)
+    max_a = float(max_s)
+except Exception:
+    sys.exit(0)
+if level <= 0 or level >= 1.5:
+    sys.exit(0)
+
+ratio = level / base
+def repl(m):
+    r, g, b, a = m.group(1), m.group(2), m.group(3), float(m.group(4))
+    new_a = max(0.10, min(max_a, round(a * ratio, 2)))
+    return f"rgba({r}, {g}, {b}, {new_a:.2f})"
+
+with open(sheet, "r", encoding="utf-8") as f:
+    content = f.read()
+new_content = re.sub(r"rgba\((\d+),\s*(\d+),\s*(\d+),\s*(0\.\d+)\)", repl, content)
+with open(sheet, "w", encoding="utf-8") as f:
+    f.write(new_content)
+PY
+    fi
 }
 
 install_transparency_css() {

@@ -447,14 +447,10 @@ install_extensions() {
 
     local u
     for u in "${EXT_CORE[@]}"; do install_ext_ego "$u" || true; done
-    # Solid mode does not install Blur My Shell at all. Disabling its components
-    # would leave the extension loaded and still building one background actor
-    # per surface; not installing it is what actually removes the cost.
-    if [ "${WANT_BLUR:-1}" = 1 ]; then
-        install_bms
-    else
-        skip "$BMS_UUID left out (--no-blur)"
-    fi
+    # Blur My Shell is always installed so that switching between frosted and
+    # performance mode in the Aura Glass app or via flags works without
+    # needing a full re-install.
+    install_bms
     install_aura_ext
     install_custom_osd
 
@@ -565,12 +561,8 @@ enable_extensions() {
     fi
 
     # $BMS_UUID is named explicitly rather than left in EXT_CORE so that it is
-    # enabled whichever source install_bms took it from — and so that solid
-    # mode can leave it out without editing the shared list.
-    local want=("${EXT_CORE[@]}" "$AURA_EXT_UUID") u
-    if [ "${WANT_BLUR:-1}" = 1 ]; then
-        want+=("$BMS_UUID")
-    fi
+    # enabled whichever source install_bms took it from.
+    local want=("${EXT_CORE[@]}" "$AURA_EXT_UUID" "$BMS_UUID") u
     [ "${WANT_OSD:-1}" = 1 ] && want+=(custom-osd@neuromorph)
     if [ "${WANT_EXTRAS:-0}" = 1 ] && [ "${#EXT_EXTRA[@]}" -gt 0 ]; then
         want+=("${EXT_EXTRA[@]}")
@@ -586,6 +578,14 @@ enable_extensions() {
         fi
         if [ ! -d "$EXT_DIR/$u" ] && [ ! -d "/usr/share/gnome-shell/extensions/$u" ]; then
             skip "$u not installed — not enabling"
+            continue
+        fi
+        if is_in_disabled_extensions "$u"; then
+            skip "$u is in disabled-extensions — keeping disabled"
+            continue
+        fi
+        if [ "$is_update" = 1 ] && [ -n "${PRE_INSTALLED_EXTS[$u]:-}" ] && ! is_extension_enabled "$u"; then
+            skip "$u was disabled by the user — keeping disabled"
             continue
         fi
         dequeue_from_disabled_extensions "$u" || true

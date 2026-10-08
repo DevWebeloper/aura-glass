@@ -337,20 +337,150 @@ install_icons() {
     ok "$name"
 }
 
+ensure_scalable_cursors() {
+    local theme_dir="$1"
+    [ -d "$theme_dir/cursors" ] || return 0
+    [ "${DRY_RUN:-0}" = 1 ] && return 0
+    if [ "${FORCE:-0}" != 1 ] && [ -d "$theme_dir/cursors_scalable" ]; then
+        return 0
+    fi
+    python3 - "$theme_dir" <<'PY_SCALABLE'
+import os, sys, json, struct, zlib, base64, hashlib
+
+STANDARD_NAMES = [
+    "default", "pointer", "text", "wait", "progress", "crosshair", "move",
+    "copy", "help", "not-allowed", "no-drop", "col-resize", "row-resize",
+    "n-resize", "s-resize", "e-resize", "w-resize", "ne-resize", "nw-resize",
+    "se-resize", "sw-resize", "all-scroll", "dnd-move", "dnd-copy", "dnd-none",
+    "dnd-ask", "grab", "grabbing", "zoom-in", "zoom-out", "context-menu",
+    "alias", "cell", "vertical-text", "color-picker", "left_ptr", "arrow",
+    "ibeam", "xterm", "hand2", "hand1", "watch", "clock"
+]
+
+def parse_xcursor(path):
+    try:
+        with open(path, "rb") as f: data = f.read()
+    except OSError: return []
+    if len(data) < 16: return []
+    magic, _, _, ntoc = struct.unpack("<IIII", data[:16])
+    if magic != 0x72756358: return []
+    images = []
+    for i in range(ntoc):
+        pos_entry = 16 + i * 12
+        if pos_entry + 12 > len(data): break
+        ctype, subtype, pos = struct.unpack("<III", data[pos_entry:pos_entry+12])
+        if ctype != 0xfffd0002 or pos + 36 > len(data): continue
+        _, _, _, _, w, h, xhot, yhot, delay = struct.unpack("<IIIIIIIII", data[pos:pos+36])
+        px_bytes = w * h * 4
+        if pos + 36 + px_bytes > len(data): continue
+        images.append({
+            "size": subtype, "width": w, "height": h,
+            "xhot": xhot, "yhot": yhot, "delay": delay,
+            "pixels": data[pos+36:pos+36+px_bytes]
+        })
+    return images
+
+def create_png(width, height, raw_argb_premul):
+    buf = bytearray(width * height * 4)
+    for i in range(width * height):
+        px = int.from_bytes(raw_argb_premul[i*4:(i+1)*4], "little")
+        a = (px >> 24) & 0xFF
+        r = (px >> 16) & 0xFF
+        g = (px >> 8) & 0xFF
+        b = px & 0xFF
+        if 0 < a < 255:
+            r = min(255, (r * 255) // a)
+            g = min(255, (g * 255) // a)
+            b = min(255, (g * 255) // a)
+        buf[i*4] = r; buf[i*4+1] = g; buf[i*4+2] = b; buf[i*4+3] = a
+    raw = bytearray()
+    row_len = width * 4
+    for y in range(height):
+        raw.append(0)
+        raw.extend(buf[y*row_len:(y+1)*row_len])
+    compressed = zlib.compress(bytes(raw), 9)
+    def chunk(tag, payload):
+        return struct.pack(">I", len(payload)) + tag + payload + struct.pack(">I", zlib.crc32(tag + payload) & 0xffffffff)
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", compressed) + chunk(b"IEND", b"")
+
+def make_svg(img):
+    w, h = img["width"], img["height"]
+    b64 = base64.b64encode(create_png(w, h, img["pixels"])).decode("ascii")
+    return f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{w}" height="{h}" viewBox="0 0 {w} {h}">\n  <image width="{w}" height="{h}" xlink:href="data:image/png;base64,{b64}"/>\n</svg>\n'
+
+tdir = sys.argv[1] if len(sys.argv) > 1 else "."
+cdir = os.path.join(tdir, "cursors")
+out_dir = os.path.join(tdir, "cursors_scalable")
+if os.path.isdir(cdir):
+    os.makedirs(out_dir, exist_ok=True)
+    by_hash = {}
+    for name in sorted(os.listdir(cdir)):
+        fp = os.path.join(cdir, name)
+        if not os.path.isfile(fp): continue
+        try:
+            with open(fp, "rb") as f: h = hashlib.sha256(f.read()).hexdigest()
+            by_hash.setdefault(h, []).append(name)
+        except OSError: continue
+    
+    for _, names in by_hash.items():
+        canonical = None
+        for s in STANDARD_NAMES:
+            if s in names: canonical = s; break
+        if not canonical:
+            non_hex = [n for n in names if len(n) != 32 or not all(c in "0123456789abcdef" for c in n)]
+            canonical = min(non_hex, key=len) if non_hex else names[0]
+        
+        target_dir = os.path.join(out_dir, canonical)
+        os.makedirs(target_dir, exist_ok=True)
+        imgs = parse_xcursor(os.path.join(cdir, canonical))
+        if not imgs: continue
+        sizes = sorted(list(set(im["size"] for im in imgs)))
+        target_size = max(sizes)
+        frames = [im for im in imgs if im["size"] == target_size]
+        meta = []
+        if len(frames) == 1:
+            im = frames[0]
+            with open(os.path.join(target_dir, f"{canonical}.svg"), "w") as f:
+                f.write(make_svg(im))
+            meta.append({"filename": f"{canonical}.svg", "hotspot_x": im["xhot"], "hotspot_y": im["yhot"], "nominal_size": im["width"]})
+        else:
+            for idx, im in enumerate(frames):
+                fn = f"{canonical}-{idx:02d}.svg"
+                with open(os.path.join(target_dir, fn), "w") as f:
+                    f.write(make_svg(im))
+                meta.append({"filename": fn, "delay": im["delay"] or 30, "hotspot_x": im["xhot"], "hotspot_y": im["yhot"], "nominal_size": im["width"]})
+        with open(os.path.join(target_dir, "metadata.json"), "w") as f:
+            json.dump(meta, f, indent=2)
+        for other in names:
+            if other == canonical: continue
+            sym = os.path.join(out_dir, other)
+            if os.path.islink(sym) or os.path.exists(sym):
+                try: os.remove(sym)
+                except OSError: pass
+            try: os.symlink(canonical, sym)
+            except OSError: pass
+PY_SCALABLE
+}
+
 install_moga_cursors() {
     local accent="${ACCENT:-blue}" variant archive md5 url line src stage dest meta
     step "Moga cursor refresh"
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        variant="$(python3 "$REPO_ROOT/tools/moga_cursor.py" variant "$accent")"
+        variant="$(moga_variant_for_accent "$accent")"
         info "Moga cursor refresh: all accent variants (selected: $accent/$variant) -> $HOME/.local/share/icons/Aura-Glass-Moga-*"
         return 0
     fi
     meta="$(mktemp)"
     curl -fsSL -o "$meta" "$MOGA_PAGE_URL/loadFiles" || { rm -f "$meta"; die "could not download Moga release metadata"; }
     for accent_name in $VALID_ACCENTS; do
-        variant="$(python3 "$REPO_ROOT/tools/moga_cursor.py" variant "$accent_name")" || { rm -f "$meta"; die "could not map accent '$accent_name' to a Moga cursor variant"; }
+        variant="$(moga_variant_for_accent "$accent_name")"
         dest="$HOME/.local/share/icons/Aura-Glass-Moga-$variant"
-        if [ "${FORCE:-0}" != 1 ] && [ -d "$dest/cursors" ]; then skip "Aura-Glass-Moga-$variant already installed"; continue; fi
+        if [ "${FORCE:-0}" != 1 ] && [ -d "$dest/cursors" ]; then
+            ensure_scalable_cursors "$dest"
+            skip "Aura-Glass-Moga-$variant already installed"
+            continue
+        fi
         line="$(python3 "$REPO_ROOT/tools/moga_cursor.py" resolve "$accent_name" "$meta")" || { rm -f "$meta"; die "Moga release metadata did not contain the expected $variant archive"; }
         IFS=$'\t' read -r variant archive md5 url <<<"$line"
         src="$SRC_CACHE/moga-$variant"; fetch_zip_md5_pinned "$url" "$md5" "$src"
@@ -360,6 +490,7 @@ install_moga_cursors() {
         stage="$(mktemp -d)"; cp -a "$(dirname "${matches[0]}")/." "$stage/"
         sed -i "s/^Name=.*/Name=Aura Glass Moga $variant/" "$stage/index.theme"
         mkdir -p "$HOME/.local/share/icons"; rm -rf "$dest"; mv "$stage" "$dest"
+        ensure_scalable_cursors "$dest"
         ok "Aura-Glass-Moga-$variant"
     done
     rm -f "$meta"
@@ -394,6 +525,9 @@ install_cursors() {
         if [ "${FORCE:-0}" != 1 ] \
            && { [ -d "$HOME/.local/share/icons/aosp-cursors/cursors" ] \
                 || [ -d "/usr/share/icons/aosp-cursors/cursors" ]; }; then
+            if [ -d "$HOME/.local/share/icons/aosp-cursors" ]; then
+                ensure_scalable_cursors "$HOME/.local/share/icons/aosp-cursors"
+            fi
             skip "aosp-cursors already installed"
             return 0
         fi
@@ -409,6 +543,7 @@ install_cursors() {
             rm -rf "$HOME/.local/share/icons/aosp-cursors"
             cp -r "$SRC_CACHE/aosp-cursors/aosp-cursors" \
                   "$HOME/.local/share/icons/aosp-cursors"
+            ensure_scalable_cursors "$HOME/.local/share/icons/aosp-cursors"
         fi
         ok "aosp-cursors"
         return 0
