@@ -463,6 +463,9 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/window-blur" \
           "$CONF_DIR/app-blur-scope" \
           "$CONF_DIR/rounded-blur" \
+          "$CONF_DIR/rounded-blur-choice" \
+          "$CONF_DIR/extension-pack" \
+          "$CONF_DIR/osd" \
           "$CONF_DIR/app-transparency" \
           "$CONF_DIR/app-opacity" \
           "$CONF_DIR/app-tint-color" \

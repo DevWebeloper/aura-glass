@@ -37,14 +37,14 @@ implementation view.
 
 | Flag | Default | Memo | Notes |
 |---|---|---|---|
-| `--recommended` / `--extras` | ✓ | none | 6 optional extensions (`EXT_EXTRA_RECOMMENDED`) |
-| `--all-extras` | | none | all 8 (`EXT_EXTRA_ALL`) |
-| `--no-extras` / `--minimal` | | none | foundation only |
-| `--extensions LIST` | | none | comma-separated UUIDs, each must be in `EXT_EXTRA_ALL`. Empty means minimal. |
-| `--full` | | none | all extras + icons + cursors + OSD + panel-blur fix |
-| `--osd` / `--no-osd` | on | none | Custom OSD pill |
-| `--bms-git` / `--no-bms-git` | git | `bms-ref`, `bms-source` | `--no-bms-git` (EGO build) also forces popup and notification blur off |
-| `--rounded-blur` / `--no-rounded-blur` | on | `rounded-blur` (stamp) | gnome-rounded-blur |
+| `--recommended` / `--extras` | ✓ | `extension-pack` | 6 optional extensions (`EXT_EXTRA_RECOMMENDED`). The pack memo is written only when a flag or a wizard picked the pack; a run with none reads it back |
+| `--all-extras` | | `extension-pack` | all 8 (`EXT_EXTRA_ALL`) |
+| `--no-extras` / `--minimal` | | `extension-pack` (empty file) | foundation only |
+| `--extensions LIST` | | `extension-pack` | comma-separated UUIDs, each must be in `EXT_EXTRA_ALL`. Empty means minimal. A remembered UUID that is no longer in the catalogue is dropped, not fatal |
+| `--full` | | `extension-pack`, `osd` | all extras + icons + cursors + OSD + panel-blur fix |
+| `--osd` / `--no-osd` | on | `osd` (`0\|1`) | Custom OSD pill. A remembered `0` is what a flagless `--gui` update or `--force` reinstall reads back |
+| `--bms-git` / `--no-bms-git` | git | `bms-ref`, `bms-source` | `--no-bms-git` (EGO build) also forces popup and notification blur off. A remembered `ego` keeps a flagless re-run on the EGO build; `--bms-git`, `--popup-blur` or `--notification-blur` typed override it |
+| `--rounded-blur` / `--no-rounded-blur` | on | `rounded-blur-choice` (`0\|1`), `rounded-blur` (stamp) | gnome-rounded-blur. Only the typed flags write the choice: `--no-blur` forces it off for a run without that being a decision, and a remembered `1` never overrides it |
 | `--gui` / `--no-gui` | on | none | settings window (needs PyGObject, libadwaita, pycairo) |
 | `--window-menu` / `--no-window-menu` | on | none | "Blur This App" |
 | `--update-check` / `--no-update-check` | on | `update-check` | daily timer |
@@ -185,7 +185,10 @@ what the old solid mode switched off.
 | `update-channel` | `release\|latest` | `install_update_check` |
 | `update-available` | the version a check found | `aura-glass-update-check` |
 | `rounded-blur` | build stamp | `rounded_blur_stamp` |
-| `bms-ref`, `bms-source` | installed BMS commit and `git\|ego` | `install_bms` |
+| `rounded-blur-choice` | `0\|1`, only after a typed `--rounded-blur` / `--no-rounded-blur`. Only a `0` is read back | `install_rounded_blur`; read in `install.sh`'s resolution block |
+| `extension-pack` | comma-separated UUIDs of the optional extensions chosen. Empty file = Minimal. Absent = the Recommended six | `install_extensions`; read in the resolution block |
+| `osd` | `0\|1`. Only a `0` is read back | `install_custom_osd`; read in the resolution block |
+| `bms-ref`, `bms-source` | installed BMS commit and `git\|ego`. `ego` is read back as `--no-bms-git` | `install_bms`; read in the resolution block |
 | `custom-osd-patch` (legacy `openbar-patch`) | patch stamps | `patch_stamp_write` |
 | `gdm-installed`, `gdm-monitors-synced` | login-screen state | `lib/steps-gdm.sh` |
 | `accent-from-wallpaper` | opt-in marker for the (currently uncatalogued) auto-accent extension | `bin/aura-glass-ext` writes it; `lib/steps-extensions.sh` reads it |

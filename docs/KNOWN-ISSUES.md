@@ -39,7 +39,7 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 | [KI-21](#ki-21) | Medium | **Fixed** (uncommitted) | Tray Performance profile never showed the opaque shell sheet (shell theme not reloaded) |
 | [KI-22](#ki-22) | Medium | **Fixed** | Settings app never showed the mode in force or the adaptive overlay, and missed changes made outside it |
 | [KI-23](#ki-23) | Medium | **Fixed** | Install/update/uninstall audit: silent failures, lost memos, leftovers |
-| [KI-24](#ki-24) | Low | Code-read | Update and full reinstall forget the extension pack, `--no-osd`, `--no-bms-git`, `--no-rounded-blur`. Wizard parity drift |
+| [KI-24](#ki-24) | Low | **Fixed** (wizard parity drift still open, see entry) | Update and full reinstall forgot the extension pack, `--no-osd`, `--no-bms-git`, `--no-rounded-blur`. Wizard parity drift awaits a decision on which wizard is canonical |
 
 ---
 
@@ -542,18 +542,25 @@ Left as is:
 
 **Re-runs that don't reproduce every choice.**
 
-"Install update" (`install.sh --gui`) and Full reinstall run no wizard, and
-these choices have no memo, so they come back as defaults:
-- the extension pack (Minimal and custom lists get the Recommended six),
-- `--no-osd`,
-- `--no-bms-git` (the `bms-source` memo is written but never read),
-- `--no-rounded-blur`.
+Fixed (memos): "Install update" (`install.sh --gui`) and Full reinstall
+(`--force --gui --yes`) run no wizard, and these choices had no memo, so they
+came back as defaults. Each is now remembered where it is applied, under
+`remembering()`, and read in `install.sh`'s resolution block (typed flag, then
+memo, then default):
+- the extension pack: `extension-pack` holds the chosen UUIDs (empty = Minimal). Written by `install_extensions` only when a flag or a wizard picked the pack, so an unanswered default keeps following the release's Recommended pack,
+- `--no-osd`: `osd`,
+- `--no-bms-git`: `bms-source` (`ego`) was written but never read; it is now,
+- `--no-rounded-blur`: `rounded-blur-choice`, written only for the typed flags, because `--no-blur` forces the variable to 0 for a run without that being a choice.
 
-Separately, the two wizards still drift:
+The three opt-outs only move a value down: a remembered `1` is never read over
+`--no-blur`. Uninstall removes all three new memos. Verified with a fixture
+`HOME`: a Minimal memo stayed Minimal across a flagless `--gui --dry-run`, a
+custom list came back as two UUIDs, a typed `--all-extras` beat the memo, and
+the hermetic suite passes.
+
+**Still open: wizard parity drift.** Waiting on a decision about which wizard
+is canonical before either changes:
 - the GTK wizard offers Performance in Customize; the text wizard doesn't,
 - the extension pack choices and default differ,
 - Complete Experience sends `--cursor-size 20` and no `--extensions` in the window,
 - the window's Performance sends `--no-blur`, the app sends `--glass-mode performance`.
-
-Fix direction: memos for the pack and the three opt-outs, read in the
-resolution block. Pick one wizard as canonical for parity.

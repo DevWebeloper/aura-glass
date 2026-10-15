@@ -71,10 +71,14 @@ ACCENT_DEFAULT="purple"
 WANT_EXTRAS=1
 EXT_LIST=""        # comma-separated UUIDs, replacing the pack. Empty = a pack
 EXT_LIST_EXPLICIT=""
+# Set by any flag, or any wizard answer, that picks the pack. Unset, the pack
+# is the remembered one ($CONF_DIR/extension-pack), and then the Recommended six.
+EXT_PACK_EXPLICIT=""
 WANT_ICONS=1
 WANT_CURSORS=1
 WANT_DEPS=1
 WANT_OSD=1
+OSD_EXPLICIT=""
 # Empty = no answer yet: the remembered one, and then the monitor count,
 # decide it further down.
 WANT_PANEL_BLUR_FIX=""
@@ -85,6 +89,7 @@ WANT_GDM_MONITORS=0
 GDM_MONITORS_EXPLICIT=""
 GDM_BG="default"
 WANT_BMS_GIT=1
+BMS_GIT_EXPLICIT=""
 WANT_BLUR=1
 GLASS_MODE=""            # empty = the memo, then derived from the flags
 GLASS_MODE_EXPLICIT=""
@@ -110,6 +115,7 @@ WINDOW_BUTTONS_EXPLICIT=""
 TITLEBUTTON_STYLE=""     # empty = remembered choice, then minimal
 TITLEBUTTON_STYLE_EXPLICIT=""
 WANT_ROUNDED_BLUR=1
+ROUNDED_BLUR_EXPLICIT=""   # only --rounded-blur / --no-rounded-blur: --no-blur's forced 0 is not a choice
 APP_TRANSPARENCY=""   # empty = remembered choice, then off (e.g. 0.90 / 90%)
 APP_TRANSPARENCY_EXPLICIT=""
 APP_OPACITY=""        # empty = remembered choice, then 255 (e.g. 230)
@@ -327,14 +333,14 @@ parse_flags() {
         --accent)        ACCENT="${2:-}"; ACCENT_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --accent=*)      ACCENT="${1#*=}"; ACCENT_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --recommended|--extras)
-                         WANT_EXTRAS=1; EXT_EXTRA=("${EXT_EXTRA_RECOMMENDED[@]}"); EXPLICIT_FLAGS=1; shift ;;
-        --all-extras)    WANT_EXTRAS=1; EXT_EXTRA=("${EXT_EXTRA_ALL[@]}"); EXPLICIT_FLAGS=1; shift ;;
+                         WANT_EXTRAS=1; EXT_EXTRA=("${EXT_EXTRA_RECOMMENDED[@]}"); EXT_PACK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --all-extras)    WANT_EXTRAS=1; EXT_EXTRA=("${EXT_EXTRA_ALL[@]}"); EXT_PACK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-extras|--minimal)
-                         WANT_EXTRAS=0; EXT_EXTRA=(); EXPLICIT_FLAGS=1; shift ;;
-        --extensions)    EXT_LIST="${2:-}"; EXT_LIST_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
-        --extensions=*)  EXT_LIST="${1#*=}"; EXT_LIST_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --full)          WANT_EXTRAS=1; EXT_EXTRA=("${EXT_EXTRA_ALL[@]}"); WANT_ICONS=1; WANT_CURSORS=1
-                         WANT_OSD=1; WANT_PANEL_BLUR_FIX=1; EXPLICIT_FLAGS=1; shift ;;
+                         WANT_EXTRAS=0; EXT_EXTRA=(); EXT_PACK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --extensions)    EXT_LIST="${2:-}"; EXT_LIST_EXPLICIT=1; EXT_PACK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --extensions=*)  EXT_LIST="${1#*=}"; EXT_LIST_EXPLICIT=1; EXT_PACK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --full)          WANT_EXTRAS=1; EXT_EXTRA=("${EXT_EXTRA_ALL[@]}"); EXT_PACK_EXPLICIT=1; WANT_ICONS=1; WANT_CURSORS=1
+                         WANT_OSD=1; OSD_EXPLICIT=1; WANT_PANEL_BLUR_FIX=1; EXPLICIT_FLAGS=1; shift ;;
         --grain)         GRAIN="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --grain=*)       GRAIN="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --no-grain)      GRAIN=0; EXPLICIT_FLAGS=1; shift ;;
@@ -369,16 +375,16 @@ parse_flags() {
         --font=*)        FONT="${1#*=}"; FONT_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --icons)         ICONS="${2:-}"; ICONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --icons=*)       ICONS="${1#*=}"; ICONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --osd)           WANT_OSD=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-osd)        WANT_OSD=0; EXPLICIT_FLAGS=1; shift ;;
-        --bms-git)       WANT_BMS_GIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-bms-git)    WANT_BMS_GIT=0; WANT_POPUP_BLUR=0; WANT_NOTIFICATION_BLUR=0
+        --osd)           WANT_OSD=1; OSD_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-osd)        WANT_OSD=0; OSD_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --bms-git)       WANT_BMS_GIT=1; BMS_GIT_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-bms-git)    WANT_BMS_GIT=0; BMS_GIT_EXPLICIT=1; WANT_POPUP_BLUR=0; WANT_NOTIFICATION_BLUR=0
                          POPUP_BLUR_EXPLICIT=1; NOTIFICATION_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --popup-blur)    WANT_POPUP_BLUR=1; WANT_BMS_GIT=1
+        --popup-blur)    WANT_POPUP_BLUR=1; WANT_BMS_GIT=1; BMS_GIT_EXPLICIT=1
                          POPUP_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-popup-blur) WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --notification-blur)
-                         WANT_NOTIFICATION_BLUR=1; WANT_BMS_GIT=1
+                         WANT_NOTIFICATION_BLUR=1; WANT_BMS_GIT=1; BMS_GIT_EXPLICIT=1
                          NOTIFICATION_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-notification-blur)
                          WANT_NOTIFICATION_BLUR=0; NOTIFICATION_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
@@ -403,8 +409,8 @@ parse_flags() {
                          WANT_NOTIFICATION_BLUR=0; NOTIFICATION_BLUR_EXPLICIT=1
                          WANT_WINDOW_BLUR=0; WINDOW_BLUR_EXPLICIT=1
                          WANT_ROUNDED_BLUR=0; EXPLICIT_FLAGS=1; shift ;;
-        --rounded-blur)      WANT_ROUNDED_BLUR=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-rounded-blur)   WANT_ROUNDED_BLUR=0; EXPLICIT_FLAGS=1; shift ;;
+        --rounded-blur)      WANT_ROUNDED_BLUR=1; ROUNDED_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-rounded-blur)   WANT_ROUNDED_BLUR=0; ROUNDED_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --app-transparency|--window-opacity|--window-transparency)
                          APP_TRANSPARENCY="${2:-$TOKEN_APP_TRANSPARENCY_SHIPPED}"; APP_TRANSPARENCY_EXPLICIT=1; EXPLICIT_FLAGS=1; APP_OPACITY_EXPLICIT=1; shift 2 ;;
         --app-transparency=*|--window-opacity=*|--window-transparency=*)
@@ -963,6 +969,42 @@ EOF
         printf '\n  Installation cancelled.\n\n'
         exit 0
     fi
+fi
+
+# A wizard that ran has asked about the pack and the OSD, so its answer stands
+# even when it sent no flag for it (the window's default pack is "no flag").
+if [ "$WIZARD_RC" = 0 ] || [ "$WIZARD_RC" = 2 ]; then
+    EXT_PACK_EXPLICIT=1
+    OSD_EXPLICIT=1
+fi
+
+# Choices that no wizard re-asks on an update or a full reinstall (--gui,
+# --force --gui --yes): a typed flag has already filled the variable and its
+# *_EXPLICIT marker, so the memo is only read when the run was given neither.
+#
+# The three opt-outs only ever move a value down. A remembered 1 leaves the
+# variable alone, because --no-blur forces WANT_ROUNDED_BLUR to 0 for a run
+# without that being a choice, and reading a 1 back over it would undo the mode.
+if [ -z "$EXT_PACK_EXPLICIT" ] && [ -r "$CONF_DIR/extension-pack" ]; then
+    # Unknown UUIDs are dropped, not fatal: a pack remembered by an older
+    # release may name an extension the catalogue has since retired.
+    EXT_EXTRA=()
+    while IFS= read -r ext_uuid; do
+        case " ${EXT_EXTRA_ALL[*]} " in
+            *" $ext_uuid "*) [ -n "$ext_uuid" ] && EXT_EXTRA+=("$ext_uuid") ;;
+        esac
+    done < <(tr ',' '\n' < "$CONF_DIR/extension-pack" 2>/dev/null || true)
+    if [ "${#EXT_EXTRA[@]}" -eq 0 ]; then WANT_EXTRAS=0; else WANT_EXTRAS=1; fi
+fi
+if [ -z "$OSD_EXPLICIT" ] && [ "$(cat "$CONF_DIR/osd" 2>/dev/null || true)" = 0 ]; then
+    WANT_OSD=0
+fi
+# bms-source is written by install_bms: "ego" is --no-bms-git having been used.
+if [ -z "$BMS_GIT_EXPLICIT" ] && [ "$(cat "$CONF_DIR/bms-source" 2>/dev/null || true)" = ego ]; then
+    WANT_BMS_GIT=0
+fi
+if [ -z "$ROUNDED_BLUR_EXPLICIT" ] && [ "$(cat "$CONF_DIR/rounded-blur-choice" 2>/dev/null || true)" = 0 ]; then
+    WANT_ROUNDED_BLUR=0
 fi
 
 # --extensions replaces the pack with a list of your own, which is what the setup

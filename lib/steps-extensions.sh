@@ -274,6 +274,12 @@ install_aura_ext() {
 install_custom_osd() {
     local uuid="custom-osd@neuromorph"
 
+    # Remembered when it was answered, for the same reason as the pack.
+    if remembering && [ -n "${OSD_EXPLICIT:-}" ]; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "${WANT_OSD:-1}" > "$CONF_DIR/osd"
+    fi
+
     if [ "${WANT_OSD:-1}" != 1 ]; then
         step "Custom OSD"
         skip "not installed (--no-osd)"
@@ -333,6 +339,15 @@ install_custom_osd() {
 # back to Shell.BlurEffect. rounded_blur_staleness_check is what makes it loud.
 install_rounded_blur() {
     step "Rounded corners for dynamic blur"
+
+    # Only a typed --rounded-blur / --no-rounded-blur is a choice. --no-blur
+    # forces the variable to 0 for a Performance run, and recording that would
+    # keep the library off after switching back to Frosted. Not "rounded-blur":
+    # that file is the mutter-version stamp, and its presence means installed.
+    if remembering && [ -n "${ROUNDED_BLUR_EXPLICIT:-}" ]; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "${WANT_ROUNDED_BLUR:-1}" > "$CONF_DIR/rounded-blur-choice"
+    fi
 
     if [ "${WANT_ROUNDED_BLUR:-1}" != 1 ]; then
         skip "not installed (--no-rounded-blur)"
@@ -439,6 +454,18 @@ rounded_blur_staleness_check() {
 
 install_extensions() {
     step "Installing shell extensions"
+    # The pack is a choice with no flag to reproduce it from on an update or a
+    # full reinstall, so it is remembered here, where it is applied, and only
+    # when it was chosen: an unanswered default stays whatever the release's
+    # Recommended pack is. An empty file is Minimal.
+    if remembering && [ -n "${EXT_PACK_EXPLICIT:-}" ]; then
+        mkdir -p "$CONF_DIR"
+        if [ "${WANT_EXTRAS:-0}" = 1 ]; then
+            ( IFS=,; printf '%s\n' "${EXT_EXTRA[*]}" ) > "$CONF_DIR/extension-pack"
+        else
+            : > "$CONF_DIR/extension-pack"
+        fi
+    fi
     # Allow safe extensions that haven't updated metadata yet for newer GNOME releases to load.
     run gsettings set org.gnome.shell disable-extension-version-validation true
     disable_retired_extensions
