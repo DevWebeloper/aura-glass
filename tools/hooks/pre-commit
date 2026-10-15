@@ -76,6 +76,17 @@ fi
 #
 # All three take their REPO_ROOT from their own location, so running the
 # extracted copies checks the extracted tree.
+# Source-only regressions do not need a desktop or GTK imports.
+step "performance and package rows (tests/check-performance.py)" \
+    python3 "$TMP/tests/check-performance.py"
+# Patch behavior needs an existing upstream clone containing the pinned commit.
+# Keep this offline; CI/maintainers can opt in by setting BMS_TEST_SOURCE.
+if [ -n "${BMS_TEST_SOURCE:-}" ]; then
+    step "patched BMS lifecycle (tests/check-bms-patches.py)" \
+        python3 "$TMP/tests/check-bms-patches.py" "$BMS_TEST_SOURCE"
+else
+    note "SKIP patched BMS lifecycle: set BMS_TEST_SOURCE to an upstream clone"
+fi
 step "tokens agree (tools/check-tokens.sh)"   bash "$TMP/tools/check-tokens.sh"
 step "cascade intact (tools/check-cascade.sh)" bash "$TMP/tools/check-cascade.sh"
 # check-tokens asserts the repo is at the shipped radii; this asserts a preset

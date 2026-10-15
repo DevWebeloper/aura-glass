@@ -132,3 +132,21 @@ OK). When you do write one:
 - Never touch the real `HOME`, dconf or network. Use a fixture `HOME`, a temp dir, stubs first on `PATH`, or `--dry-run`.
 - Exit non-zero naming the file and line or key that disagrees.
 - Add it to `tools/hooks/pre-commit` with a comment saying what class of mistake it catches that nothing else does.
+
+
+## Code-only blur lifecycle regressions
+
+`python3 tests/check-performance.py` covers the Packages page's empty system
+group. `python3 tests/check-bms-patches.py /path/to/blur-my-shell-clone` applies
+Aura's three patches to the pinned upstream source in a temporary directory
+and exercises window tracking, selective list refresh, effect and signal
+cleanup, cancellation, focus restoration, popup toggles and notification
+corners. See [tests/README.md](../tests/README.md). Set `BMS_TEST_SOURCE` to run
+patched-source checks from the commit hook. The tests never fetch or access
+the running desktop.
+
+The optimization retains existing pipelines when list/scope edits leave a
+window's blur eligibility unchanged. Pipeline changes still rebuild effects.
+No preset, blur strength, opacity, radius, pipeline definition or artifact
+handling default changes. Rendering and actual CPU/GPU improvement still need
+live validation; fixture allocation counts are not frame-rate measurements.

@@ -1,8 +1,7 @@
 diff --git a/src/components/applications.js b/src/components/applications.js
-index eda61e2..670f742 100644
 --- a/src/components/applications.js
 +++ b/src/components/applications.js
-@@ -54,6 +54,17 @@ function matchesAnyPattern(value, patterns) {
+@@ -54,6 +54,17 @@
      return patterns.some(pattern => pattern.test(value));
  }
  
@@ -20,10 +19,70 @@ index eda61e2..670f742 100644
  export const ApplicationsBlur = class ApplicationsBlur {
      constructor(connections, settings, effects_manager) {
          this.connections = connections;
-@@ -206,6 +217,19 @@ export const ApplicationsBlur = class ApplicationsBlur {
-             _ => this.check_blur(meta_window)
-         );
+@@ -165,15 +176,20 @@
+     }
+
+     /// Iterate through all existing windows and add blur as needed.
+-    update_all_windows() {
++    update_all_windows(rebuild = true) {
+         // Recompile patterns in case whitelist/blacklist changed
+         this._update_patterns();
+
+-        // remove all previously blurred windows, in the case where the
+-        // whitelist was changed
+-        this.meta_window_map.forEach(((_meta_window, pid) => {
+-            this.remove_blur(pid);
+-        }));
++        // A pipeline refresh assigns new tracking IDs below. List/scope edits
++        // only recheck selection, preserving unchanged actors and GPU effects.
++        // When rebuilding, release the old IDs and Meta.Window listeners too,
++        // or each refresh retains another entry per window and multiplies
++        // callbacks on later window events.
++        if (rebuild) {
++            this.meta_window_map.forEach((_meta_window, pid) => {
++                this.untrack_meta_window(pid);
++            });
++        }
  
+         for (
+             let i = 0;
+@@ -183,14 +199,27 @@
+             let workspace = global.workspace_manager.get_workspace_by_index(i);
+             let windows = workspace.list_windows();
+
+-            windows.forEach(meta_window => this.track_new(meta_window));
+-        }
++            windows.forEach(meta_window => {
++                if (!rebuild && this.meta_window_map.get(meta_window.bms_pid) === meta_window)
++                    this.check_blur(meta_window);
++                else
++                    this.track_new(meta_window);
++            });
++        }
++        // Rebuilt windows have new IDs; retain the user's dynamic-opacity
++        // behavior for the currently focused window without waiting for focus.
++        this.init_dynamic_opacity();
+     }
+
+     /// Adds the needed signals to every new tracked window, and adds blur if
+     /// needed.
+     /// Accepts only untracked meta windows (i.e no `bms_pid` set)
+     track_new(meta_window) {
++        // Sticky windows may appear in several workspace lists, and a newly
++        // mapped window may also arrive through window-created.
++        if (this.meta_window_map.get(meta_window.bms_pid) === meta_window)
++            return;
++
+         // create a pid that will follow the window during its whole life
+         const pid = ("" + Math.random()).slice(2, 16);
+         meta_window.bms_pid = pid;
+@@ -203,6 +232,19 @@
+         // update the blur when wm-class is changed
+         this.connections.connect(
+             meta_window, 'notify::wm-class',
++            _ => this.check_blur(meta_window)
++        );
++
 +        // same for the GApplication id, and for a window's own transient-for
 +        // chain settling — 'shown' fires once the window is mapped, and for
 +        // some clients transient-for is only set by then, after this window
@@ -34,13 +93,48 @@ index eda61e2..670f742 100644
 +        );
 +        this.connections.connect(
 +            meta_window, 'shown',
-+            _ => this.check_blur(meta_window)
+             _ => this.check_blur(meta_window)
+         );
+
+@@ -224,19 +266,25 @@
+             _ => this.untrack_meta_window(pid)
+         );
+
++        // Window-state listeners belong to tracking, not each blur effect.
++        // Class/list changes can recreate the effect many times per window.
++        this.connections.connect(
++            meta_window, 'notify::maximized-horizontally',
++            _ => this.update_corner_radius(meta_window)
++        );
++        this.connections.connect(
++            meta_window, 'notify::maximized-vertically',
++            _ => this.update_corner_radius(meta_window)
++        );
++        this.connections.connect(
++            meta_window, 'notify::fullscreen',
++            _ => {
++                this.update_corner_radius(meta_window);
++                this.reconcile_window_visibility(meta_window);
++            }
 +        );
 +
-         // update the clip, position, and/or size when the window changes
-         this.connections.connect(
-             meta_window, 'size-changed',
-@@ -288,6 +312,30 @@ export const ApplicationsBlur = class ApplicationsBlur {
+         this.check_blur(meta_window);
+-
+-        if (this.settings.applications.STATIC_BLUR && meta_window.get_client_type() === Meta.WindowClientType.X11) {
+-            const window_actor = meta_window.get_compositor_private();
+-            window_actor.connect('child-added', _ => {
+-                if (!meta_window.blur_actor) {
+-                    this._warn("can't move blur actor to back, it doesn't exist");
+-                    return;
+-                }
+-
+-                window_actor.set_child_below_sibling(meta_window.blur_actor, null);
+-            });
+-        }
+     }
+
+     /// Updates the size of the blur actor associated to a meta window from its pid.
+@@ -288,6 +336,30 @@
      /// Checks if the given actor needs to be blurred.
      /// Accepts only tracked meta window, be it blurred or not.
      ///
@@ -71,7 +165,7 @@ index eda61e2..670f742 100644
      /// In order to be blurred, a window either:
      /// - is whitelisted in the user preferences if not enable-all
      /// - is not blacklisted if enable-all
-@@ -297,23 +345,31 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -297,23 +369,31 @@
      /// - ? matches any single character
      /// - Matching is case-insensitive
      check_blur(meta_window) {
@@ -110,3 +204,63 @@ index eda61e2..670f742 100644
              ].includes(meta_window.get_frame_type())
          ) {
              // only blur the window if it is not already done
+@@ -377,24 +457,18 @@
+
+         // now set up the signals, for the window actor only: they are disconnected
+         // in `remove_blur`, whereas the signals for the meta window are disconnected
+-        // only when the whole component is disabled
+-
+-        // listen for window state changes (maximized/fullscreen)
+-        this.connections.connect(
+-            meta_window, 'notify::maximized-horizontally',
+-            _ => this.update_corner_radius(meta_window)
+-        );
+-        this.connections.connect(
+-            meta_window, 'notify::maximized-vertically',
+-            _ => this.update_corner_radius(meta_window)
+-        );
+-        this.connections.connect(
+-            meta_window, 'notify::fullscreen',
+-            _ => {
+-                this.update_corner_radius(meta_window);
+-                this.reconcile_window_visibility(meta_window);
+-            }
+-        );
++        // when the window is untracked or the whole component is disabled
++
++        if (this.settings.applications.STATIC_BLUR && meta_window.get_client_type() === Meta.WindowClientType.X11) {
++            this.connections.connect(window_actor, 'child-added', _ => {
++                if (!meta_window.blur_actor) {
++                    this._warn("can't move blur actor to back, it doesn't exist");
++                    return;
++                }
++
++                window_actor.set_child_below_sibling(meta_window.blur_actor, null);
++            });
++        }
+
+         // update the window opacity when it changes, else we don't control it fully
+         this.connections.connect(
+@@ -574,7 +648,10 @@
+         this._log("resetting...");
+
+         this.disable();
+-        setTimeout(_ => this.enable(), 1);
++        this._enable_timeout_id = setTimeout(() => {
++            this._enable_timeout_id = null;
++            this.enable();
++        }, 1);
+     }
+
+     change_pipeline() {
+@@ -630,6 +707,10 @@
+     }
+
+     disable() {
++        if (this._enable_timeout_id) {
++            clearTimeout(this._enable_timeout_id);
++            this._enable_timeout_id = null;
++        }
+         this._log("removing blur from applications...");
+
+         this.service?.unexport();

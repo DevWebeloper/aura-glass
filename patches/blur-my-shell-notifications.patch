@@ -149,10 +149,10 @@ index 4b68d7e..0eaa66c 100644
  
      _get_keyboard_actors() {
 diff --git a/src/components/popup/message_stacks.js b/src/components/popup/message_stacks.js
-index 52c796f..b5f9e6d 100644
+index 52c796f..04b07f8 100644
 --- a/src/components/popup/message_stacks.js
 +++ b/src/components/popup/message_stacks.js
-@@ -1,13 +1,22 @@
+@@ -1,13 +1,23 @@
 +import { CornerEffect } from '../../effects/corner.js';
  import GLib from 'gi://GLib';
 +import { NativeDynamicBlurEffect } from '../../effects/native_dynamic_gaussian_blur.js';
@@ -162,6 +162,7 @@ index 52c796f..b5f9e6d 100644
  const INTERNAL_STYLE_CLASSES = ['bms-popup-blurred-widget', 'bms-popup-backgroundgroup'];
  const INTERNAL_NAMES = ['bms-popup-blurred-widget', 'bms-popup-backgroundgroup'];
 +const MESSAGE_BLUR_EFFECT_NAME = 'aura-glass-message-blur';
++const MESSAGE_CORNER_EFFECT_NAME = 'aura-glass-message-corner';
 +// The banner is a NotificationMessage too, and it already has a blur surface
 +// of its own in the message tray's banner bin. Two blurs on one actor is two
 +// passes over the same pixels, so the surface keeps the banner and this keeps
@@ -176,7 +177,7 @@ index 52c796f..b5f9e6d 100644
          this.containers = new Set();
          this.groups = new Set();
          this.messages = new Set();
-@@ -88,6 +97,7 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
+@@ -88,6 +98,7 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
  
          this.messages.add(message);
          this.update_message(message);
@@ -184,7 +185,7 @@ index 52c796f..b5f9e6d 100644
  
          this.connect(
              message,
-@@ -112,12 +122,102 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
+@@ -112,12 +123,102 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
              'destroy',
              () => {
                  this.cancel_update(message);
@@ -287,7 +288,7 @@ index 52c796f..b5f9e6d 100644
      track_group(group) {
          if (!this.watch_actor(group) || this.groups.has(group))
              return;
-@@ -592,7 +692,10 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
+@@ -592,7 +693,10 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
      disable() {
          this.update_ids.forEach(id => GLib.source_remove(id));
          this.update_ids.clear();
@@ -460,7 +461,7 @@ index b7bcff3..aa7369d 100644
          return imported.default ?? imported;
      } catch (e) {
 diff --git a/src/extension.js b/src/extension.js
-index fff8644..748987f 100644
+index fff8644..291b1b5 100644
 --- a/src/extension.js
 +++ b/src/extension.js
 @@ -331,7 +331,7 @@ export default class BlurMyShell extends Extension {
@@ -472,7 +473,37 @@ index fff8644..748987f 100644
              this._popup.enable();
  
          this._log("all components enabled.");
-@@ -670,40 +670,54 @@ export default class BlurMyShell extends Extension {
+@@ -572,16 +572,14 @@ export default class BlurMyShell extends Extension {
+         // application enable-all changed
+         this._settings.applications.ENABLE_ALL_changed(() => {
+             if (this._settings.applications.BLUR)
+-                this._applications_blur.update_all_windows();
++                this._applications_blur.update_all_windows(false);
+         });
+
+         // application whitelist changed
+         this._settings.applications.WHITELIST_changed(() => {
+-            if (
+-                this._settings.applications.BLUR
+-                && !this._settings.applications.ENABLE_ALL
+-            )
+-                this._applications_blur.update_all_windows();
++            // Aura's allow list overrides exclusions in both scope modes.
++            if (this._settings.applications.BLUR)
++                this._applications_blur.update_all_windows(false);
+         });
+
+         // application blacklist changed
+@@ -590,7 +588,7 @@ export default class BlurMyShell extends Extension {
+                 this._settings.applications.BLUR
+                 && this._settings.applications.ENABLE_ALL
+             )
+-                this._applications_blur.update_all_windows();
++                this._applications_blur.update_all_windows(false);
+         });
+
+
+@@ -670,40 +668,61 @@ export default class BlurMyShell extends Extension {
  
          // ---------- POPUP BLUR ----------
  
@@ -482,24 +513,31 @@ index fff8644..748987f 100644
 +        // disables once both are off.
          this._settings.popup.BLUR_changed(() => {
 -            if (this._settings.popup.BLUR)
++            if (this._settings.popup.BLUR || this._settings.popup.NOTIFICATION) {
++                // enable() is a no-op while notifications keep the component
++                // alive. reset() retargets existing surfaces; when disabled,
++                // enable() discovers them without an unnecessary rebuild.
++                if (this._popup.enabled)
++                    this._popup.reset();
++                else
++                    this._popup.enable();
++            } else {
++                this._popup.disable();
++            }
++        });
++
++        this._settings.popup.NOTIFICATION_changed(() => {
 +            if (this._settings.popup.BLUR || this._settings.popup.NOTIFICATION)
                  this._popup.enable();
              else
                  this._popup.disable();
-         });
- 
-+        this._settings.popup.NOTIFICATION_changed(() => {
-+            if (this._settings.popup.BLUR || this._settings.popup.NOTIFICATION)
-+                this._popup.enable();
-+            else
-+                this._popup.disable();
 +
 +            // Re-targets every already-blurred actor so a flip of this
 +            // switch adds or drops the notification surfaces without
 +            // touching the menus/dialogs already blurred.
 +            this._popup.reset();
-+        });
-+
+         });
+
          this._settings.popup.STATIC_BLUR_changed(() => {
 -            if (this._settings.popup.BLUR)
 +            if (this._settings.popup.BLUR || this._settings.popup.NOTIFICATION)

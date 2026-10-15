@@ -5491,7 +5491,7 @@ class Window(Adw.ApplicationWindow):
     def _own_next_pack(self):
         """Name the package behind one system row, and give it a Remove."""
         for group, row in self._pack_rows:
-            if group is not self._packs_system or row._owner is not None:
+            if group is not self._packs_system or getattr(row, "_owner", "") is not None:
                 continue
             row._owner = pkg_owner(self._repo, row._paths[0]) or ""
             self._sync_pack_subtitle(row)
