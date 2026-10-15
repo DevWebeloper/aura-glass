@@ -971,107 +971,95 @@ PY
     fi
 }
 
+# The adaptive worker's transient overlay: "active" puts the desktop in
+# Performance's state, "restore" puts it back to the remembered mode's.
+#
+# install.sh has already resolved this run as a retune to that mode (see the
+# --adaptive-blur block there), so the WANT_*/APP_* values here are exactly the
+# ones the app's Glass mode switch would resolve. This function therefore runs
+# the same two steps the switch runs, load_dconf and install_css, instead of a
+# hand-kept subset of them. The subset is what used to differ from the switch
+# (KI-25): the tray sheet was the raw css/ copy rather than the rescaled,
+# tinted, radius-matched one, the app tint sheet was dropped instead of
+# rewritten, and hacks-level and the OSD alpha stayed on Frosted's values.
+#
+# What stays specific to a transient is the way back. The switch's own way
+# back is the other mode's drawer, but an overlay changes no mode, so
+# sync_mode_owned_keys sees "previous == target" on restore and writes nothing.
+# The keys a mode owns are therefore saved on the way in and put back on the
+# way out, which also keeps a per-component choice made inside Frosted (say,
+# no lock screen blur) that a plain core.ini write-back would undo.
 apply_adaptive_blur() {
     local action="$1"
-    local base=/org/gnome/shell/extensions/blur-my-shell
-    local apply_cmd="$HOME/.local/bin/aura-glass-apply"
-    [ -x "$apply_cmd" ] || apply_cmd="$REPO_ROOT/bin/aura-glass-apply"
+    local base=/org/gnome/shell/extensions
+    local state_dir="$CONF_DIR/adaptive-performance"
+    local state_file="$state_dir/saved-mode-keys"
+    # Written by an earlier release: blur-my-shell-relative "component/blur"
+    # lines, no hacks-level and no OSD alpha. Read once on restore so an
+    # overlay that was active across the update still ends cleanly.
+    local legacy_file="$state_dir/saved-bms-blur"
 
-    # Resolve normal mode and blur baseline
-    local normal_mode="${GLASS_MODE:-}"
-    if [ -z "$normal_mode" ] && [ -r "$CONF_DIR/glass-mode" ]; then
+    # The baseline is the remembered mode, not GLASS_MODE: for "active"
+    # install.sh has just set that to performance so the run resolves like it.
+    # Performance is the no-blur mode, and solid the legacy one. Nothing records
+    # a separate "blur" memo — reading one here meant the guard never fired, and
+    # a restore in performance mode removed shell-80-solid.css and switched app
+    # blur back on.
+    local normal_mode=""
+    if [ -r "$CONF_DIR/glass-mode" ]; then
         normal_mode="$(cat "$CONF_DIR/glass-mode" 2>/dev/null || true)"
     fi
     normal_mode="${normal_mode:-frosted}"
-
-    # The baseline is the mode itself: performance is the no-blur mode, and
-    # solid the legacy one. Nothing records a separate "blur" memo — reading
-    # one here meant the guard never fired, and a restore in performance mode
-    # removed shell-80-solid.css and switched app blur back on.
-    local normal_blur=1
     case "$normal_mode" in
-        performance|solid) normal_blur=0 ;;
+        performance|solid)
+            skip "baseline is already no-blur — skipping adaptive transition"
+            return 0
+            ;;
     esac
-
-    if [ "$normal_blur" = 0 ]; then
-        skip "baseline is already no-blur — skipping adaptive transition"
-        return 0
-    fi
 
     if [ "${WANT_STYLING:-1}" != 1 ]; then
         skip "solid mode — no transient blur to adjust"
         return 0
     fi
 
-    local bms_components=(
-        panel/blur
-        overview/blur
-        dash-to-dock/blur
-        lockscreen/blur
-        screenshot/blur
-        window-list/blur
-        appfolder/blur
-    )
-
+    local key value
     case "$action" in
         active)
             step "Applying adaptive performance no-blur state"
             if [ "${DRY_RUN:-0}" = 1 ]; then
-                info "dry-run: apply transient no-blur state across Blur My Shell pipelines, popups, notifications, and CSS"
+                info "dry-run: put the desktop in Performance's state, transiently"
                 return 0
             fi
-            # Disabling individual blur pipelines in Blur My Shell safely stands down all
-            # blur shaders and background rendering without unloading the extension itself,
-            # which in GNOME Shell 51 causes a fatal Mutter/Clutter actor metadata segfault.
-            mkdir -p "$CONF_DIR/adaptive-performance"
-            local state_file="$CONF_DIR/adaptive-performance/saved-bms-blur"
+            # Turning individual blur pipelines off stands every blur shader and
+            # background down without unloading the extension, which on GNOME
+            # Shell 51 is a fatal Mutter/Clutter actor-metadata segfault. Nothing
+            # here, nor in load_dconf's sync_mode_owned_keys, disables it.
+            mkdir -p "$state_dir"
             if [ ! -f "$state_file" ]; then
-                : > "$state_file"
-                for comp in "${bms_components[@]}"; do
-                    local val
-                    val="$(dconf read "$base/$comp" 2>/dev/null || true)"
-                    printf '%s=%s\n' "$comp" "${val:-true}" >> "$state_file"
-                done
+                # What is there now, else core.ini's value for it: a key the
+                # user never moved has nothing to read back, and restore still
+                # needs an answer for it.
+                local core_values; core_values="$(mode_owned_dconf_keys 1)"
+                local pending="$state_file.tmp"
+                : > "$pending"
+                while IFS=$'\t' read -r key _; do
+                    [ -n "$key" ] || continue
+                    value="$(dconf read "$base/$key" 2>/dev/null || true)"
+                    if [ -z "$value" ]; then
+                        value="$(printf '%s\n' "$core_values" | awk -F'\t' -v k="$key" '$1 == k { print $2; exit }')"
+                    fi
+                    [ -n "$value" ] && printf '%s\t%s\n' "$key" "$value" >> "$pending"
+                done < <(mode_owned_dconf_keys 0)
+                mv -f "$pending" "$state_file"
             fi
-            for comp in "${bms_components[@]}"; do
-                run dconf write "$base/$comp" false
-            done
-            run dconf write "$base/applications/blur" false
-
-            local perf_level="1.00"
-            local perf_opacity=255
-            local perf_app="#000000"
-            local perf_shell="#000000"
-            if [ -d "$CONF_DIR/modes/performance" ]; then
-                perf_level="$(cat "$CONF_DIR/modes/performance/app-transparency" 2>/dev/null || echo 1.00)"
-                perf_app="$(cat "$CONF_DIR/modes/performance/app-tint-color" 2>/dev/null || echo '#000000')"
-                perf_shell="$(cat "$CONF_DIR/modes/performance/shell-tint-color" 2>/dev/null || echo '#000000')"
-            fi
-            if [ "$perf_level" = "1.00" ] || [ "$perf_level" = "1" ] || [ "$perf_level" = "0" ] || [ "$perf_level" = "0.0" ]; then
-                run rm -f "$CONF_DIR/gtk4-transparency.css"
-            else
-                APP_TRANSPARENCY="$perf_level" APP_TINT_COLOR="$perf_app" install_transparency_css
-            fi
-            run dconf write "$base/applications/opacity" 255
-            run dconf write "$base/popup/blur" false
-            run rm -f "$CONF_DIR/shell-popup-blur.css"
-            run dconf write "$base/popup/notification" false
-            run rm -f "$CONF_DIR/shell-notification-blur.css"
-            run install -Dm644 "$REPO_ROOT/css/shell-80-solid.css" "$CONF_DIR/shell-80-solid.css"
-            SHELL_TINT_COLOR="$perf_shell" apply_shell_tint_color
-            # Re-splice and reload the shell theme: the tray's Performance item is only
-            # visible once the shell loads shell-80-solid.css, and a reload with every
-            # blur pipeline already off (or restored just above) has no blur actors to
-            # destroy. --no-shell-reload left the shell on Frosted's sheet.
-            if [ -x "$apply_cmd" ]; then
-                "$apply_cmd" --reload-gtk | sed 's/^/    /'
-            fi
+            load_dconf
+            install_css
             ok "adaptive no-blur state active (transient)"
             ;;
         restore)
             step "Restoring normal blur configuration"
             if [ "${DRY_RUN:-0}" = 1 ]; then
-                info "dry-run: restore normal blur configuration from saved memos"
+                info "dry-run: put the desktop back in the remembered mode's state"
                 return 0
             fi
             local bms_uuid="${BMS_UUID:-blur-my-shell@aunetx}"
@@ -1083,96 +1071,29 @@ apply_adaptive_blur() {
                     fi
                 fi
             fi
-            local state_file="$CONF_DIR/adaptive-performance/saved-bms-blur"
             if [ -f "$state_file" ]; then
-                while IFS='=' read -r comp val || [ -n "$comp" ]; do
-                    if [ -n "$comp" ]; then
-                        run dconf write "$base/$comp" "${val:-true}"
-                    fi
+                while IFS=$'\t' read -r key value || [ -n "$key" ]; do
+                    [ -n "$key" ] || continue
+                    run dconf write "$base/$key" "$value"
                 done < "$state_file"
                 run rm -f "$state_file"
             else
-                for comp in "${bms_components[@]}"; do
-                    run dconf write "$base/$comp" true
-                done
+                # Never saved, or a restore that already ran: the preset's own
+                # values for the keys a mode owns.
+                while IFS=$'\t' read -r key value; do
+                    [ -n "$key" ] || continue
+                    run dconf write "$base/$key" "$value"
+                done < <(mode_owned_dconf_keys 1)
             fi
-
-            local mode_dir="$CONF_DIR/modes/$normal_mode"
-            local frost_level="0.90"
-            local frost_app="#000000"
-            local frost_shell="#000000"
-            local frost_scope="gtk"
-            local frost_strength="100"
-            local frost_brightness="115"
-            local frost_ground="40"
-            local frost_popup="1"
-            local frost_notif="1"
-            local frost_opacity=230
-
-            if [ -d "$mode_dir" ]; then
-                frost_level="$(cat "$mode_dir/app-transparency" 2>/dev/null || echo 0.90)"
-                frost_app="$(cat "$mode_dir/app-tint-color" 2>/dev/null || echo '#000000')"
-                frost_shell="$(cat "$mode_dir/shell-tint-color" 2>/dev/null || echo '#000000')"
-                frost_scope="$(cat "$mode_dir/app-blur-scope" 2>/dev/null || echo all)"
-                frost_strength="$(cat "$mode_dir/blur-strength" 2>/dev/null || echo 100)"
-                frost_brightness="$(cat "$mode_dir/popup-brightness" 2>/dev/null || echo 115)"
-                frost_win_brightness="$(cat "$mode_dir/window-brightness" 2>/dev/null || echo 100)"
-                frost_ground="$(cat "$mode_dir/notification-opacity" 2>/dev/null || echo 40)"
-                frost_popup="$(cat "$mode_dir/popup-blur" 2>/dev/null || echo 1)"
-                frost_notif="$(cat "$mode_dir/notification-blur" 2>/dev/null || echo 1)"
-            else
-                [ -r "$CONF_DIR/app-transparency" ] && frost_level="$(cat "$CONF_DIR/app-transparency" 2>/dev/null || echo 0.90)"
-                [ -r "$CONF_DIR/app-tint-color" ] && frost_app="$(cat "$CONF_DIR/app-tint-color" 2>/dev/null || echo '#000000')"
-                [ -r "$CONF_DIR/shell-tint-color" ] && frost_shell="$(cat "$CONF_DIR/shell-tint-color" 2>/dev/null || echo '#000000')"
-                [ -r "$CONF_DIR/app-blur-scope" ] && frost_scope="$(cat "$CONF_DIR/app-blur-scope" 2>/dev/null || echo all)"
-                [ -r "$CONF_DIR/blur-strength" ] && frost_strength="$(cat "$CONF_DIR/blur-strength" 2>/dev/null || echo 100)"
-                [ -r "$CONF_DIR/popup-brightness" ] && frost_brightness="$(cat "$CONF_DIR/popup-brightness" 2>/dev/null || echo 115)"
-                [ -r "$CONF_DIR/window-brightness" ] && frost_win_brightness="$(cat "$CONF_DIR/window-brightness" 2>/dev/null || echo 100)"
-                [ -r "$CONF_DIR/notification-opacity" ] && frost_ground="$(cat "$CONF_DIR/notification-opacity" 2>/dev/null || echo 40)"
-                [ -r "$CONF_DIR/popup-blur" ] && frost_popup="$(cat "$CONF_DIR/popup-blur" 2>/dev/null || echo 1)"
-                [ -r "$CONF_DIR/notification-blur" ] && frost_notif="$(cat "$CONF_DIR/notification-blur" 2>/dev/null || echo 1)"
+            if [ -f "$legacy_file" ]; then
+                while IFS='=' read -r key value || [ -n "$key" ]; do
+                    [ -n "$key" ] || continue
+                    run dconf write "$base/blur-my-shell/$key" "${value:-true}"
+                done < "$legacy_file"
+                run rm -f "$legacy_file"
             fi
-
-            if [ "$frost_level" = "0" ] || [ "$frost_level" = "0.0" ]; then
-                frost_opacity=255
-            else
-                frost_opacity="$(python3 -c "print(round(float('$frost_level') * 255))" 2>/dev/null || echo 230)"
-            fi
-
-            WANT_BLUR=1 WANT_WINDOW_BLUR=1 APP_BLUR_SCOPE="$frost_scope" APP_BLUR_SCOPE_EXPLICIT=1 apply_app_blur
-            APP_OPACITY="$frost_opacity" APP_OPACITY_EXPLICIT=1 WANT_BLUR=1 WANT_WINDOW_BLUR=1 apply_app_opacity
-            WANT_POPUP_BLUR="$frost_popup" POPUP_BLUR_EXPLICIT=1 apply_popup_blur
-            WANT_NOTIFICATION_BLUR="$frost_notif" NOTIFICATION_BLUR_EXPLICIT=1 apply_notification_blur
-            BLUR_STRENGTH="$frost_strength" BLUR_STRENGTH_EXPLICIT=1 apply_blur_strength
-            POPUP_BRIGHTNESS="$frost_brightness" POPUP_BRIGHTNESS_EXPLICIT=1 apply_popup_brightness
-            WINDOW_BRIGHTNESS="${frost_win_brightness:-100}" WINDOW_BRIGHTNESS_EXPLICIT=1 apply_window_brightness
-            NOTIFICATION_OPACITY="$frost_ground" NOTIFICATION_OPACITY_EXPLICIT=1 apply_notification_opacity
-
-            run rm -f "$CONF_DIR/shell-80-solid.css"
-            if [ "$frost_popup" = 1 ]; then
-                run install -Dm644 "$REPO_ROOT/css/shell-popup-blur.css" "$CONF_DIR/shell-popup-blur.css"
-            else
-                run rm -f "$CONF_DIR/shell-popup-blur.css"
-            fi
-
-            if [ "$frost_notif" = 1 ]; then
-                run install -Dm644 "$REPO_ROOT/css/shell-notification-blur.css" "$CONF_DIR/shell-notification-blur.css"
-            else
-                run rm -f "$CONF_DIR/shell-notification-blur.css"
-            fi
-
-            if [ -n "$frost_shell" ]; then
-                SHELL_TINT_COLOR="$frost_shell" apply_shell_tint_color
-            fi
-
-            APP_TRANSPARENCY="$frost_level" APP_TINT_COLOR="$frost_app" install_transparency_css
-            # Re-splice and reload the shell theme: the tray's Performance item is only
-            # visible once the shell loads shell-80-solid.css, and a reload with every
-            # blur pipeline already off (or restored just above) has no blur actors to
-            # destroy. --no-shell-reload left the shell on Frosted's sheet.
-            if [ -x "$apply_cmd" ]; then
-                "$apply_cmd" --reload-gtk | sed 's/^/    /'
-            fi
+            load_dconf
+            install_css
             ok "normal blur configuration restored"
             ;;
         *)

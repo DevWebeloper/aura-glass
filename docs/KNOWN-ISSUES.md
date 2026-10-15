@@ -40,6 +40,7 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 | [KI-22](#ki-22) | Medium | **Fixed** | Settings app never showed the mode in force or the adaptive overlay, and missed changes made outside it |
 | [KI-23](#ki-23) | Medium | **Fixed** | Install/update/uninstall audit: silent failures, lost memos, leftovers |
 | [KI-24](#ki-24) | Low | **Fixed** | Update and full reinstall forgot the extension pack, `--no-osd`, `--no-bms-git`, `--no-rounded-blur`. Text wizard drifted from the GTK wizard |
+| [KI-25](#ki-25) | Medium | **Fixed** | Tray Performance profile left a different desktop from the app's Performance mode (raw shell sheet, no app tint sheet, `hacks-level` and OSD alpha on Frosted's values, restore not exact) |
 
 ---
 
@@ -570,3 +571,35 @@ moments (first install vs a retune) and install.sh resolves both.
 Verified in a pty against a fixture `HOME`: Performance + Minimal prints
 "Performance (No blur)" and 0 extensions; Frosted + Full prints 8; Complete
 Experience prints 20px and all apps at 90%. The hermetic suite passes.
+
+---
+
+## KI-25
+
+**Tray Performance profile is a hand-kept subset of the Performance mode.**
+
+**Symptom.** Choosing Performance from the top-bar menu looked worse than the
+app's Glass mode switch, and Full did not always bring back exactly what
+Frosted had.
+
+**Root cause.** `apply_adaptive_blur` (`lib/steps-dconf.sh`) re-implemented a
+slice of the switch instead of running it. Diffing a fixture `HOME` after
+`--adaptive-blur active` against one after `--glass-mode performance` (both
+from the same Frosted install) showed:
+- `shell-80-solid.css` was the raw `css/` copy: not rescaled to the level, not tinted, not corner-matched to the radius preset (`apply_popup_transparency` and `apply_radius_css` never ran).
+- `gtk4-transparency.css` was deleted at level 1.00, so GTK apps got plain libadwaita instead of the mode's opaque darkened ground.
+- `blur-my-shell/hacks-level` stayed at 2 (a full-screen repaint every frame, the cost Performance exists to remove) and `custom-osd/alpha` stayed at Frosted's 60.
+- `restore` copied the sheets back from `css/` without the rescale and radius steps, and re-read the drawer by hand.
+
+**Fix.** The transient transition now resolves like the mode it stands in for
+and runs the switch's own steps:
+- `install.sh`: `--adaptive-blur active` sets `GLASS_MODE=performance` (not when styling stood down), and every transition resolves against a scratch copy of the drawers (`MODES_ROOT`, as a dry run does) so it reads the performance or remembered mode's drawer without creating or reseeding one.
+- `apply_adaptive_blur`: `active` saves the keys a mode owns (`mode_owned_dconf_keys`, i.e. everything `dconf/solid.ini` sets, now including `hacks-level` and the OSD alpha) to `adaptive-performance/saved-mode-keys`, then runs `load_dconf` and `install_css`. `restore` writes them back, then runs the same two steps for the remembered mode. A `saved-bms-blur` left by an older release is still read once.
+- `refresh_bms_after_dconf` returns early for an adaptive transition so a restore cannot cycle Blur My Shell on GNOME 48-50.
+- `tools/check-adaptive-installer.sh` now builds a real Frosted install and asserts that `active` equals a Performance switch (sheets, `gtk.css`, every dconf row), that `restore` equals the Frosted install, that no memo or drawer moves, and that a per-component choice survives.
+
+Not equal on purpose: the memos and drawer (an overlay is not a mode),
+`adaptive-performance/*`, and the panel-blur-fix user service, which a real
+Performance install disables and the overlay leaves to stand itself down.
+
+---

@@ -1096,14 +1096,15 @@ case " $VALID_FONTS " in
     *) die "unknown --font '$FONT' — pick one of: $VALID_FONTS" ;;
 esac
 
-resolve_glass_mode
-apply_glass_mode
-
-# This is deliberately private to the adaptive worker.  It resolves the same
-# normal memo/full-preset answer that apply_blur_strength uses, then asks that
-# existing writer for a temporary value.  The writer guard in steps-dconf.sh
-# keeps either transition out of blur-strength, which remains the user's
-# normal baseline for the next restore and for every ordinary install.
+# This is deliberately private to the adaptive worker. It is transient, so it
+# writes no memo and no drawer (remembering() is false), but it resolves like
+# the mode switch it stands in for: "active" is a retune to performance and
+# "restore" a retune to whatever mode is remembered. Everything downstream,
+# the sheets, the drawer's tints and level, the keys a mode owns, then comes
+# out the same as the app's Glass mode switch rather than from a second,
+# smaller copy of it (KI-25). Not when styling stood down (legacy solid): the
+# worker declines to run there, and a performance overlay would be a
+# transition out of a state it has no business leaving.
 if [ -n "$ADAPTIVE_BLUR" ]; then
     if [ "$SETTINGS_ONLY" != 1 ] || [ "$INCREMENTAL" != 1 ]; then
         die "--adaptive-blur requires --settings-only --incremental"
@@ -1112,29 +1113,36 @@ if [ -n "$ADAPTIVE_BLUR" ]; then
         active|restore) ;;
         *) die "--adaptive-blur wants active or restore" ;;
     esac
+    if [ "$ADAPTIVE_BLUR" = active ] && [ ! -e "$CONF_DIR/styling-off" ]; then
+        GLASS_MODE=performance
+        GLASS_MODE_EXPLICIT=1
+    fi
 fi
 
-if [ -z "$ADAPTIVE_BLUR" ]; then
-    # A dry run seeds and reads a scratch copy of the drawers (see modes_root
-    # in lib/steps-modes.sh), so it resolves like the real run without writing
-    # modes/ into $CONF_DIR. AURA_GLASS_DRY_MODES names a drawer directory to
-    # use instead and keep: tools/check-glass-modes.sh points it at its fixture
-    # so it can assert on what seeding wrote, across several dry runs.
-    MODES_ROOT=""
-    if [ "$DRY_RUN" = 1 ]; then
-        if [ -n "${AURA_GLASS_DRY_MODES:-}" ]; then
-            MODES_ROOT="$AURA_GLASS_DRY_MODES"
-        else
-            MODES_ROOT="$(mktemp -d)"
-            trap 'rm -rf "$MODES_ROOT"' EXIT
-            if [ -d "$CONF_DIR/modes" ]; then
-                cp -a "$CONF_DIR/modes/." "$MODES_ROOT/"
-            fi
+resolve_glass_mode
+apply_glass_mode
+
+# A dry run seeds and reads a scratch copy of the drawers (see modes_root
+# in lib/steps-modes.sh), so it resolves like the real run without writing
+# modes/ into $CONF_DIR. The adaptive transition is the same case: it resolves
+# against the drawers but must not create or reseed one. AURA_GLASS_DRY_MODES
+# names a drawer directory to use instead and keep: tools/check-glass-modes.sh
+# points it at its fixture so it can assert on what seeding wrote, across
+# several dry runs.
+MODES_ROOT=""
+if [ "$DRY_RUN" = 1 ] || [ -n "$ADAPTIVE_BLUR" ]; then
+    if [ "$DRY_RUN" = 1 ] && [ -n "${AURA_GLASS_DRY_MODES:-}" ]; then
+        MODES_ROOT="$AURA_GLASS_DRY_MODES"
+    else
+        MODES_ROOT="$(mktemp -d)"
+        trap 'rm -rf "$MODES_ROOT"' EXIT
+        if [ -d "$CONF_DIR/modes" ]; then
+            cp -a "$CONF_DIR/modes/." "$MODES_ROOT/"
         fi
     fi
-    seed_glass_mode
-    load_glass_mode_memos
 fi
+seed_glass_mode
+load_glass_mode_memos
 
 if [ "${WANT_BLUR:-1}" = 0 ]; then
     if [ "${GLASS_MODE:-}" = performance ]; then

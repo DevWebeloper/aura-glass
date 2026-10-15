@@ -157,15 +157,19 @@ top-bar menu (Aura Glass Helper)          aura-glass-adaptive.service (user)
                     apply_adaptive_blur (lib/steps-dconf.sh)
 ```
 
-- **active.** Saves the current per-component Blur My Shell `blur` keys to
-  `adaptive-performance/saved-bms-blur`. Turns every pipeline off *without*
-  disabling the extension, because disabling BMS on GNOME 51 segfaults Mutter.
-  Swaps in the opaque `shell-80-solid` ladder and the performance drawer's tints
-  and level, then re-splices with `aura-glass-apply --reload-gtk`, which also reloads the
-  shell theme so the sheet takes effect.
-- **restore.** Writes the saved keys back and re-applies the **normal mode's
-  drawer** (blur scope, strength, brightness, tints, notification ground,
-  popup/notification sheets).
+- **active.** `install.sh` resolves the run as a retune to Performance (same
+  `WANT_*`, the performance drawer's tints and level), so it leaves the same
+  sheets and keys as the Glass mode switch: it saves the keys a mode owns
+  (`dconf/solid.ini`'s set, including `hacks-level` and the OSD alpha) to
+  `adaptive-performance/saved-mode-keys`, then runs `load_dconf` and
+  `install_css`. It turns pipelines off *without* disabling the extension,
+  because disabling BMS on GNOME 51 segfaults Mutter. `install_css` re-splices
+  with `aura-glass-apply --reload-gtk`, which also reloads the shell theme so
+  the sheet takes effect.
+- **restore.** Writes the saved keys back, then runs the same two steps for the
+  remembered mode (resolved from its drawer, so tints, level, popup and
+  notification sheets and the radius preset come back as an ordinary Frosted
+  install leaves them).
 - It's transient: `remembering()` is false, so no top-level memo or drawer
   changes. State lives in `adaptive-performance/{active,reason}`.
 - The service is enabled only while `WANT_BLUR=1`, i.e. in Frosted. In

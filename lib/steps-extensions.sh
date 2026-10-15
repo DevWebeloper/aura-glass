@@ -562,6 +562,11 @@ PY
 # finished settings already in place.
 refresh_bms_after_dconf() {
     [ "${WANT_BLUR:-1}" = 1 ] || return 0
+    # The adaptive transition reaches here through load_dconf too, but it
+    # loads no pipelines: it only flips the keys a mode owns, live. A restore
+    # runs with WANT_BLUR=1, and on GNOME 48-50 would otherwise cycle the
+    # extension, a visible flicker on every trigger clearing.
+    [ -z "${ADAPTIVE_BLUR:-}" ] || return 0
     [ -d "$EXT_DIR/$BMS_UUID" ] || return 0
     gnome-extensions info "$BMS_UUID" 2>/dev/null | grep -q 'State: ACTIVE' || return 0
 

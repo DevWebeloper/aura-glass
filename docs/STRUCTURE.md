@@ -187,7 +187,7 @@ the installer against the real `HOME` (KI-14).
 ~/.config/aura-glass/                         $CONF_DIR
   ├─ <memos>                                  one value per file (CONFIG-REFERENCE.md)
   ├─ modes/{frosted,performance}/             per-mode drawers   (legacy: modes/solid, modes/transparent)
-  ├─ adaptive-performance/                    active, reason, saved-bms-blur
+  ├─ adaptive-performance/                    active, reason, saved-mode-keys
   ├─ backups/                                 <name>.orig | <name>.absent | <name>.stood-down
   ├─ shell-*.css gtk4-*.css gtk3-*.css        installed, rewritten copies of css/
   └─ preview-active, preview-backup/          only while a live preview is open
@@ -253,7 +253,7 @@ the subject of [CONSISTENCY.md](CONSISTENCY.md).
 | `app-blur-allow` / `-block` | `apply_app_blur` (installer, preview `app-blur`, window menu) | the same, plus `Settings()` |
 | `adaptive-profile` | `aura-glass-adaptive profile`, `install_adaptive_performance` (seed `auto`) | worker, extension menu |
 | `adaptive-fullscreen-apps` | settings app (Per-app blur → games) | worker |
-| `adaptive-performance/*` | worker (`active`, `reason`), `apply_adaptive_blur` (`saved-bms-blur`) | worker, extension, `install_adaptive_performance` |
+| `adaptive-performance/*` | worker (`active`, `reason`), `apply_adaptive_blur` (`saved-mode-keys`) | worker, extension, `install_adaptive_performance` |
 | `repo-path` | `install_gui` (only when the GUI is installed) | settings app, preview, update check, adaptive worker (fallback) |
 | `adaptive-install` | `install_adaptive_performance` | adaptive worker |
 | `apply-source-fingerprint` | the `--settings-only --incremental` full fallback | the incremental classifier |

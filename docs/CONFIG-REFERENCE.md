@@ -163,7 +163,7 @@ what the old solid mode switched off.
 | `adaptive-install` | absolute path of the `install.sh` the worker runs | `install_adaptive_performance` |
 | `adaptive-performance/active` | `0\|1` | worker, `install_adaptive_performance` |
 | `adaptive-performance/reason` | e.g. `normal`, `battery`, `gpu`, `game`, `performance`, `no-blur` | worker, installer |
-| `adaptive-performance/saved-bms-blur` | `component/blur=value` lines while active | `apply_adaptive_blur` |
+| `adaptive-performance/saved-mode-keys` | `key<TAB>value` lines (the keys a mode owns) while active | `apply_adaptive_blur` |
 
 ### Assets
 
