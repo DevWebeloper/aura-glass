@@ -3073,6 +3073,14 @@ class Window(Adw.ApplicationWindow):
         # the one place in the window with no room for one.
         content_view = Adw.ToolbarView(content=self._toasts)
         header = Adw.HeaderBar()
+        # The page's name over the mode in force, so the answer to "which
+        # glass am I in?" is on every page rather than only on Glass. The
+        # subtitle is filled by _sync_mode_status.
+        # The pages are built before this header, so the first subtitle is
+        # set here rather than by the _sync_mode_status the Glass page ran.
+        self._window_title = Adw.WindowTitle(title=NAV_SECTIONS[0][1],
+                                             subtitle=self._mode_summary())
+        header.set_title_widget(self._window_title)
         self._preview_toggle = Gtk.ToggleButton(
             icon_name="view-reveal-symbolic", active=True,
             tooltip_text="Live preview — show tint, transparency, radius, "
@@ -3634,6 +3642,7 @@ class Window(Adw.ApplicationWindow):
             return
         self._stack.set_visible_child_name(row._section)
         self._content_page.set_title(row.get_title())
+        self._window_title.set_title(row.get_title())
 
     def _sidebar_header(self, row, before):
         """A caption above the first row of each group, and none above the rest.
@@ -3661,6 +3670,7 @@ class Window(Adw.ApplicationWindow):
         self._sidebar.unselect_all()
         self._stack.set_visible_child_name("uninstall")
         self._content_page.set_title("Uninstall")
+        self._window_title.set_title("Uninstall")
 
     def _on_search_changed(self, entry):
         text = entry.get_text().strip().lower()
@@ -4145,8 +4155,10 @@ class Window(Adw.ApplicationWindow):
         selected tab says "you are reading this", not "you are running this",
         and those are two different answers until Apply. A banner at the top of
         a tab is the second one, and only speaks on a tab that is not the one
-        the desktop is actually wearing — the common case, sitting on the
-        applied tab, stays silent rather than saying "In use" at every visit.
+        the desktop is actually wearing. Above both sits a status row that
+        names the mode in force and the adaptive overlay over it: the panel
+        menu flips the overlay from outside this window, and a page that
+        showed neither left "which one am I in?" without an answer anywhere.
 
         Each tab owns its own controls rather than sharing dimmed ones. The page
         this replaces spent four rows and a sensitivity pass explaining which of
@@ -4181,9 +4193,235 @@ class Window(Adw.ApplicationWindow):
                                     halign=Gtk.Align.CENTER,
                                     margin_top=12)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        box.append(self._build_mode_status())
         box.append(switcher)
         box.append(self._mode_stack)
         return box
+
+    # The panel menu's three profiles, under the panel menu's own words
+    # (extension.js, _profileLabels): the same choice made from two places
+    # has to read the same in both.
+    ADAPTIVE_PROFILES = (("auto", "Auto"), ("full", "Frost Glass"),
+                         ("performance", "Performance"))
+
+    # adaptive-performance/reason, as tools/aura_glass_adaptive.py writes it.
+    ADAPTIVE_REASONS = {"performance": "chosen in the profile",
+                        "battery": "on battery",
+                        "gpu": "the GPU is busy",
+                        "game": "a fullscreen game is running"}
+
+    # What the status row and the header subtitle read. glass-mode is the
+    # mode; the rest is the adaptive overlay the worker lays over frosted.
+    # styling-off and shell-80-solid.css are watched for the timing alone:
+    # both land with a transition, and the row should move when it does.
+    _MODE_FILES = ("glass-mode", "adaptive-profile", "shell-80-solid.css",
+                   "styling-off")
+
+    def _build_mode_status(self):
+        """The mode in force, the overlay over it, and the one-click switch.
+
+        Read off disk rather than off the tabs: a tab is a request, and this
+        row answers what the desktop is wearing right now — including the
+        adaptive overlay, which is never a glass mode (glass-mode stays
+        frosted under it) and so never moves a tab.
+        """
+        group = Adw.PreferencesGroup()
+        self._mode_row = Adw.ActionRow(title="Glass mode in use")
+        self._mode_pill = Gtk.Label(valign=Gtk.Align.CENTER)
+        self._mode_pill.add_css_class("aura-badge")
+        self._mode_pill.add_css_class("on")
+        self._mode_row.add_suffix(self._mode_pill)
+        self._mode_switch = Gtk.Button(valign=Gtk.Align.CENTER)
+        self._mode_switch.connect(
+            "clicked", lambda _b: self._switch_mode(self._other_mode()))
+        self._mode_row.add_suffix(self._mode_switch)
+        group.add(self._mode_row)
+
+        # The same command the panel menu runs, so the worker stays the one
+        # owner of the profile and of the transition it starts. Not an Apply
+        # flag: like an extension switch, it acts the moment it is chosen.
+        self._profile_row = Adw.ComboRow(
+            title="Adaptive performance",
+            model=Gtk.StringList.new(
+                [label for _p, label in self.ADAPTIVE_PROFILES]))
+        self._profile_syncing = False
+        self._profile_row.connect("notify::selected", self._on_profile_chosen)
+        group.add(self._profile_row)
+
+        # Its own monitors rather than the System page's: that one filters to
+        # stamp files, and this row is the only reader of these. The overlay
+        # lives in a subdirectory, which a directory monitor does not descend
+        # into, so it gets a second one.
+        self._mode_watch_timer = 0
+        self._mode_monitors = []
+        for path in (CONF_DIR, os.path.join(CONF_DIR, "adaptive-performance")):
+            monitor = Gio.File.new_for_path(path).monitor_directory(
+                Gio.FileMonitorFlags.NONE, None)
+            monitor.connect("changed", self._on_mode_file_changed)
+            self._mode_monitors.append(monitor)
+
+        clamp = Adw.Clamp(child=group, maximum_size=600,
+                          tightening_threshold=400, margin_top=12,
+                          margin_start=12, margin_end=12)
+        self._sync_mode_status()
+        return clamp
+
+    def _other_mode(self):
+        return ("frosted" if self._applied.glass_mode == "performance"
+                else "performance")
+
+    def _adaptive_state(self):
+        """(profile, active, reason), read where the worker writes them and
+        with the worker's own defaults (selected_profile, recorded_active)."""
+        profile = read_memo("adaptive-profile", "auto")
+        if profile not in [p for p, _l in self.ADAPTIVE_PROFILES]:
+            profile = "auto"
+        active = read_memo("adaptive-performance/active") == "1"
+        reason = read_memo("adaptive-performance/reason") or "normal"
+        return profile, active, reason
+
+    def _mode_summary(self):
+        """One line for the pill and the header subtitle."""
+        mode = self._mode_title(self._applied.glass_mode)
+        _profile, active, _reason = self._adaptive_state()
+        if self._applied.glass_mode == "frosted" and active:
+            return "%s · Performance overlay" % mode
+        return mode
+
+    def _sync_mode_status(self):
+        applied = self._applied.glass_mode
+        profile, active, reason = self._adaptive_state()
+        summary = self._mode_summary()
+        self._mode_pill.set_label(summary)
+        self._mode_switch.set_label(
+            "Switch to %s" % self._mode_title(self._other_mode()))
+        self._mode_switch.set_sensitive(self._repo is not None)
+        if applied == "performance":
+            self._mode_row.set_subtitle(
+                "No blur anywhere — every surface is opaque")
+        elif active:
+            self._mode_row.set_subtitle(
+                "Blur is paused for now — %s"
+                % self.ADAPTIVE_REASONS.get(reason, reason))
+        else:
+            self._mode_row.set_subtitle("Blur behind the shell and your apps")
+        if hasattr(self, "_window_title"):
+            self._window_title.set_subtitle(summary)
+
+        self._profile_syncing = True
+        self._profile_row.set_selected(
+            [p for p, _l in self.ADAPTIVE_PROFILES].index(profile))
+        self._profile_syncing = False
+        # The worker skips Performance mode outright (performance_mode in
+        # tools/aura_glass_adaptive.py): there is no blur there to lighten.
+        self._profile_row.set_sensitive(applied == "frosted")
+        if applied == "performance":
+            self._profile_row.set_subtitle(
+                "Only in Frosted glass — Performance has no blur to lighten")
+        elif profile == "auto":
+            self._profile_row.set_subtitle(
+                "Drops to Performance on battery, a busy GPU or a "
+                "fullscreen game, and back when it ends")
+        elif profile == "full":
+            self._profile_row.set_subtitle("Always full blur")
+        else:
+            self._profile_row.set_subtitle(
+                "Performance overlay held on until you pick another profile")
+
+    def _switch_mode(self, mode):
+        """Apply the other mode in one click: show its tab, then Apply.
+
+        Through the ordinary Apply, so flags_against sends --glass-mode and
+        install.sh is still the only thing that resolves it. Edits already
+        pending elsewhere in the window ride along, as they would on Apply.
+        """
+        if self._running:
+            self._toasts.add_toast(Adw.Toast(
+                title="Already applying something — try again in a moment"))
+            return
+        if self._glass_mode() != mode:
+            self._mode_stack.set_visible_child_name(mode)
+        self._on_apply(None)
+
+    def _on_profile_chosen(self, row, _param):
+        if self._profile_syncing or self._loading:
+            return
+        profile = self.ADAPTIVE_PROFILES[row.get_selected()][0]
+        if profile == self._adaptive_state()[0]:
+            return
+        if self._running:
+            self._toasts.add_toast(Adw.Toast(
+                title="Already applying something — try again in a moment"))
+            self._sync_mode_status()
+            return
+        local = os.path.join(os.path.expanduser("~/.local/bin"),
+                             "aura-glass-adaptive")
+        if os.access(local, os.X_OK):
+            argv = [local, "profile", profile]
+        elif self._repo is not None:
+            argv = ["bash", os.path.join(self._repo, "bin",
+                                         "aura-glass-adaptive"),
+                    "profile", profile]
+        else:
+            self._toasts.add_toast(Adw.Toast(
+                title="The aura-glass checkout is gone"))
+            self._sync_mode_status()
+            return
+        label = dict(self.ADAPTIVE_PROFILES)[profile]
+        self._run_started("Switching the adaptive profile to %s…" % label)
+        log_append(self._apply_log, "$ aura-glass-adaptive profile " + profile)
+
+        def done(ok, message):
+            self._sync_mode_status()
+            if ok:
+                self._run_finished(True, "Adaptive profile: %s" % label)
+                return
+            failed = "Could not switch the adaptive profile"
+            if message:
+                failed = "%s — %s" % (failed, message)
+            self._run_finished(False, failed)
+            self._toasts.add_toast(Adw.Toast(title=failed))
+
+        stream_command(argv, self._run_line, done)
+
+    def _on_mode_file_changed(self, _monitor, file, _other, _event):
+        parent = file.get_parent()
+        in_overlay = (parent is not None
+                      and parent.get_basename() == "adaptive-performance")
+        if not in_overlay and file.get_basename() not in self._MODE_FILES:
+            return
+        # Debounced like the System page's watch: a transition writes the
+        # sheet, the memo and the overlay state one after another.
+        if self._mode_watch_timer:
+            GLib.source_remove(self._mode_watch_timer)
+        self._mode_watch_timer = GLib.timeout_add(500, self._on_mode_settled)
+
+    def _on_mode_settled(self):
+        self._mode_watch_timer = 0
+        self._sync_mode_status()
+        self._follow_outside_mode_change()
+        return False
+
+    def _follow_outside_mode_change(self):
+        """Move the window onto a glass mode changed from outside it.
+
+        An Apply of this window's own lands on _reload when it finishes, so a
+        run in flight is left to that. A pending edit or a live preview is not
+        thrown away for it, for _sync_app_blur_memos's reason: a toast instead.
+        """
+        mode = read_memo("glass-mode", "")
+        if self._running or mode not in GLASS_MODES \
+                or mode == self._applied.glass_mode:
+            return
+        if self._preview_active \
+                or self._current().flags_against(self._applied):
+            self._toasts.add_toast(Adw.Toast(
+                title="The glass mode changed to %s outside this window — "
+                      "apply or revert the pending edits to follow it"
+                      % self._mode_title(mode)))
+            return
+        self._reload()
+        self._mark_dirty()
 
     def _mode_tab(self, mode, page):
         """A tab's page, with the banner that speaks when this is not the
@@ -4197,7 +4435,8 @@ class Window(Adw.ApplicationWindow):
         unlabelled mark is the wrong tool for the one thing on this page that
         is easy to get wrong.
         """
-        banner = Adw.Banner(revealed=False)
+        banner = Adw.Banner(revealed=False, button_label="Switch now")
+        banner.connect("button-clicked", lambda _b: self._switch_mode(mode))
         self._mode_banners[mode] = banner
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, vexpand=True)
         box.append(banner)
@@ -4237,8 +4476,8 @@ class Window(Adw.ApplicationWindow):
             # The applied mode by name, rather than a bare "not this one". The
             # tab bar stops answering "so which one am I in?" the moment you
             # click away from it, which is exactly when the question gets asked.
-            banner.set_title("%s is in use — Apply to switch"
-                             % self._mode_title(applied))
+            banner.set_title("%s is in use — switch now, or Apply with "
+                             "your other edits" % self._mode_title(applied))
             banner.set_revealed(True)
 
     def _on_mode_switched(self, _stack, _param):
@@ -6679,6 +6918,7 @@ class Window(Adw.ApplicationWindow):
         # actually changes and the common reload is the one that lands back on
         # the tab it started on.
         self._sync_mode_banner()
+        self._sync_mode_status()
 
         frosted = self._applied.modes["frosted"]
         self._window_blur_row.set_active(frosted.get("scope", "all") != "none")
@@ -6825,17 +7065,26 @@ class Window(Adw.ApplicationWindow):
         def done(proc, res):
             try:
                 proc.wait_finish(res)
+                status = proc.get_exit_status() if proc.get_if_exited() else 1
             except GLib.Error:
-                pass
+                status = 1
             self._check_button.set_label("Check now")
             # Re-read rather than trust an exit code: the checker's whole output
-            # for the window is the state file it leaves behind.
-            self._applied = Settings()
+            # for the window is the state file it leaves behind. Only the
+            # update field: replacing self._applied whole would move the
+            # applied mode under tabs and banners that did not move with it.
+            self._applied.update_available = Settings().update_available
             self._sync_updates()
             self._check_button.set_sensitive(True)
-            self._toasts.add_toast(Adw.Toast(
-                title=("%s is available" % self._applied.update_available)
-                if self._applied.update_available else "Up to date"))
+            # 1 is the checker's "could not tell" (offline, no tag, no
+            # checkout) — not an answer, so not "Up to date" either.
+            if self._applied.update_available:
+                title = "%s is available" % self._applied.update_available
+            elif status == 1:
+                title = "Could not check for updates — offline?"
+            else:
+                title = "Up to date"
+            self._toasts.add_toast(Adw.Toast(title=title))
 
         try:
             proc = Gio.Subprocess.new(
@@ -6878,11 +7127,16 @@ class Window(Adw.ApplicationWindow):
         #
         # Run in a real terminal so prompts (git auth, sudo, log out) remain
         # fully interactive and usable.
-        script = ("set -e\n"
-                  "git -C %s pull --ff-only\n"
-                  "bash %s --gui\n"
+        #
+        # Chained with && rather than under set -e: keep_open has to outlive a
+        # failure to show it, and set -e ended the shell before its status
+        # line and its "Press Enter". The update-available memo goes only once
+        # the install finished, so the window stops offering what it just did.
+        script = ("git -C %s pull --ff-only && bash %s --gui && rm -f %s\n"
                   % (GLib.shell_quote(self._repo),
-                     GLib.shell_quote(os.path.join(self._repo, "install.sh"))))
+                     GLib.shell_quote(os.path.join(self._repo, "install.sh")),
+                     GLib.shell_quote(os.path.join(CONF_DIR,
+                                                   "update-available"))))
 
         if self.run_in_terminal(script, "Theme update"):
             self._update_button_row.set_subtitle(

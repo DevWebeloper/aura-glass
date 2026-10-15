@@ -80,7 +80,7 @@ a restart.
 | Feature | Files | Notes |
 |---|---|---|
 | Frosted / Performance | `lib/steps-modes.sh`, `$C/glass-mode`, `$C/modes/<mode>/` | See ARCHITECTURE §3 |
-| Adaptive profiles (Auto / Full Glass / Performance) | `extensions/…/extension.js` (menu), `bin/aura-glass-adaptive`, `tools/aura_glass_adaptive.py`, `apply_adaptive_blur` in `lib/steps-dconf.sh`, `systemd/aura-glass-adaptive.service` | State in `$C/adaptive-profile`, `$C/adaptive-performance/` |
+| Adaptive profiles (Auto / Full Glass / Performance) | `extensions/…/extension.js` (menu), `bin/aura-glass-adaptive`, `tools/aura_glass_adaptive.py`, `apply_adaptive_blur` in `lib/steps-dconf.sh`, `systemd/aura-glass-adaptive.service` | State in `$C/adaptive-profile`, `$C/adaptive-performance/`. Shown and switchable in the settings app's Glass status group |
 | Fullscreen games list | settings app → Per-app blur | `$C/adaptive-fullscreen-apps` |
 
 ## 6. Assets, fonts, extensions
