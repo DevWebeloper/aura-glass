@@ -29,7 +29,7 @@ install_icon_sync() {
             run rm -f "$HOME/.config/systemd/user/$unit.service"
             stopped=1
         done
-        [ "$stopped" = 1 ] && run systemctl --user daemon-reload
+        [ "$stopped" = 1 ] && run systemctl --user daemon-reload || true
         skip "icons left alone (--no-icons) — the light/dark agent stood down"
         return 0
     fi
@@ -59,7 +59,7 @@ install_icon_sync() {
     install_if_changed "$REPO_ROOT/systemd/aura-glass-icon-sync.service" \
         "$HOME/.config/systemd/user/aura-glass-icon-sync.service" 644
     icon_unit_changed="$INSTALL_CHANGED"
-    [ "$icon_unit_changed" = 1 ] && run systemctl --user daemon-reload
+    [ "$icon_unit_changed" = 1 ] && run systemctl --user daemon-reload || true
     if ! systemctl --user is-enabled --quiet aura-glass-icon-sync.service 2>/dev/null; then
         run systemctl --user enable aura-glass-icon-sync.service >/dev/null 2>&1 || true
     fi
@@ -104,20 +104,23 @@ install_panel_blur_unit() {
     # solid mode it is a timer that waits twelve seconds after every login to
     # do nothing. Checked here rather than in the flag parsing so that the flag
     # order cannot defeat it: --no-blur --full would otherwise turn it back on.
+    local effective="${WANT_PANEL_BLUR_FIX:-1}"
     if [ "${WANT_BLUR:-1}" != 1 ]; then
-        WANT_PANEL_BLUR_FIX=0
+        effective=0
     fi
 
     # Remembered like every other setting, so a later flagless run — and the
     # settings window, which reads the memo to draw the switch — comes back to
     # this answer rather than to the default. Written before the branch so it
-    # records the choice whichever way it went.
+    # records the choice whichever way it went. The choice, not the forced 0
+    # above: that is the mode speaking, and remembering it lost the service
+    # for good on a frosted → performance → frosted round trip.
     if [ "${DRY_RUN:-0}" != 1 ]; then
         mkdir -p "$CONF_DIR"
         printf '%s\n' "${WANT_PANEL_BLUR_FIX:-1}" > "$CONF_DIR/panel-blur-fix"
     fi
 
-    if [ "${WANT_PANEL_BLUR_FIX:-1}" != 1 ]; then
+    if [ "$effective" != 1 ]; then
         # Clean up any previously installed panel blur units
         local found=0 u
         for u in aura-glass-panel-blur.service tahoe-glass-panel-blur.service bms-panel-blur-rebuild.service; do
@@ -127,7 +130,7 @@ install_panel_blur_unit() {
             run rm -f "$HOME/.config/systemd/user/$u"
             ok "removed $u"
         done
-        [ "$found" = 1 ] && run systemctl --user daemon-reload
+        [ "$found" = 1 ] && run systemctl --user daemon-reload || true
         skip "not installed (--no-panel-blur-fix)"
         return 0
     fi
@@ -152,7 +155,7 @@ install_panel_blur_unit() {
     install_if_changed "$REPO_ROOT/systemd/aura-glass-panel-blur.service" \
         "$HOME/.config/systemd/user/aura-glass-panel-blur.service" 644
     panel_unit_changed="$INSTALL_CHANGED"
-    [ "$panel_unit_changed" = 1 ] && run systemctl --user daemon-reload
+    [ "$panel_unit_changed" = 1 ] && run systemctl --user daemon-reload || true
     if ! systemctl --user is-enabled --quiet aura-glass-panel-blur.service 2>/dev/null; then
         run systemctl --user enable aura-glass-panel-blur.service >/dev/null 2>&1 || true
     fi
@@ -230,7 +233,7 @@ install_adaptive_performance() {
         printf 'normal\n' > "$CONF_DIR/adaptive-performance/reason"
     fi
 
-    [ "$unit_changed" = 1 ] && run systemctl --user daemon-reload
+    [ "$unit_changed" = 1 ] && run systemctl --user daemon-reload || true
     if [ "${WANT_STYLING:-1}" != 1 ] || [ "${WANT_BLUR:-1}" != 1 ]; then
         # Solid leaves Blur My Shell out entirely.  Keep the Task 2 panel
         # extension independent, but stop the worker so it cannot write BMS

@@ -914,7 +914,7 @@ EOF
     [ "$WANT_WINDOW_BLUR" = 0 ] && win_desc="Disabled (Opaque)"
     icon_desc="Colloid ($ACCENT)"
     [ "$WANT_ICONS" = 0 ] && icon_desc="Default (left alone)"
-    [[ "$ICONS" =~ ^reversal ]] && icon_desc="$ICONS"
+    [ -n "$ICONS" ] && [ "$ICONS" != colloid ] && icon_desc="$ICONS"
     cursor_desc="$CURSORS"
     [ "$WANT_CURSORS" = 0 ] && cursor_desc="Default (left alone)"
     cursor_size_desc="${CURSOR_SIZE}px"
@@ -1501,7 +1501,9 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     else
         restore_extensions
         disable_retired_extensions
-        if [ "$WANT_STYLING" = 1 ]; then
+        # Not on a dry run: the two queue helpers write gsettings directly,
+        # with no run in front of them to stop them (KI-08).
+        if [ "$WANT_STYLING" = 1 ] && [ "$DRY_RUN" != 1 ]; then
             dequeue_from_disabled_extensions "user-theme@gnome-shell-extensions.gcampax.github.com" || true
             run gnome-extensions enable "user-theme@gnome-shell-extensions.gcampax.github.com" 2>/dev/null || true
             if [ -d "$EXT_DIR/tiling-assistant@leleat-on-github" ] || [ -d "/usr/share/gnome-shell/extensions/tiling-assistant@leleat-on-github" ]; then
@@ -1524,7 +1526,8 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     install_adaptive_performance
     if [ -r "$CONF_DIR/gdm-installed" ] || [ -r "$CONF_DIR/gdm-monitors-synced" ]; then
         install_gdm_sync_unit
-        "$REPO_ROOT/bin/aura-glass-gdm-sync" --once >/dev/null 2>&1 || true
+        # run, so a dry run reports it instead of copying into GDM's home.
+        run "$REPO_ROOT/bin/aura-glass-gdm-sync" --once >/dev/null 2>&1 || true
     fi
     if [ "$INCREMENTAL" = 1 ] && [ "$DRY_RUN" != 1 ]; then
         apply_source_fingerprint > "$CONF_DIR/apply-source-fingerprint"

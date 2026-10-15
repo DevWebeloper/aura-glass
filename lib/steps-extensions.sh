@@ -366,8 +366,15 @@ install_rounded_blur() {
             && ln -sfn libblur-effect-1.0.so.1 "$HOME/.local/lib/libblur-effect-1.0.so"
         fi
         [ -f /usr/lib/girepository-1.0/Blur-1.0.typelib ] && cp -f /usr/lib/girepository-1.0/Blur-1.0.typelib "$HOME/.local/share/girepository-1.0/" 2>/dev/null || true
-        rounded_blur_stamp
-        ok "gnome-rounded-blur compiled against mutter-$GNOME_MAJOR into ~/.local/lib"
+        # Said only when the library is there: gcc's output is silenced above,
+        # so a failed compile used to end on this same "compiled" line (KI-11).
+        if [ -f "$HOME/.local/lib/libblur-effect-1.0.so.1" ]; then
+            rounded_blur_stamp
+            ok "gnome-rounded-blur compiled against mutter-$GNOME_MAJOR into ~/.local/lib"
+        else
+            warn "gnome-rounded-blur did not compile against mutter-$GNOME_MAJOR"
+            warn "Popup blur remains dynamic with corner shader fallback."
+        fi
         return 0
     fi
 

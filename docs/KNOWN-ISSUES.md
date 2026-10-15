@@ -37,6 +37,9 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 | [KI-19](#ki-19) | Low | **Fixed** (uncommitted) | "Blur This App" writes to the destroyed window menu (journal stack traces), and its post-toggle checkmark uses a different rule than the menu |
 | [KI-20](#ki-20) | Medium | **Fixed** (uncommitted) | A mode switch left open GTK windows on the old alpha until each app was reopened |
 | [KI-21](#ki-21) | Medium | **Fixed** (uncommitted) | Tray Performance profile never showed the opaque shell sheet (shell theme not reloaded) |
+| [KI-22](#ki-22) | Medium | **Fixed** | Settings app never showed the mode in force or the adaptive overlay, and missed changes made outside it |
+| [KI-23](#ki-23) | Medium | **Fixed** | Install/update/uninstall audit: silent failures, lost memos, leftovers |
+| [KI-24](#ki-24) | Low | Code-read | Update and full reinstall forget the extension pack, `--no-osd`, `--no-bms-git`, `--no-rounded-blur`. Wizard parity drift |
 
 ---
 
@@ -482,3 +485,75 @@ mode looked right.
 theme reloads when the shell CSS changed. Verified live: tray Performance and
 Full both show the right sheet. The original flag was added against
 actor-destruction and blur-recompile thrash; none seen.
+
+---
+
+## KI-22
+
+**The settings app didn't say which glass is on.**
+
+**Symptom.** Picking Performance or Frost Glass from the top-bar menu changed
+the desktop, but the settings window showed nothing. Switching mode from the
+window meant "click the other tab, then Apply".
+
+**Root cause.** The top-bar menu sets the **adaptive profile**
+(`$C/adaptive-profile`, `$C/adaptive-performance/`), never `glass-mode`, and
+the window read neither. Its only `Gio.FileMonitor` filtered to System-page
+stamps, so a real `glass-mode` change from the CLI was missed too. The update
+check also replaced `self._applied` whole, which could leave a phantom pending
+"Glass mode" change.
+
+**Fix.** `gui/aura_glass_settings.py`:
+- A status group above the Glass tabs: the mode in force (with "· Performance overlay" and the reason when the worker has it on), a "Switch to X" button that runs the ordinary Apply, and an "Adaptive performance" combo that runs `aura-glass-adaptive profile` (the panel menu's command).
+- The header subtitle carries the same summary on every page.
+- The banners on the other tab gained "Switch now".
+- Two monitors (`$C`, `$C/adaptive-performance`) refresh it live and follow an outside `glass-mode` change, with a toast instead when edits are pending.
+- The update check copies only `update_available`.
+
+Smoke-tested off-screen; needs a live check.
+
+---
+
+## KI-23
+
+**Install, update and uninstall audit (2026-10-15).**
+
+Fixed:
+- **Update terminal closed on failure.** The update script ran under `set -e` inside `keep_open`, so a failed `git pull` or install exited before the status line. Now chained with `&&`. `update-available` is removed after a successful install, so the window stops offering the update it just installed.
+- **Offline update check died with 128.** Under `pipefail`, a failed `git ls-remote` in `$(...)` exited before the "offline?" message. Each pipeline now ends in `|| true`. The window toasts "Could not check" on exit 1 instead of "Up to date".
+- **`check-update-channel.py` read the real `CONF_DIR`.** It now points the window module at the fixture.
+- **The GUI toolkit offer never ran.** `ensure_gui_toolkit` read `DISTRO_FAMILY` before `preflight` set it. It now runs `detect_distro` itself.
+- **Wizard summary.** An unreadable catalogue read "Minimal"; the text summary called Hatter "Colloid".
+- **`multi_monitor_detected` counted every layout ever saved in `monitors.xml`.** It now uses `monitor_count`.
+- **A mode round trip lost `panel-blur-fix`.** The memo now records the choice, not Performance's forced 0.
+- **Failed `daemon-reload` aborted the run.** With no user manager, it stopped an install or uninstall midway; it is now `|| true` everywhere.
+- **Dry runs still wrote.** The Tiling Assistant / user-theme queue writes and `aura-glass-gdm-sync --once` ran under `--dry-run` (KI-08).
+- **`install_rounded_blur` said "compiled" after a failed gcc** (KI-11, second point).
+- **Uninstall leftovers.** It now removes Copyous and the rootless rounded-blur build in `~/.local`.
+
+Left as is:
+- Tiling Assistant re-enabled on every retune: deliberate, commit 19ae4fa.
+- The Flatpak override and `disable-extension-version-validation`: not reverted, because both may predate the install.
+- `--no-window-menu`: still parsed and unused.
+
+---
+
+## KI-24
+
+**Re-runs that don't reproduce every choice.**
+
+"Install update" (`install.sh --gui`) and Full reinstall run no wizard, and
+these choices have no memo, so they come back as defaults:
+- the extension pack (Minimal and custom lists get the Recommended six),
+- `--no-osd`,
+- `--no-bms-git` (the `bms-source` memo is written but never read),
+- `--no-rounded-blur`.
+
+Separately, the two wizards still drift:
+- the GTK wizard offers Performance in Customize; the text wizard doesn't,
+- the extension pack choices and default differ,
+- Complete Experience sends `--cursor-size 20` and no `--extensions` in the window,
+- the window's Performance sends `--no-blur`, the app sends `--glass-mode performance`.
+
+Fix direction: memos for the pack and the three opt-outs, read in the
+resolution block. Pick one wizard as canonical for parity.

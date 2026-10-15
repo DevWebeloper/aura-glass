@@ -159,10 +159,10 @@ install_gdm_sync_unit() {
 
     run install -Dm755 "$REPO_ROOT/bin/aura-glass-gdm-sync" \
         "$HOME/.local/bin/aura-glass-gdm-sync"
-    ln -sf "$HOME/.local/bin/aura-glass-gdm-sync" "$HOME/.local/bin/tahoe-glass-gdm-sync" 2>/dev/null || true
+    run ln -sf "$HOME/.local/bin/aura-glass-gdm-sync" "$HOME/.local/bin/tahoe-glass-gdm-sync" 2>/dev/null || true
     run install -Dm644 "$REPO_ROOT/systemd/aura-glass-gdm-sync.service" \
         "$HOME/.config/systemd/user/aura-glass-gdm-sync.service"
-    run systemctl --user daemon-reload
+    run systemctl --user daemon-reload || true
     run systemctl --user enable aura-glass-gdm-sync.service >/dev/null 2>&1 || true
 
     if systemctl --user is-active --quiet graphical-session.target 2>/dev/null; then
@@ -178,7 +178,7 @@ uninstall_gdm_sync_unit() {
             run rm -f "$HOME/.config/systemd/user/$u"
         fi
     done
-    run systemctl --user daemon-reload
+    run systemctl --user daemon-reload || true
     run rm -f "$HOME/.local/bin/aura-glass-gdm-sync" "$HOME/.local/bin/tahoe-glass-gdm-sync"
 }
 

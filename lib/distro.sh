@@ -123,6 +123,11 @@ gui_toolkit_hint() {
 ensure_gui_toolkit() {
     gui_toolkit_present && return 0
 
+    # The wizard runs before preflight, which is where detect_distro normally
+    # happens, so without this every family below read as unknown and the
+    # offer never ran.
+    [ -n "${DISTRO_FAMILY:-}" ] || detect_distro
+
     local pkgs
     case "$DISTRO_FAMILY" in
         arch)   pkgs="$GUI_TOOLKIT_PKGS_ARCH" ;;

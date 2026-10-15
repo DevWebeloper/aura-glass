@@ -844,9 +844,13 @@ class Window(Adw.ApplicationWindow):
                 if e["tier"] == "recommended"}
         complete = {e["uuid"] for e in self.catalogue
                     if e["tier"] in ("recommended", "full")}
-        if not selected:
+        # None first: an unreadable catalogue leaves no list at all, which
+        # install.sh resolves to its own default rather than to Minimal.
+        if answers.extensions is None:
+            extras = "Full Experience"
+        elif not selected:
             extras = "Minimal"
-        elif selected == complete or answers.extensions is None:
+        elif selected == complete:
             extras = "Full Experience"
         elif selected == core:
             extras = "Core"

@@ -106,26 +106,12 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # actually fix anything — a single-display machine has nothing for it to fix,
 # and the GUI wizard makes the same call off Gdk's monitor list.
 #
-# ~/.config/monitors.xml is GNOME's own record of the layout it last saved and
-# is checked first, since it is what sync_gdm_monitors in lib/steps-gdm.sh
-# goes on to copy; a machine that has never opened GNOME Settings' Displays
-# panel will not have one, so this falls back to counting connected outputs
-# under /sys/class/drm, which exists on any machine with a DRM driver loaded
-# whether or not a session has run yet.
+# Counted by monitor_count (below), not out of ~/.config/monitors.xml: that file
+# keeps every layout GNOME ever saved, so a laptop docked once read as
+# multi-monitor for good. monitor_count asks Mutter for the screens driven
+# right now, which is what the GUI wizard's Gdk list sees too.
 multi_monitor_detected() {
-    local xml="$HOME/.config/monitors.xml" n=0 f
-    if [ -r "$xml" ]; then
-        n="$(grep -c '<logicalmonitor>' "$xml" 2>/dev/null || echo 0)"
-        if [ "$n" -gt 0 ]; then
-            [ "$n" -gt 1 ]
-            return
-        fi
-    fi
-    for f in /sys/class/drm/*/status; do
-        [ -r "$f" ] || continue
-        [ "$(cat "$f" 2>/dev/null)" = "connected" ] && n=$((n + 1))
-    done
-    [ "$n" -gt 1 ]
+    [ "$(monitor_count)" -gt 1 ]
 }
 
 # prompt_logout — asks whether to log out now (default No).

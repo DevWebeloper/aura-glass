@@ -37,6 +37,7 @@ except ImportError:
           "settings window is optional, and install.sh skips it here too)")
     sys.exit(0)
 
+import aura_glass_settings  # noqa: E402
 from aura_glass_settings import (  # noqa: E402
     current_branch, installed_version, is_test_build, update_blockers)
 
@@ -108,6 +109,10 @@ def case(label, want_test, want_version, want_blocker, **kw):
     """Both programs are asked the same question and held to the same answer."""
     with tempfile.TemporaryDirectory() as tmp:
         repo, conf = build(tmp, **kw)
+        # The window's side reads its memos (update-channel) out of CONF_DIR,
+        # which is the real ~/.config/aura-glass at import: pointed at the
+        # fixture here as the checker's side is, through AURA_GLASS_CONF.
+        aura_glass_settings.CONF_DIR = conf
 
         got_test = is_test_build(repo)
         if got_test != want_test:

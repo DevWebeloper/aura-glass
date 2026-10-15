@@ -266,7 +266,9 @@ for u in aura-glass-panel-blur.service tahoe-glass-panel-blur.service bms-panel-
     ok "removed $u"
 done
 if [ "$found" = 1 ]; then
-    run systemctl --user daemon-reload
+    # || true: with no user manager to reach (a TTY, a container) a failed
+    # reload used to stop the uninstall halfway, extensions and commands kept.
+    run systemctl --user daemon-reload || true
 else
     skip "not installed"
 fi
@@ -329,7 +331,7 @@ if [ "$REMOVE_EXTENSIONS" = 1 ]; then
              compiz-alike-magic-lamp-effect@hermes83.github.com \
              tiling-assistant@leleat-on-github \
              quick-settings-audio-panel@rayzeq.github.io \
-             add-to-steam@pupper.space; do
+             add-to-steam@pupper.space copyous@boerdereinar.dev; do
         if [ -d "$EXT_DIR/$u" ]; then
             run gnome-extensions disable "$u" 2>/dev/null || true
             dequeue_extension "$u" 2>/dev/null || true
@@ -413,6 +415,15 @@ if [ -f "$CONF_DIR/rounded-blur" ]; then
     info "installed into /usr by this project. To remove it:"
     info "    sudo pacman -Rs gnome-rounded-blur       # if it came from the AUR"
     info "    sudo ninja -C ~/.cache/aura-glass/src/gnome-rounded-blur/build uninstall"
+fi
+# The rootless build install_rounded_blur compiles into $HOME — removable
+# without sudo, so it goes rather than being explained.
+if [ -e "$HOME/.local/lib/libblur-effect-1.0.so.1" ] \
+    || [ -e "$HOME/.local/share/girepository-1.0/Blur-1.0.typelib" ]; then
+    run rm -f "$HOME/.local/lib/libblur-effect-1.0.so" \
+              "$HOME/.local/lib/libblur-effect-1.0.so.1" \
+              "$HOME/.local/share/girepository-1.0/Blur-1.0.typelib"
+    ok "removed the rootless gnome-rounded-blur build from ~/.local"
 fi
 
 step "Removing aura-glass itself"
