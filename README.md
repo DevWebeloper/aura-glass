@@ -43,7 +43,7 @@ for:
 - **Blur.** Behind popups and menus, and behind app windows: all apps (the default), GTK/GNOME apps only, or none.
 - **Window transparency.** 90 % (default), 82 % or 95 %.
 - **Icons, pointer, pointer size, interface font.**
-- **Extensions.** Core (6 curated), Complete (all 8), a custom pick, or minimal.
+- **Extensions.** The wizard offers Full (all 8) or Minimal. `--recommended` (6 curated) and `--extensions LIST` pick a smaller set from the command line.
 - **Login screen (GDM).** Optional. Themed and blurred, with live wallpaper sync. This needs `sudo`.
 
 Non-interactive: `./install.sh --full -y`.

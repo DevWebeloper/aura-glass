@@ -560,12 +560,26 @@ EOF
                     gdm_note=", login screen themed"
                 fi
             fi
-            # Blur mode, scope and transparency are left untouched here: the
-            # top-of-script defaults (WANT_BLUR=1, APP_BLUR_SCOPE=all) and the
-            # remembered-value resolution below (APP_TRANSPARENCY, further
-            # down this script) already land on frosted glass at 90% on a
-            # fresh install with nothing overriding them — which is the same
-            # answer Steps 1-2 below would collect by hand.
+            # The window's Complete Experience states every answer
+            # (Answers.best: frosted, all apps, 90%, popup blur, 20px
+            # pointer), so a re-run on a machine that remembers something
+            # else lands on the same look from either wizard. These are the
+            # same answers Steps 1-2 and 3 below default to.
+            GLASS_MODE="frosted"
+            GLASS_MODE_EXPLICIT=1
+            WANT_BLUR=1
+            WANT_POPUP_BLUR=1
+            POPUP_BLUR_EXPLICIT=1
+            WANT_WINDOW_BLUR=1
+            WINDOW_BLUR_EXPLICIT=1
+            APP_BLUR_SCOPE="all"
+            APP_BLUR_SCOPE_EXPLICIT=1
+            APP_TRANSPARENCY=0.90
+            APP_OPACITY=230
+            APP_TRANSPARENCY_EXPLICIT=1
+            APP_OPACITY_EXPLICIT=1
+            CURSOR_SIZE="20"
+            CURSOR_SIZE_EXPLICIT=1
             printf '  %s✓%s Complete Experience selected — recommended look, every extension%s\n\n' \
                 "$C_GRN" "$C_OFF" "$gdm_note"
             ;;
@@ -600,13 +614,31 @@ EOF
     esac
     printf '  %s✓%s Accent set to %s%s%s\n\n' "$C_GRN" "$C_OFF" "$C_BLD" "$ACCENT" "$C_OFF"
 
-    # 2. Blur & Transparency Options. Frosted glass is the default and only mode
-    # offered during setup; Performance mode can be selected later in the
-    # Aura Glass settings app if desired.
-    GLASS_MODE="frosted"
-    GLASS_MODE_EXPLICIT=1
-    WANT_BLUR=1
+    # 2. Blur & Transparency Options. The same first question as the GTK
+    # wizard's page_blur: frosted glass, or performance. Performance goes out
+    # exactly as the window sends it, a lone --no-blur (which install.sh
+    # rejects beside any other blur flag by design), and skips the detail
+    # questions the way the window skips its blur-details page.
     printf '%sStep 2: Blur & Transparency Options%s\n' "$C_BLD" "$C_OFF"
+    printf '  Frosted glass, or performance:\n'
+    printf '    %s[1]%s Frosted glass %s[Default — blur behind the top bar, popups, menus and the volume pill]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[2]%s Performance %s[No blur anywhere — lighter on older GPUs and on battery]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '  Choice [1-2, default 1]: '
+    read -r ans_mode || ans_mode="1"
+    case "$ans_mode" in
+        2|performance|solid)
+            parse_flags --no-blur
+            printf '  %s✓%s Performance selected — no blur anywhere\n\n' "$C_GRN" "$C_OFF"
+            ;;
+        *)
+            GLASS_MODE="frosted"
+            GLASS_MODE_EXPLICIT=1
+            WANT_BLUR=1
+            printf '  %s✓%s Frosted glass selected\n\n' "$C_GRN" "$C_OFF"
+            ;;
+    esac
+
+    if [ "$WANT_BLUR" = 1 ]; then
 
     # Question 1: Popup & Menu blur (default: Yes)
     printf '  Enable blur behind popups, menus & top bar? %s[Y/n, default: Y]%s: ' "$C_DIM" "$C_OFF"
@@ -688,6 +720,7 @@ EOF
         APP_TRANSPARENCY_EXPLICIT=1
         APP_OPACITY_EXPLICIT=1
     fi
+    fi   # WANT_BLUR: the detail questions are Frosted's
 
     # 3. Icons & Cursors
     printf '%sStep 3: Icons, Cursors & Font%s\n' "$C_BLD" "$C_OFF"
@@ -824,54 +857,24 @@ EOF
         *)    WANT_OSD=1; printf '  %s✓%s Custom OSD pill bar enabled\n' "$C_GRN" "$C_OFF" ;;
     esac
 
+    # Same options, order and recommendation as the GTK wizard's page_extensions:
+    # the whole optional set, or none of it. The window has no middle tier and
+    # no per-extension list, so neither does this.
     printf '\n  Extension Package:\n'
-    printf '    %s[1]%s Core %s[Default — foundation plus 6 curated extensions]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '        • AppIndicator Support (System tray icons for Steam, Discord, etc.)\n'
-    printf '        • Quick Settings Audio Panel (Per-app volume mixer in Quick Settings)\n'
-    printf '        • Tiling Assistant (Window snap assist & 2x2 quarter tiling)\n'
-    printf '        • Hot Edge (Overview/dock trigger by touching bottom edge)\n'
-    printf '        • Kiwi Menu (macOS-style Applications menu in top bar)\n'
-    printf '        • Copyous (Modern clipboard history manager)\n'
-    printf '    %s[2]%s Complete Experience %s[Foundation plus all 8 optional extensions]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '    %s[3]%s Custom Selection %s[Pick extensions individually]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '    %s[4]%s Minimal %s[Foundation only — no optional extensions]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '  Choice [1-4, default 1]: '
+    printf '    %s[1]%s Full Experience %s[Recommended — foundation plus all optional extensions (tray icons, tiling, effects, clipboard)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[2]%s Minimal %s[Foundation only (blur, panel & user themes) — no optional extensions]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '  Choice [1-2, default 1]: '
     read -r ans_pkg || ans_pkg="1"
     case "$ans_pkg" in
-        2|full|all)
-            WANT_EXTRAS=1
-            EXT_EXTRA=("${EXT_EXTRA_ALL[@]}")
-            printf '  %s✓%s Complete Experience selected (8 optional extensions)\n\n' "$C_GRN" "$C_OFF"
-            ;;
-        3|custom)
-            WANT_EXTRAS=1
-            EXT_EXTRA=()
-            printf '\n  %sSelect individual extensions:%s\n' "$C_BLD" "$C_OFF"
-            for u in "${EXT_EXTRA_ALL[@]}"; do
-                # Pre-select recommended as default yes, others as default no
-                is_rec=0 def_hint="[y/N]" def_val="n"
-                for r in "${EXT_EXTRA_RECOMMENDED[@]}"; do
-                    if [ "$r" = "$u" ]; then is_rec=1; def_hint="[Y/n]"; def_val="y"; break; fi
-                done
-                printf '    Install %s %s? ' "$(ext_description "$u")" "$def_hint"
-                read -r ans_ext || ans_ext="$def_val"
-                [ -z "$ans_ext" ] && ans_ext="$def_val"
-                case "${ans_ext,,}" in
-                    y|yes) EXT_EXTRA+=("$u"); printf '      %s+ added%s\n' "$C_GRN" "$C_OFF" ;;
-                    *)     printf '      %s- skipped%s\n' "$C_DIM" "$C_OFF" ;;
-                esac
-            done
-            printf '  %s✓%s %d optional extensions selected\n\n' "$C_GRN" "$C_OFF" "${#EXT_EXTRA[@]}"
-            ;;
-        4|minimal|none)
+        2|minimal|none)
             WANT_EXTRAS=0
             EXT_EXTRA=()
             printf '  %s✓%s Minimal selected — foundation only\n\n' "$C_GRN" "$C_OFF"
             ;;
         *)
             WANT_EXTRAS=1
-            EXT_EXTRA=("${EXT_EXTRA_RECOMMENDED[@]}")
-            printf '  %s✓%s Core selected (6 curated optional extensions)\n\n' "$C_GRN" "$C_OFF"
+            EXT_EXTRA=("${EXT_EXTRA_ALL[@]}")
+            printf '  %s✓%s Full Experience selected (%d optional extensions)\n\n' "$C_GRN" "$C_OFF" "${#EXT_EXTRA[@]}"
             ;;
     esac
 

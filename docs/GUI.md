@@ -48,8 +48,12 @@ extension, GDM where present, and monitor sync only on multi-monitor machines.
 
 Every question has a twin in `install.sh`'s text wizard (search for
 `Step 0: Quick Start`). The rule is that options, defaults and recommendations
-match. It's **stated in comments, not enforced**, and it has drifted on the
-recommended pointer (KI-05). `check-wizard-flags.py` checks only that every
+match, and the window is the canonical side (decided 2026-10-15, KI-24): the
+text wizard asks Frosted/Performance first (Performance goes out as a lone
+`--no-blur`, as the window sends it), offers Full or Minimal for the pack, and
+its Complete Experience states the same blur, transparency and 20px pointer
+answers as `Answers.best()`. It's **stated in comments, not enforced**, and it
+had drifted on the recommended pointer (KI-05). `check-wizard-flags.py` checks only that every
 command line the window can produce is accepted.
 
 ---

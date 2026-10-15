@@ -39,7 +39,7 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 | [KI-21](#ki-21) | Medium | **Fixed** (uncommitted) | Tray Performance profile never showed the opaque shell sheet (shell theme not reloaded) |
 | [KI-22](#ki-22) | Medium | **Fixed** | Settings app never showed the mode in force or the adaptive overlay, and missed changes made outside it |
 | [KI-23](#ki-23) | Medium | **Fixed** | Install/update/uninstall audit: silent failures, lost memos, leftovers |
-| [KI-24](#ki-24) | Low | **Fixed** (wizard parity drift still open, see entry) | Update and full reinstall forgot the extension pack, `--no-osd`, `--no-bms-git`, `--no-rounded-blur`. Wizard parity drift awaits a decision on which wizard is canonical |
+| [KI-24](#ki-24) | Low | **Fixed** | Update and full reinstall forgot the extension pack, `--no-osd`, `--no-bms-git`, `--no-rounded-blur`. Text wizard drifted from the GTK wizard |
 
 ---
 
@@ -558,9 +558,15 @@ The three opt-outs only move a value down: a remembered `1` is never read over
 custom list came back as two UUIDs, a typed `--all-extras` beat the memo, and
 the hermetic suite passes.
 
-**Still open: wizard parity drift.** Waiting on a decision about which wizard
-is canonical before either changes:
-- the GTK wizard offers Performance in Customize; the text wizard doesn't,
-- the extension pack choices and default differ,
-- Complete Experience sends `--cursor-size 20` and no `--extensions` in the window,
-- the window's Performance sends `--no-blur`, the app sends `--glass-mode performance`.
+**Wizard parity drift** (fixed against the GTK wizard as canonical, decided
+2026-10-15). The text wizard in `install.sh` now:
+- asks Frosted or Performance first in Customize. Performance runs `parse_flags --no-blur`, the lone flag the window sends, and skips the detail questions,
+- offers Full Experience (default, all 8) or Minimal for the pack, like the window. Core and Custom Selection are gone from the wizard; `--recommended` and `--extensions` still reach them,
+- states Complete Experience's answers (frosted, all apps, 90%, popup blur, 20px pointer) the way `Answers.best()` sends them.
+
+Left as is: the window's Performance sends `--no-blur`, while the settings app
+sends `--glass-mode performance`. Those are different front ends for different
+moments (first install vs a retune) and install.sh resolves both.
+Verified in a pty against a fixture `HOME`: Performance + Minimal prints
+"Performance (No blur)" and 0 extensions; Frosted + Full prints 8; Complete
+Experience prints 20px and all apps at 90%. The hermetic suite passes.
