@@ -274,8 +274,10 @@ install_adaptive_performance() {
     ok "Auto watches fullscreen, battery and supported GPU load"
 
     if [ -z "${ADAPTIVE_BLUR:-}" ] && [ "${DRY_RUN:-0}" != 1 ]; then
-        if [ -x "$HOME/.local/bin/aura-glass-adaptive" ]; then
-            "$HOME/.local/bin/aura-glass-adaptive" refresh >/dev/null 2>&1 || true
+        if ! systemctl --user is-active --quiet aura-glass-adaptive.service 2>/dev/null; then
+            if [ -x "$HOME/.local/bin/aura-glass-adaptive" ]; then
+                "$HOME/.local/bin/aura-glass-adaptive" refresh >/dev/null 2>&1 || true
+            fi
         fi
     fi
 }

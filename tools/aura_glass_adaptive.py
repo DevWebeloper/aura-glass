@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Apply Aura Glass's transient performance blur only while a trigger holds."""
+import fcntl
 import glob
 import os
 import re
@@ -306,13 +307,38 @@ def usage():
     print("usage: aura-glass-adaptive profile auto|full|performance | refresh", file=sys.stderr)
 
 
+def acquire_worker_lock():
+    lock_file = os.path.join(os.path.expanduser("~"), ".cache", "aura-glass", "adaptive-worker.lock")
+    os.makedirs(os.path.dirname(lock_file), exist_ok=True)
+    try:
+        fd = os.open(lock_file, os.O_RDWR | os.O_CREAT, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fd
+    except (BlockingIOError, OSError):
+        return None
+
+
 def main(argv):
     directory = config_dir()
     reducer = AdaptiveReducer(sustained_from_env())
     if not argv:
-        while True:
-            sample(reducer, directory)
-            time.sleep(interval_from_env())
+        lock_fd = acquire_worker_lock()
+        if lock_fd is None:
+            print("aura-glass-adaptive: another worker daemon is already running", file=sys.stderr)
+            return 0
+        try:
+            while True:
+                try:
+                    sample(reducer, directory)
+                except Exception as error:
+                    print("aura-glass-adaptive: sample error:", error, file=sys.stderr)
+                time.sleep(interval_from_env())
+        finally:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                os.close(lock_fd)
+            except OSError:
+                pass
     if len(argv) == 2 and argv[0] == "profile" and argv[1] in PROFILES:
         set_profile(directory, argv[1])
         if os.path.exists(os.path.join(directory, "styling-off")):

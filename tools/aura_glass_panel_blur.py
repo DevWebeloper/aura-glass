@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Coalesce monitor-layout events before rebuilding Blur My Shell's panel."""
+import fcntl
 import os
 import selectors
 import subprocess
@@ -41,6 +42,24 @@ def config_dir():
     return os.environ.get("AURA_GLASS_DIR", os.path.join(os.path.expanduser("~"), ".config", "aura-glass"))
 
 
+def try_lock():
+    path = os.path.join(os.path.expanduser("~"), ".cache", "aura-glass", "operation.lock")
+    if not os.path.exists(path):
+        return True
+    try:
+        fd = os.open(path, os.O_RDWR)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            return True
+        except BlockingIOError:
+            return False
+        finally:
+            os.close(fd)
+    except OSError:
+        return True
+
+
 def enabled():
     directory = config_dir()
     if os.path.exists(os.path.join(directory, "styling-off")):
@@ -67,16 +86,20 @@ def rebuild():
     # still inherently indistinguishable from ours; dconf has no ownership API.
     operation = os.environ.get("AURA_GLASS_OPERATION", "aura-glass-operation")
     command = 'dconf write "$1" false; sleep 0.1; dconf write "$1" true'
-    result = subprocess.run([operation, "run", "--", "bash", "-c", command, "_", KEY],
-                            text=True, timeout=35)
-    if result.returncode:
-        raise RuntimeError("panel blur rebuild did not complete")
+    try:
+        result = subprocess.run([operation, "run", "--", "bash", "-c", command, "_", KEY],
+                                text=True, timeout=35)
+        if result.returncode:
+            print("aura-glass-panel-blur: rebuild did not complete (code %d)" % result.returncode,
+                  file=sys.stderr)
+    except Exception as exc:
+        print("aura-glass-panel-blur: rebuild error: %s" % exc, file=sys.stderr)
 
 
 def main():
     settle = float(os.environ.get("AURA_GLASS_BLUR_SETTLE",
                                   os.environ.get("TAHOE_GLASS_BLUR_SETTLE", "3")))
-    reducer = PanelBlurReducer(settle, enabled, lambda: True, rebuild)
+    reducer = PanelBlurReducer(settle, enabled, try_lock, rebuild)
     monitor = subprocess.Popen(
         ["gdbus", "monitor", "--session", "--dest", "org.gnome.Mutter.DisplayConfig",
          "--object-path", "/org/gnome/Mutter/DisplayConfig"],

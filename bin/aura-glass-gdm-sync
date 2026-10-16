@@ -106,10 +106,12 @@ fi
 sync_wallpaper || true
 sync_monitors || true
 
+trap 'kill $(jobs -p) 2>/dev/null || true' EXIT INT TERM
+
 # Monitor background changes and display changes in parallel
 (
     gsettings monitor org.gnome.desktop.background 2>/dev/null | while read -r _; do
-        sleep 1
+        while read -t 1 -r _; do :; done
         sync_wallpaper || true
     done
 ) &
@@ -120,11 +122,11 @@ sync_monitors || true
         | while read -r line; do
             case "$line" in
                 *MonitorsChanged*)
-                    sleep 2
+                    while read -t 2 -r _; do :; done
                     sync_monitors || true
                     ;;
             esac
         done
 ) &
 
-wait
+wait || true
