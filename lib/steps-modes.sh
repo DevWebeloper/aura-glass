@@ -33,16 +33,12 @@ resolve_glass_mode() {
     fi
 
     # Explicit flags typed by the user beat the remembered mode. Asking for
-    # window blur or general blur is asking for frosted mode; asking for no-blur
-    # is asking for performance mode.
+    # window blur or general blur is asking for frosted mode.
     if [ "${WANT_WINDOW_BLUR:-}" = 1 ] && [ -n "${WINDOW_BLUR_EXPLICIT:-}" ]; then
         GLASS_MODE="frosted"
         return 0
     elif [ "${WANT_BLUR:-}" = 1 ] && [ -n "${BLUR_EXPLICIT:-}" ]; then
         GLASS_MODE="frosted"
-        return 0
-    elif [ "${WANT_BLUR:-}" = 0 ] && [ -n "${BLUR_EXPLICIT:-}" ]; then
-        GLASS_MODE="performance"
         return 0
     fi
 
