@@ -104,7 +104,7 @@ install without `--force` (ARCHITECTURE §7).
 
 - **Runtime helpers** (11): `rescale-transparency.py`, `apply-tint-color.py`, `apply-shell-tint.py`, `apply-notification-opacity.py`, `apply-radius-preset.py`, `apply-popup-brightness.py`, `token_manifest.py`, `moga_cursor.py`, `aura_glass_operation.py`, `aura_glass_panel_blur.py`, `aura_glass_adaptive.py`. These are **part of the theme**. `lib/` and `bin/` call them. Don't move or rename one without updating every caller, and don't add new ones unless asked.
 - **Hermetic checks** (`check-*` except the live ones below). Fixture `HOME`, temp dirs, stubs, `--dry-run`. **Agents may run these.**
-- **Live-session tools.** Agents **never** run these: `preview.sh`, `preview-session.sh`, `preview-shot.py`, `preview-extensions.py`, `preview-driver/`, `gpu-live.sh`, `gpu-sample.py`, `check-preview.sh`, `check-shots.py`, `check-moga-cursors.sh` (it reads the real `HOME`).
+- **Live-session tools.** Agents **never** run these: `preview.sh`, `preview-session.sh`, `preview-shot.py`, `preview-extensions.py`, `preview-driver/`, `gpu-live.sh`, `gpu-sample.py`, `check-preview.sh`, `check-shots.py`.
 - **Don't create new files in `tools/`** (new checks, new scripts) unless the user asks for them.
 
 ### 7. Keep every path consistent
@@ -161,4 +161,3 @@ commits, tags or releases. Commit subjects follow
 - **`load_dconf` skips `core.ini` on an existing install.** It preserves the user's extension settings. Use `--force` to reload. But see KI-03 for what that does to mode switches.
 - **`refresh_bms_after_dconf` does nothing on GNOME ≥ 51.** Disabling Blur My Shell live segfaults Mutter there. The adaptive path turns pipelines off instead of disabling the extension, for the same reason.
 - **Every full apply writes `color-scheme=prefer-dark`.** The theme is dark-only, so a retune deliberately puts dark back over a light choice (KI-16, by design).
-- **Legacy `solid`/`styling-off` code.** It's the way back for installs from the three-mode era (KI-15).

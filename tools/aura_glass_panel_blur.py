@@ -43,8 +43,6 @@ def config_dir():
 
 def enabled():
     directory = config_dir()
-    if os.path.exists(os.path.join(directory, "styling-off")):
-        return False
     try:
         if open(os.path.join(directory, "panel-blur-fix"), encoding="utf-8").read().strip() != "1":
             return False

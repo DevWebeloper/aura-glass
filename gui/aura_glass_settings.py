@@ -581,7 +581,7 @@ NAV_SECTIONS = [
 # for "icon pack" lands on Appearance and "gdm" lands on System without either
 # word appearing in NAV_SECTIONS. Hand-kept rather than walked off the built
 # widgets: several of these pages are not Adw.PreferencesPage at all — Glass
-# is three tabs in a Box, System mixes custom rows with a refresh button — so
+# is two tabs in a Box, System mixes custom rows with a refresh button — so
 # a generic tree-walk would have to guess at each one's shape rather than
 # simply saying what is on it, the same trade-off EXT_TIERS already makes
 # elsewhere in this file.
@@ -659,7 +659,13 @@ FLAG_LABELS = {
 # aosp-cursors is the one that is not a prefix of a family of variants — the
 # pack is a single directory under that exact name — but it is matched the same
 # way, and nothing else in an icon directory starts with it.
-ICON_PACK_FAMILIES = ("Colloid", "Reversal", "Hatter", "MacTahoe", "aosp-cursors")
+ICON_PACK_FAMILIES = ("Colloid", "Reversal", "Hatter", "MacTahoe", "aosp-cursors",
+                      "Aura-Glass-Moga")
+# Families that are one pack however many directories they arrive as. Moga's
+# nine accent colours are installed together and the accent switch moves
+# between them, so removing the eight not showing right now would break the
+# next accent change.
+SINGLE_ROW_FAMILIES = ("Aura-Glass-Moga",)
 
 # Where a pack can be. The first two are ours to delete from; the rest are the
 # package manager's, and a window that offered to rm -rf out of /usr would be
@@ -2057,11 +2063,30 @@ def installed_version(repo):
     """
     if not repo:
         return None
+    package = packaged(repo)
+    if package:
+        return "%s %s" % package
     branch = current_branch(repo)
     if not follows_commits(repo):
         return git_out(repo, "describe", "--tags", "--abbrev=0")
     short = git_out(repo, "rev-parse", "--short=7", "HEAD")
     return "%s@%s" % (branch, short) if short else None
+
+
+def packaged(repo):
+    """(name, version) when repo is a distribution package's copy, else None.
+
+    The PKGBUILD leaves .packaged in the root-owned copy it installs, which is
+    not a git checkout; bin/aura-glass-update-check reads the same file.
+    """
+    if not repo or os.path.isdir(os.path.join(repo, ".git")):
+        return None
+    try:
+        with open(os.path.join(repo, ".packaged"), encoding="utf-8") as stream:
+            fields = stream.read().split()
+    except OSError:
+        return None
+    return (fields[0], fields[1]) if len(fields) >= 2 else None
 
 
 def update_blockers(repo):
@@ -2075,6 +2100,10 @@ def update_blockers(repo):
     """
     if not repo:
         return ["The aura-glass checkout is gone."]
+    package = packaged(repo)
+    if package:
+        return ["Installed from the %s package — update it with your package "
+                "manager (for example yay -Syu %s)." % (package[0], package[0])]
 
     reasons = []
     if git_out(repo, "rev-parse", "--is-inside-work-tree") != "true":
@@ -4147,7 +4176,7 @@ class Window(Adw.ApplicationWindow):
         self._mark_dirty()
 
     def _build_glass_page(self):
-        """The three modes, as three tabs.
+        """The two modes, as two tabs.
 
         The tab is the mode: switching one is asking for the other mode, in the
         ordinary pending way every other control here works, and Apply is what
@@ -4165,7 +4194,7 @@ class Window(Adw.ApplicationWindow):
         its switches did not apply right now; a control that does not apply to
         the mode you are in is simply in another tab.
 
-        All three are built here and now, like every page in this window and for
+        Both are built here and now, like every page in this window and for
         the same reason: _reload and _mark_dirty read every widget there is, and
         a tab built on first visit would be a tab whose rows do not exist when
         they run.
@@ -4212,10 +4241,9 @@ class Window(Adw.ApplicationWindow):
 
     # What the status row and the header subtitle read. glass-mode is the
     # mode; the rest is the adaptive overlay the worker lays over frosted.
-    # styling-off and shell-80-solid.css are watched for the timing alone:
-    # both land with a transition, and the row should move when it does.
-    _MODE_FILES = ("glass-mode", "adaptive-profile", "shell-80-solid.css",
-                   "styling-off")
+    # shell-80-solid.css is watched for the timing alone: it lands with a
+    # transition, and the row should move when it does.
+    _MODE_FILES = ("glass-mode", "adaptive-profile", "shell-80-solid.css")
 
     def _build_mode_status(self):
         """The mode in force, the overlay over it, and the one-click switch.
@@ -4354,15 +4382,8 @@ class Window(Adw.ApplicationWindow):
                 title="Already applying something — try again in a moment"))
             self._sync_mode_status()
             return
-        local = os.path.join(os.path.expanduser("~/.local/bin"),
-                             "aura-glass-adaptive")
-        if os.access(local, os.X_OK):
-            argv = [local, "profile", profile]
-        elif self._repo is not None:
-            argv = ["bash", os.path.join(self._repo, "bin",
-                                         "aura-glass-adaptive"),
-                    "profile", profile]
-        else:
+        argv = self._adaptive_argv("profile", profile)
+        if argv is None:
             self._toasts.add_toast(Adw.Toast(
                 title="The aura-glass checkout is gone"))
             self._sync_mode_status()
@@ -4499,9 +4520,9 @@ class Window(Adw.ApplicationWindow):
 
         Seeded from this mode's own drawer rather than from the live top-level
         memos. The tab exists whichever mode is installed, and a machine running
-        Transparent still has a frosted drawer on disk — seed_glass_mode wrote
+        Performance still has a frosted drawer on disk — seed_glass_mode wrote
         it — holding what Apply would install if this tab were chosen. Reading
-        the top-level memos instead would show a machine standing at Solid its
+        the top-level memos instead would show a machine in Performance its
         own forced zeroes under a Frosted heading.
 
         Tint, opacity and blur amount lead the page: they are the three things
@@ -4523,11 +4544,6 @@ class Window(Adw.ApplicationWindow):
         # the same thing: 100% leaves the transparency sheet installed and fully
         # opaque, while off removes it, and install_transparency_css treats those
         # differently. A single control would have to pretend otherwise.
-        #
-        # It is also the one switch the Transparent tab does not have, and that
-        # is the difference between the two modes rather than an oversight:
-        # being translucent with nothing blurred behind it is what that mode is,
-        # so turning it off there is asking for this tab.
         self._transparency_on = Adw.SwitchRow(
             title="Translucent app windows",
             subtitle="Let the blur and the wallpaper through GTK app windows",
@@ -5646,7 +5662,9 @@ class Window(Adw.ApplicationWindow):
         # would bury everything else for no gain.
         mine_groups, system_groups = {}, {}
         for name, path, is_mine in installed_packs():
-            key = theme_stem(name) if is_mine else pack_family(name)
+            family = pack_family(name)
+            key = (family if not is_mine or family in SINGLE_ROW_FAMILIES
+                   else theme_stem(name))
             bucket = mine_groups if is_mine else system_groups
             entry = bucket.setdefault(key, {"names": [], "paths": [],
                                             "in_use": False})
@@ -5664,7 +5682,8 @@ class Window(Adw.ApplicationWindow):
                 entry = bucket[key]
                 # The shortest name in the pair reads as the pack's own name:
                 # Reversal-purple rather than Reversal-purple-dark.
-                title = min(entry["names"], key=len)
+                title = (key if key in SINGLE_ROW_FAMILIES
+                         else min(entry["names"], key=len))
                 row = plain_row(Adw.ActionRow(), title)
                 row._paths = entry["paths"]
                 row._in_use = entry["in_use"]
@@ -6432,10 +6451,27 @@ class Window(Adw.ApplicationWindow):
             os.replace(temporary, target)
         except OSError:
             return
+        # Same lookup as the profile combo, not PATH: a session started
+        # without ~/.local/bin on PATH saved the list but never told the
+        # worker (KI-17).
+        argv = self._adaptive_argv("refresh")
+        if argv is None:
+            return
         try:
-            subprocess.Popen(["aura-glass-adaptive", "refresh"])
+            subprocess.Popen(argv)
         except (OSError, subprocess.SubprocessError):
             pass
+
+    def _adaptive_argv(self, *args):
+        """The installed launcher, else the checkout's, else None."""
+        local = os.path.join(os.path.expanduser("~/.local/bin"),
+                             "aura-glass-adaptive")
+        if os.access(local, os.X_OK):
+            return [local, *args]
+        if self._repo is not None:
+            return ["bash", os.path.join(self._repo, "bin",
+                                         "aura-glass-adaptive"), *args]
+        return None
 
     def _sync_adaptive_game_rows(self):
         for row in list(self._adaptive_game_rows.values()):
@@ -6693,7 +6729,7 @@ class Window(Adw.ApplicationWindow):
     def _list_is_consulted(self, which):
         """Whether the mode the tabs are showing reads this list."""
         # Frosted first, because a window blur is the only thing that consults
-        # either list and frosted is the only mode that has one. Transparent
+        # either list and frosted is the only mode that has one. Performance
         # keeps both lists — they are the same two memos, apply_app_blur still
         # writes them and flags_against still sends an edit — but nothing reads
         # them while it is in force.
@@ -7001,7 +7037,15 @@ class Window(Adw.ApplicationWindow):
         # plainly rather than left to be inferred from a version string that
         # happens to have an @ in it. Someone testing a branch should be able to
         # tell at a glance that they are not running a release, and how to stop.
-        if is_test_build(self._repo):
+        package = packaged(self._repo)
+        if package:
+            self._version_row.set_title("Package")
+            self._updates_group.set_description(
+                "Installed from the %s package. The check asks GitHub whether "
+                "main has moved past the commit it was built from. Updates "
+                "come through your package manager, not this window."
+                % package[0])
+        elif is_test_build(self._repo):
             self._version_row.set_title("Test build")
             self._updates_group.set_description(
                 "This checkout is on the branch %s, not the released line, so "

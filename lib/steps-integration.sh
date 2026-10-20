@@ -101,7 +101,7 @@ install_panel_blur_unit() {
     # This unit exists to toggle Blur My Shell's panel blur off and on once the
     # session has settled, so the actor is rebuilt against correct geometry.
     # With no Blur My Shell there is no actor and nothing to rebuild, so in
-    # solid mode it is a timer that waits twelve seconds after every login to
+    # performance it is a timer that waits twelve seconds after every login to
     # do nothing. Checked here rather than in the flag parsing so that the flag
     # order cannot defeat it: --no-blur --full would otherwise turn it back on.
     local effective="${WANT_PANEL_BLUR_FIX:-1}"
@@ -234,22 +234,20 @@ install_adaptive_performance() {
     fi
 
     [ "$unit_changed" = 1 ] && run systemctl --user daemon-reload || true
-    if [ "${WANT_STYLING:-1}" != 1 ] || [ "${WANT_BLUR:-1}" != 1 ]; then
-        # Solid leaves Blur My Shell out entirely.  Keep the Task 2 panel
-        # extension independent, but stop the worker so it cannot write BMS
-        # keys while the theme has deliberately stood down.
+    if [ "${WANT_BLUR:-1}" != 1 ]; then
+        # Performance has no blur to downshift. Stop the worker so it cannot
+        # write Blur My Shell keys under it.
         run systemctl --user disable --now aura-glass-adaptive.service >/dev/null 2>&1 || true
         if [ "${DRY_RUN:-0}" != 1 ]; then
-            # Solid mode makes any prior transient downshift disappear with
-            # Blur My Shell.  Clear the runtime marker so returning to glass
-            # can apply a fresh battery/fullscreen/GPU decision instead of
-            # mistaking the old state for the live dconf state.
+            # Any prior transient downshift is gone with the blur. Clear the
+            # runtime marker so returning to glass can apply a fresh
+            # battery/fullscreen/GPU decision instead of mistaking the old
+            # state for the live dconf state.
             mkdir -p "$CONF_DIR/adaptive-performance"
             printf '0\n' > "$CONF_DIR/adaptive-performance/active"
-            printf '%s\n' "$([ "${WANT_BLUR:-1}" = 1 ] && printf solid || printf no-blur)" \
-                > "$CONF_DIR/adaptive-performance/reason"
+            printf 'no-blur\n' > "$CONF_DIR/adaptive-performance/reason"
         fi
-        skip "solid mode — adaptive blur worker stood down"
+        skip "no blur — adaptive blur worker stood down"
         return 0
     fi
     if ! systemctl --user is-active --quiet graphical-session.target 2>/dev/null; then

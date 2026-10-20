@@ -80,7 +80,7 @@ check "legacy .absent survives" "$([ -e "$h2/.config/aura-glass/backups/gtk4-gtk
 check "newer memo wins"         "$(cat "$h2/.config/aura-glass/accent" 2>/dev/null)" "purple"
 check "old config dir gone"     "$([ -e "$h2/.config/tahoe-glass" ] && echo yes || echo no)" "no"
 
-printf '\n3. a legacy styling-off must not flip a frosted desktop to solid\n'
+printf '\n3. a legacy styling-off must not be copied onto a frosted desktop\n'
 h3="$(mktemp -d)"; trap 'rm -rf "$h" "$h2" "$h3"' EXIT
 make_legacy "$h3"
 : > "$h3/.config/tahoe-glass/styling-off"
@@ -123,6 +123,56 @@ allowed=$(grep -rn 'Tahoe-Dark' "$REPO_ROOT/lib" "$REPO_ROOT/bin" \
     "$REPO_ROOT/install.sh" "$REPO_ROOT/uninstall.sh" 2>/dev/null \
     | grep -vc 'UPSTREAM_THEME_NAME=\|steps-migrate.sh\|^\S*:[0-9]*: *#\|THEME="Tahoe-Dark"\|\.themes/Tahoe-Dark" \]\|Tahoe-Dark".backup\|"\$HOME/.themes/Tahoe-Dark"' || true)
 check "no stray Tahoe-Dark literals" "$allowed" "0"
+
+printf '\n8. out of the retired solid mode (KI-15)\n'
+# What a solid-era stand-down left behind: the marker, the memo, the drawer
+# with its record, and a target moved aside. gnome-extensions is a stub that
+# logs each enable; enqueue_extension stands in for the Wayland fallback.
+h8="$(mktemp -d)"; trap 'rm -rf "$h" "$h2" "$h3" "$h4" "$h5" "$h8"' EXIT
+c8="$h8/.config/aura-glass"
+mkdir -p "$c8/backups" "$c8/modes/solid" "$c8/modes/transparent" "$h8/bin" \
+         "$h8/.local/share/gnome-shell/extensions/blur-my-shell@aunetx" \
+         "$h8/.config/gtk-3.0"
+: > "$c8/styling-off"
+printf 'solid\n' > "$c8/glass-mode"
+printf 'blur-my-shell@aunetx\ngone@example\n' > "$c8/modes/solid/disabled-extensions"
+printf 'theirs\n' > "$c8/backups/gtk4-gtk.css.stood-down"
+printf 'older\n'  > "$c8/backups/gtk3-gtk.css.stood-down"
+printf 'newer\n'  > "$h8/.config/gtk-3.0/gtk.css"
+cat > "$h8/bin/gnome-extensions" <<'EOF'
+#!/bin/sh
+echo "$*" >> "$HOME/enabled.log"
+EOF
+chmod +x "$h8/bin/gnome-extensions"
+solid_in() {   # solid_in HOME [DRY_RUN]
+    HOME="$1" PATH="$1/bin:$PATH" DRY_RUN="${2:-0}" bash -c '
+        set -euo pipefail
+        REPO_ROOT="'"$REPO_ROOT"'"
+        . "$REPO_ROOT/lib/common.sh"
+        . "$REPO_ROOT/lib/steps.sh"
+        . "$REPO_ROOT/lib/steps-migrate.sh"
+        enqueue_extension() { return 1; }
+        migrate_solid_era
+    ' >/dev/null 2>&1
+}
+solid_in "$h8" 1
+check "dry run keeps the marker"   "$([ -e "$c8/styling-off" ] && echo yes || echo no)" "yes"
+check "dry run keeps the memo"     "$(cat "$c8/glass-mode")" "solid"
+solid_in "$h8"
+check "solid memo is performance"  "$(cat "$c8/glass-mode")" "performance"
+check "marker gone"                "$([ -e "$c8/styling-off" ] && echo yes || echo no)" "no"
+check "solid drawer gone"          "$([ -e "$c8/modes/solid" ] && echo yes || echo no)" "no"
+check "transparent drawer gone"    "$([ -e "$c8/modes/transparent" ] && echo yes || echo no)" "no"
+check "moved-aside target back"    "$(cat "$h8/.config/gtk-4.0/gtk.css" 2>/dev/null)" "theirs"
+check "newer target kept"          "$(cat "$h8/.config/gtk-3.0/gtk.css")" "newer"
+check "no .stood-down left"        "$(ls "$c8/backups" | grep -c 'stood-down' || true)" "0"
+check "recorded extension enabled" "$(cat "$h8/enabled.log" 2>/dev/null)" "enable blur-my-shell@aunetx"
+printf 'transparent\n' > "$c8/glass-mode"
+solid_in "$h8"
+check "transparent memo is frosted" "$(cat "$c8/glass-mode")" "frosted"
+printf 'frosted\n' > "$c8/glass-mode"; rm -f "$h8/enabled.log"
+solid_in "$h8"
+check "clean install untouched"    "$([ -e "$h8/enabled.log" ] && echo yes || echo no)" "no"
 
 printf '\n'
 [ "$fail" = 0 ] && { printf '  all migration checks passed\n\n'; exit 0; }

@@ -493,11 +493,9 @@ install_window_control_style() {
 install_css() {
     step "Installing the CSS tweaks"
 
-    # The marker goes down before aura-glass-apply runs at the end of this
-    # function, because that is what reads it. The sheets are copied into
-    # $CONF_DIR either way: they cost nothing while nothing splices them, and
-    # having them there is what makes coming back out of solid mode one run.
-    [ "${DRY_RUN:-0}" = 1 ] || sync_styling_marker
+    # Every sheet is copied into $CONF_DIR, used by this mode or not: they cost
+    # nothing while nothing splices them, and having them there is what makes
+    # switching mode one run.
 
     # The shell and gtk4 sheets are split by concern, and the numeric prefix is
     # the cascade order aura-glass-apply concatenates them in. Copy whatever

@@ -15,7 +15,7 @@ index 588d235..dc4f828 100644
          <key type="b" name="static-blur">
              <default>false</default>
 diff --git a/src/components/popup/blur_surface.js b/src/components/popup/blur_surface.js
-index 1bcb99f..3e1ba19 100644
+index 1bcb99f..ca6f87a 100644
 --- a/src/components/popup/blur_surface.js
 +++ b/src/components/popup/blur_surface.js
 @@ -12,6 +12,11 @@ import { PopupBlurSurfaceTransitions } from './surface_transitions.js';
@@ -38,21 +38,31 @@ index 1bcb99f..3e1ba19 100644
  ];
  const IS_QUICK_SETTINGS_STYLE_CLASSES = [
      'quick-toggle-menu', 'quick-settings', 'datemenu-popover', 
-@@ -53,6 +59,8 @@ export const PopupBlurSurface = class PopupBlurSurface {
+@@ -53,6 +59,9 @@ export const PopupBlurSurface = class PopupBlurSurface {
          this.actor_destroyed = false;
          this.blur_actor_destroyed = false;
          this.destroyed = false;
 +        this.pending_allocation_frames = 0;
-+        this.was_transitioning = false;
++        this.settle_id = 0;
++        this.last_trace = null;
      }
  
      enable() {
-@@ -230,13 +238,42 @@ export const PopupBlurSurface = class PopupBlurSurface {
+@@ -83,6 +92,8 @@ export const PopupBlurSurface = class PopupBlurSurface {
+             this.signals.connect_actor(this.parent);
+         this.signals.connect_layout();
+         this.signals.connect_settings();
++        if (this.is_notification_surface())
++            this.signals.connect_transitions_completed(this.target);
+         this.queue_update();
+ 
+         return true;
+@@ -230,23 +241,99 @@ export const PopupBlurSurface = class PopupBlurSurface {
  
      update_live_surface() {
          if (!this.is_visible()) {
 +            this.pending_allocation_frames = 0;
-+            this.was_transitioning = false;
++            this.trace('hidden: banner not visible');
              this.hide_surface();
              return;
          }
@@ -70,12 +80,14 @@ index 1bcb99f..3e1ba19 100644
 +            // retried on the next frame, which is when the allocation lands.
 +            if (this.placement.offscreen) {
 +                this.pending_allocation_frames = 0;
++                this.trace('hidden: banner off the monitor');
 +                return this.hide_surface();
 +            }
 +
 +            this.pending_allocation_frames = (this.pending_allocation_frames ?? 0) + 1;
 +            if (this.pending_allocation_frames > MAX_PENDING_ALLOCATION_FRAMES) {
 +                this.pending_allocation_frames = 0;
++                this.trace(`hidden: no allocation after ${MAX_PENDING_ALLOCATION_FRAMES} frames`);
 +                return this.hide_surface();
 +            }
 +
@@ -85,36 +97,80 @@ index 1bcb99f..3e1ba19 100644
 +            if (!this.transition_update_id)
 +                this.queue_update();
 +
++            this.trace('waiting: banner has no allocation yet');
 +            return;
 +        }
 +
 +        this.pending_allocation_frames = 0;
          if (!this.placement.update_surface_geometry(geometry))
              return;
-         if (!this.placement.prepare_visible_geometry())
-@@ -247,6 +284,22 @@ export const PopupBlurSurface = class PopupBlurSurface {
+-        if (!this.placement.prepare_visible_geometry())
++        if (!this.placement.prepare_visible_geometry()) {
++            this.trace('waiting: first valid geometry, showing next frame');
+             return;
+-        if (this.update_opacity() > 0)
++        }
++        const opacity = this.update_opacity();
++        if (opacity > 0)
+             this.show_actors();
+         else
              this.hide_actors();
          this.queue_repaint();
          this.queue_transition_update();
++        if (!this.transitions.has_running())
++            this.trace(`shown: opacity ${opacity}, ${geometry.width}x${geometry.height}+${geometry.x}+${geometry.y}`);
++    }
 +
-+        // A notification arrives on a tween the message tray runs against its
-+        // banner bin -- opacity 0 to 255 over 200ms -- and this surface never
-+        // sees the end of it. Every notify::opacity the bin emits while a
-+        // transition later is already armed is dropped, because queue_update()
-+        // declines in exactly that case, and the re-arm loop above stops the
-+        // moment the tween is gone. So the last pass that runs is one that
-+        // still saw the tween in flight, and the surface is left a few steps
-+        // short of the opacity the banner settles on: the banner that arrives
-+        // washed out and only sharpens when some later event -- a hover --
-+        // happens to drive one more pass. This is that pass, run once, on the
-+        // first update that finds the tween finished and the values final.
-+        const transitions_running = this.transitions.has_running();
-+        if (this.was_transitioning && !transitions_running)
-+            this.queue_update();
-+        this.was_transitioning = transitions_running;
++    // A notification arrives on a tween the message tray runs against its
++    // banner bin -- opacity 0 to 255 and a slide down, over 200ms -- and every
++    // pass during it reads values that are already a frame old: the later runs
++    // before the stage's relayout, and notify::opacity / notify::y from the
++    // tween's last frame are dropped while a transition later is armed. So the
++    // last pass could leave the blur short of the banner's final opacity, or a
++    // few pixels off its final box -- the banner that arrives washed out or
++    // with no visible blur, and only sharpens when a hover drives one more
++    // pass. That depended on frame timing, hence "sometimes".
++    //
++    // 'transitions-completed' on the banner or any ancestor is the tween's
++    // definite end. The pass it queues runs from an idle, after the frame
++    // that applied the final values has been laid out and painted, so it
++    // reads exactly what the banner settled on. It is not gated on the
++    // transition later, which is what swallowed the old signals.
++    queue_settle_update() {
++        if (this.destroyed || this.settle_id)
++            return;
++        this.settle_id = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++            this.settle_id = 0;
++            if (!this.destroyed && this.is_enabled()) {
++                this.trace('settle pass after the banner tween');
++                this.update();
++            }
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    // Blur My Shell's own debug switch
++    // (org.gnome.shell.extensions.blur-my-shell debug) turns this on. One line
++    // per change of outcome, not per frame, so a banner that arrives without
++    // blur leaves the reason in `journalctl --user -f`.
++    trace(message) {
++        if (!this.settings.DEBUG || message === this.last_trace)
++            return;
++        this.last_trace = message;
++        console.log(`[Blur my Shell > popup blur]        notification: ${message}`);
      }
  
      hide_surface() {
+@@ -467,6 +554,9 @@ export const PopupBlurSurface = class PopupBlurSurface {
+         if (this.transition_update_id)
+             global.compositor.get_laters().remove(this.transition_update_id);
+         this.transition_update_id = 0;
++        if (this.settle_id)
++            GLib.source_remove(this.settle_id);
++        this.settle_id = 0;
+         if (this.repaint_id)
+             GLib.source_remove(this.repaint_id);
+         this.repaint_id = 0;
 diff --git a/src/components/popup/index.js b/src/components/popup/index.js
 index 4b68d7e..0eaa66c 100644
 --- a/src/components/popup/index.js
@@ -149,10 +205,10 @@ index 4b68d7e..0eaa66c 100644
  
      _get_keyboard_actors() {
 diff --git a/src/components/popup/message_stacks.js b/src/components/popup/message_stacks.js
-index 52c796f..b5f9e6d 100644
+index 52c796f..8c30948 100644
 --- a/src/components/popup/message_stacks.js
 +++ b/src/components/popup/message_stacks.js
-@@ -1,13 +1,22 @@
+@@ -1,13 +1,27 @@
 +import { CornerEffect } from '../../effects/corner.js';
  import GLib from 'gi://GLib';
 +import { NativeDynamicBlurEffect } from '../../effects/native_dynamic_gaussian_blur.js';
@@ -162,6 +218,11 @@ index 52c796f..b5f9e6d 100644
  const INTERNAL_STYLE_CLASSES = ['bms-popup-blurred-widget', 'bms-popup-backgroundgroup'];
  const INTERNAL_NAMES = ['bms-popup-blurred-widget', 'bms-popup-backgroundgroup'];
 +const MESSAGE_BLUR_EFFECT_NAME = 'aura-glass-message-blur';
++// Only added when the blur effect cannot round its own corners (no
++// gnome-rounded-blur). Without its own name, attach_blur() threw a
++// ReferenceError straight after adding the blur, the catch swallowed it, and
++// every card on such a machine kept square blur corners under a rounded card.
++const MESSAGE_CORNER_EFFECT_NAME = 'aura-glass-message-corner';
 +// The banner is a NotificationMessage too, and it already has a blur surface
 +// of its own in the message tray's banner bin. Two blurs on one actor is two
 +// passes over the same pixels, so the surface keeps the banner and this keeps
@@ -176,7 +237,7 @@ index 52c796f..b5f9e6d 100644
          this.containers = new Set();
          this.groups = new Set();
          this.messages = new Set();
-@@ -88,6 +97,7 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
+@@ -88,6 +102,7 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
  
          this.messages.add(message);
          this.update_message(message);
@@ -184,7 +245,7 @@ index 52c796f..b5f9e6d 100644
  
          this.connect(
              message,
-@@ -112,12 +122,102 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
+@@ -112,12 +127,102 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
              'destroy',
              () => {
                  this.cancel_update(message);
@@ -287,7 +348,7 @@ index 52c796f..b5f9e6d 100644
      track_group(group) {
          if (!this.watch_actor(group) || this.groups.has(group))
              return;
-@@ -592,7 +692,10 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
+@@ -592,7 +697,10 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
      disable() {
          this.update_ids.forEach(id => GLib.source_remove(id));
          this.update_ids.clear();
@@ -299,6 +360,63 @@ index 52c796f..b5f9e6d 100644
          this.groups.forEach(group => {
              try {
                  if (group._headerBox) {
+diff --git a/src/components/popup/surface_fade.js b/src/components/popup/surface_fade.js
+index b5b53dd..81e7f45 100644
+--- a/src/components/popup/surface_fade.js
++++ b/src/components/popup/surface_fade.js
+@@ -59,7 +59,13 @@ export const PopupBlurSurfaceFade = class PopupBlurSurfaceFade {
+         try {
+             const [, stage_y] = this.target.get_transformed_position();
+ 
+-            if (!Main.panel)
++            // The fade only exists to keep the blur from drawing over the top
++            // bar while the banner slides out from under it. With the bar
++            // hidden (a fullscreen window on that monitor, an autohiding bar)
++            // the message tray takes the whole monitor, the banner rests 10px
++            // from its top edge, and measuring it against the hidden bar's
++            // bottom left its blur at a fifth of its opacity or none at all.
++            if (!Main.panel?.mapped)
+                 return 1;
+ 
+             const monitor = Main.layoutManager.findMonitorForActor(Main.panel)
+@@ -68,6 +74,11 @@ export const PopupBlurSurfaceFade = class PopupBlurSurfaceFade {
+             if (!monitor)
+                 return 1;
+ 
++            // A banner on another monitor never passes under this bar.
++            const banner_monitor = Main.layoutManager.findMonitorForActor(this.target);
++            if (banner_monitor && banner_monitor.index !== monitor.index)
++                return 1;
++
+             const [, panel_y] = Main.panel.get_transformed_position();
+             const panel_width = Main.panel.width || Main.panel.get_width() || 0;
+             const panel_height = Main.panel.height || Main.panel.get_height() || 36;
+diff --git a/src/components/popup/surface_signals.js b/src/components/popup/surface_signals.js
+index 82703a4..c12d392 100644
+--- a/src/components/popup/surface_signals.js
++++ b/src/components/popup/surface_signals.js
+@@ -84,6 +84,21 @@ export const PopupBlurSurfaceSignals = class PopupBlurSurfaceSignals {
+         }
+     }
+ 
++    // The banner's tween runs on its bin, an ancestor, so every actor up to the
++    // overlay parent is watched. See queue_settle_update() in blur_surface.js.
++    connect_transitions_completed(actor) {
++        while (actor && actor !== this.surface.parent) {
++            try {
++                const id = actor.connect('transitions-completed',
++                    () => this.surface.queue_settle_update());
++                this.signal_ids.push([actor, id]);
++                actor = actor.get_parent?.();
++            } catch (e) {
++                return;
++            }
++        }
++    }
++
+     connect_layout() {
+         if (!this.surface.static_blur)
+             return;
 diff --git a/src/components/popup/targets.js b/src/components/popup/targets.js
 index 1616c83..108acd9 100644
 --- a/src/components/popup/targets.js

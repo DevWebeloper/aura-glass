@@ -46,7 +46,7 @@ implementation view.
 | `--bms-git` / `--no-bms-git` | git | `bms-ref`, `bms-source` | `--no-bms-git` (EGO build) also forces popup and notification blur off. A remembered `ego` keeps a flagless re-run on the EGO build; `--bms-git`, `--popup-blur` or `--notification-blur` typed override it |
 | `--rounded-blur` / `--no-rounded-blur` | on | `rounded-blur-choice` (`0\|1`), `rounded-blur` (stamp) | gnome-rounded-blur. Only the typed flags write the choice: `--no-blur` forces it off for a run without that being a decision, and a remembered `1` never overrides it |
 | `--gui` / `--no-gui` | on | none | settings window (needs PyGObject, libadwaita, pycairo) |
-| `--window-menu` / `--no-window-menu` | on | none | "Blur This App" |
+| `--window-menu` / `--no-window-menu` | on | `window-menu` | "Blur This App" (the helper reads the memo live) |
 | `--update-check` / `--no-update-check` | on | `update-check` | daily timer |
 | `--update-channel release\|latest` | `release` | `update-channel` | what the check follows on `main`: tags, or commits (a new release is still announced) |
 | `--panel-blur-fix` / `--no-panel-blur-fix` | on if >1 monitor | `panel-blur-fix` | panel blur rebuild service |
@@ -121,8 +121,7 @@ not adaptive).
 
 | File | Holds | Writer |
 |---|---|---|
-| `glass-mode` | `frosted` \| `performance` (legacy: `solid`, `transparent`) | `remember_glass_mode` |
-| `styling-off` | present = legacy solid stand-down. Never written by current modes | `sync_styling_marker` |
+| `glass-mode` | `frosted` \| `performance`. A legacy `solid` or `transparent` is rewritten by `migrate_solid_era` | `remember_glass_mode` |
 | `accent` | one of the nine accents | `apply_accent` |
 | `radius-preset` | canonical preset or `custom` | `apply_radius_css` |
 | `radius-custom` | 8 comma-separated px (`WINDOW,MENU,QUICK_SETTINGS,NOTIFICATION,DIALOG,POPUP,OSD,BUTTON`). Removed for named presets | `apply_radius_css` |
@@ -151,8 +150,7 @@ not adaptive).
 notification-blur blur-strength popup-brightness window-brightness
 notification-opacity`. Created by `seed_glass_mode`, read by
 `load_glass_mode_memos`, `Settings()` and `apply_adaptive_blur restore`, written
-by `save_glass_mode_memos`. Legacy `modes/solid/disabled-extensions` records
-what the old solid mode switched off.
+by `save_glass_mode_memos`.
 
 ### Adaptive
 
@@ -202,7 +200,7 @@ what the old solid mode switched off.
 |---|---|
 | `<name>.orig` | the file before Aura Glass first ran |
 | `<name>.absent` | there was no file. Uninstall deletes ours |
-| `<name>.stood-down` | a `.absent` file moved aside by legacy solid mode |
+| `<name>.stood-down` | a `.absent` file moved aside by the retired solid mode. Put back and removed by `migrate_solid_era` |
 
 Names: `gnome-shell.css`, `gtk4-gtk.css`, `gtk4-gtk-dark.css`, `gtk3-gtk.css`.
 `gsettings_backup_once` keeps the original icon-theme, cursor-theme,

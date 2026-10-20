@@ -33,11 +33,11 @@ For "which file draws this button / owns this setting", use
 | `common.sh` | Output helpers (`step info ok warn skip die`), `run` (dry-run aware), `install_if_changed`, `remembering`, `confirm`/`confirm_always`, `backup_once`, `gsettings_backup_once`/`gsettings_original`, pinned fetchers (`clone_pinned`, `clone_pinned_sparse`, `fetch_tarball_pinned`, `fetch_zip_pinned`), `gnome_major`, `monitor_count`, `multi_monitor_detected`, `prompt_logout`, patch stamps. |
 | `distro.sh` | `detect_distro` (arch/fedora/debian/suse), `missing_cmds`, `install_deps`, the GUI toolkit probe and hints, `pkg_owner`/`pkg_remove_cmd`, `ensure_aur_helper`. |
 | `steps.sh` | Upstream pins, paths (`CONF_DIR`, `EXT_DIR`, `SRC_CACHE`, `BACKUP_DIR`), extension arrays and `ext_description`, `preflight`, `install_theme`, `finish`. **Sourced first**, because flag parsing reads `CONF_DIR`. |
-| `steps-migrate.sh` | Moving from `tahoe-glass` to `aura-glass`: `migrate_legacy_names`, `merge_backups`, `adopt_theme_dir`, `sweep_theme_orphans`. |
-| `steps-extensions.sh` | EGO installs, the pinned BMS and Custom OSD builds plus patches, the first-party extension (`install_aura_ext`), `install_rounded_blur`, enable/queue helpers, `refresh_bms_after_dconf`, `disable_retired_extensions`, legacy `stand_down_extensions`/`restore_extensions`. |
+| `steps-migrate.sh` | Moving from `tahoe-glass` to `aura-glass`: `migrate_legacy_names`, `merge_backups`, `adopt_theme_dir`, `sweep_theme_orphans`. The one-time solid-era migration, `migrate_solid_era`. |
+| `steps-extensions.sh` | EGO installs, the pinned BMS and Custom OSD builds plus patches, the first-party extension (`install_aura_ext`), `install_rounded_blur`, enable/queue helpers, `refresh_bms_after_dconf`, `disable_retired_extensions`. |
 | `steps-assets.sh` | Icon packs (Colloid, Reversal, Hatter, MacTahoe) and accent mapping (`icon_base`, `accent_to_*`); pointers (Adwaita, AOSP, MacTahoe, Moga, original). |
 | `steps-fonts.sh` | `--font` installs: Inter, MiSans (Latin + Arabic), SF Pro. |
-| `steps-modes.sh` | Glass modes: `resolve_glass_mode`, `apply_glass_mode`, the drawers (`seed_glass_mode`, `load_glass_mode_memos`, `save_glass_mode_memos`), `remember_glass_mode`, `sync_styling_marker`. |
+| `steps-modes.sh` | Glass modes: `resolve_glass_mode`, `apply_glass_mode`, the drawers (`seed_glass_mode`, `load_glass_mode_memos`, `save_glass_mode_memos`), `remember_glass_mode`. |
 | `steps-css.sh` | `install_css` and the rewriter wrappers (transparency, tints, popup transparency, notification opacity, radius), `install_window_control_style`, display density (`measure_logical_ppi`, `density_css`). |
 | `steps-dconf.sh` | `load_dconf` and every `apply_*` that writes a dconf/gsettings key: radii, pipelines, app blur and lists, popup/notification blur, grain, brightnesses, blur strength, `apply_adaptive_blur`, window buttons, cursor theme/size, accent, Moga variants, `apply_gsettings`, `apply_font`. |
 | `steps-integration.sh` | `install_icon_sync`, `flatpak_override`, `install_panel_blur_unit`, `install_adaptive_performance`. |
@@ -146,8 +146,7 @@ three workers and the apply command work without it.
 
 **B. Hermetic checks.** These use fixture `HOME`s, temp dirs, stubs and
 `--dry-run`, and are safe to run anywhere: `check-tokens.sh`, `check-cascade.sh`,
-`check-radius-preset.sh`, `check-glass-modes.sh`, `check-solid-extensions.sh`,
-`check-styling-off.sh`, `check-migration.sh`, `check-ext-catalogue.sh`,
+`check-radius-preset.sh`, `check-glass-modes.sh`, `check-migration.sh`, `check-ext-catalogue.sh`,
 `check-app-blur-lists.sh`, `check-update-check.sh`, `check-adaptive-installer.sh`,
 `check-overview-blur.sh`, `check-gui-flags.py`, `check-wizard-flags.py`,
 `check-gui-radius.py`, `check-terminal-spawn.py`, `check-update-channel.py`,
@@ -162,8 +161,7 @@ three workers and the apply command work without it.
 the GPU. **Agents never run these.** Humans only: `preview.sh`,
 `preview-session.sh` (never directly), `preview-shot.py`,
 `preview-extensions.py`, `preview-driver/`, `gpu-live.sh`, `gpu-sample.py`,
-`check-preview.sh`, `check-shots.py`, and `check-moga-cursors.sh`, which runs
-the installer against the real `HOME` (KI-14).
+`check-preview.sh` and `check-shots.py`.
 
 ### Not part of the product
 
@@ -186,9 +184,9 @@ the installer against the real `HOME` (KI-14).
 ~/.config/gtk-3.0/gtk.css                     user CSS; spliced (not flattened)
 ~/.config/aura-glass/                         $CONF_DIR
   ├─ <memos>                                  one value per file (CONFIG-REFERENCE.md)
-  ├─ modes/{frosted,performance}/             per-mode drawers   (legacy: modes/solid, modes/transparent)
+  ├─ modes/{frosted,performance}/             per-mode drawers
   ├─ adaptive-performance/                    active, reason, saved-mode-keys
-  ├─ backups/                                 <name>.orig | <name>.absent | <name>.stood-down
+  ├─ backups/                                 <name>.orig | <name>.absent
   ├─ shell-*.css gtk4-*.css gtk3-*.css        installed, rewritten copies of css/
   └─ preview-active, preview-backup/          only while a live preview is open
 ~/.local/bin/                                 aura-glass-{apply,operation,preview,settings,open-once,update-check,
@@ -249,7 +247,6 @@ the subject of [CONSISTENCY.md](CONSISTENCY.md).
 | Top-level memos | the `apply_*`/`install_*` that consumes the setting (guarded by `remembering`) | `install.sh` resolution, `Settings()` in the GUI, `aura-glass-preview`, adaptive restore (fallback) |
 | Mode drawers `modes/<mode>/*` | `seed_glass_mode`, `save_glass_mode_memos` (full runs only) | `load_glass_mode_memos`, `Settings()` (tints, levels), `apply_adaptive_blur restore` |
 | `glass-mode` | `remember_glass_mode` | `resolve_glass_mode`, `Settings()`, `apply_adaptive_blur` |
-| `styling-off` | `sync_styling_marker` (removed by both current modes) | `aura-glass-apply`, the adaptive worker |
 | `app-blur-allow` / `-block` | `apply_app_blur` (installer, preview `app-blur`, window menu) | the same, plus `Settings()` |
 | `adaptive-profile` | `aura-glass-adaptive profile`, `install_adaptive_performance` (seed `auto`) | worker, extension menu |
 | `adaptive-fullscreen-apps` | settings app (Per-app blur → games) | worker |

@@ -3,14 +3,18 @@
 #
 # The Python worker owns the sampling loop; this launcher follows the other
 # Aura Glass commands by keeping the PATH-facing name small and the worker in
-# the installed data directory.  A checkout override keeps development runs
-# pointed at the code being edited without changing the installed service.
+# the installed data directory.  Run from a checkout's bin/, it runs that
+# checkout's worker, like aura-glass-operation (KI-09); the installed copy in
+# ~/.local/bin has no tools/ beside it and keeps the installed worker.
 set -euo pipefail
 
-worker="${AURA_GLASS_ADAPTIVE_WORKER:-$HOME/.local/share/aura-glass/aura_glass_adaptive.py}"
-if [ ! -r "$worker" ]; then
-    checkout="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tools/aura_glass_adaptive.py"
-    [ -r "$checkout" ] && worker="$checkout"
+checkout="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tools/aura_glass_adaptive.py"
+if [ -n "${AURA_GLASS_ADAPTIVE_WORKER:-}" ]; then
+    worker="$AURA_GLASS_ADAPTIVE_WORKER"
+elif [ -r "$checkout" ]; then
+    worker="$checkout"
+else
+    worker="$HOME/.local/share/aura-glass/aura_glass_adaptive.py"
 fi
 if [ ! -r "$worker" ]; then
     printf 'aura-glass-adaptive: worker is not installed. Re-run install.sh.\n' >&2

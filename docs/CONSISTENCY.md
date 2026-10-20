@@ -94,9 +94,8 @@ extensions" (there are 8).
 default. `--help` also says app transparency is "Off by default", but a fresh
 install resolves to 0.90.
 
-**Modes.** Two modes in code. Docs, GUI comments ("three tabs") and the
-`shell-80-solid.css` header still describe three, or "only by --no-blur". The
-adaptive path still special-cases `solid`.
+**Modes.** Two modes, in code and docs. The retired `solid` and `transparent`
+are migrated once by `migrate_solid_era` (KI-15).
 
 **Fresh-install transparency: two answers.** A flagless run resolves 0.90, but
 a fresh frosted drawer seeds 0. So `--glass-mode frosted` and the text wizard's

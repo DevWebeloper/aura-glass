@@ -295,7 +295,7 @@ class Answers:
         args = ["--accent", self.accent, "--font", self.font]
 
         if not self.blur:
-            # Solid mode is the absence of every blur and has to go out alone:
+            # Performance is the absence of every blur and has to go out alone:
             # install.sh rejects --no-blur beside any blur flag by design, and
             # it sets the transparency to opaque itself.
             args.append("--no-blur")
@@ -598,9 +598,9 @@ class Window(Adw.ApplicationWindow):
             ("frosted", "Frosted glass",
              "Blur behind the top bar, popups, menus and the volume pill",
              None),
-            ("solid", "Performance",
+            ("performance", "Performance",
              "No blur anywhere — lighter on older GPUs and on battery", None),
-        ], "frosted" if self.answers.blur else "solid",
+        ], "frosted" if self.answers.blur else "performance",
             lambda value: setattr(self.answers, "blur", value == "frosted"))
         page.add(group)
         return self.shell("blur", "Blur", page)

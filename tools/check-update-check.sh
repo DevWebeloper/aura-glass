@@ -202,6 +202,24 @@ git_quiet -C "$TMP/work" push origin v0.1.7 v0.1.8
 git_quiet -C "$TMP/work" tag -d v0.1.8
 check_run 0 "a newer tag does not reach a test branch"
 
+# A package's copy (the AUR's aura-glass-git): no .git, a .packaged file naming
+# the commit pkgver was built at, and the URL to ask. Built at main's tip is up
+# to date; main moved on is an update named main@sha; a pkgver without .g<sha>
+# cannot be compared at all.
+build v0.1.7 v0.1.7 || note "package: could not build the fixture"
+head_sha="$(git -C "$TMP/work" rev-parse HEAD)"
+mkdir -p "$TMP/pkg"
+printf '%s\n' "$TMP/pkg" > "$TMP/conf/repo-path"
+printf 'aura-glass-git 0.1.7.r0.g%s %s\n' "$(printf '%s' "$head_sha" | cut -c1-7)" "$TMP/remote" > "$TMP/pkg/.packaged"
+check_run 0 "a package built at main's tip is up to date"
+( cd "$TMP/work" && : > two && git -c user.email=t@t -c user.name=t add two >/dev/null 2>&1 \
+  && git -c user.email=t@t -c user.name=t commit -m two >/dev/null 2>&1 ) || note "package: could not add a commit"
+git_quiet -C "$TMP/work" push origin main
+check_run 10 "main moved past the package's commit" "main@"
+printf 'aura-glass-git 1.0.0 %s\n' "$TMP/remote" > "$TMP/pkg/.packaged"
+check_run 1 "a pkgver with no commit cannot be compared"
+rm -rf "$TMP/pkg"
+
 # A missing repo-path is a broken install, not "up to date" — reporting no
 # update there would hide the breakage forever.
 rm -rf "$TMP/conf"; mkdir -p "$TMP/conf"

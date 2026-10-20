@@ -13,8 +13,11 @@ post_upgrade() {
     echo "     aura-glass --settings-only -y"
 }
 
-post_remove() {
-    echo ":: Aura Glass package files have been removed from /usr."
-    echo ":: To revert user themes and dconf settings, each user can run:"
-    echo "     ~/.config/aura-glass/uninstall.sh   (if present)"
+# The uninstaller lives in /usr/share/aura-glass, which is gone by
+# post_remove, so the advice has to come before removal.
+pre_remove() {
+    echo ":: Removing Aura Glass package files from /usr."
+    echo ":: To revert user themes and dconf settings, each user should first run:"
+    echo "     /usr/share/aura-glass/uninstall.sh"
+    echo ":: (or uninstall.sh from a git checkout, after this package is gone)"
 }

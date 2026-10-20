@@ -241,6 +241,14 @@ install_bms() {
 install_aura_ext() {
     local uuid="$AURA_EXT_UUID"
 
+    # The helper reads this memo itself and adds or drops "Blur This App"
+    # live, so --no-window-menu needs no reload. Written only when a flag
+    # chose it, like the OSD: an unanswered default keeps the menu.
+    if remembering && [ -n "${WINDOW_MENU_EXPLICIT:-}" ]; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "${WANT_WINDOW_MENU:-1}" > "$CONF_DIR/window-menu"
+    fi
+
     if [ "${DRY_RUN:-0}" = 1 ]; then
         info "dry-run: copy extensions/$uuid to $EXT_DIR/$uuid"
         return 0
@@ -429,6 +437,21 @@ install_rounded_blur() {
     ok "gnome-rounded-blur installed"
 }
 
+# Whether install_rounded_blur may reach for sudo, so install.sh only asks for
+# a password up front when it will be used (KI-11). The default path compiles
+# into ~/.local with gcc + pkg-config and needs no root, and an AUR helper asks
+# for its own. Only the meson fallback runs `sudo meson install`.
+rounded_blur_needs_root() {
+    [ "${WANT_ROUNDED_BLUR:-1}" = 1 ] || return 1
+    if LD_LIBRARY_PATH="/usr/lib/mutter-$GNOME_MAJOR:/usr/lib/mutter-18:$HOME/.local/lib:${LD_LIBRARY_PATH:-}" gjs -c 'const Blur = imports.gi.Blur; void Blur.BlurEffect;' >/dev/null 2>&1 && [ "${FORCE:-0}" != 1 ]; then
+        return 1
+    fi
+    have gcc && have pkg-config && return 1
+    have paru && return 1
+    have yay && return 1
+    have meson
+}
+
 # Records the mutter it was built against, which is what makes staleness
 # detectable later.
 rounded_blur_stamp() {
@@ -582,7 +605,7 @@ refresh_bms_after_dconf() {
     local major="${GNOME_MAJOR:-}"
     [ -n "$major" ] || major="$(gnome_major 2>/dev/null || echo 0)"
     if [ "$major" -ge 51 ]; then
-        ok "$BMS_UUID refreshed after loading its pipelines"
+        skip "$BMS_UUID not reloaded on GNOME $major (it would crash Mutter); its pipelines update live"
         return 0
     fi
 
@@ -841,130 +864,6 @@ disable_retired_extensions() {
             ok "removed retired extension: $u"
         fi
     done
-}
-
-# ---- standing the extensions down ---------------------------------------
-
-# Everything this project ever enables, which is the set it is entitled to
-# switch off again. A user's own extensions are outside it and are never
-# touched in either direction — that is the whole point of computing the
-# intersection rather than disabling a list.
-glass_owned_extensions() {
-    # AURA_EXT_UUID is intentionally absent: solid mode stands the themed
-    # extensions down, but its panel menu is how someone restores glass.
-    printf '%s\n' "${EXT_CORE[@]}" "$BMS_UUID" \
-        custom-osd@neuromorph "${EXT_EXTRA_ALL[@]}"
-}
-
-# Solid mode. The UUIDs that are enabled right now and are ours get switched
-# off; nothing else about them is touched, so every one of them keeps its own
-# settings and comes back exactly as it was. The record is what makes the way
-# back exact rather than a guess at what was on.
-stand_down_extensions() {
-    step "Standing the extensions down"
-    local record enabled u
-    local -a disabled_now=()
-    record="$CONF_DIR/modes/solid/disabled-extensions"
-
-    enabled="$(gnome-extensions list --enabled 2>/dev/null || true)"
-    if [ -z "$enabled" ]; then
-        skip "the shell lists nothing enabled — nothing to switch off, any earlier record is left as it is"
-        return 0
-    fi
-
-    while IFS= read -r u; do
-        [ -n "$u" ] || continue
-        # Whole-line match against the enabled list, not a substring search —
-        # a UUID that merely contains another must never be treated as enabled.
-        grep -qxF "$u" <<< "$enabled" || continue
-
-        disabled_now+=("$u")
-        run gnome-extensions disable "$u" 2>/dev/null \
-            || warn "could not switch $u off — it is still written down, so the way back still tries it"
-    done < <(glass_owned_extensions)
-
-    # Nothing of ours was on. On a second solid entry this is the normal case
-    # — everything is already off from last time — so any record an earlier
-    # run left behind is exactly right as it stands and is not touched: not
-    # created, not truncated, not deleted.
-    if [ "${#disabled_now[@]}" -eq 0 ]; then
-        skip "none of this project's extensions are enabled — any earlier record is left as it is"
-        return 0
-    fi
-
-    if [ "${DRY_RUN:-0}" != 1 ]; then
-        mkdir -p "$CONF_DIR/modes/solid"
-        # The union of what the record already named and what just went off,
-        # never a replacement: a solid stay can span more than one run of this
-        # script — some of ours off since an earlier entry, one switched back
-        # on by hand in between — and the record has to keep naming everything
-        # that is currently off because of this project, or the way back only
-        # recovers part of it.
-        local -A seen=()
-        local -a union=()
-        if [ -r "$record" ]; then
-            while IFS= read -r u; do
-                [ -n "$u" ] || continue
-                [ -z "${seen[$u]:-}" ] || continue
-                seen[$u]=1
-                union+=("$u")
-            done < "$record"
-        fi
-        for u in "${disabled_now[@]}"; do
-            [ -z "${seen[$u]:-}" ] || continue
-            seen[$u]=1
-            union+=("$u")
-        done
-        printf '%s\n' "${union[@]}" > "$record"
-    fi
-
-    ok "${#disabled_now[@]} extension(s) switched off, their settings untouched"
-}
-
-# The way back out of solid mode. Exactly what was written down, in the order
-# it was written, and then the record goes: it describes a state that no longer
-# exists the moment this succeeds.
-restore_extensions() {
-    local record="$CONF_DIR/modes/solid/disabled-extensions" u back=0
-    [ -r "$record" ] || return 0
-
-    # A record that exists but names nothing is not the same as no record at
-    # all. stand_down_extensions only ever writes one holding at least the
-    # UUIDs it just switched off, so an empty or whitespace-only file here
-    # means something upstream went wrong, not that nothing was ever switched
-    # off. Deleting it would erase the one clue that happened, so it is left
-    # alone instead of being silently swept away as a no-op.
-    if ! grep -qE '[^[:space:]]' "$record"; then
-        warn "$record exists but names nothing — left alone rather than guessed at"
-        return 0
-    fi
-    step "Switching the extensions back on"
-
-    while IFS= read -r u; do
-        [ -n "$u" ] || continue
-        if [ ! -d "$EXT_DIR/$u" ] && [ ! -d "/usr/share/gnome-shell/extensions/$u" ]; then
-            skip "$u is no longer installed"
-            continue
-        fi
-        if run gnome-extensions enable "$u" 2>/dev/null; then
-            back=$((back + 1))
-            continue
-        fi
-        # The same fallback enable_extensions uses: on Wayland the running
-        # shell will not load a UUID it did not start with, so it goes into
-        # enabled-extensions for the next session instead.
-        if [ "${DRY_RUN:-0}" = 1 ]; then
-            info "dry-run: add $u to enabled-extensions for the next session"
-        elif enqueue_extension "$u"; then
-            ok "$u queued — active after logout"
-            back=$((back + 1))
-        else
-            warn "could not switch $u back on"
-        fi
-    done < "$record"
-
-    [ "${DRY_RUN:-0}" = 1 ] || rm -f "$record"
-    ok "$back extension(s) back on"
 }
 
 # ------------------------------------------------------------------- icons --

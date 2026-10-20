@@ -2,7 +2,7 @@
 # aura-glass — the glass modes (frosted and performance).
 #
 # A mode is not a fourth kind of setting — it is a name for a combination of the
-# blur, transparency and styling flags install.sh already has, plus a drawer to
+# blur and transparency flags install.sh already has, plus a drawer to
 # keep each combination's own tuning in. Everything here therefore resolves into
 # those flags and then gets out of the way: nothing downstream of this file
 # knows a mode exists.
@@ -63,7 +63,6 @@ apply_glass_mode() {
             [ -n "${BLUR_EXPLICIT:-}" ]        || WANT_BLUR=1
             [ -n "${WINDOW_BLUR_EXPLICIT:-}" ] || WANT_WINDOW_BLUR=1
             [ -n "${POPUP_BLUR_EXPLICIT:-}" ]  || WANT_POPUP_BLUR=1
-            WANT_STYLING=1
             ;;
         performance)
             [ -n "${BLUR_EXPLICIT:-}" ]        || WANT_BLUR=0
@@ -73,7 +72,6 @@ apply_glass_mode() {
             fi
             [ -n "${POPUP_BLUR_EXPLICIT:-}" ]  || WANT_POPUP_BLUR=0
             [ -n "${NOTIFICATION_BLUR_EXPLICIT:-}" ] || WANT_NOTIFICATION_BLUR=0
-            WANT_STYLING=1
             ;;
         *)  # No mode to apply: a run driven by bare flags, on a machine that
             # has never been told about modes. The flags stand as given.
@@ -81,30 +79,14 @@ apply_glass_mode() {
     esac
 }
 
-# Writes or removes $CONF_DIR/styling-off to match WANT_STYLING — the marker
-# bin/aura-glass-apply reads to decide whether to splice the block in or stand
-# it down. Called from two places, for two different reasons: install_css calls
-# it before aura-glass-apply runs, because the marker has to already be on disk
-# for that mid-run read to see it; remember_glass_mode calls it again once the
-# run has fully resolved, because that is what leaves it in the right state
-# once install.sh is done. Each caller keeps its own DRY_RUN guard around the
-# call, so this does not need one of its own.
-sync_styling_marker() {
-    mkdir -p "$CONF_DIR"
-    if [ "${WANT_STYLING:-1}" = 0 ]; then : > "$CONF_DIR/styling-off"
-    else rm -f "$CONF_DIR/styling-off"; fi
-}
-
 # Written after the run has resolved, so the memo holds what was applied rather
-# than what was asked for. The marker is the styling half of the same answer and
-# is written here too, so the two can never disagree.
+# than what was asked for.
 remember_glass_mode() {
     GLASS_MODE="$(glass_mode_from_state)"
     [ "${DRY_RUN:-0}" = 1 ] && return 0
     mkdir -p "$CONF_DIR"
     printf '%s\n' "$GLASS_MODE" > "$CONF_DIR/glass-mode"
     save_glass_mode_memos
-    sync_styling_marker
 }
 
 # ---- the per-mode drawer ------------------------------------------------
@@ -247,7 +229,6 @@ load_glass_mode_memos() {
 
 # This run's answers back into the drawer, after everything has resolved.
 save_glass_mode_memos() {
-    [ "${WANT_STYLING:-1}" = 0 ] && return 0
     mode_memo_write app-transparency "${APP_TRANSPARENCY:-0}"
     mode_memo_write app-tint-color   "${APP_TINT_COLOR:-#000000}"
     mode_memo_write shell-tint-color "${SHELL_TINT_COLOR:-#000000}"

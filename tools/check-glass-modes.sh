@@ -9,9 +9,9 @@
 # Runs under a scratch $HOME rather than the developer's own. --settings-only
 # fills in whatever a flag did not say from $CONF_DIR memos, so running against
 # a real ~/.config/aura-glass would make the expected answers depend on that
-# machine's history — a glass-mode memo of "solid" left over from a previous run
-# would break the bare --no-blur case below, which expects the default
-# frosted-shaped answer rather than whatever this machine last remembered.
+# machine's history — a drawer or tint memo left over from a previous run
+# would change the levels the cases below expect, which are the defaults
+# rather than whatever this machine last remembered.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 failures=()
@@ -44,16 +44,16 @@ want() {       # want "description" "expected" FLAG...
     [ "$got" = "$expect" ] || failures+=("$desc: wanted '$expect', got '$got'")
 }
 
-want "frosted resolves to blur on, window blur on, styling on" \
-     "frosted blur=1 window=1 popup=1 transparency=0.90 styling=1" \
+want "frosted resolves to blur on, window blur on" \
+     "frosted blur=1 window=1 popup=1 transparency=0.90" \
      --glass-mode frosted --app-transparency 0.90
 
-want "performance turns blur off, 100% opacity, keeps styling on" \
-     "performance blur=0 window=0 popup=0 transparency=1.00 styling=1" \
+want "performance turns blur off, 100% opacity" \
+     "performance blur=0 window=0 popup=0 transparency=1.00" \
      --glass-mode performance
 
 want "bare --no-blur is opaque but still themed" \
-     "performance blur=0 window=0 popup=0 transparency=1.00 styling=1" \
+     "performance blur=0 window=0 popup=0 transparency=1.00" \
      --no-blur
 
 if in_scratch --glass-mode solid >/dev/null 2>&1; then

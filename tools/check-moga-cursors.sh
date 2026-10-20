@@ -108,7 +108,13 @@ incremental_actions="$(
 [ "$incremental_actions" = "accent cursor-theme" ] \
     || fail "incremental accent change for Moga selected '$incremental_actions', want 'accent cursor-theme'"
 
-if ! dry_run_output="$(bash "$ROOT/install.sh" --settings-only --dry-run --cursors moga --accent teal -y 2>&1)"; then
+# A fixture HOME with just what --settings-only checks for, so the dry run
+# never reads the real install (KI-14) and passes on a machine without one.
+fixture_home="$TMP/home"
+mkdir -p "$fixture_home/.config/aura-glass" "$fixture_home/.themes/Aura-Glass"
+if ! dry_run_output="$(HOME="$fixture_home" XDG_CONFIG_HOME="$fixture_home/.config" \
+        XDG_DATA_HOME="$fixture_home/.local/share" XDG_CACHE_HOME="$fixture_home/.cache" \
+        bash "$ROOT/install.sh" --settings-only --dry-run --cursors moga --accent teal -y 2>&1)"; then
     fail "installer rejected --cursors moga dry-run"
 else
     grep -q "Moga cursor refresh" <<<"$dry_run_output" \

@@ -96,7 +96,7 @@ load_dconf() {
         fi
         ok "core look loaded"
 
-        # Applied over the top rather than as a separate preset, so solid mode is
+        # Applied over the top rather than as a separate preset, so performance is
         # one overlay to read and to review rather than a second full copy of every
         # key that would then have to be kept in step with core.ini.
         if [ "${WANT_BLUR:-1}" != 1 ]; then
@@ -106,7 +106,7 @@ load_dconf() {
                 dconf load /org/gnome/shell/extensions/ < "$REPO_ROOT/dconf/solid.ini" \
                     || die "dconf load of the solid preset failed"
             fi
-            ok "solid mode loaded — no blur, opaque surfaces"
+            ok "performance preset loaded — no blur, opaque surfaces"
         fi
 
         if [ "${WANT_EXTRAS:-0}" = 1 ]; then
@@ -155,7 +155,7 @@ apply_radius_dconf() {
 
     # Nothing here is Blur My Shell's to round when Blur My Shell is not
     # installed. The painted radii still moved: apply_radius_css runs
-    # regardless, because in solid mode the corner is all there is.
+    # regardless, because in performance the corner is all there is.
     if [ "${WANT_BLUR:-1}" != 1 ]; then
         skip "blur corner radii left alone (--no-blur — no blur to round)"
         return 0
@@ -547,7 +547,7 @@ apply_popup_blur() {
     # because the user asked for flat popups. Remembering it would outlive the
     # mode: installing --no-blur and later going back to glass came up with
     # blurred windows and unblurred menus, because the memo said 0 and nothing
-    # on the second run contradicted it. So solid mode neither reads nor writes
+    # on the second run contradicted it. So performance neither reads nor writes
     # the memo — it leaves whatever the last real choice was intact, ready for
     # the next glass install.
     if [ "${WANT_BLUR:-1}" != 1 ]; then
@@ -590,7 +590,7 @@ apply_notification_blur() {
 
     # Same reasoning as apply_popup_blur: --no-blur turns this off as a
     # consequence of turning everything off, not a real choice to remember,
-    # so solid mode neither reads nor writes the memo.
+    # so performance neither reads nor writes the memo.
     if [ "${WANT_BLUR:-1}" != 1 ]; then
         run dconf write "$base/popup/notification" false
         skip "notification blur off with the rest of it (--no-blur)"
@@ -1001,7 +1001,7 @@ apply_adaptive_blur() {
 
     # The baseline is the remembered mode, not GLASS_MODE: for "active"
     # install.sh has just set that to performance so the run resolves like it.
-    # Performance is the no-blur mode, and solid the legacy one. Nothing records
+    # Performance is the no-blur mode. Nothing records
     # a separate "blur" memo — reading one here meant the guard never fired, and
     # a restore in performance mode removed shell-80-solid.css and switched app
     # blur back on.
@@ -1011,16 +1011,11 @@ apply_adaptive_blur() {
     fi
     normal_mode="${normal_mode:-frosted}"
     case "$normal_mode" in
-        performance|solid)
+        performance)
             skip "baseline is already no-blur — skipping adaptive transition"
             return 0
             ;;
     esac
-
-    if [ "${WANT_STYLING:-1}" != 1 ]; then
-        skip "solid mode — no transient blur to adjust"
-        return 0
-    fi
 
     local key value
     case "$action" in
@@ -1307,10 +1302,8 @@ apply_gsettings() {
     fi
 
     # prefer-dark and the accent are GNOME's own keys and a preference of the
-    # user's, not this theme's styling, so they stand in every mode. The GTK
-    # theme is ours, and in solid mode it goes back to GNOME's default along
-    # with the shell theme — that pair is what makes a stood-down desktop look
-    # like one, rather than a themed desktop with the blur removed.
+    # user's, not this theme's styling, so they stand in every mode, as do the
+    # GTK and shell themes: Performance is the theme with the blur removed.
     #
     # Written on every full run and full retune, not only the first install,
     # and on purpose (KI-16, decided 2026-10-15): the theme is dark-only — every
@@ -1319,14 +1312,8 @@ apply_gsettings() {
     # can honour. A retune is the way back to the look as designed.
     run gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
     apply_accent
-    if [ "${WANT_STYLING:-1}" = 1 ]; then
-        run gsettings set org.gnome.desktop.interface gtk-theme "$THEME_NAME"
-        run dconf write /org/gnome/shell/extensions/user-theme/name "'$THEME_NAME'"
-    else
-        run gsettings reset org.gnome.desktop.interface gtk-theme
-        run dconf write /org/gnome/shell/extensions/user-theme/name "''"
-        ok "gtk-theme and the shell theme reset — the theme has stood down"
-    fi
+    run gsettings set org.gnome.desktop.interface gtk-theme "$THEME_NAME"
+    run dconf write /org/gnome/shell/extensions/user-theme/name "'$THEME_NAME'"
     if [ -n "$icons" ]; then
         run gsettings set org.gnome.desktop.interface icon-theme   "$icons"
     fi
@@ -1360,11 +1347,7 @@ apply_gsettings() {
     # would read like this run had set it.
     local icon_say="${icons:-left alone}" cursor_say="${APPLIED_CURSOR:-left alone}"
     local font_say; font_say="$(font_family)"; font_say="${font_say:-system}"
-    if [ "${WANT_STYLING:-1}" = 1 ]; then
-        ok "gtk-theme=$THEME_NAME  icons=$icon_say  cursor=$cursor_say  accent=$ACCENT  font=$font_say"
-    else
-        ok "icons=$icon_say  cursor=$cursor_say  accent=$ACCENT  font=$font_say — theme keys left at GNOME's defaults"
-    fi
+    ok "gtk-theme=$THEME_NAME  icons=$icon_say  cursor=$cursor_say  accent=$ACCENT  font=$font_say"
 }
 
 # The three keys that carry the interface font, and the memo behind them.

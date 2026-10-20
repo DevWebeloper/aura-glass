@@ -13,10 +13,7 @@
  * It answers ListWindows (for the settings app's "Open now" list), GetFocusState,
  * and emits WindowsChanged and FocusChanged signals.
  *
- * It stays installed and enabled as the explicit exception to global Solid
- * mode: in Solid mode, its window-menu blur toggle stands down because blur is
- * off, but its panel menu remains available so selecting Auto or Full Glass can
- * restore the themed desktop.
+ * It stays installed and enabled in every mode, Performance included.
  */
 
 import Gio from 'gi://Gio';
@@ -74,6 +71,10 @@ const DBUS_IFACE = `
 </node>`;
 
 const PROFILES = ['auto', 'full', 'performance'];
+// State files whose change can move the window opacity this extension owns.
+const OPACITY_STATE_FILES = new Set([
+    'app-opacity', 'app-transparency', 'glass-mode', 'adaptive-performance', 'active',
+]);
 const PROFILE_ICONS = {
     auto: 'view-refresh-symbolic',
     full: 'weather-clear-symbolic',
@@ -177,17 +178,14 @@ export default class AuraGlassBlurExtension extends Extension {
         this._focusedWindowFullscreenId = 0;
 
         this._settings = this._openBmsApplicationsSettings();
-        if (this._settings) {
-            this._hookWindowMenu();
-        }
+        this._syncWindowMenu();
 
         this._extStateChangedId = Main.extensionManager?.connect?.(
             'extension-state-changed', (_mgr, ext) => {
                 if (ext.uuid === BMS_UUID) {
                     if (ext.state === 1) {
                         this._settings = this._openBmsApplicationsSettings();
-                        if (this._settings)
-                            this._hookWindowMenu();
+                        this._syncWindowMenu();
                     } else {
                         this._settings = null;
                     }
@@ -214,6 +212,22 @@ export default class AuraGlassBlurExtension extends Extension {
 
         this._buildPanelMenu();
         this._initOpacityMonitor();
+    }
+
+    // --no-window-menu writes window-menu=0, and the conf monitor brings any
+    // change here, so the item comes and goes without a reload.
+    _syncWindowMenu() {
+        if (this._settings && readState('window-menu') !== '0')
+            this._hookWindowMenu();
+        else
+            this._unhookWindowMenu();
+    }
+
+    _unhookWindowMenu() {
+        if (!this._origBuildMenu)
+            return;
+        WindowMenu.prototype._buildMenu = this._origBuildMenu;
+        this._origBuildMenu = null;
     }
 
     _hookWindowMenu() {
@@ -249,23 +263,17 @@ export default class AuraGlassBlurExtension extends Extension {
             this._extStateChangedId = 0;
         }
 
-        if (this._confMonitorId) {
-            this._confMonitor.disconnect(this._confMonitorId);
-            this._confMonitorId = 0;
+        for (const [monitor, id] of this._confMonitors ?? []) {
+            monitor.disconnect(id);
+            monitor.cancel();
         }
-        if (this._confMonitor) {
-            this._confMonitor.cancel();
-            this._confMonitor = null;
-        }
+        this._confMonitors = null;
 
         if (!this._isBmsApplicationsActive()) {
             this.setWindowOpacityAll(255);
         }
 
-        if (this._origBuildMenu) {
-            WindowMenu.prototype._buildMenu = this._origBuildMenu;
-            this._origBuildMenu = null;
-        }
+        this._unhookWindowMenu();
         this._settings = null;
 
         if (this._focusWindowId) {
@@ -699,33 +707,40 @@ export default class AuraGlassBlurExtension extends Extension {
 
     _initOpacityMonitor() {
         this._currentActorOpacity = 255;
+        this._confMonitors = [];
         this._updateOpacityFromConfig();
-        try {
-            const confDir = Gio.File.new_for_path(configPath());
-            this._confMonitor = confDir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
-            this._confMonitorId = this._confMonitor.connect('changed', (_mon, file, _other, eventType) => {
-                if (eventType === Gio.FileMonitorEvent.CHANGES_DONE_HINT ||
-                    eventType === Gio.FileMonitorEvent.CREATED ||
-                    eventType === Gio.FileMonitorEvent.CHANGED) {
-                    const name = file?.get_basename();
-                    if (name === 'app-opacity' || name === 'app-transparency' || name === 'glass-mode' ||
-                        name === 'adaptive-performance' || name === 'active') {
+        // A directory monitor only reports its direct children, and the
+        // adaptive worker's `active` lives one level down in
+        // adaptive-performance/, so that directory gets a monitor of its own.
+        // With only the top one, a transition never reached this.
+        for (const parts of [[], ['adaptive-performance']]) {
+            try {
+                const dir = Gio.File.new_for_path(configPath(...parts));
+                const monitor = dir.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, null);
+                const id = monitor.connect('changed', (_mon, file, other, eventType) => {
+                    if (eventType !== Gio.FileMonitorEvent.CHANGES_DONE_HINT &&
+                        eventType !== Gio.FileMonitorEvent.CREATED &&
+                        eventType !== Gio.FileMonitorEvent.CHANGED &&
+                        eventType !== Gio.FileMonitorEvent.MOVED_IN &&
+                        eventType !== Gio.FileMonitorEvent.RENAMED)
+                        return;
+                    // The worker and the installer write through a temporary
+                    // file and rename it over the real one, which arrives as
+                    // RENAMED with the real name on the other file.
+                    const name = (eventType === Gio.FileMonitorEvent.RENAMED ? other : file)?.get_basename();
+                    if (OPACITY_STATE_FILES.has(name))
                         this._updateOpacityFromConfig();
-                    }
-                }
-            });
-        } catch (e) {
-            // Monitor directory failed or unsupported
+                    else if (name === 'window-menu')
+                        this._syncWindowMenu();
+                });
+                this._confMonitors.push([monitor, id]);
+            } catch (e) {
+                // Directory missing (no adaptive run yet) or monitoring unsupported
+            }
         }
     }
 
     _updateOpacityFromConfig() {
-        const mode = readState('glass-mode') || 'frosted';
-        if (mode === 'solid') {
-            this.setWindowOpacityAll(255);
-            return;
-        }
-
         const adaptiveActive = readState('adaptive-performance', 'active') === '1';
         if (adaptiveActive) {
             this.setWindowOpacityAll(255);

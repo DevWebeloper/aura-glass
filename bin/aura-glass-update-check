@@ -46,6 +46,54 @@ NOTIFY=0
 [ "${1:-}" = "--notify" ] && NOTIFY=1
 
 REPO="$(cat "$CONF_DIR/repo-path" 2>/dev/null || true)"
+
+# A distribution package, such as the AUR's aura-glass-git, installs a copy that
+# is root-owned and not a git checkout, so neither line below can ask git about
+# it, and the update comes from the package manager rather than from a pull. The
+# PKGBUILD leaves .packaged beside install.sh: the package name, its pkgver, and
+# the URL it was built from. A -git pkgver ends in .g<sha> (git describe --long),
+# the commit of main it was built at, so that commit is compared with main on
+# the URL, the same question as the commits line. Nothing is fetched and no
+# history is held here, so a different commit on main counts as newer: the
+# package is only ever built from main's tip.
+if [ -n "$REPO" ] && [ ! -d "$REPO/.git" ] && [ -r "$REPO/.packaged" ]; then
+    read -r pkg pkgver pkgurl < "$REPO/.packaged" || true
+    local_short="$(printf '%s' "${pkgver:-}" | sed -n 's/.*\.g\([0-9a-f]\{7,\}\)$/\1/p')"
+    if [ -z "${pkg:-}" ] || [ -z "$local_short" ] || [ -z "${pkgurl:-}" ]; then
+        echo "aura-glass-update-check: $REPO/.packaged names no commit to compare" >&2
+        exit 1
+    fi
+    remote_sha="$(
+        git ls-remote "$pkgurl" refs/heads/main 2>/dev/null \
+            | awk 'NR == 1 { print $1 }' || true
+    )"
+    if [ -z "$remote_sha" ]; then
+        echo "aura-glass-update-check: could not read main from $pkgurl (offline?)" >&2
+        exit 1
+    fi
+    local_short="$(printf '%s' "$local_short" | cut -c1-7)"
+    if [ "${remote_sha#"$local_short"}" != "$remote_sha" ]; then
+        rm -f "$STATE"
+        echo "up to date ($pkg $pkgver)"
+        exit 0
+    fi
+    remote_version="main@$(printf '%s' "$remote_sha" | cut -c1-7)"
+    mkdir -p "$CONF_DIR"
+    printf '%s\n' "$remote_version" > "$STATE"
+    echo "update available: $pkg $pkgver -> $remote_version"
+    if [ "$NOTIFY" = 1 ] && command -v notify-send >/dev/null 2>&1; then
+        notify-send \
+            --app-name="Aura Glass" \
+            --icon=preferences-desktop-appearance \
+            --hint=string:desktop-entry:io.github.DevWebeloper.AuraGlassSettings \
+            --hint=string:x-canonical-private-synchronous:aura-glass-update \
+            "Aura Glass has new changes" \
+            "Update the $pkg package with your package manager." \
+            || true
+    fi
+    exit 10
+fi
+
 if [ -z "$REPO" ] || [ ! -d "$REPO/.git" ]; then
     echo "aura-glass-update-check: no git checkout recorded in $CONF_DIR/repo-path" >&2
     exit 1

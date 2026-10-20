@@ -115,13 +115,13 @@ CASES = [
     ("a font of its own", answers(font="inter"), False,
      ["--accent", "purple", "--font", "inter"] + FROSTED + PACKS),
 
-    # Solid mode is the absence of every blur, and install.sh rejects --no-blur
+    # Performance is the absence of every blur, and install.sh rejects --no-blur
     # beside any blur flag by design. This is the case that says the wizard
     # cannot produce that combination.
-    ("solid", answers(blur=False), False,
+    ("performance", answers(blur=False), False,
      BASE + ["--no-blur"] + PACKS),
 
-    ("solid keeps its own packs", answers(blur=False, want_icons=False), False,
+    ("performance keeps its own packs", answers(blur=False, want_icons=False), False,
      BASE + ["--no-blur", "--no-icons", "--cursors", "moga", "--cursor-size",
              "20", "--osd"]),
 

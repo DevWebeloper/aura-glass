@@ -79,6 +79,7 @@ WANT_CURSORS=1
 WANT_DEPS=1
 WANT_OSD=1
 OSD_EXPLICIT=""
+WINDOW_MENU_EXPLICIT=""
 # Empty = no answer yet: the remembered one, and then the monitor count,
 # decide it further down.
 WANT_PANEL_BLUR_FIX=""
@@ -94,7 +95,6 @@ WANT_BLUR=1
 GLASS_MODE=""            # empty = the memo, then derived from the flags
 GLASS_MODE_EXPLICIT=""
 BLUR_EXPLICIT=""         # --blur / --no-blur were typed, so a mode must not move them
-WANT_STYLING=1           # 0 = the theme stands down (solid mode)
 VALID_GLASS_MODES="frosted performance"
 WANT_WINDOW_BLUR=1
 WINDOW_BLUR_EXPLICIT=""
@@ -425,8 +425,8 @@ parse_flags() {
         --gdm-background=*) GDM_BG="${1#*=}"; WANT_GDM=1; GDM_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --gui)           WANT_GUI=1; EXPLICIT_FLAGS=1; shift ;;
         --no-gui)        WANT_GUI=0; EXPLICIT_FLAGS=1; shift ;;
-        --window-menu)   WANT_WINDOW_MENU=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-window-menu) WANT_WINDOW_MENU=0; EXPLICIT_FLAGS=1; shift ;;
+        --window-menu)   WANT_WINDOW_MENU=1; WINDOW_MENU_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-window-menu) WANT_WINDOW_MENU=0; WINDOW_MENU_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --update-check)  WANT_UPDATE_CHECK=1; UPDATE_CHECK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-update-check) WANT_UPDATE_CHECK=0; UPDATE_CHECK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --update-channel)
@@ -465,8 +465,11 @@ parse_flags "$@"
 # the font, the transparency and the glass mode are all resolved from it. An
 # install made under the old name keeps its settings somewhere else entirely,
 # and reading the new path first would answer every one of those from defaults.
-# This is also the earliest point at which DRY_RUN is known.
+# This is also the earliest point at which DRY_RUN is known. The solid-era
+# migration goes straight after, for the same reason: it rewrites the glass-mode
+# memo that the resolution below reads.
 migrate_legacy_names
+migrate_solid_era
 
 # Resolve remembered accent or default
 if [ -z "$ACCENT" ] && [ -r "$CONF_DIR/accent" ]; then
@@ -626,7 +629,7 @@ EOF
     printf '  Choice [1-2, default 1]: '
     read -r ans_mode || ans_mode="1"
     case "$ans_mode" in
-        2|performance|solid)
+        2|performance)
             parse_flags --no-blur
             printf '  %s✓%s Performance selected — no blur anywhere\n\n' "$C_GRN" "$C_OFF"
             ;;
@@ -1002,6 +1005,10 @@ fi
 if [ -z "$OSD_EXPLICIT" ] && [ "$(cat "$CONF_DIR/osd" 2>/dev/null || true)" = 0 ]; then
     WANT_OSD=0
 fi
+# window-menu is written by install_aura_ext and read live by the helper.
+if [ -z "$WINDOW_MENU_EXPLICIT" ] && [ "$(cat "$CONF_DIR/window-menu" 2>/dev/null || true)" = 0 ]; then
+    WANT_WINDOW_MENU=0
+fi
 # bms-source is written by install_bms: "ego" is --no-bms-git having been used.
 if [ -z "$BMS_GIT_EXPLICIT" ] && [ "$(cat "$CONF_DIR/bms-source" 2>/dev/null || true)" = ego ]; then
     WANT_BMS_GIT=0
@@ -1102,9 +1109,7 @@ esac
 # "restore" a retune to whatever mode is remembered. Everything downstream,
 # the sheets, the drawer's tints and level, the keys a mode owns, then comes
 # out the same as the app's Glass mode switch rather than from a second,
-# smaller copy of it (KI-25). Not when styling stood down (legacy solid): the
-# worker declines to run there, and a performance overlay would be a
-# transition out of a state it has no business leaving.
+# smaller copy of it (KI-25).
 if [ -n "$ADAPTIVE_BLUR" ]; then
     if [ "$SETTINGS_ONLY" != 1 ] || [ "$INCREMENTAL" != 1 ]; then
         die "--adaptive-blur requires --settings-only --incremental"
@@ -1113,7 +1118,7 @@ if [ -n "$ADAPTIVE_BLUR" ]; then
         active|restore) ;;
         *) die "--adaptive-blur wants active or restore" ;;
     esac
-    if [ "$ADAPTIVE_BLUR" = active ] && [ ! -e "$CONF_DIR/styling-off" ]; then
+    if [ "$ADAPTIVE_BLUR" = active ]; then
         GLASS_MODE=performance
         GLASS_MODE_EXPLICIT=1
     fi
@@ -1352,9 +1357,9 @@ APP_OPACITY="${APP_OPACITY:-255}"
 # and a dry run that did not say which mode it resolved to would be describing
 # everything except the question that was asked.
 if [ "$DRY_RUN" = 1 ] && [ "$PLAN_JSON" != 1 ]; then
-    printf '  glass-mode: %s blur=%s window=%s popup=%s transparency=%s styling=%s\n' \
+    printf '  glass-mode: %s blur=%s window=%s popup=%s transparency=%s\n' \
         "$(glass_mode_from_state)" "$WANT_BLUR" "$WANT_WINDOW_BLUR" \
-        "$WANT_POPUP_BLUR" "$APP_TRANSPARENCY" "$WANT_STYLING"
+        "$WANT_POPUP_BLUR" "$APP_TRANSPARENCY"
 fi
 
 # Colloid is named in accent terms rather than in its own: it calls blue
@@ -1439,7 +1444,7 @@ if [ "${SETTINGS_ONLY:-0}" = 0 ] && [ "${DRY_RUN:-0}" = 0 ] && [ "$EUID" -ne 0 ]
     need_root=0
     [ "${WANT_GDM:-0}" = 1 ] && need_root=1
     [ "${WANT_GDM_MONITORS:-0}" = 1 ] && need_root=1
-    [ "${WANT_ROUNDED_BLUR:-1}" = 1 ] && need_root=1
+    rounded_blur_needs_root && need_root=1
     if [ "$need_root" = 1 ]; then
         info "Authenticating sudo upfront for system components..."
         if sudo -v; then
@@ -1532,16 +1537,7 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     # installed, and a font already resolvable needs no network either — see
     # install_fonts, which skips on fc-match rather than on this flag.
     if [ -n "$FONT_EXPLICIT" ]; then install_fonts; fi
-    # Not in solid mode. dconf/core.ini is every extension's settings, and
-    # loading it is exactly the "modifying the extension" that standing down is
-    # supposed to avoid — the extensions are switched off with their own
-    # settings intact, ready for the way back.
-    if [ "$WANT_STYLING" = 1 ]; then
-        load_dconf
-    else
-        step "Loading the dconf preset"
-        skip "solid mode — the extensions keep their own settings"
-    fi
+    load_dconf
     install_css
     apply_gsettings
     # Local, quick and needs nothing — the same grounds install_gui is here on,
@@ -1549,21 +1545,16 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     # light/dark switch, so a window that changes the icon answer has to be
     # able to install it, repoint it, or stand it down in the same run.
     install_icon_sync
-    if [ "$WANT_STYLING" = 0 ]; then
-        stand_down_extensions
-    else
-        restore_extensions
-        disable_retired_extensions
-        # Not on a dry run: the two queue helpers write gsettings directly,
-        # with no run in front of them to stop them (KI-08).
-        if [ "$WANT_STYLING" = 1 ] && [ "$DRY_RUN" != 1 ]; then
-            dequeue_from_disabled_extensions "user-theme@gnome-shell-extensions.gcampax.github.com" || true
-            run gnome-extensions enable "user-theme@gnome-shell-extensions.gcampax.github.com" 2>/dev/null || true
-            if [ -d "$EXT_DIR/tiling-assistant@leleat-on-github" ] || [ -d "/usr/share/gnome-shell/extensions/tiling-assistant@leleat-on-github" ]; then
-                dequeue_from_disabled_extensions "tiling-assistant@leleat-on-github" || true
-                run gnome-extensions enable "tiling-assistant@leleat-on-github" 2>/dev/null || true
-                enqueue_extension "tiling-assistant@leleat-on-github" || true
-            fi
+    disable_retired_extensions
+    # Not on a dry run: the two queue helpers write gsettings directly,
+    # with no run in front of them to stop them (KI-08).
+    if [ "$DRY_RUN" != 1 ]; then
+        dequeue_from_disabled_extensions "user-theme@gnome-shell-extensions.gcampax.github.com" || true
+        run gnome-extensions enable "user-theme@gnome-shell-extensions.gcampax.github.com" 2>/dev/null || true
+        if [ -d "$EXT_DIR/tiling-assistant@leleat-on-github" ] || [ -d "/usr/share/gnome-shell/extensions/tiling-assistant@leleat-on-github" ]; then
+            dequeue_from_disabled_extensions "tiling-assistant@leleat-on-github" || true
+            run gnome-extensions enable "tiling-assistant@leleat-on-github" 2>/dev/null || true
+            enqueue_extension "tiling-assistant@leleat-on-github" || true
         fi
     fi
     remember_glass_mode
@@ -1620,23 +1611,9 @@ install_rounded_blur
 if [ "$WANT_ICONS" = 1 ]; then install_icons; else step "Icons"; skip "left alone (--no-icons)"; fi
 if [ "$WANT_CURSORS" = 1 ]; then install_cursors; else step "Cursors"; skip "left alone (--no-cursors)"; fi
 install_fonts
-# Not in solid mode. dconf/core.ini is every extension's settings, and
-# loading it is exactly the "modifying the extension" that standing down is
-# supposed to avoid — the extensions are switched off with their own
-# settings intact, ready for the way back.
-if [ "$WANT_STYLING" = 1 ]; then
-    load_dconf
-else
-    step "Loading the dconf preset"
-    skip "solid mode — the extensions keep their own settings"
-fi
+load_dconf
 install_css
 apply_gsettings
-if [ "$WANT_STYLING" = 0 ]; then
-    stand_down_extensions
-else
-    restore_extensions
-fi
 remember_glass_mode
 install_icon_sync
 install_gui

@@ -5,7 +5,7 @@ that drive the **real** code against fixture `HOME`s, throwaway git repos,
 stubbed commands or `--dry-run`, and exit non-zero naming the file and line
 that disagree.
 
-As of the 2026-10-15 audit, all 27 hook steps (3 syntax passes + 24 checks) pass on the working tree.
+As of 2026-10-20, all 31 hook steps (3 syntax passes + 28 checks) pass on the working tree.
 
 ---
 
@@ -16,8 +16,10 @@ As of the 2026-10-15 audit, all 27 hook steps (3 syntax passes + 24 checks) pass
 | **Hermetic** | Touches only temp dirs, fixture `HOME`s and stubs. Never the real desktop, dconf or network | anyone, including agents |
 | **Live** | Uses the real session, real `HOME`, GPU or screenshots | humans only |
 
-All `check-*` scripts are hermetic **except** `check-preview.sh`,
-`check-shots.py` and `check-moga-cursors.sh` (KI-14). The `preview*`,
+All `check-*` scripts are hermetic **except** `check-preview.sh` and
+`check-shots.py`. `check-moga-cursors.sh` now runs its dry run against a
+fixture `HOME` (KI-14). `check-bms-patches.sh` clones from the Blur My Shell
+cache in `~/.cache/aura-glass/src` and skips, saying so, when there is none. The `preview*`,
 `gpu-*` and `preview-driver/` files are live tools, not checks.
 
 ---
@@ -38,7 +40,7 @@ location, which is what makes this work.
 By hand, hermetic checks only:
 
 ```bash
-for c in tools/check-*.sh; do case "$c" in *check-preview.sh|*check-moga-cursors.sh) continue;; esac
+for c in tools/check-*.sh; do case "$c" in *check-preview.sh) continue;; esac
   echo "== $c"; bash "$c" || echo FAIL; done
 for c in tools/check-*.py; do case "$c" in *check-shots.py) continue;; esac
   echo "== $c"; python3 "$c" || echo FAIL; done
@@ -57,7 +59,7 @@ Use a throwaway `HOME` as well. The checks don't need the real one.
 
 ## What each check asserts
 
-### In the pre-commit hook (3 syntax passes + 24 checks)
+### In the pre-commit hook (3 syntax passes + 28 checks)
 
 | Check | Asserts |
 |---|---|
@@ -74,9 +76,7 @@ Use a throwaway `HOME` as well. The checks don't need the real one.
 | `check-ext-catalogue.sh` | `aura-glass-ext list` describes every extension the install can reach |
 | `check-app-blur-lists.sh` | per-app patterns survive flag → memo → GVariant literal → GLib parse |
 | `check-glass-modes.sh` | `--glass-mode` and blur flags resolve as designed (the dry-run `glass-mode:` line plus dconf write lines) |
-| `check-solid-extensions.sh` | legacy `stand_down_extensions`/`restore_extensions` round-trip (stub `gnome-extensions`) |
-| `check-styling-off.sh` | `aura-glass-apply` splices, or stands down via the three backup branches (fixture `HOME`) |
-| `check-migration.sh` | `tahoe-glass` → `aura-glass` migration and the `backups/` merge (fixture `HOME`s) |
+| `check-migration.sh` | `tahoe-glass` → `aura-glass` migration, the `backups/` merge, and the solid-era migration (fixture `HOME`s, stub `gnome-extensions`) |
 | `check-update-check.sh` | version ordering (`sort -V`), tag filtering, `-beta` (throwaway repos) |
 | `check-update-channel.py` | the GUI and `aura-glass-update-check` agree on the release vs branch channel |
 | `check-preview-queue.py` | `PreviewQueue` lifecycle: one active op, one pending, and Apply/Revert/Close priority |
@@ -88,13 +88,10 @@ Use a throwaway `HOME` as well. The checks don't need the real one.
 | `check-apply-feedback.py` | GUI recovery feedback comes from the backend protocol, not parsed log text |
 | `check-adaptive-worker.py` | the worker's reducer: hysteresis, debounce, immediate triggers, profiles |
 | `check-adaptive-installer.sh` | `--adaptive-blur active` turns blur off without touching memos, and `restore` brings back the saved state. Uses a fabricated `modes/frosted/blur` memo (KI-02) |
-
-### Hermetic but not in the hook
-
-| Check | Asserts | Note |
-|---|---|---|
-| `check-apply-lifecycle.py` | committing a live preview from the settings window | passes; add to the hook |
-| `check-overview-blur.sh` | overview blur lifecycle regression fixture | passes; add to the hook |
+| `check-apply-lifecycle.py` | committing a live preview from the settings window |
+| `check-overview-blur.sh` | overview blur lifecycle regression fixture |
+| `check-bms-patches.sh` | the three Blur My Shell patches apply to `BMS_REF` in order, the JS they touch parses, and no touched file uses an UPPER_SNAKE name it never declares or imports (KI-27, KI-29). Skips without the cache |
+| `check-moga-cursors.sh` | Moga variant selection, checksum handling, and a `--cursors moga` dry run against a fixture `HOME` |
 
 ### Live: humans only
 
@@ -102,7 +99,6 @@ Use a throwaway `HOME` as well. The checks don't need the real one.
 |---|---|
 | `check-preview.sh` | `aura-glass-preview` never leaves a memo different from what it found. Runs the real `install_css`/`apply_*` on the installed state |
 | `check-shots.py --mode glass\|solid [--accept\|--list]` | screenshot diff of a `tools/preview.sh` run against the accepted baseline |
-| `check-moga-cursors.sh` | Moga variant selection and checksum handling are fixture-based, but its last step runs `install.sh --settings-only --dry-run` against the real `HOME` and fails without an install there |
 | `preview-extensions.py` | which extensions the preview shell actually loaded |
 | `gpu-sample.py`, `gpu-live.sh` | GPU cost on the real session |
 

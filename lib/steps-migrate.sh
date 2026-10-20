@@ -19,14 +19,13 @@ LEGACY_CACHE="$HOME/.cache/tahoe-glass"
 
 # Files whose meaning is "this file exists", not "this file says X". Copying one
 # into a config dir that deliberately lacks it changes the answer rather than
-# filling a gap — a stray styling-off would put a frosted desktop into solid
-# mode on the next flagless run.
+# filling a gap — a stray styling-off would have migrate_solid_era treat a
+# frosted desktop as a solid one.
 LEGACY_MARKERS=(styling-off)
 
 # Point gtk-theme and the shell theme at the new name, but only where they still
-# hold the old one. A solid-mode install has both cleared on purpose, and
-# somebody may have picked their own shell theme since; neither is ours to
-# overwrite on the way past.
+# hold the old one. Somebody may have picked their own shell theme since, and
+# that is not ours to overwrite on the way past.
 retheme_if_named() {
     local old="$1"
     [ "${DRY_RUN:-0}" = 1 ] && { info "dry-run: repoint gtk-theme/user-theme $old -> $THEME_NAME"; return 0; }
@@ -224,4 +223,92 @@ migrate_legacy_names() {
     fi
 
     adopt_theme_dir
+}
+
+# ---- out of the three-mode era ------------------------------------------
+
+# Releases before Performance had a third mode, solid, that stood the theme
+# down instead of styling it: a styling-off marker, the four targets restored
+# or moved aside into backups/<name>.stood-down, gtk-theme and the shell theme
+# reset, and this project's extensions switched off with a record of which in
+# modes/solid/disabled-extensions. A fourth, transparent, was folded into
+# frosted. Both are gone (KI-15), so a machine still carrying either is put
+# back here, once, before anything reads the glass mode:
+#
+# - solid becomes performance, the mode that replaced it (no blur, still
+#   themed), and transparent becomes frosted. The memo is all that changes;
+#   the run then resolves and applies that mode like any other.
+# - a target moved aside comes back, since aura-glass-apply no longer knows
+#   the .stood-down names. One already recreated since keeps the newer file.
+# - the extensions solid switched off come back on, exactly the recorded ones.
+# - the marker and both retired drawers go.
+#
+# Not under remembering(): it is the machine's state being corrected, not a
+# choice being memoed, and the adaptive worker's runs have to see the same
+# corrected state. Only a dry run or a preview leaves it alone.
+migrate_solid_era() {
+    local mode="" name target
+    [ -r "$CONF_DIR/glass-mode" ] && mode="$(cat "$CONF_DIR/glass-mode" 2>/dev/null || true)"
+    case "$mode" in solid|transparent) ;; *) mode="" ;; esac
+    if [ -z "$mode" ] && [ ! -e "$CONF_DIR/styling-off" ] \
+       && [ ! -d "$CONF_DIR/modes/solid" ] && [ ! -d "$CONF_DIR/modes/transparent" ] \
+       && ! compgen -G "$CONF_DIR/backups/*.stood-down" >/dev/null; then
+        return 0
+    fi
+
+    step "Migrating from the retired solid mode"
+    if [ "${DRY_RUN:-0}" = 1 ] || [ "${PREVIEW_MODE:-0}" = 1 ]; then
+        info "dry-run: retire solid/transparent (memo, marker, drawers, stood-down targets)"
+        return 0
+    fi
+
+    case "$mode" in
+        solid)       printf 'performance\n' > "$CONF_DIR/glass-mode"; ok "glass mode solid is now performance" ;;
+        transparent) printf 'frosted\n'     > "$CONF_DIR/glass-mode"; ok "glass mode transparent is now frosted" ;;
+    esac
+
+    for name in gnome-shell.css gtk4-gtk.css gtk4-gtk-dark.css gtk3-gtk.css; do
+        [ -f "$CONF_DIR/backups/$name.stood-down" ] || continue
+        case "$name" in
+            gnome-shell.css)   target="$HOME/.themes/$THEME_NAME/gnome-shell/gnome-shell.css" ;;
+            gtk4-gtk.css)      target="$HOME/.config/gtk-4.0/gtk.css" ;;
+            gtk4-gtk-dark.css) target="$HOME/.config/gtk-4.0/gtk-dark.css" ;;
+            gtk3-gtk.css)      target="$HOME/.config/gtk-3.0/gtk.css" ;;
+        esac
+        if [ -e "$target" ]; then
+            rm -f "$CONF_DIR/backups/$name.stood-down"
+        else
+            mkdir -p "$(dirname "$target")"
+            mv -f "$CONF_DIR/backups/$name.stood-down" "$target"
+            ok "brought back $target"
+        fi
+    done
+
+    restore_stood_down_extensions
+    rm -rf "$CONF_DIR/styling-off" "$CONF_DIR/modes/solid" "$CONF_DIR/modes/transparent"
+    ok "solid-mode leftovers removed"
+}
+
+# The extensions solid switched off, in the order it wrote them down. A UUID no
+# longer installed is skipped; one the running Wayland shell will not load goes
+# into enabled-extensions for the next session, as enable_extensions does.
+restore_stood_down_extensions() {
+    local record="$CONF_DIR/modes/solid/disabled-extensions" u back=0
+    [ -r "$record" ] || return 0
+    while IFS= read -r u; do
+        [ -n "$u" ] || continue
+        if [ ! -d "$EXT_DIR/$u" ] && [ ! -d "/usr/share/gnome-shell/extensions/$u" ]; then
+            skip "$u is no longer installed"
+            continue
+        fi
+        if gnome-extensions enable "$u" 2>/dev/null; then
+            back=$((back + 1))
+        elif enqueue_extension "$u"; then
+            ok "$u queued — active after logout"
+            back=$((back + 1))
+        else
+            warn "could not switch $u back on"
+        fi
+    done < "$record"
+    ok "$back extension(s) back on"
 }

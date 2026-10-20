@@ -130,15 +130,16 @@ tuning. `lib/steps-modes.sh` resolves a mode into flags and steps aside.
 
 ### Legacy: `solid` and `transparent`
 
-Older versions had three modes. `solid` stood the whole theme down: it wrote
-`$CONF_DIR/styling-off`, reset gtk-theme and the shell theme, and disabled the
-project's extensions (`stand_down_extensions`, recorded in
-`modes/solid/disabled-extensions`). That machinery is still in the tree and
-still covered by checks (`check-solid-extensions.sh`, `check-styling-off.sh`),
-but **no current flag reaches it**: both current modes set `WANT_STYLING=1`.
-What runs today is the way *back*. On an old install, `restore_extensions`
-re-enables whatever solid had stood down, and `sync_styling_marker` removes the
-marker. Keep or retire this deliberately. Don't let it rot halfway.
+Older versions had more modes. `solid` stood the whole theme down: it wrote
+`$CONF_DIR/styling-off`, reset gtk-theme and the shell theme, moved the four
+targets aside, and disabled the project's extensions (recorded in
+`modes/solid/disabled-extensions`). `transparent` was folded into frosted.
+Both were removed (KI-15). What's left is a one-time migration,
+`migrate_solid_era` (`lib/steps-migrate.sh`), run right after
+`migrate_legacy_names` on every real run: a `solid` memo becomes `performance`
+and `transparent` becomes `frosted`, `backups/*.stood-down` targets come back,
+the recorded extensions are re-enabled, and the marker and both drawers go.
+`check-migration.sh` case 8 covers it.
 
 ---
 
@@ -242,9 +243,6 @@ display by `measure_logical_ppi` and `density_css`.
   only when the shell CSS changed. `--force-reload` forces it,
   `--no-shell-reload` suppresses it, and `--json` prints a machine-readable
   result.
-- If `$CONF_DIR/styling-off` exists (legacy solid), it stands the targets down
-  instead: restore `.orig`, move a `.absent` file aside as `.stood-down`, or
-  strip the block.
 
 ---
 

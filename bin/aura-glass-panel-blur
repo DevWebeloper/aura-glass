@@ -17,6 +17,8 @@
 # for the login case.
 set -euo pipefail
 
-worker="$HOME/.local/share/aura-glass/aura_glass_panel_blur.py"
-[ -r "$worker" ] || worker="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tools/aura_glass_panel_blur.py"
+# Checkout first, like aura-glass-operation (KI-09): only a run from a
+# checkout's bin/ has tools/ beside it, so the service keeps the installed copy.
+worker="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tools/aura_glass_panel_blur.py"
+[ -r "$worker" ] || worker="$HOME/.local/share/aura-glass/aura_glass_panel_blur.py"
 exec python3 "$worker"

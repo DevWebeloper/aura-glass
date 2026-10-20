@@ -140,10 +140,6 @@ def write_reason(directory, reason):
     os.replace(temporary, os.path.join(state_dir, "reason"))
 
 
-def styling_enabled(directory):
-    return not os.path.exists(os.path.join(directory, "styling-off"))
-
-
 def performance_mode(directory):
     """Performance is already the no-blur mode, so there is nothing to adapt."""
     return read_text(os.path.join(directory, "glass-mode")) == "performance"
@@ -164,24 +160,6 @@ def installer(directory, action):
     result = subprocess.run(cmd, text=True, timeout=90, check=False)
     if result.returncode:
         raise RuntimeError("adaptive %s transition did not complete (code %d)" % (action, result.returncode))
-
-
-def restore_glass_from_solid(directory):
-    """Reopen the themed mode when the panel profile is chosen from solid."""
-    script = read_text(os.path.join(directory, "adaptive-install"))
-    if not script:
-        checkout = read_text(os.path.join(directory, "repo-path"))
-        script = os.path.join(checkout, "install.sh") if checkout else ""
-    if not script or not os.path.isfile(script):
-        raise RuntimeError("no Aura Glass checkout is recorded for the glass restore")
-    operation = os.environ.get(
-        "AURA_GLASS_OPERATION",
-        os.path.join(os.path.expanduser("~"), ".local", "bin", "aura-glass-operation"))
-    result = subprocess.run(
-        [operation, "run", "--", script, "--settings-only", "--glass-mode",
-         "frosted", "--yes"], text=True, timeout=90, check=False)
-    if result.returncode:
-        raise RuntimeError("solid-mode glass restore did not complete")
 
 
 class AdaptiveReducer:
@@ -262,9 +240,7 @@ class AdaptiveReducer:
 
 
 def sample(reducer, directory, force=False):
-    # The profile menu stays available in solid mode, but when styling has stood down,
-    # the worker does not make transient changes.
-    if not styling_enabled(directory) or performance_mode(directory):
+    if performance_mode(directory):
         return False
     profile = selected_profile(directory)
     fullscreen_now, focused_wm_class = focus_state()
@@ -315,8 +291,6 @@ def main(argv):
             time.sleep(interval_from_env())
     if len(argv) == 2 and argv[0] == "profile" and argv[1] in PROFILES:
         set_profile(directory, argv[1])
-        if os.path.exists(os.path.join(directory, "styling-off")):
-            restore_glass_from_solid(directory)
         sample(reducer, directory, force=True)
         return 0
     if argv == ["refresh"]:

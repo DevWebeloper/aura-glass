@@ -1,12 +1,12 @@
 # Maintainer: DevWebeloper <https://github.com/DevWebeloper>
 pkgname=aura-glass-git
 _pkgname=aura-glass
-pkgver=2.4.0.r12.g3a1bcde
+pkgver=0.3.2.r0.g3c8b7cf
 pkgrel=1
 pkgdesc="A fluid frosted-glass desktop environment and theme suite for GNOME 48-51"
 arch=('any')
 url="https://github.com/DevWebeloper/aura-glass"
-license=('GPL-3.0-or-later')
+license=('MIT')
 depends=(
     'bash'
     'glib2'
@@ -30,6 +30,7 @@ provides=("$_pkgname")
 conflicts=("$_pkgname")
 source=("git+https://github.com/DevWebeloper/aura-glass.git")
 sha256sums=('SKIP')
+install="$_pkgname.install"
 
 pkgver() {
     cd "$srcdir/$_pkgname"
@@ -45,6 +46,11 @@ package() {
     cp -r --preserve=mode,timestamps \
         bin css dconf extensions gui lib patches systemd tokens tools install.sh uninstall.sh \
         "$destdir/"
+    # Read by bin/aura-glass-update-check and the settings window's Updates
+    # page: this copy is not a git checkout, so they ask GitHub whether main
+    # has moved past the commit in pkgver, and point at the package manager
+    # rather than offering a git pull.
+    printf '%s %s %s\n' "$pkgname" "$pkgver" "$url.git" > "$destdir/.packaged"
 
     # Global wrappers
     install -dm755 "$pkgdir/usr/bin"
@@ -64,14 +70,25 @@ exec python3 /usr/share/aura-glass/gui/aura_glass_settings.py "$@"
 EOF
     chmod 755 "$pkgdir/usr/bin/aura-glass-settings"
 
-    # Desktop entry & icon
+    # Desktop entry & icon. The installer writes a per-user entry with the
+    # same app id (lib/steps-gui.sh), which then shadows this one; this one is
+    # what shows before the first run. gui/ ships no .desktop file of its own.
+    local app_id="io.github.DevWebeloper.AuraGlassSettings"
+    install -Dm644 "gui/icons/$app_id.svg" \
+        "$pkgdir/usr/share/icons/hicolor/scalable/apps/$app_id.svg"
     install -dm755 "$pkgdir/usr/share/applications"
-    if [ -f "$destdir/gui/aura-glass-settings.desktop" ]; then
-        install -Dm644 "$destdir/gui/aura-glass-settings.desktop" "$pkgdir/usr/share/applications/aura-glass-settings.desktop"
-    fi
-    if [ -f "$destdir/gui/assets/aura-glass.svg" ]; then
-        install -Dm644 "$destdir/gui/assets/aura-glass.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/aura-glass.svg"
-    fi
+    cat > "$pkgdir/usr/share/applications/$app_id.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Aura Glass
+Comment=Frosted-glass desktop settings
+Exec=/usr/bin/aura-glass-settings
+Icon=$app_id
+Categories=Settings;DesktopSettings;GNOME;GTK;
+StartupWMClass=$app_id
+EOF
+
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 
     # Documentation and license
     install -dm755 "$pkgdir/usr/share/doc/$_pkgname"
