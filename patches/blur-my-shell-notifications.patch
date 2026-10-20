@@ -578,7 +578,7 @@ index b7bcff3..aa7369d 100644
          return imported.default ?? imported;
      } catch (e) {
 diff --git a/src/extension.js b/src/extension.js
-index fff8644..748987f 100644
+index fff8644..291b1b5 100644
 --- a/src/extension.js
 +++ b/src/extension.js
 @@ -331,7 +331,7 @@ export default class BlurMyShell extends Extension {
@@ -590,7 +590,37 @@ index fff8644..748987f 100644
              this._popup.enable();
  
          this._log("all components enabled.");
-@@ -670,40 +670,54 @@ export default class BlurMyShell extends Extension {
+@@ -572,16 +572,14 @@ export default class BlurMyShell extends Extension {
+         // application enable-all changed
+         this._settings.applications.ENABLE_ALL_changed(() => {
+             if (this._settings.applications.BLUR)
+-                this._applications_blur.update_all_windows();
++                this._applications_blur.update_all_windows(false);
+         });
+ 
+         // application whitelist changed
+         this._settings.applications.WHITELIST_changed(() => {
+-            if (
+-                this._settings.applications.BLUR
+-                && !this._settings.applications.ENABLE_ALL
+-            )
+-                this._applications_blur.update_all_windows();
++            // Aura's allow list overrides exclusions in both scope modes.
++            if (this._settings.applications.BLUR)
++                this._applications_blur.update_all_windows(false);
+         });
+ 
+         // application blacklist changed
+@@ -590,7 +588,7 @@ export default class BlurMyShell extends Extension {
+                 this._settings.applications.BLUR
+                 && this._settings.applications.ENABLE_ALL
+             )
+-                this._applications_blur.update_all_windows();
++                this._applications_blur.update_all_windows(false);
+         });
+ 
+ 
+@@ -670,40 +668,61 @@ export default class BlurMyShell extends Extension {
  
          // ---------- POPUP BLUR ----------
  
@@ -600,24 +630,31 @@ index fff8644..748987f 100644
 +        // disables once both are off.
          this._settings.popup.BLUR_changed(() => {
 -            if (this._settings.popup.BLUR)
++            if (this._settings.popup.BLUR || this._settings.popup.NOTIFICATION) {
++                // enable() is a no-op while notifications keep the component
++                // alive. reset() retargets existing surfaces; when disabled,
++                // enable() discovers them without an unnecessary rebuild.
++                if (this._popup.enabled)
++                    this._popup.reset();
++                else
++                    this._popup.enable();
++            } else {
++                this._popup.disable();
++            }
++        });
++
++        this._settings.popup.NOTIFICATION_changed(() => {
 +            if (this._settings.popup.BLUR || this._settings.popup.NOTIFICATION)
                  this._popup.enable();
              else
                  this._popup.disable();
-         });
- 
-+        this._settings.popup.NOTIFICATION_changed(() => {
-+            if (this._settings.popup.BLUR || this._settings.popup.NOTIFICATION)
-+                this._popup.enable();
-+            else
-+                this._popup.disable();
 +
 +            // Re-targets every already-blurred actor so a flip of this
 +            // switch adds or drops the notification surfaces without
 +            // touching the menus/dialogs already blurred.
 +            this._popup.reset();
-+        });
-+
+         });
+ 
          this._settings.popup.STATIC_BLUR_changed(() => {
 -            if (this._settings.popup.BLUR)
 +            if (this._settings.popup.BLUR || this._settings.popup.NOTIFICATION)
