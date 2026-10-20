@@ -40,7 +40,9 @@ detect_distro() {
 # it stays the package offered here. Dart Sass's `sass` is accepted in its
 # place: the pinned theme installer calls `sassc IN OUT` by name, and
 # install_theme puts a shim of that name in front of it. Compiled with either,
-# the Tahoe targets differ only in whitespace.
+# the Tahoe targets differ only in whitespace and in Dart Sass writing three
+# status colours as rgb() (#30d158 becomes rgb(48, 209, 88)). None of them is
+# an accent blue, the only colours aura-glass-apply matches by hex.
 #
 # python3 is here because it is load-bearing rather than incidental: every
 # extension's metadata is checked through it (ext_supports_shell), the display
