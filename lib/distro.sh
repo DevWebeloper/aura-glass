@@ -36,6 +36,12 @@ detect_distro() {
 # them. sassc is the only one that is regularly missing — the Tahoe theme
 # compiles its SCSS at install time.
 #
+# sassc is deprecated upstream (sass/sassc) but still packaged everywhere, so
+# it stays the package offered here. Dart Sass's `sass` is accepted in its
+# place: the pinned theme installer calls `sassc IN OUT` by name, and
+# install_theme puts a shim of that name in front of it. Compiled with either,
+# the Tahoe targets differ only in whitespace.
+#
 # python3 is here because it is load-bearing rather than incidental: every
 # extension's metadata is checked through it (ext_supports_shell), the display
 # density is measured and the correction emitted through it, enabled-extensions
@@ -161,6 +167,7 @@ OPTIONAL_CMDS=(msgfmt xmllint)
 missing_cmds() {
     local c
     for c in "${REQUIRED_CMDS[@]}"; do
+        [ "$c" = sassc ] && have sass && continue
         have "$c" || printf '%s\n' "$c"
     done
 }

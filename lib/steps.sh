@@ -278,11 +278,26 @@ install_theme() {
     # -d installs the dark theme into ~/.themes, -la writes the libadwaita
     # override into ~/.config/gtk-4.0. Both are per-user, so this needs no
     # root. </dev/null keeps its gum prompts quiet.
+    # sassc is deprecated and Dart Sass is its successor, but the pinned
+    # upstream installer looks for `sassc` by name and would offer to install
+    # it. Where only `sass` exists, a `sassc` of our own on its PATH forwards
+    # the same `IN OUT` call (lib/distro.sh, REQUIRED_CMDS).
+    local sass_shim=""
+    if ! have sassc && have sass; then
+        sass_shim="$SRC_CACHE/sassc-shim"
+        if [ "${DRY_RUN:-0}" != 1 ]; then
+            mkdir -p "$sass_shim"
+            printf '#!/bin/sh\nexec sass --no-source-map "$@"\n' > "$sass_shim/sassc"
+            chmod +x "$sass_shim/sassc"
+        fi
+        info "sassc not found — compiling with Dart Sass"
+    fi
+
     info "running base theme installer (dark + libadwaita override)"
     if [ "${DRY_RUN:-0}" = 1 ]; then
         info "dry-run: $src/install.sh -d -la"
     else
-        ( cd "$src" && ./install.sh -d -la ) >/dev/null 2>&1 </dev/null \
+        ( cd "$src" && PATH="${sass_shim:+$sass_shim:}$PATH" ./install.sh -d -la ) >/dev/null 2>&1 </dev/null \
             || die "the base theme installer failed"
     fi
 
