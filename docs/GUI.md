@@ -131,7 +131,11 @@ is decided by `select_apply_actions`. See
 The order matters: Glass is built before Per-app blur, because the app list asks
 the blur rows which list is active. `SEARCH_INDEX` is a hand-kept set of extra
 search words per page. `FLAG_LABELS` maps flags to pages and labels for the
-"N changes pending" popover and the sidebar dots.
+"N changes pending" popover and the sidebar dots. The popover's first row is
+what Apply will run: `_ask_plan` sends the same flags to `install.sh
+--settings-only --incremental --dry-run --plan-json` 300 ms after the last edit,
+drops an answer for flags that have since changed, and `plan_summary` words it
+as a quick apply and its steps or a full reapply and why.
 
 ### What doesn't ride on Apply
 

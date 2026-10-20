@@ -31,9 +31,9 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 | [KI-14](#ki-14) | Low | **Fixed** (`07689ba`) | Test-suite gaps: a non-hermetic check, checks missing from the hook, a fabricated fixture |
 | [KI-15](#ki-15) | Info | **Fixed** (`07689ba`) | Legacy `solid`/`transparent` machinery removed, replaced by a one-time migration |
 | [KI-16](#ki-16) | Info | By design (decided 2026-10-15) | Every full apply forces `color-scheme=prefer-dark` |
-| [KI-17](#ki-17) | Info | **Fixed** except `--plan-json` (2026-10-20) | Housekeeping: stray tags, `.claude/` not ignored, `--plan-json` unwired, `refresh` via PATH |
+| [KI-17](#ki-17) | Info | **Fixed** (`07689ba`, v0.3.3) | Housekeeping: stray tags, `.claude/` not ignored, `--plan-json` unwired, `refresh` via PATH |
 | [KI-18](#ki-18) | High | **Fixed** (2026-10-15 batch) | A fresh `--glass-mode frosted` (and the text wizard's Customize path) gives opaque windows. The wizard's transparency answer is discarded |
-| [KI-19](#ki-19) | Low | **Fixed** (2026-10-15 batch) | "Blur This App" writes to the destroyed window menu (journal stack traces), and its post-toggle checkmark uses a different rule than the menu |
+| [KI-19](#ki-19) | Low | **Fixed** (2026-10-15 batch, verified live 2026-10-20) | "Blur This App" writes to the destroyed window menu (journal stack traces), and its post-toggle checkmark uses a different rule than the menu |
 | [KI-20](#ki-20) | Medium | **Fixed** (`903bb45`, verified live 2026-10-20) | A mode switch left open GTK windows on the old alpha until each app was reopened |
 | [KI-21](#ki-21) | Medium | **Fixed** (`903bb45`, verified live 2026-10-20) | Tray Performance profile never showed the opaque shell sheet (shell theme not reloaded) |
 | [KI-22](#ki-22) | Medium | **Fixed** | Settings app never showed the mode in force or the adaptive overlay, and missed changes made outside it |
@@ -392,7 +392,7 @@ whether it belongs only to the first install.
 
 - `origin` carries non-release tags `wip` and `zz-experiment`. The update check filters them, but RELEASING says not to push them. **Deleted** from `origin` and locally on 2026-10-20 (both on a stray commit `one`, not in `main`).
 - `.claude/README.md` says `.claude/` is git-ignored. It isn't (it shows as untracked).
-- `--plan-json` is implemented but no front end calls it yet.
+- `--plan-json` is implemented but no front end calls it yet. **Wired** 2026-10-20: the settings window's "N changes" popover opens on what Apply will run, from `--plan-json` for the pending flags.
 - The settings app runs `aura-glass-adaptive refresh` via `PATH`. If `~/.local/bin` isn't on the session `PATH`, the games list is saved but the worker isn't told.
 
 ---
@@ -496,7 +496,7 @@ retune in the memo, the drawer and `gtk.css` (KI-01).
 - **Settings app window-blur switch** — a working-tree edit had removed "Blur behind app windows" and the Popup brightness and Notification ground groups from the frosted page, so `_scope()` could not return `none` and any Apply on a no-window-blur install sent `--all-apps-blur`. Restored; the all-apps switch still defaults on. Needs a live check.
 - **KI-07** — `uninstall.sh` removes `aura-glass-operation` and `aura-glass-preview`. Verified with the fixture reproductions and the hermetic suite; needs a live check.
 - **KI-18** — `seed_glass_mode` seeds frosted at 0.90 (0.95 without window blur); the text wizard marks its transparency answer explicit. Verified with the fixture reproductions and the hermetic suite; needs a live check.
-- **KI-19** — `_toggleBlur` guards the menu item with its `destroy` signal and re-checks it with the menu's own whitelist/blacklist rule over the class chain. Syntax-checked only; needs a live check after the helper reloads.
+- **KI-19** — `_toggleBlur` guards the menu item with its `destroy` signal and re-checks it with the menu's own whitelist/blacklist rule over the class chain. Verified live 2026-10-20: two toggles left no `already disposed` line from `extension.js`. Each click still logs one `PopupMenuItem … already disposed` from GNOME's own `popupMenu.js:130` (the press-state handler on the window menu, which GNOME destroys on activate); it has no extension frames and shows for other window-menu clicks too.
 - **Gray sheet over the wallpaper with Desktop Icons NG** ([#13](https://github.com/DevWebeloper/aura-glass/issues/13)) — DING's desktop window is a plain GTK4 `window.desktopwindow` that depends on its own 0.005-alpha background. The theme's and `gtk4-transparency.css`'s `window` / `window.background` ground matched it at equal specificity and painted it solid; the Overview hid it and a corner-rounding reapply brought it back. `css/gtk4-70-surfaces.css` now gives `window.desktopwindow` (two classes) its alpha back. Code-read against DING's source; **not reproduced** (DING is not installed on the dev machine) and needs a live check from the reporter. GTK3 DING builds are not covered.
 
 ---
@@ -764,6 +764,6 @@ previous patch it reports KI-27's `MESSAGE_CORNER_EFFECT_NAME`.
 - **KI-11** — On GNOME ≥ 51, `refresh_bms_after_dconf` says it skipped the reload instead of "refreshed". `install.sh` asks for `sudo -v` for rounded blur only when `rounded_blur_needs_root` (library not already loadable, no AUR helper, meson present).
 - **KI-13** — `PKGBUILD`: `license=('MIT')` plus the license file, `install=` now references `aura-glass.install` (its hooks never ran), the desktop entry is generated with the app id and the icon comes from `gui/icons/`, and `pkgver` matches the `v0.3.x` tags. The removal hint moved to `pre_remove`, while `/usr/share/aura-glass/uninstall.sh` still exists. `package()` was run against the checkout into a temp `pkgdir`. The package copy is root-owned and not a git checkout, so `package()` now writes `.packaged` (name, `pkgver`, URL): `aura-glass-update-check` compares the `.g<sha>` in `pkgver` with `main` on that URL, and the Updates page names the package and points at the package manager instead of offering a pull. Three cases in `check-update-check.sh`.
 - **KI-14** — `check-apply-lifecycle.py`, `check-overview-blur.sh` and `check-moga-cursors.sh` are in the hook. The Moga check's dry run uses a fixture `HOME`, so it's hermetic now.
-- **KI-17** — The settings app runs `aura-glass-adaptive refresh` through the same `~/.local/bin` then checkout lookup as the profile combo, not `PATH`. `.claude/` is ignored here (global excludes). The remote `wip` and `zz-experiment` tags are deleted. Left: `--plan-json` unwired.
+- **KI-17** — The settings app runs `aura-glass-adaptive refresh` through the same `~/.local/bin` then checkout lookup as the profile combo, not `PATH`. `.claude/` is ignored here (global excludes). The remote `wip` and `zz-experiment` tags are deleted, and `--plan-json` drives the Apply popover's first row.
 - **KI-23 leftover** — `--no-window-menu` works: `install_aura_ext` remembers it as `window-menu`, `install.sh` reads the memo back, the helper reads it live through its config monitor and adds or drops "Blur This App" without a reload, and uninstall removes the memo.
 

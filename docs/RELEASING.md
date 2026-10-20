@@ -3,8 +3,8 @@
 **There's no VERSION file. The git tag is the version.** `bin/aura-glass-update-check`
 and the settings window's Updates page both read it with
 `git describe --tags --abbrev=0`. A release that exists only on GitHub, with no
-tag on `main`, is invisible to every installed copy. The latest tag at the time
-of writing is `v0.2.9`.
+tag on `main`, is invisible to every installed copy. A package install (the
+AUR's `aura-glass-git`) follows `main`'s commits instead, through `.packaged`.
 
 ---
 
@@ -18,8 +18,8 @@ vMAJOR.MINOR.PATCH-beta     v0.3.0-beta
 The update check keeps only tags matching
 `s#.*refs/tags/\(v[0-9][0-9.]*\(-beta\)\?\)$#\1#p` and orders them with
 `sort -V`, so `v0.1.10` correctly comes after `v0.1.9` (`check-update-check.sh`).
-**Don't push tags of any other shape.** `origin` currently carries `wip` and
-`zz-experiment` (KI-17). They're filtered, but they shouldn't be there.
+**Don't push tags of any other shape.** They're filtered, but they shouldn't be
+there (`wip` and `zz-experiment` were removed for KI-17).
 
 ## Flow
 
@@ -44,7 +44,7 @@ attaches `aura-glass-vX.Y.Z.tar.gz` and `.zip` (`git archive` of the tag). The
    tools/preview.sh && python3 tools/check-shots.py --mode glass
    tools/preview.sh --solid && python3 tools/check-shots.py --mode solid
    ```
-3. If anything about **how settings are remembered** changed, check that a `$CONF_DIR` written by the previous release still resolves. Precedents: `radius_preset_canonical` maps the retired `pill`, a 7-field `radius-custom` memo is widened to 8, and legacy `glass-mode` values fall back to frosted.
+3. If anything about **how settings are remembered** changed, check that a `$CONF_DIR` written by the previous release still resolves. Precedents: `radius_preset_canonical` maps the retired `pill`, a 7-field `radius-custom` memo is widened to 8, and `migrate_solid_era` turns a legacy `solid`/`transparent` `glass-mode` into `performance`/`frosted`.
 4. [KNOWN-ISSUES.md](KNOWN-ISSUES.md) is up to date, with fixed entries moved down.
 5. If the packaging is maintained, `packaging/aur/PKGBUILD` matches (KI-13).
 

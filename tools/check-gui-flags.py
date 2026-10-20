@@ -22,6 +22,7 @@ So this checks two different things:
 Run it after changing flags_against, and after changing any flag in install.sh
 that the window sends.
 """
+import json
 import os
 import re
 import subprocess
@@ -37,7 +38,7 @@ except ImportError:
           "window is optional, and install.sh skips it on this machine too)")
     sys.exit(0)
 
-from aura_glass_settings import Settings  # noqa: E402
+from aura_glass_settings import Settings, plan_summary  # noqa: E402
 
 
 def state(**kw):
@@ -617,6 +618,42 @@ if any(os.path.isdir(os.path.join(os.path.expanduser("~"), ".themes", n))
                 "%s, which is %s rather than the %s that level means"
                 % (percent, got_level.group(1), got_actor.group(1),
                    round(int(got_actor.group(1)) / 255 * 100), percent))
+
+# The Apply popover's first row says what install.sh --plan-json answered for
+# the pending flags. Each action and each fallback shape has to come out in
+# words: a quick apply names its steps, a full one names its reason.
+PLAN_CASES = [
+    ({"actions": ["accent", "cursor-theme"], "fallback_reason": None},
+     ("Quick apply", "Updates only the accent and the pointer, in a second or two")),
+    ({"actions": ["css", "app-opacity"], "fallback_reason": None},
+     ("Quick apply", "Updates only the stylesheets and the window opacity, in a second or two")),
+    ({"actions": ["full"], "fallback_reason": "unclassified flag: --blur-strength"},
+     ("Full reapply", "Reapplies the preset, the CSS and the gsettings: Blur strength needs one")),
+    ({"actions": ["full"], "fallback_reason": "installed source fingerprint is absent or changed"},
+     ("Full reapply", "Reapplies the preset, the CSS and the gsettings: Aura Glass changed since the last one")),
+    ({"actions": ["full"], "fallback_reason": "no narrow setting was typed"},
+     ("Full reapply", "Reapplies the preset, the CSS and the gsettings: nothing here has a quicker path")),
+]
+for plan, want in PLAN_CASES:
+    got = plan_summary(plan)
+    if got != want:
+        failures.append("plan summary %r: got %r, want %r" % (plan, got, want))
+
+# And the protocol itself, through the real parser, for one flag of each kind.
+for flags, first in ((["--accent", "teal"], "accent"),
+                     (["--blur-strength", "120"], "full")):
+    res = subprocess.run(
+        ["bash", os.path.join(ROOT, "install.sh"), "--settings-only",
+         "--incremental", "--dry-run", "--plan-json", "--yes"] + flags,
+        capture_output=True, text=True)
+    try:
+        doc = json.loads(res.stdout.strip().splitlines()[-1])
+        if doc.get("actions", [None])[0] != first and doc.get("actions") != ["full"]:
+            failures.append("plan-json %s: actions %r" % (flags, doc.get("actions")))
+        plan_summary(doc)
+    except (ValueError, IndexError):
+        failures.append("plan-json %s: not one JSON document: %r"
+                        % (flags, res.stdout[-200:]))
 
 if failures:
     print("gui flag check FAILED\n")

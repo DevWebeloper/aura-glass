@@ -651,6 +651,45 @@ FLAG_LABELS = {
     "--app-blur-block": ("apps", "Blur block list"),
 }
 
+# install.sh's incremental actions (lib/steps-apply-plan.sh), in the popover's
+# words. full is not here: it is said with its reason instead.
+PLAN_ACTIONS = {
+    "accent": "the accent",
+    "cursor-theme": "the pointer",
+    "cursor-size": "the pointer size",
+    "window-buttons": "the titlebar buttons",
+    "window-brightness": "the window blur brightness",
+    "app-blur": "the per-app blur lists",
+    "css": "the stylesheets",
+    "app-opacity": "the window opacity",
+}
+
+
+def plan_summary(plan):
+    """(title, subtitle) for what Apply will run, from --plan-json's document.
+
+    The installer decides; this only says it. A quick apply names the steps it
+    will run, a full one says why the quick path was not taken, in the
+    settings window's own labels where the reason names a flag.
+    """
+    actions = plan.get("actions") or ["full"]
+    if actions[0] != "full":
+        words = [PLAN_ACTIONS.get(a, a) for a in actions]
+        listed = words[0] if len(words) == 1 else \
+            ", ".join(words[:-1]) + " and " + words[-1]
+        return ("Quick apply", "Updates only %s, in a second or two" % listed)
+    reason = plan.get("fallback_reason") or ""
+    if reason.startswith("unclassified flag: "):
+        flag = reason[len("unclassified flag: "):]
+        label = FLAG_LABELS.get(flag, (None, flag))[1]
+        why = "%s needs one" % label
+    elif "fingerprint" in reason:
+        why = "Aura Glass changed since the last one"
+    else:
+        why = "nothing here has a quicker path"
+    return ("Full reapply", "Reapplies the preset, the CSS and the gsettings: "
+            "%s" % why)
+
 
 # The families install.sh fetches, and the ones uninstall.sh --assets already
 # knows to remove. Anything else under an icon directory belongs to the
@@ -2993,6 +3032,10 @@ class Window(Adw.ApplicationWindow):
         # would be two installers writing the same files.
         self._running = False
         self._needs_logout = False
+        # The --plan-json answer for the pending flags: a debounce timer, and a
+        # generation so an answer for flags that have since changed is dropped.
+        self._plan_timer = 0
+        self._plan_generation = 0
 
         self._apply = Gtk.Button(sensitive=False)
         self._apply.add_css_class("suggested-action")
@@ -6860,14 +6903,60 @@ class Window(Adw.ApplicationWindow):
         while child is not None:
             self._pending_list.remove(child)
             child = self._pending_list.get_row_at_index(0)
+        self._plan_generation += 1
+        if self._plan_timer:
+            GLib.source_remove(self._plan_timer)
+            self._plan_timer = 0
         if not labels:
             self._pending_button.set_visible(False)
             return
+        self._plan_row = Adw.ActionRow(title="Apply will…",
+                                       subtitle="Asking the installer")
+        self._plan_row.add_css_class("property")
+        self._pending_list.append(self._plan_row)
         for label in labels:
             self._pending_list.append(Adw.ActionRow(title=label))
+        self._plan_timer = GLib.timeout_add(300, self._ask_plan, list(args),
+                                            self._plan_generation)
         self._pending_button.set_label(
             "%d change%s" % (len(labels), "" if len(labels) == 1 else "s"))
         self._pending_button.set_visible(True)
+
+    def _ask_plan(self, args, generation):
+        """Ask install.sh which steps this Apply will run (--plan-json).
+
+        The same flags _on_apply will send, through the real classifier and
+        fingerprint check, as a dry run that writes nothing. The answer only
+        fills the popover's first row; Apply itself never waits for it.
+        """
+        self._plan_timer = 0
+        if self._repo is None:
+            return GLib.SOURCE_REMOVE
+        argv = ["bash", os.path.join(self._repo, "install.sh"),
+                "--settings-only", "--incremental", "--dry-run", "--plan-json",
+                "--yes"] + args
+        try:
+            proc = Gio.Subprocess.new(
+                argv, Gio.SubprocessFlags.STDOUT_PIPE
+                | Gio.SubprocessFlags.STDERR_SILENCE)
+        except GLib.Error:
+            return GLib.SOURCE_REMOVE
+
+        def done(proc, res):
+            try:
+                _ok, out, _err = proc.communicate_utf8_finish(res)
+                # The last line: a one-time migration step may print first.
+                plan = json.loads((out or "").strip().splitlines()[-1])
+            except (GLib.Error, ValueError, IndexError):
+                plan = None
+            if generation != self._plan_generation or plan is None:
+                return
+            title, subtitle = plan_summary(plan)
+            self._plan_row.set_title(title)
+            self._plan_row.set_subtitle(subtitle)
+
+        proc.communicate_utf8_async(None, None, done)
+        return GLib.SOURCE_REMOVE
 
     def _sync_transparency_value(self, scale):
         scale._readout.set_label("%d%%" % round(scale.get_value()))
