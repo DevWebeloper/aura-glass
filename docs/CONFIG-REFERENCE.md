@@ -274,7 +274,7 @@ cursor-size and font keys (what `original` / `system` restore).
 | `~/.cache/aura-glass/src/` | pinned checkouts (`$SRC_CACHE`) |
 | `~/.cache/aura-glass/operation.lock` | the writer lock |
 | `~/.local/share/fonts/aura-glass/` | downloaded fonts |
-| `~/.local/lib/libblur-effect-1.0.so*` | rootless gnome-rounded-blur build |
+| `~/.local/lib/libblur-effect-1.0.so*` | an old rootless gnome-rounded-blur build. No longer written; removed by `install_rounded_blur` and `uninstall.sh` (KI-12) |
 
 Pre-rename installs used `tahoe-glass` everywhere. `lib/steps-migrate.sh`,
 `aura-glass-apply` and `uninstall.sh` resolve both.

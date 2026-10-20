@@ -406,9 +406,11 @@ after 30 s instead of interleaving.
 | Moga cursors | gnome-look.org/p/2302110 | release metadata resolved by `tools/moga_cursor.py` |
 | Fonts | Inter 4.1 (sha256), MiSans (sha256 as notice; URLs unversioned), SF Pro mirror `8bfea09aa6f1` | |
 
-`gnome-rounded-blur` is compiled rootless into `~/.local/lib` when `gcc` and
-`pkg-config` exist. Otherwise it falls back to the AUR helper or
-`meson … && sudo meson install`.
+`gnome-rounded-blur` is installed system-wide, where the shell finds it: with
+the AUR helper (`paru`/`yay`), or `meson … && sudo meson install`. There is no
+rootless build. One in `~/.local` never loads, because the shell searches
+neither `~/.local/lib` nor `~/.local/share/girepository-1.0` (KI-12), so an old
+one is removed.
 
 ---
 

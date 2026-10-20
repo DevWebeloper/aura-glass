@@ -198,7 +198,6 @@ the GPU. **Agents never run these.** Humans only: `preview.sh`,
 ~/.local/share/gnome-shell/extensions/        user-theme, blur-my-shell, custom-osd, aura-glass-blur, extras
 ~/.local/share/icons/, ~/.icons/              icon and pointer packs
 ~/.local/share/fonts/aura-glass/              fonts from --font
-~/.local/lib/libblur-effect-1.0.so*           gnome-rounded-blur (rootless build)
 ~/.config/systemd/user/aura-glass-*.service|timer
 ~/.config/autostart/aura-glass-open-once.desktop   (until the first login spends it)
 ~/.cache/aura-glass/src/                      pinned upstream checkouts ($SRC_CACHE)

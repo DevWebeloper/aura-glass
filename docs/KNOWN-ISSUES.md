@@ -27,7 +27,7 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 | [KI-09](#ki-09) | Low | **Fixed** (uncommitted, 2026-10-20) | Launchers disagree on checkout vs installed copy |
 | [KI-10](#ki-10) | Low | **Fixed** (uncommitted, 2026-10-20) | Packages page doesn't know Moga packs |
 | [KI-11](#ki-11) | Low | **Fixed** (uncommitted, 2026-10-20) | Misleading success messages (BMS refresh on 51, rounded-blur compile) and an unneeded sudo prompt |
-| [KI-12](#ki-12) | Medium | **Reproduced** (2026-10-20) | The rootless `~/.local/lib` rounded-blur build never loads in the shell |
+| [KI-12](#ki-12) | Medium | **Fixed** (uncommitted, 2026-10-20) | The rootless `~/.local/lib` rounded-blur build never loads in the shell |
 | [KI-13](#ki-13) | Low | **Fixed** (uncommitted, 2026-10-20) | AUR packaging is inconsistent with the repo |
 | [KI-14](#ki-14) | Low | **Fixed** (uncommitted, 2026-10-20) | Test-suite gaps: a non-hermetic check, checks missing from the hook, a fabricated fixture |
 | [KI-15](#ki-15) | Info | **Fixed** (uncommitted, 2026-10-20) | Legacy `solid`/`transparent` machinery removed, replaced by a one-time migration |
@@ -307,13 +307,12 @@ the package the probe fails, the rootless path compiles, prints "compiled", and
 Blur My Shell still falls back. Without the package there is also no system
 typelib to copy, so `~/.local/share/girepository-1.0` stays empty.
 
-**Fix direction** (open, a design choice):
-- Drop the rootless path and use the AUR helper or meson + sudo, which install
-  where the shell looks, or
-- set `GI_TYPELIB_PATH` and `LD_LIBRARY_PATH` for the session in
-  `~/.config/environment.d/` and produce a typelib without the package
-  (`g-ir-scanner`/`g-ir-compiler`, or a vendored `.gir`). A session-wide
-  `LD_LIBRARY_PATH` reaches every app, which is the cost.
+**Fix** (decided 2026-10-20: root is fine). The rootless gcc path is gone.
+`install_rounded_blur` uses the AUR helper or meson + sudo, which install where
+the shell looks, and removes an old `~/.local` build. Both probes
+(`install_rounded_blur` and `rounded_blur_needs_root`) dropped `~/.local/lib`,
+so they ask what the shell can load, and `install.sh` asks for `sudo -v` up
+front whenever the meson fallback will run.
 
 ---
 
@@ -752,7 +751,7 @@ previous patch it reports KI-27's `MESSAGE_CORNER_EFFECT_NAME`.
 
 - **KI-09** — `bin/aura-glass-adaptive` and `bin/aura-glass-panel-blur` now prefer the checkout's `tools/` worker when run from a checkout's `bin/`, like `aura-glass-operation`. The copies in `~/.local/bin` have no `tools/` beside them, so the services keep the installed worker. `AURA_GLASS_ADAPTIVE_WORKER` still wins.
 - **KI-10** — `ICON_PACK_FAMILIES` knows `Aura-Glass-Moga`. Its nine accent variants are one row (`SINGLE_ROW_FAMILIES`), in use when any variant is, because the accent switch moves between them.
-- **KI-11** — On GNOME ≥ 51, `refresh_bms_after_dconf` says it skipped the reload instead of "refreshed". `install.sh` asks for `sudo -v` for rounded blur only when `rounded_blur_needs_root` (library not already loadable, no gcc + pkg-config, no AUR helper, meson present).
+- **KI-11** — On GNOME ≥ 51, `refresh_bms_after_dconf` says it skipped the reload instead of "refreshed". `install.sh` asks for `sudo -v` for rounded blur only when `rounded_blur_needs_root` (library not already loadable, no AUR helper, meson present).
 - **KI-13** — `PKGBUILD`: `license=('MIT')` plus the license file, `install=` now references `aura-glass.install` (its hooks never ran), the desktop entry is generated with the app id and the icon comes from `gui/icons/`, and `pkgver` matches the `v0.3.x` tags. The removal hint moved to `pre_remove`, while `/usr/share/aura-glass/uninstall.sh` still exists. `package()` was run against the checkout into a temp `pkgdir`. The package copy is root-owned and not a git checkout, so `package()` now writes `.packaged` (name, `pkgver`, URL): `aura-glass-update-check` compares the `.g<sha>` in `pkgver` with `main` on that URL, and the Updates page names the package and points at the package manager instead of offering a pull. Three cases in `check-update-check.sh`.
 - **KI-14** — `check-apply-lifecycle.py`, `check-overview-blur.sh` and `check-moga-cursors.sh` are in the hook. The Moga check's dry run uses a fixture `HOME`, so it's hermetic now.
 - **KI-17** — The settings app runs `aura-glass-adaptive refresh` through the same `~/.local/bin` then checkout lookup as the profile combo, not `PATH`. `.claude/` is ignored here (global excludes). The remote `wip` and `zz-experiment` tags are deleted. Left: `--plan-json` unwired.

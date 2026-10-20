@@ -416,14 +416,14 @@ if [ -f "$CONF_DIR/rounded-blur" ]; then
     info "    sudo pacman -Rs gnome-rounded-blur       # if it came from the AUR"
     info "    sudo ninja -C ~/.cache/aura-glass/src/gnome-rounded-blur/build uninstall"
 fi
-# The rootless build install_rounded_blur compiles into $HOME — removable
+# The rootless build older releases compiled into $HOME (KI-12) — removable
 # without sudo, so it goes rather than being explained.
 if [ -e "$HOME/.local/lib/libblur-effect-1.0.so.1" ] \
     || [ -e "$HOME/.local/share/girepository-1.0/Blur-1.0.typelib" ]; then
     run rm -f "$HOME/.local/lib/libblur-effect-1.0.so" \
               "$HOME/.local/lib/libblur-effect-1.0.so.1" \
               "$HOME/.local/share/girepository-1.0/Blur-1.0.typelib"
-    ok "removed the rootless gnome-rounded-blur build from ~/.local"
+    ok "removed the old rootless gnome-rounded-blur build from ~/.local"
 fi
 
 step "Removing aura-glass itself"

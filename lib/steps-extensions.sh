@@ -362,42 +362,25 @@ install_rounded_blur() {
         return 0
     fi
 
-    if LD_LIBRARY_PATH="/usr/lib/mutter-$GNOME_MAJOR:/usr/lib/mutter-18:$HOME/.local/lib:${LD_LIBRARY_PATH:-}" gjs -c 'const Blur = imports.gi.Blur; void Blur.BlurEffect;' >/dev/null 2>&1 && [ "${FORCE:-0}" != 1 ]; then
+    if LD_LIBRARY_PATH="/usr/lib/mutter-$GNOME_MAJOR:/usr/lib/mutter-18:${LD_LIBRARY_PATH:-}" gjs -c 'const Blur = imports.gi.Blur; void Blur.BlurEffect;' >/dev/null 2>&1 && [ "${FORCE:-0}" != 1 ]; then
         skip "gnome-rounded-blur already installed and functional"
         rounded_blur_stamp
         return 0
     fi
 
-    if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: compile gnome-rounded-blur against libmutter-$GNOME_MAJOR into ~/.local/lib"
-        return 0
+    # A build in ~/.local, from releases that compiled one there, never loads:
+    # the shell searches neither ~/.local/lib nor ~/.local/share/girepository-1.0
+    # (KI-12). It goes, so nothing is left that looks like it might.
+    if [ -e "$HOME/.local/lib/libblur-effect-1.0.so.1" ] \
+        || [ -e "$HOME/.local/share/girepository-1.0/Blur-1.0.typelib" ]; then
+        run rm -f "$HOME/.local/lib/libblur-effect-1.0.so" \
+                  "$HOME/.local/lib/libblur-effect-1.0.so.1" \
+                  "$HOME/.local/share/girepository-1.0/Blur-1.0.typelib"
+        [ "${DRY_RUN:-0}" = 1 ] || info "removed the old ~/.local build, which the shell could not load"
     fi
 
-    if have gcc && have pkg-config; then
-        local src="$SRC_CACHE/gnome-rounded-blur"
-        clone_pinned "$ROUNDEDBLUR_REPO" "$ROUNDEDBLUR_REF" "$src"
-        mkdir -p "$HOME/.local/lib" "$HOME/.local/share/girepository-1.0"
-        local mutter_cflags_libs
-        mutter_cflags_libs="$(pkg-config --cflags --libs "mutter-clutter-$GNOME_MAJOR" "mutter-cogl-$GNOME_MAJOR" "libmutter-$GNOME_MAJOR" 2>/dev/null || pkg-config --cflags --libs mutter-clutter-18 mutter-cogl-18 libmutter-18 2>/dev/null || true)"
-        if [ -n "$mutter_cflags_libs" ]; then
-            gcc -fPIC -shared -O2 -DCLUTTER_COMPILATION \
-                -I"$src/src" "$src/src/rounded-blur-effect.c" "$src/src/rounded-blur-mode.c" \
-                $mutter_cflags_libs -L/usr/lib/gnome-shell -lshell-"$GNOME_MAJOR" \
-                -Wl,-soname,libblur-effect-1.0.so.1 \
-                -Wl,-rpath,"/usr/lib/mutter-$GNOME_MAJOR:/usr/lib/gnome-shell" \
-                -o "$HOME/.local/lib/libblur-effect-1.0.so.1" 2>/dev/null \
-            && ln -sfn libblur-effect-1.0.so.1 "$HOME/.local/lib/libblur-effect-1.0.so"
-        fi
-        [ -f /usr/lib/girepository-1.0/Blur-1.0.typelib ] && cp -f /usr/lib/girepository-1.0/Blur-1.0.typelib "$HOME/.local/share/girepository-1.0/" 2>/dev/null || true
-        # Said only when the library is there: gcc's output is silenced above,
-        # so a failed compile used to end on this same "compiled" line (KI-11).
-        if [ -f "$HOME/.local/lib/libblur-effect-1.0.so.1" ]; then
-            rounded_blur_stamp
-            ok "gnome-rounded-blur compiled against mutter-$GNOME_MAJOR into ~/.local/lib"
-        else
-            warn "gnome-rounded-blur did not compile against mutter-$GNOME_MAJOR"
-            warn "Popup blur remains dynamic with corner shader fallback."
-        fi
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: install gnome-rounded-blur system-wide (AUR helper or meson + sudo)"
         return 0
     fi
 
@@ -405,7 +388,7 @@ install_rounded_blur() {
     for h in paru yay; do have "$h" && { helper="$h"; break; }; done
 
     if [ -z "$helper" ] && ! have meson; then
-        warn "compiler tools (gcc/pkg-config) or AUR helper not found."
+        warn "no AUR helper (paru, yay) or meson found to build gnome-rounded-blur."
         warn "Popup blur remains dynamic with corner shader fallback."
         return 0
     fi
@@ -438,15 +421,14 @@ install_rounded_blur() {
 }
 
 # Whether install_rounded_blur may reach for sudo, so install.sh only asks for
-# a password up front when it will be used (KI-11). The default path compiles
-# into ~/.local with gcc + pkg-config and needs no root, and an AUR helper asks
-# for its own. Only the meson fallback runs `sudo meson install`.
+# a password up front when it will be used (KI-11). An AUR helper asks for its
+# own; only the meson fallback runs `sudo meson install`. There is no rootless
+# build: one in ~/.local is never found by the shell (KI-12).
 rounded_blur_needs_root() {
     [ "${WANT_ROUNDED_BLUR:-1}" = 1 ] || return 1
-    if LD_LIBRARY_PATH="/usr/lib/mutter-$GNOME_MAJOR:/usr/lib/mutter-18:$HOME/.local/lib:${LD_LIBRARY_PATH:-}" gjs -c 'const Blur = imports.gi.Blur; void Blur.BlurEffect;' >/dev/null 2>&1 && [ "${FORCE:-0}" != 1 ]; then
+    if LD_LIBRARY_PATH="/usr/lib/mutter-$GNOME_MAJOR:/usr/lib/mutter-18:${LD_LIBRARY_PATH:-}" gjs -c 'const Blur = imports.gi.Blur; void Blur.BlurEffect;' >/dev/null 2>&1 && [ "${FORCE:-0}" != 1 ]; then
         return 1
     fi
-    have gcc && have pkg-config && return 1
     have paru && return 1
     have yay && return 1
     have meson
