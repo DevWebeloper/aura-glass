@@ -1,8 +1,7 @@
 # Known issues
 
 A working list of the bugs and inconsistencies found in the 2026-10-15 audit
-of the working tree (local `main`, two commits ahead of `origin/main`, plus
-uncommitted edits). Each entry gives the symptom, how to reproduce it, the
+of the working tree, and of those found while fixing them. Each entry gives the symptom, how to reproduce it, the
 root cause by file and function, a fix direction, and how to verify the fix.
 
 **Status key.** *Reproduced*: shown on a fixture install with stubbed
@@ -16,35 +15,35 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 
 | ID | Severity | Status | One line |
 |---|---|---|---|
-| [KI-01](#ki-01) | High | **Fixed** (uncommitted) | Settings-app Apply is silently reverted by the next full apply. The window shows stale tint/level |
-| [KI-02](#ki-02) | High | **Fixed** (uncommitted) | Adaptive restore breaks Performance mode (removes the opaque sheet, re-enables app blur) |
-| [KI-03](#ki-03) | High | **Fixed** (uncommitted) | Switching modes on an existing install toggles only 3 of 10 blur components |
-| [KI-04](#ki-04) | Medium | **Fixed** (uncommitted) | Settings app crashes without pycairo, which the toolkit probe doesn't check |
+| [KI-01](#ki-01) | High | **Fixed** (2026-10-15 batch, verified live 2026-10-20) | Settings-app Apply is silently reverted by the next full apply. The window shows stale tint/level |
+| [KI-02](#ki-02) | High | **Fixed** (2026-10-15 batch, verified live 2026-10-20) | Adaptive restore breaks Performance mode (removes the opaque sheet, re-enables app blur) |
+| [KI-03](#ki-03) | High | **Fixed** (2026-10-15 batch, verified live 2026-10-20) | Switching modes on an existing install toggles only 3 of 10 blur components |
+| [KI-04](#ki-04) | Medium | **Fixed** (2026-10-15 batch) | Settings app crashes without pycairo, which the toolkit probe doesn't check |
 | [KI-05](#ki-05) | Medium | **Fixed** | Four different "recommended/default" pointer answers. Text wizard can't pick Moga |
 | [KI-06](#ki-06) | Low | **Fixed** | Stale prose and labels (Magic Lamp, "14 extras", scope and transparency defaults, wizard "Solid" = Performance) |
-| [KI-07](#ki-07) | Medium | **Fixed** (uncommitted) | Uninstall leaves `aura-glass-operation` and `aura-glass-preview` in `~/.local/bin` |
+| [KI-07](#ki-07) | Medium | **Fixed** (2026-10-15 batch) | Uninstall leaves `aura-glass-operation` and `aura-glass-preview` in `~/.local/bin` |
 | [KI-08](#ki-08) | Low | **Fixed** | `--dry-run` / `--plan-json` aren't side-effect free |
-| [KI-09](#ki-09) | Low | **Fixed** (uncommitted, 2026-10-20) | Launchers disagree on checkout vs installed copy |
-| [KI-10](#ki-10) | Low | **Fixed** (uncommitted, 2026-10-20) | Packages page doesn't know Moga packs |
-| [KI-11](#ki-11) | Low | **Fixed** (uncommitted, 2026-10-20) | Misleading success messages (BMS refresh on 51, rounded-blur compile) and an unneeded sudo prompt |
-| [KI-12](#ki-12) | Medium | **Fixed** (uncommitted, 2026-10-20) | The rootless `~/.local/lib` rounded-blur build never loads in the shell |
-| [KI-13](#ki-13) | Low | **Fixed** (uncommitted, 2026-10-20) | AUR packaging is inconsistent with the repo |
-| [KI-14](#ki-14) | Low | **Fixed** (uncommitted, 2026-10-20) | Test-suite gaps: a non-hermetic check, checks missing from the hook, a fabricated fixture |
-| [KI-15](#ki-15) | Info | **Fixed** (uncommitted, 2026-10-20) | Legacy `solid`/`transparent` machinery removed, replaced by a one-time migration |
-| [KI-16](#ki-16) | Info | | Every full apply forces `color-scheme=prefer-dark` |
+| [KI-09](#ki-09) | Low | **Fixed** (`07689ba`) | Launchers disagree on checkout vs installed copy |
+| [KI-10](#ki-10) | Low | **Fixed** (`07689ba`) | Packages page doesn't know Moga packs |
+| [KI-11](#ki-11) | Low | **Fixed** (`07689ba`, `620b699`) | Misleading success messages (BMS refresh on 51, rounded-blur compile) and an unneeded sudo prompt |
+| [KI-12](#ki-12) | Medium | **Fixed** (`620b699`) | The rootless `~/.local/lib` rounded-blur build never loads in the shell |
+| [KI-13](#ki-13) | Low | **Fixed** (`07689ba`) | AUR packaging is inconsistent with the repo |
+| [KI-14](#ki-14) | Low | **Fixed** (`07689ba`) | Test-suite gaps: a non-hermetic check, checks missing from the hook, a fabricated fixture |
+| [KI-15](#ki-15) | Info | **Fixed** (`07689ba`) | Legacy `solid`/`transparent` machinery removed, replaced by a one-time migration |
+| [KI-16](#ki-16) | Info | By design (decided 2026-10-15) | Every full apply forces `color-scheme=prefer-dark` |
 | [KI-17](#ki-17) | Info | **Fixed** except `--plan-json` (2026-10-20) | Housekeeping: stray tags, `.claude/` not ignored, `--plan-json` unwired, `refresh` via PATH |
-| [KI-18](#ki-18) | High | **Fixed** (uncommitted) | A fresh `--glass-mode frosted` (and the text wizard's Customize path) gives opaque windows. The wizard's transparency answer is discarded |
-| [KI-19](#ki-19) | Low | **Fixed** (uncommitted) | "Blur This App" writes to the destroyed window menu (journal stack traces), and its post-toggle checkmark uses a different rule than the menu |
-| [KI-20](#ki-20) | Medium | **Fixed** (uncommitted) | A mode switch left open GTK windows on the old alpha until each app was reopened |
-| [KI-21](#ki-21) | Medium | **Fixed** (uncommitted) | Tray Performance profile never showed the opaque shell sheet (shell theme not reloaded) |
+| [KI-18](#ki-18) | High | **Fixed** (2026-10-15 batch) | A fresh `--glass-mode frosted` (and the text wizard's Customize path) gives opaque windows. The wizard's transparency answer is discarded |
+| [KI-19](#ki-19) | Low | **Fixed** (2026-10-15 batch) | "Blur This App" writes to the destroyed window menu (journal stack traces), and its post-toggle checkmark uses a different rule than the menu |
+| [KI-20](#ki-20) | Medium | **Fixed** (`903bb45`, verified live 2026-10-20) | A mode switch left open GTK windows on the old alpha until each app was reopened |
+| [KI-21](#ki-21) | Medium | **Fixed** (`903bb45`, verified live 2026-10-20) | Tray Performance profile never showed the opaque shell sheet (shell theme not reloaded) |
 | [KI-22](#ki-22) | Medium | **Fixed** | Settings app never showed the mode in force or the adaptive overlay, and missed changes made outside it |
 | [KI-23](#ki-23) | Medium | **Fixed** | Install/update/uninstall audit: silent failures, lost memos, leftovers |
 | [KI-24](#ki-24) | Low | **Fixed** | Update and full reinstall forgot the extension pack, `--no-osd`, `--no-bms-git`, `--no-rounded-blur`. Text wizard drifted from the GTK wizard |
-| [KI-25](#ki-25) | Medium | **Fixed** | Tray Performance profile left a different desktop from the app's Performance mode (raw shell sheet, no app tint sheet, `hacks-level` and OSD alpha on Frosted's values, restore not exact) |
-| [KI-26](#ki-26) | Medium | **Fixed** (uncommitted, verified live 2026-10-20) | Notification banners sometimes arrive with no visible blur, or washed out until hovered |
-| [KI-27](#ki-27) | Low | **Fixed** (uncommitted) | History cards never get rounded blur corners without gnome-rounded-blur (undefined constant in the notification patch) |
-| [KI-28](#ki-28) | Low | **Fixed** (uncommitted) | The helper never sees adaptive `active` change, so its window opacity misses adaptive transitions |
-| [KI-29](#ki-29) | Low | **Fixed** (uncommitted, 2026-10-20) | No check applies the Blur My Shell patches to the pin or catches undefined names in them (how KI-27 shipped) |
+| [KI-25](#ki-25) | Medium | **Fixed** (`6a3adc1`, verified live 2026-10-20) | Tray Performance profile left a different desktop from the app's Performance mode (raw shell sheet, no app tint sheet, `hacks-level` and OSD alpha on Frosted's values, restore not exact) |
+| [KI-26](#ki-26) | Medium | **Fixed** (`07689ba`, verified live 2026-10-20) | Notification banners sometimes arrive with no visible blur, or washed out until hovered |
+| [KI-27](#ki-27) | Low | **Fixed** (`07689ba`) | History cards never get rounded blur corners without gnome-rounded-blur (undefined constant in the notification patch) |
+| [KI-28](#ki-28) | Low | **Fixed** (`07689ba`) | The helper never sees adaptive `active` change, so its window opacity misses adaptive transitions |
+| [KI-29](#ki-29) | Low | **Fixed** (`07689ba`) | No check applies the Blur My Shell patches to the pin or catches undefined names in them (how KI-27 shipped) |
 
 ---
 
@@ -471,11 +470,22 @@ checkmark the toggle left.
 
 ## Fixed
 
-Fixed in the working tree on 2026-10-15, not yet committed. The entries above are kept for their reproductions until the fix is committed:
+Fixed on 2026-10-15 and committed in that day's batch (`a1419f4` through `6a3adc1`). The entries above are kept for their reproductions.
 
-- **KI-01** — `install.sh`: the narrow `--incremental` branch now calls `remember_glass_mode` (not under `--adaptive-blur`). Verified with the fixture reproductions and the hermetic suite; needs a live check.
-- **KI-02** — `apply_adaptive_blur` takes the no-blur baseline from the mode (`performance`/`solid`); the worker skips `sample()` in performance; `check-adaptive-installer.sh` uses a real `glass-mode=performance` fixture. Verified with the fixture reproductions and the hermetic suite; needs a live check.
-- **KI-03** — new `sync_mode_owned_keys` / `mode_owned_dconf_keys` (`lib/steps-dconf.sh`), run on the preserved-preset path: performance always gets `solid.ini`'s keys; frosted gets `core.ini`'s values back when coming from another mode. Verified with the fixture reproductions and the hermetic suite; needs a live check.
+**Live check, 2026-10-20** (GNOME 51.1, on the maintainer's desktop, through the
+retune and the tray command): Frosted → Performance turned all ten Blur My
+Shell components off, `hacks-level` 0, OSD alpha 100, `shell-80-solid.css` in,
+and reloaded the shell and running GTK apps; Performance → Frosted left the
+dconf dump byte-identical to the start (KI-03, KI-20). The tray Performance
+profile on Frosted matched every mode-owned key of the Performance mode with
+`glass-mode` still `frosted`, and Full restored a byte-identical dump (KI-21,
+KI-25). Both tray profiles in Performance left dconf and both shell sheets
+untouched (KI-02). An incremental `--app-tint-color` survived the next full
+retune in the memo, the drawer and `gtk.css` (KI-01).
+
+- **KI-01** — `install.sh`: the narrow `--incremental` branch now calls `remember_glass_mode` (not under `--adaptive-blur`). Verified with the fixture reproductions and the hermetic suite; verified live 2026-10-20 (below).
+- **KI-02** — `apply_adaptive_blur` takes the no-blur baseline from the mode (`performance`); the worker skips `sample()` in performance (the `solid` half of the baseline went with KI-15); `check-adaptive-installer.sh` uses a real `glass-mode=performance` fixture. Verified with the fixture reproductions and the hermetic suite; verified live 2026-10-20 (below).
+- **KI-03** — new `sync_mode_owned_keys` / `mode_owned_dconf_keys` (`lib/steps-dconf.sh`), run on the preserved-preset path: performance always gets `solid.ini`'s keys; frosted gets `core.ini`'s values back when coming from another mode. Verified with the fixture reproductions and the hermetic suite; verified live 2026-10-20 (below).
 - **Chrome lost its window blur** — Two causes. (1) A working-tree edit pinned `[blur-my-shell/applications] opacity` to 255 (`apply_app_opacity`, install.sh normalisation, adaptive restore). Chrome and Electron paint an opaque background, so the actor opacity is the only way their blur shows; reverted to level × 255. (2) Present at HEAD too: `select_apply_actions` classed `--app-transparency`/`--no-app-transparency` as `css` only, so the settings app's incremental Apply rewrote the stylesheet and left the actor opacity stale. They now also add `app-opacity` (runs `apply_app_opacity`), asserted in `check-incremental-apply.py`. Verified live on 2026-10-15.
 - **KI-04** — `gui_toolkit_present` imports `cairo`; Debian/openSUSE package lists add the cairo binding. Verified with the fixture reproductions and the hermetic suite; needs a live check.
 - **KI-05** — Both wizards recommend Reversal + Moga with the same options in the same order; the text wizard gained Moga and its Complete Experience path moved from AOSP to Moga. A flagless `install.sh` deliberately keeps Colloid + Adwaita (decided 2026-10-15). CONSISTENCY §3 updated. Hermetic suite passes.
@@ -747,7 +757,7 @@ previous patch it reports KI-27's `MESSAGE_CORNER_EFFECT_NAME`.
 
 ---
 
-## Phase 3 fixes (2026-10-20, uncommitted)
+## Phase 3 fixes (2026-10-20, `07689ba`)
 
 - **KI-09** — `bin/aura-glass-adaptive` and `bin/aura-glass-panel-blur` now prefer the checkout's `tools/` worker when run from a checkout's `bin/`, like `aura-glass-operation`. The copies in `~/.local/bin` have no `tools/` beside them, so the services keep the installed worker. `AURA_GLASS_ADAPTIVE_WORKER` still wins.
 - **KI-10** — `ICON_PACK_FAMILIES` knows `Aura-Glass-Moga`. Its nine accent variants are one row (`SINGLE_ROW_FAMILIES`), in use when any variant is, because the accent switch moves between them.
