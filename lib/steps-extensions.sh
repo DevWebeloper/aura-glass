@@ -500,6 +500,18 @@ install_extensions() {
 patch_copyous_extension() {
     local target="$EXT_DIR/copyous@boerdereinar.dev"
     [ -d "$target" ] || return 0
+
+    # Copyous 2.1.2 (and upstream main) connects TextItem's entry listener with
+    # no tracking object, so connectObject throws "No object to track signals"
+    # and that clipboard entry is never built. Its destroy() already calls
+    # entry.disconnectObject(this), so `this` is the object it meant. Checked
+    # apart from the GLSLEffect marker below, which an older run already wrote.
+    local text="$target/lib/ui/items/textItem.js"
+    local untracked="entry.connectObject('notify::content', this.updateTextInfo.bind(this));"
+    if [ -f "$text" ] && grep -qF "$untracked" "$text"; then
+        run sed -i "s|entry\.connectObject('notify::content', this\.updateTextInfo\.bind(this));|entry.connectObject('notify::content', this.updateTextInfo.bind(this), this);|" "$text"
+    fi
+
     local file="$target/lib/ui/items/clipboardItem.js"
     [ -f "$file" ] || return 0
     if grep -q "Shell.GLSLEffect || Clutter.Effect" "$file"; then

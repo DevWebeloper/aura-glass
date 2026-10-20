@@ -16,7 +16,7 @@ app. Two glass modes: frosted and performance.
 3. **Duplicated numbers are checked.** `tokens/tokens.sh` is the truth. Run `tools/check-tokens.sh`.
 4. **"Why this number" comments are the deliverable.** Keep them, and update them with the value.
 5. **Put theme edits on the desktop** with `./install.sh --settings-only -y`. No full installs, uninstall, `--force` or `sudo` steps unless asked.
-6. **`tools/` has three kinds of file.** Runtime helpers (part of the theme: don't move or rename without updating callers). Hermetic `check-*` scripts (safe to run). Live-session tools (`preview*`, `gpu-*`, `check-preview.sh`, `check-shots.py`, `check-moga-cursors.sh`), which you **never run**. Create no new files in `tools/` unless asked.
+6. **`tools/` has three kinds of file.** Runtime helpers (part of the theme: don't move or rename without updating callers). Hermetic `check-*` scripts (safe to run). Live-session tools (`preview*`, `gpu-*`, `check-preview.sh`, `check-shots.py`), which you may run to verify a change live, as their docs say, putting back any desktop state they change (`check-shots.py --accept` only when the user says). Create no new files in `tools/` unless asked.
 7. **Keep every path consistent:** CLI, incremental Apply, mode switch, settings-app re-read, both wizards, preview, adaptive, uninstall ([docs/CONSISTENCY.md](docs/CONSISTENCY.md)).
 8. **Stay in scope.** No unrequested validation, refactors or defensive code.
 9. **No AI attribution** in commits, tags or releases.

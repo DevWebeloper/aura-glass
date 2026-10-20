@@ -104,7 +104,7 @@ install without `--force` (ARCHITECTURE §7).
 
 - **Runtime helpers** (11): `rescale-transparency.py`, `apply-tint-color.py`, `apply-shell-tint.py`, `apply-notification-opacity.py`, `apply-radius-preset.py`, `apply-popup-brightness.py`, `token_manifest.py`, `moga_cursor.py`, `aura_glass_operation.py`, `aura_glass_panel_blur.py`, `aura_glass_adaptive.py`. These are **part of the theme**. `lib/` and `bin/` call them. Don't move or rename one without updating every caller, and don't add new ones unless asked.
 - **Hermetic checks** (`check-*` except the live ones below). Fixture `HOME`, temp dirs, stubs, `--dry-run`. **Agents may run these.**
-- **Live-session tools.** Agents **never** run these: `preview.sh`, `preview-session.sh`, `preview-shot.py`, `preview-extensions.py`, `preview-driver/`, `gpu-live.sh`, `gpu-sample.py`, `check-preview.sh`, `check-shots.py`.
+- **Live-session tools.** `preview.sh`, `preview-session.sh`, `preview-shot.py`, `preview-extensions.py`, `preview-driver/`, `gpu-live.sh`, `gpu-sample.py`, `check-preview.sh`, `check-shots.py`. Agents **may** run these to verify a change live (the nested preview shell, screenshots, GPU sampling). Run them only as their docs say (`preview-session.sh` only through `preview.sh`), and put back any live-desktop state a run changed. `check-shots.py --accept` replaces the baseline, so only on the user's say-so.
 - **Don't create new files in `tools/`** (new checks, new scripts) unless the user asks for them.
 
 ### 7. Keep every path consistent
