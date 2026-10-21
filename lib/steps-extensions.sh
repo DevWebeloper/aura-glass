@@ -340,7 +340,7 @@ install_custom_osd() {
 #
 # It is the only thing this project installs outside $HOME, so it is the only
 # step that asks first — and it asks even under --yes, because agreeing to a
-# theme installer is not the same as agreeing to a package from the AUR.
+# theme installer is not the same as agreeing to a system package.
 #
 # It hard-pins libmutter-18, so every mutter update breaks it until it is
 # rebuilt. That failure is silent by design upstream: Blur My Shell just falls
@@ -362,7 +362,12 @@ install_rounded_blur() {
         return 0
     fi
 
-    if LD_LIBRARY_PATH="/usr/lib/mutter-$GNOME_MAJOR:/usr/lib/mutter-18:${LD_LIBRARY_PATH:-}" gjs -c 'const Blur = imports.gi.Blur; void Blur.BlurEffect;' >/dev/null 2>&1 && [ "${FORCE:-0}" != 1 ]; then
+    # Loadable is not enough: a build without patches/$ROUNDEDBLUR_PATCH (the
+    # AUR package, or an install from before the patch) loads fine and still
+    # puts the blur in the wrong place in screenshots. The stamp makes such a
+    # machine rebuild once.
+    if rounded_blur_loadable && [ "${FORCE:-0}" != 1 ] \
+       && patch_stamp_current rounded-blur-patch "$REPO_ROOT/patches/$ROUNDEDBLUR_PATCH"; then
         skip "gnome-rounded-blur already installed and functional"
         rounded_blur_stamp
         return 0
@@ -379,36 +384,76 @@ install_rounded_blur() {
         [ "${DRY_RUN:-0}" = 1 ] || info "removed the old ~/.local build, which the shell could not load"
     fi
 
+    # Arch gets a pacman package rather than files under /usr that pacman
+    # does not know about, so it replaces an AUR install of the same name
+    # cleanly and `pacman -Rs` still removes it. Not through an AUR helper:
+    # none of them takes a patch.
+    local arch_pkg=0
+    [ "${DISTRO_FAMILY:-}" = arch ] && have makepkg && arch_pkg=1
+
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: install gnome-rounded-blur system-wide (AUR helper or meson + sudo)"
+        if [ "$arch_pkg" = 1 ]; then
+            info "dry-run: build gnome-rounded-blur $ROUNDEDBLUR_REF + patches/$ROUNDEDBLUR_PATCH with makepkg, then sudo pacman -U"
+        else
+            info "dry-run: build gnome-rounded-blur $ROUNDEDBLUR_REF + patches/$ROUNDEDBLUR_PATCH with meson, then sudo meson install"
+        fi
         return 0
     fi
 
-    local helper='' h
-    for h in paru yay; do have "$h" && { helper="$h"; break; }; done
-
-    if [ -z "$helper" ] && ! have meson; then
-        warn "no AUR helper (paru, yay) or meson found to build gnome-rounded-blur."
+    if ! have meson; then
+        warn "meson not found, so gnome-rounded-blur cannot be built."
         warn "Popup blur remains dynamic with corner shader fallback."
         return 0
     fi
 
-    local cmd
-    if [ -n "$helper" ]; then
-        cmd="$helper -S --needed gnome-rounded-blur"
-    else
-        cmd="meson setup --prefix=/usr build && sudo meson install -C build"
+    local src="$SRC_CACHE/gnome-rounded-blur"
+    if [ -d "$src/.git" ]; then
+        run git -C "$src" checkout --quiet -- . 2>/dev/null || true
     fi
+    clone_pinned "$ROUNDEDBLUR_REPO" "$ROUNDEDBLUR_REF" "$src"
+    git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$ROUNDEDBLUR_PATCH" \
+        || { warn "the gnome-rounded-blur patch did not apply — upstream may have moved"; return 0; }
 
-    info "building gnome-rounded-blur:"
-    info "    $cmd"
+    if [ "$arch_pkg" = 1 ]; then
+        info "building gnome-rounded-blur $ROUNDEDBLUR_PKGVER + patches/$ROUNDEDBLUR_PATCH (makepkg, then sudo pacman -U)"
+        local pkgdir="$src/pkgbuild"
+        rm -rf "$pkgdir" "$src/build"
+        mkdir -p "$pkgdir"
+        # pkgrel 1.1, one step above the AUR's 1, so an AUR helper's upgrade
+        # does not swap this build back for the unpatched one of the same
+        # release. -d: makepkg would otherwise want to install makedepends
+        # itself; meson is checked above, and the build says what else is
+        # missing.
+        cat > "$pkgdir/PKGBUILD" <<PKG
+pkgname=gnome-rounded-blur
+pkgver=$ROUNDEDBLUR_PKGVER
+pkgrel=1.1
+pkgdesc="GNOME Shell BlurEffect with rounded corners (aura-glass build, patched)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/kancko/gnome-rounded-blur"
+license=('GPL-3.0-or-later')
+depends=('glib2' 'graphene' 'mutter')
+makedepends=('meson' 'gobject-introspection')
+options=('!debug')
 
-    if [ -n "$helper" ]; then
-        "$helper" -S --needed gnome-rounded-blur \
-            || { warn "the AUR build failed — popup blur uses corner shader fallback"; return 0; }
+build() {
+  arch-meson "$src" build
+  meson compile -C build
+}
+
+package() {
+  meson install -C build --destdir "\$pkgdir"
+}
+PKG
+        # PKGDEST: makepkg.conf may send the package somewhere else.
+        ( cd "$pkgdir" && PKGDEST="$pkgdir" makepkg -f -d --noconfirm >/dev/null ) \
+            || { warn "the gnome-rounded-blur build failed — popup blur uses corner shader fallback"; return 0; }
+        local pkg
+        pkg="$(ls "$pkgdir"/gnome-rounded-blur-"$ROUNDEDBLUR_PKGVER"-1.1-*.pkg.tar.* 2>/dev/null | head -1)"
+        [ -n "$pkg" ] && sudo pacman -U --noconfirm "$pkg" \
+            || { warn "installing the gnome-rounded-blur package failed — popup blur uses corner shader fallback"; return 0; }
     else
-        local src="$SRC_CACHE/gnome-rounded-blur"
-        clone_pinned "$ROUNDEDBLUR_REPO" "$ROUNDEDBLUR_REF" "$src"
+        info "building gnome-rounded-blur $ROUNDEDBLUR_REF + patches/$ROUNDEDBLUR_PATCH (meson, then sudo meson install)"
         ( cd "$src" && rm -rf build \
             && meson setup --prefix=/usr build \
             && meson compile -C build \
@@ -416,21 +461,27 @@ install_rounded_blur() {
             || { warn "the meson build failed — popup blur uses corner shader fallback"; return 0; }
     fi
 
+    patch_stamp_write rounded-blur-patch "$REPO_ROOT/patches/$ROUNDEDBLUR_PATCH"
     rounded_blur_stamp
-    ok "gnome-rounded-blur installed"
+    ok "gnome-rounded-blur installed (with patches/$ROUNDEDBLUR_PATCH)"
+}
+
+# Whether the shell can load Blur.BlurEffect at all.
+rounded_blur_loadable() {
+    LD_LIBRARY_PATH="/usr/lib/mutter-$GNOME_MAJOR:/usr/lib/mutter-18:${LD_LIBRARY_PATH:-}" \
+        gjs -c 'const Blur = imports.gi.Blur; void Blur.BlurEffect;' >/dev/null 2>&1
 }
 
 # Whether install_rounded_blur may reach for sudo, so install.sh only asks for
-# a password up front when it will be used (KI-11). An AUR helper asks for its
-# own; only the meson fallback runs `sudo meson install`. There is no rootless
-# build: one in ~/.local is never found by the shell (KI-12).
+# a password up front when it will be used (KI-11): only when it will build,
+# and both builds end in sudo (pacman -U, or meson install). There is no
+# rootless build: one in ~/.local is never found by the shell (KI-12).
 rounded_blur_needs_root() {
     [ "${WANT_ROUNDED_BLUR:-1}" = 1 ] || return 1
-    if LD_LIBRARY_PATH="/usr/lib/mutter-$GNOME_MAJOR:/usr/lib/mutter-18:${LD_LIBRARY_PATH:-}" gjs -c 'const Blur = imports.gi.Blur; void Blur.BlurEffect;' >/dev/null 2>&1 && [ "${FORCE:-0}" != 1 ]; then
+    if rounded_blur_loadable && [ "${FORCE:-0}" != 1 ] \
+       && patch_stamp_current rounded-blur-patch "$REPO_ROOT/patches/$ROUNDEDBLUR_PATCH"; then
         return 1
     fi
-    have paru && return 1
-    have yay && return 1
     have meson
 }
 

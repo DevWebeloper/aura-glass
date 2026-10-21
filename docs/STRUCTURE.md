@@ -84,6 +84,7 @@ For "which file draws this button / owns this setting", use
 | `blur-my-shell-notifications.patch` | BMS: split notifications onto their own `popup/notification` key |
 | `custom-osd-gnome50.patch` | Custom OSD on GNOME 50/51 |
 | `copyous-gnome51.patch` | Copyous on GNOME 51 |
+| `gnome-rounded-blur-offstage.patch` | gnome-rounded-blur: place the background blur right in screenshots (off-stage paints) |
 
 ### `bin/`: commands (most installed into `~/.local/bin`)
 

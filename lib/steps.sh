@@ -61,6 +61,17 @@ BMS_NOTIF_PATCH="blur-my-shell-notifications.patch"
 
 ROUNDEDBLUR_REPO="https://github.com/kancko/gnome-rounded-blur.git"
 ROUNDEDBLUR_REF="a4db9e5947b1"    # v1.0.2
+ROUNDEDBLUR_PKGVER="1.0.2"        # the release ROUNDEDBLUR_REF is, for the Arch package
+# In an off-stage paint (a screenshot) upstream's BACKGROUND blur has no stage
+# view, so it maps the actor box at scale 1 from the stage origin. Mutter paints
+# a capture with the viewport at -(rect.x * scale), -(rect.y * scale), so with
+# mixed-scale monitors, or a capture of one monitor that does not start at 0,0,
+# the blur behind a window sampled another part of the screen in the
+# screenshot. The patch reads scale and origin back from that viewport. Blur My
+# Shell's dynamic blur goes through this library whenever it loads, so this is
+# where the fix has to be: patching GNOME Shell's copy changes nothing. See the
+# patch's own comment.
+ROUNDEDBLUR_PATCH="gnome-rounded-blur-offstage.patch"
 
 # For ensure_aur_helper in lib/distro.sh. Unpinned, unlike everything else
 # here: an AUR PKGBUILD's checksums point at a specific upstream release

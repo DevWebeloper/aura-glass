@@ -399,15 +399,19 @@ after 30 s instead of interleaving.
 | Base theme | kayozxo/GNOME-macOS-Tahoe | `6dfcd9d941e5` (installed as `Tahoe-Dark`, adopted as `Aura-Glass`) |
 | Blur My Shell | aunetx/blur-my-shell | `425761d55049` (v73) + 3 patches |
 | Custom OSD | neuromorph/custom-osd | `334ac17e9348` + GNOME 50/51 patch |
-| gnome-rounded-blur | kancko/gnome-rounded-blur | `a4db9e5947b1` (v1.0.2) |
+| gnome-rounded-blur | kancko/gnome-rounded-blur | `a4db9e5947b1` (v1.0.2) + `patches/gnome-rounded-blur-offstage.patch` |
 | Colloid / Reversal / MacTahoe icons | vinceliuice, yeyushengfan258, vinceliuice | `c9e702beb96f` / `2c8122287e3b` / `b85923bb87f5` |
 | Hatter icons | Mibea/Hatter | full SHA, shallow sparse fetch |
 | AOSP cursors | Tech-Tac/aosp-cursors | release 1.3.1 + sha256 |
 | Moga cursors | gnome-look.org/p/2302110 | release metadata resolved by `tools/moga_cursor.py` |
 | Fonts | Inter 4.1 (sha256), MiSans (sha256 as notice; URLs unversioned), SF Pro mirror `8bfea09aa6f1` | |
 
-`gnome-rounded-blur` is installed system-wide, where the shell finds it: with
-the AUR helper (`paru`/`yay`), or `meson … && sudo meson install`. There is no
+`gnome-rounded-blur` is built from the pin plus its patch and installed
+system-wide, where the shell finds it: on Arch as a `makepkg` package
+(`1.0.2-1.1`, one pkgrel above the AUR's) through `sudo pacman -U`, elsewhere
+with `meson … && sudo meson install`. Not through an AUR helper, which cannot
+apply a patch. The `rounded-blur-patch` stamp makes an unpatched install (the
+AUR package, or one from before the patch) rebuild once. There is no
 rootless build. One in `~/.local` never loads, because the shell searches
 neither `~/.local/lib` nor `~/.local/share/girepository-1.0` (KI-12), so an old
 one is removed.
