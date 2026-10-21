@@ -636,6 +636,8 @@ FLAG_LABELS = {
     "--window-buttons": ("appearance", "Titlebar buttons"),
     "--titlebar-button-style": ("appearance", "Titlebar button style"),
     "--glass-style": ("glass", "Glass style"),
+    "--liquid-windows": ("glass", "Liquid behind app windows"),
+    "--no-liquid-windows": ("glass", "Liquid behind app windows"),
     "--update-check": ("updates", "Daily update check"),
     "--no-update-check": ("updates", "Daily update check"),
     "--update-channel": ("updates", "Update channel"),
@@ -2331,6 +2333,9 @@ class Settings:
         self.glass_style = read_memo("glass-style", "frosted") or "frosted"
         if self.glass_style not in [g[0] for g in GLASS_STYLES]:
             self.glass_style = "frosted"
+        # Kept whatever the style, as apply_glass_style keeps it, so going
+        # back to liquid brings the windows back the way they were.
+        self.liquid_windows = read_memo("liquid-windows", "0") == "1"
 
         # A user systemd unit rather than a look, but a remembered setting like
         # any other, so it rides on Apply.
@@ -2505,6 +2510,9 @@ class Settings:
             args += ["--titlebar-button-style", self.titlebutton_style]
         if self.glass_style != other.glass_style:
             args += ["--glass-style", self.glass_style]
+        if self.liquid_windows != other.liquid_windows:
+            args.append("--liquid-windows" if self.liquid_windows
+                        else "--no-liquid-windows")
         # --radius-custom implies the custom preset, so it stands in for
         # --radius-preset rather than joining it. Sent when the eight values
         # moved even if the preset name did not, because "custom" says nothing
@@ -4647,6 +4655,14 @@ class Window(Adw.ApplicationWindow):
             "Style", "", GLASS_STYLES, self._applied.glass_style,
             "glass_style")
         style.add(self._glass_style_row)
+        self._liquid_windows_row = Adw.SwitchRow(
+            title="Liquid behind app windows",
+            subtitle="Window blur turns static: a window blurs the wallpaper, "
+                     "not the window under it",
+            active=self._applied.liquid_windows)
+        self._liquid_windows_row.connect("notify::active", self._on_changed,
+                                         "liquid_windows")
+        style.add(self._liquid_windows_row)
         page.add(style)
         page.add(self._build_window_brightness_group("frosted"))
         page.add(self._build_popup_brightness_group("frosted"))
@@ -6874,6 +6890,7 @@ class Window(Adw.ApplicationWindow):
             self._titlebutton_style_row.get_selected()]
         s.glass_style = self._glass_style_row._ids[
             self._glass_style_row.get_selected()]
+        s.liquid_windows = self._liquid_windows_row.get_active()
         s.panel_blur_fix = self._panel_blur_row.get_active()
         s.update_check = self._update_check_row.get_active()
         # Not settings, so they never differ and never produce a flag. Carried so
@@ -6901,6 +6918,11 @@ class Window(Adw.ApplicationWindow):
         # that row stays live.
         self._tint_rows["frosted"]["app"].set_sensitive(live)
         self._tint_rows["frosted"]["link"].set_sensitive(live)
+
+        # Only liquid has a refraction for app windows to take.
+        self._liquid_windows_row.set_sensitive(
+            self._glass_style_row._ids[self._glass_style_row.get_selected()]
+            == "liquid")
 
     def _mark_dirty(self):
         args = self._current().flags_against(self._applied)
@@ -7049,7 +7071,7 @@ class Window(Adw.ApplicationWindow):
             self._button_pixels = int(self._radius_rows["button"].get_value())
             self._sync_radius_state()
 
-        if key in ("transparency", "scope", "icons"):
+        if key in ("transparency", "scope", "icons", "glass_style"):
             self._sync_sensitivity()
         # The scope decides which list is consulted, so it decides which badge
         # is lit. The mode does too, and _on_mode_switched says so there.
@@ -7139,6 +7161,7 @@ class Window(Adw.ApplicationWindow):
         self._refill_contextual_choice(
             self._glass_style_row, GLASS_STYLES,
             self._applied.glass_style, "glass_style")
+        self._liquid_windows_row.set_active(self._applied.liquid_windows)
         self._panel_blur_row.set_active(self._applied.panel_blur_fix)
         self._update_check_row.set_active(self._applied.update_check)
         self._update_channel_row.set_selected(

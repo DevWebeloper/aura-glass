@@ -131,6 +131,8 @@ ICONS_EXPLICIT=""
 GRAIN=""          # empty keeps the preset's value, or the remembered choice
 GLASS_STYLE=""      # empty = remembered choice, then frosted
 GLASS_STYLE_EXPLICIT=""
+LIQUID_WINDOWS=""   # empty = remembered choice, then 0
+LIQUID_WINDOWS_EXPLICIT=""
 BLUR_STRENGTH=""    # empty = remembered choice, then the tuned radii (100)
 ADAPTIVE_BLUR=""     # private transient writer: active | restore, never memoed
 POPUP_BRIGHTNESS=""      # empty = remembered choice, then the preset (115)
@@ -199,6 +201,10 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       like a lens, with a light rim). Liquid makes the dock blur
                       the wallpaper rather than the windows passing behind it.
                       Frosted mode only. Remembered for later runs
+    --liquid-windows  liquid behind app windows too. Window blur turns static:
+                      a window blurs the wallpaper, not the window under it
+    --no-liquid-windows
+                      app windows keep the frosted blur (the default)
     --blur-strength P how far every blur reaches, as a percentage of the tuned
                       radii: 25-200, 100 is the tuned look (remembered)
     --popup-brightness P
@@ -353,6 +359,8 @@ parse_flags() {
         --no-grain)      GRAIN=0; EXPLICIT_FLAGS=1; shift ;;
         --glass-style)   GLASS_STYLE="${2:-}"; GLASS_STYLE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --glass-style=*) GLASS_STYLE="${1#*=}"; GLASS_STYLE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --liquid-windows)    LIQUID_WINDOWS=1; LIQUID_WINDOWS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-liquid-windows) LIQUID_WINDOWS=0; LIQUID_WINDOWS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --blur-strength) BLUR_STRENGTH="${2:-100}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --blur-strength=*) BLUR_STRENGTH="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --adaptive-blur) ADAPTIVE_BLUR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;

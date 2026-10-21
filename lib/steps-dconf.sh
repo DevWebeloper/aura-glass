@@ -240,19 +240,22 @@ if new != cur:
 PIPELINE_PY
 }
 
-# The material on the top bar and the dock: frosted (the blur alone) or liquid
-# (Blur My Shell's refraction effect after the blur: the edge band bends the
-# blurred backdrop like a lens and catches a light rim).
+# The material on the top bar and the dock, and optionally behind app windows:
+# frosted (the blur alone) or liquid (Blur My Shell's refraction effect after
+# the blur: the edge band bends the blurred backdrop like a lens and catches a
+# light rim).
 #
-# Only the top bar and the dock, and only as static blur. Blur My Shell runs a
-# pipeline's extra effects on static blur alone: a dynamic surface goes through
-# DummyPipeline, which builds the native blur and nothing else from it. Chaining
-# one more shader after a dynamic blur does not work either. The shader gets
-# the actor's own texture, which is empty, not the blurred backdrop. That is
-# the same reason a dynamic popup's corners come out square without
-# gnome-rounded-blur (see [blur-my-shell/popup] in dconf/core.ini). So liquid
-# switches the dock to static blur, which blurs the wallpaper rather than the
-# windows passing behind it. Menus, notifications and app windows keep their
+# Only on static blur. Blur My Shell runs a pipeline's extra effects on static
+# blur alone: a dynamic surface goes through DummyPipeline, which builds the
+# native blur and nothing else from it. Chaining one more shader after a
+# dynamic blur does not work either. The shader gets the actor's own texture,
+# which is empty, not the blurred backdrop. That is the same reason a dynamic
+# popup's corners come out square without gnome-rounded-blur (see
+# [blur-my-shell/popup] in dconf/core.ini). So liquid switches the dock to
+# static blur, which blurs the wallpaper rather than the windows passing behind
+# it. App windows follow only when --liquid-windows asks, for the same trade
+# on a much bigger surface: every blurred window then shows the wallpaper
+# behind it, not the window under it. Menus and notifications keep their
 # dynamic frosted blur. Their pipeline is one for every popup surface, with
 # radii from 12 to 33, and one refraction corner radius cannot fit them all.
 #
@@ -270,10 +273,25 @@ PIPELINE_PY
 # rewrites all land in the same state.
 VALID_GLASS_STYLES="frosted liquid"
 
+# Puts one static-blur key back to what dconf/core.ini ships, or to Blur My
+# Shell's own default where core.ini does not set it ([applications] does not).
+restore_static_blur() {   # SECTION
+    local value
+    value="$(awk -F= -v sec="[blur-my-shell/$1]" '/^\[/{s=($0==sec)} s&&$1=="static-blur"{print $2; exit}' \
+        "$REPO_ROOT/dconf/core.ini")"
+    if [ -n "$value" ]; then
+        run dconf write "/org/gnome/shell/extensions/blur-my-shell/$1/static-blur" "$value"
+    else
+        run dconf reset "/org/gnome/shell/extensions/blur-my-shell/$1/static-blur"
+    fi
+}
+
 apply_glass_style() {
     local base=/org/gnome/shell/extensions/blur-my-shell
     local want="${GLASS_STYLE:-}" memo="$CONF_DIR/glass-style" previous
+    local windows="${LIQUID_WINDOWS:-}" windows_memo="$CONF_DIR/liquid-windows" previous_windows
     previous="$(cat "$memo" 2>/dev/null || true)"
+    previous_windows="$(cat "$windows_memo" 2>/dev/null || true)"
     if [ -z "${GLASS_STYLE_EXPLICIT:-}" ] || [ -z "$want" ]; then
         want="${previous:-frosted}"
     fi
@@ -281,29 +299,37 @@ apply_glass_style() {
         *" $want "*) ;;
         *) warn "unknown glass style '$want' — using frosted"; want=frosted ;;
     esac
+    if [ -z "${LIQUID_WINDOWS_EXPLICIT:-}" ] || [ -z "$windows" ]; then
+        windows="${previous_windows:-0}"
+    fi
+    [ "$windows" = 1 ] || windows=0
 
     # Performance has no blur for a style to shape. The choice is still
     # remembered, so it is there when frosted comes back.
     if [ "${WANT_BLUR:-1}" != 1 ]; then
-        if [ -n "${GLASS_STYLE_EXPLICIT:-}" ] && remembering; then
+        if remembering; then
             mkdir -p "$CONF_DIR"
-            printf '%s\n' "$want" > "$memo"
+            [ -n "${GLASS_STYLE_EXPLICIT:-}" ] && printf '%s\n' "$want" > "$memo"
+            [ -n "${LIQUID_WINDOWS_EXPLICIT:-}" ] && printf '%s\n' "$windows" > "$windows_memo"
         fi
         skip "glass style left alone (no blur to shape)"
         return 0
     fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: glass style $want on the top bar and the dock"
+        info "dry-run: glass style $want on the top bar and the dock (app windows: $windows)"
         return 0
     fi
 
-    python3 - "$want" <<'STYLE_PY' || { warn "could not set the glass style"; return 0; }
+    local names="panel dock"
+    [ "$want" = liquid ] && [ "$windows" = 1 ] && names="$names windows"
+
+    python3 - "$want" $names <<'STYLE_PY' || { warn "could not set the glass style"; return 0; }
 import re
 import subprocess
 import sys
 
-want = sys.argv[1]
+want, names = sys.argv[1], sys.argv[2:]
 KEY = "/org/gnome/shell/extensions/blur-my-shell/pipelines"
 PREFIX = "effect_aura_glass_style_"
 cur = subprocess.run(["dconf", "read", KEY],
@@ -365,7 +391,7 @@ def effects_span(blob, name):
 
 
 if want == "liquid":
-    for name in ("panel", "dock"):
+    for name in names:
         span = effects_span(new, name)
         if span is None:
             print("no `%s` pipeline in %s — it stays frosted" % (name, KEY),
@@ -388,22 +414,28 @@ if new != cur:
     subprocess.run(["dconf", "write", KEY, new], check=True)
 STYLE_PY
 
-    # The dock's refraction only runs on static blur (see above). Frosted puts
-    # back the preset's value, but only when coming back from liquid: a dock a
-    # user made static on their own stays static.
+    # The refraction only runs on static blur (see above). Leaving liquid puts
+    # back the preset's value, but only for a surface liquid had switched: a
+    # dock a user made static on their own stays static.
     if [ "$want" = liquid ]; then
         run dconf write "$base/dash-to-dock/static-blur" true
     elif [ "$previous" = liquid ]; then
-        run dconf write "$base/dash-to-dock/static-blur" \
-            "$(awk -F= '/^\[/{s=($0=="[blur-my-shell/dash-to-dock]")} s&&$1=="static-blur"{print $2; exit}' \
-                "$REPO_ROOT/dconf/core.ini")"
+        restore_static_blur dash-to-dock
+    fi
+    if [ "$want" = liquid ] && [ "$windows" = 1 ]; then
+        run dconf write "$base/applications/static-blur" true
+    elif [ "$previous" = liquid ] && [ "$previous_windows" = 1 ]; then
+        restore_static_blur applications
     fi
 
     if remembering; then
         mkdir -p "$CONF_DIR"
         printf '%s\n' "$want" > "$memo"
+        printf '%s\n' "$windows" > "$windows_memo"
     fi
-    if [ "$want" = liquid ]; then
+    if [ "$want" = liquid ] && [ "$windows" = 1 ]; then
+        ok "liquid glass on the top bar, the dock and app windows (remembered for later runs)"
+    elif [ "$want" = liquid ]; then
         ok "liquid glass on the top bar and the dock (remembered for later runs)"
     else
         ok "frosted glass on the top bar and the dock"
