@@ -537,7 +537,7 @@ GLASS_STYLES = [
     ("vibrant", "Vibrant",
      "The colours behind the top bar and the overview come through richer "
      "and a little brighter. The dock keeps its live frosted blur"),
-]]
+]
 
 # Appearance selectors share one small piece of row metadata.  Icon colour is
 # the only dependent list today: the family decides which variants it can
