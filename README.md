@@ -11,6 +11,23 @@
 > and GTK3, and a settings app to retune it all. Everything installs under your
 > home directory and comes back out with `./uninstall.sh`.
 
+<p align="center">
+  <img src="screenshots/showcase.gif" width="100%" alt="Aura Glass on GNOME Shell: overview, desktop, settings app, Quick Settings, notification and app windows">
+</p>
+
+<p align="center">
+  <a href="screenshots/overview.webp"><img src="screenshots/overview.webp" height="110" alt="Overview with the dock and workspace thumbnails"></a>
+  <a href="screenshots/desktop.webp"><img src="screenshots/desktop.webp" height="110" alt="Files, a terminal and the settings app on the blur"></a>
+  <a href="screenshots/settings-app.webp"><img src="screenshots/settings-app.webp" height="110" alt="Aura Glass Settings"></a>
+  <br>
+  <a href="screenshots/quick-settings.webp"><img src="screenshots/quick-settings.webp" height="120" alt="Quick Settings"></a>
+  <a href="screenshots/notification.webp"><img src="screenshots/notification.webp" height="120" alt="A notification banner"></a>
+  <a href="screenshots/app-window.webp"><img src="screenshots/app-window.webp" height="120" alt="A translucent app window"></a>
+  <a href="screenshots/youtube-music.webp"><img src="screenshots/youtube-music.webp" height="120" alt="YouTube Music on the frosted glass"></a>
+</p>
+
+<p align="center"><sub>Click any screenshot for full size.</sub></p>
+
 ---
 
 ## What it is
@@ -70,6 +87,8 @@ what's behind them like a lens and catch a light rim. Both surfaces are then
 static blur, computed once per wallpaper, so it costs no GPU while you work. The
 dock then blurs the wallpaper instead of the windows passing behind it. Pick it
 in **Glass → Glass style**, or run `./install.sh --settings-only --glass-style liquid -y`.
+**Liquid behind app windows** (`--liquid-windows`) puts it behind Files and every
+other blurred window too. Those then blur the wallpaper, not the window under them.
 
 **Adaptive performance** sits on top of Frosted. A top-bar menu offers
 **Auto / Full Glass / Performance**. In *Auto*, blur is dropped temporarily
@@ -87,8 +106,6 @@ Open **Aura Glass** from the app grid, or run `aura-glass-settings`.
 - **Per-app blur.** A switch per app, the windows open right now, wildcard patterns, and the games that trigger Performance.
 - **Extensions, Packages, System, Updates, Uninstall.**
 
-**Liquid behind app windows** (`--liquid-windows`) puts it behind Files and every
-other blurred window too. Those then blur the wallpaper, not the window under them.
 Changes can be previewed live and are applied with one button.
 
 ## Handy commands
