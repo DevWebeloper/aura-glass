@@ -82,7 +82,8 @@ This is the mechanism everything else defends.
   what lets the preview and the adaptive worker call the real functions without
   changing what the next run resolves to.
 - **Some keys resolve at the point of use** rather than in the block:
-  `--window-buttons`, `--cursor-size` and `--titlebar-button-style` read their
+  `--window-buttons`, `--cursor-size`, `--titlebar-button-style` and
+  `--glass-style` read their
   memo inside their `apply_*`, so a run that dies early never records a value it
   didn't apply.
 

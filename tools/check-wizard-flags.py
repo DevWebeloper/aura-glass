@@ -8,7 +8,7 @@ therefore only as correct as that command line, and a wizard that composes a
 list install.sh rejects has turned a working install into an error message
 before a single file was written.
 
-So this checks four things:
+So this checks five things:
 
   composition — the exact argument list for a set of answers. Reading these
       cases is the fastest way to see what pressing Install will do.
@@ -25,6 +25,9 @@ So this checks four things:
   links — the icon and pointer pack URLs, against lib/steps.sh's clone pins.
       The window offers to open somebody else's project; it should be the one
       the installer is about to clone.
+
+  accent colours — the swatch hex for each accent, against accent_hex in
+      lib/steps-dconf.sh, which tints the tinted glass style with it.
 
 Run it after changing Answers.to_argv, after changing the pages, and after
 changing any flag in install.sh that the wizard sends.
@@ -285,6 +288,25 @@ def check_links():
 
 
 check_links()
+
+
+# ---- accent colours ---------------------------------------------------------
+# The wizard's swatches and lib/steps-dconf.sh's accent_hex (the tinted glass
+# style's colour) are two copies of libadwaita's nine accents. The swatch is
+# what someone picks; the shell is then tinted with the other copy.
+def check_accent_colours():
+    for name, _label, swatch in wiz.ACCENTS:
+        res = subprocess.run(
+            ["bash", "-c", '. "$1/lib/steps-dconf.sh"; accent_hex "$2"',
+             "_", ROOT, name], capture_output=True, text=True)
+        got = res.stdout.strip()
+        if res.returncode != 0 or "#" + got != swatch.lower():
+            failures.append("accent colours: the wizard shows %s as %s, but "
+                            "accent_hex tints the glass %s"
+                            % (name, swatch, "#" + got if got else "(nothing)"))
+
+
+check_accent_colours()
 
 # Acceptance. --dry-run resolves and prints without writing anything, so this
 # runs against the real installer on a real machine and still changes nothing.

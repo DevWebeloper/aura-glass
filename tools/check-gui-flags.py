@@ -67,6 +67,8 @@ def state(**kw):
     s.font = kw.get("font", "system")
     s.window_buttons = kw.get("window_buttons", "")
     s.titlebutton_style = kw.get("titlebutton_style", "minimal")
+    s.glass_style = kw.get("glass_style", "frosted")
+    s.liquid_windows = kw.get("liquid_windows", False)
     s.panel_blur_fix = kw.get("panel_blur_fix", True)
     s.update_check = kw.get("update_check", True)
     s.update_channel = kw.get("update_channel", "release")
@@ -338,6 +340,34 @@ CASES = [
     ("titlebar button style back to minimal",
      state(titlebutton_style="material"), FROSTED,
      ["--titlebar-button-style", "minimal"]),
+
+    ("glass style to liquid", FROSTED, state(glass_style="liquid"),
+     ["--glass-style", "liquid"]),
+
+    ("glass style back to frosted", state(glass_style="liquid"), FROSTED,
+     ["--glass-style", "frosted"]),
+
+    ("glass style to vibrant", FROSTED, state(glass_style="vibrant"),
+     ["--glass-style", "vibrant"]),
+
+    ("glass style from liquid to vibrant", state(glass_style="liquid"),
+     state(glass_style="vibrant"), ["--glass-style", "vibrant"]),
+
+    ("liquid behind app windows", state(glass_style="liquid"),
+     state(glass_style="liquid", liquid_windows=True), ["--liquid-windows"]),
+
+    ("glass style to tinted", FROSTED, state(glass_style="tinted"),
+     ["--glass-style", "tinted"]),
+
+    ("glass style from vibrant to smoked", state(glass_style="vibrant"),
+     state(glass_style="smoked"), ["--glass-style", "smoked"]),
+
+    ("vibrant behind app windows", state(glass_style="vibrant"),
+     state(glass_style="vibrant", liquid_windows=True), ["--liquid-windows"]),
+
+    ("app windows back to frosted",
+     state(glass_style="liquid", liquid_windows=True),
+     state(glass_style="liquid"), ["--no-liquid-windows"]),
 
     # The family goes out bare, so install.sh maps it to a colour Reversal
     # ships. Naming the colour here would need a second copy of that mapping —

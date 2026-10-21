@@ -293,6 +293,11 @@ cmd_set() {
     # corner back to the shipped 30 behind a window painted at the candidate.
     # load_dconf in lib/steps-dconf.sh keeps the same order for the same reason.
     apply_radius_dconf >/dev/null
+
+    # After the radius, as in load_dconf: the strength block's reset drops the
+    # remembered style's refraction effects from the blob, and they take their
+    # corner radius from the corner effect apply_radius_dconf writes.
+    apply_glass_style >/dev/null
 }
 
 cmd_apps() {
@@ -417,8 +422,37 @@ cmd_revert() {
         [ -f "$sheet" ] && cp -a "$sheet" "$CONF_DIR/$(basename "$sheet")"
     done
 
-    dconf reset -f "$BMS/"
+    # One atomic load, then a reset of only the keys begin did not find. Not
+    # `dconf reset -f` and a load: between those two the `pipelines` blob is
+    # Blur My Shell's own default, which has none of our pipelines. Every
+    # surface on one of them gets `pipeline-destroyed` and moves itself to
+    # pipeline_default, and when the load brings the pipeline back Blur My
+    # Shell only emits `pipeline-created`, which no surface listens for. The
+    # overview (pipeline `lock screen`) then kept the default blur, or the
+    # one from before the preview, until something rebuilt it: the overview
+    # "sometimes" not showing what the settings window had just applied.
     dconf load "$BMS/" < "$BACKUP/blur-my-shell.dconf"
+    local key
+    while IFS= read -r key; do
+        dconf reset "$BMS/$key"
+    done < <(dconf dump "$BMS/" | python3 -c '
+import sys
+
+def keys(lines):
+    section, out = "", set()
+    for line in lines:
+        line = line.rstrip("\n")
+        if line.startswith("[") and line.endswith("]"):
+            section = "" if line == "[/]" else line[1:-1] + "/"
+        elif "=" in line:
+            out.add(section + line.split("=", 1)[0])
+    return out
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    kept = keys(fh)
+for key in sorted(keys(sys.stdin) - kept):
+    print(key)
+' "$BACKUP/blur-my-shell.dconf")
 
     restore_memos
 

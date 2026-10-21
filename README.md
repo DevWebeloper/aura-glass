@@ -82,6 +82,20 @@ session. The settings app opens itself once on your next login.
 Each mode remembers its own tint and transparency. Switch between them in
 **Aura Glass Settings → Glass**, or run `./install.sh --settings-only --glass-mode performance -y`.
 
+Frosted has a **Liquid** style for the top bar and the dock: their edges bend
+what's behind them like a lens and catch a light rim. Both surfaces are then
+static blur, computed once per wallpaper, so it costs no GPU while you work. The
+dock then blurs the wallpaper instead of the windows passing behind it. Pick it
+in **Glass → Glass style**, or run `./install.sh --settings-only --glass-style liquid -y`.
+The **Vibrant** style lets the colours behind the top bar and the overview come
+through richer and a little brighter, as macOS vibrancy does. The dock keeps its
+live frosted blur
+(`./install.sh --settings-only --glass-style vibrant -y`).
+**Tinted** colours the same glass toward your accent, and **Smoked** makes it
+darker and greyer so white text reads more easily (`--glass-style tinted`,
+`--glass-style smoked`). Behind app windows the matching settings are the
+window tint colour and window blur brightness, which keep the live blur.
+
 **Adaptive performance** sits on top of Frosted. A top-bar menu offers
 **Auto / Full Glass / Performance**. In *Auto*, blur is dropped temporarily
 while you're on battery, while the GPU is busy (≥ 80 % for ~6 s), or while a game
@@ -98,6 +112,8 @@ Open **Aura Glass** from the app grid, or run `aura-glass-settings`.
 - **Per-app blur.** A switch per app, the windows open right now, wildcard patterns, and the games that trigger Performance.
 - **Extensions, Packages, System, Updates, Uninstall.**
 
+**Glass style behind app windows** (`--liquid-windows`) puts liquid or vibrant
+behind Files and every other blurred window too. Those then blur the wallpaper, not the window under them.
 Changes can be previewed live and are applied with one button.
 
 ## Handy commands

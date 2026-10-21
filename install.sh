@@ -129,6 +129,10 @@ FONT_EXPLICIT=""
 ICONS=""            # empty = remembered choice, then colloid
 ICONS_EXPLICIT=""
 GRAIN=""          # empty keeps the preset's value, or the remembered choice
+GLASS_STYLE=""      # empty = remembered choice, then frosted
+GLASS_STYLE_EXPLICIT=""
+LIQUID_WINDOWS=""   # empty = remembered choice, then 0
+LIQUID_WINDOWS_EXPLICIT=""
 BLUR_STRENGTH=""    # empty = remembered choice, then the tuned radii (100)
 ADAPTIVE_BLUR=""     # private transient writer: active | restore, never memoed
 POPUP_BRIGHTNESS=""      # empty = remembered choice, then the preset (115)
@@ -192,6 +196,21 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       wizard's per-extension list sends
     --grain N         film grain over blurred surfaces, 0-1. Default is 0
     --no-grain        no grain at all (same as --grain 0, and the default)
+    --glass-style S   the material on the top bar and the dock: frosted (default,
+                      plain blur), liquid (the edges bend what is behind them
+                      like a lens, with a light rim) or vibrant (the colours
+                      behind come through more saturated and a little
+                      brighter), tinted (toward the accent colour) or smoked
+                      (darker and greyer, for white text). Vibrant, tinted
+                      and smoked reach the overview and lock screen too and
+                      leave the dock frosted. Liquid makes the dock blur the
+                      wallpaper rather than the windows passing behind it. Frosted mode only. Remembered
+                      for later runs
+    --liquid-windows  liquid or vibrant behind app windows
+                      too. Window blur turns static: a window blurs the
+                      wallpaper, not the window under it
+    --no-liquid-windows
+                      app windows keep the frosted blur (the default)
     --blur-strength P how far every blur reaches, as a percentage of the tuned
                       radii: 25-200, 100 is the tuned look (remembered)
     --popup-brightness P
@@ -344,6 +363,10 @@ parse_flags() {
         --grain)         GRAIN="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --grain=*)       GRAIN="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --no-grain)      GRAIN=0; EXPLICIT_FLAGS=1; shift ;;
+        --glass-style)   GLASS_STYLE="${2:-}"; GLASS_STYLE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --glass-style=*) GLASS_STYLE="${1#*=}"; GLASS_STYLE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --liquid-windows)    LIQUID_WINDOWS=1; LIQUID_WINDOWS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-liquid-windows) LIQUID_WINDOWS=0; LIQUID_WINDOWS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --blur-strength) BLUR_STRENGTH="${2:-100}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --blur-strength=*) BLUR_STRENGTH="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --adaptive-blur) ADAPTIVE_BLUR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
@@ -1216,6 +1239,14 @@ if [ -n "$TITLEBUTTON_STYLE_EXPLICIT" ]; then
     esac
 fi
 
+# Validated here for the same reason; apply_glass_style reads the memo itself.
+if [ -n "$GLASS_STYLE_EXPLICIT" ]; then
+    case " $VALID_GLASS_STYLES " in
+        *" $GLASS_STYLE "*) ;;
+        *) die "unknown --glass-style '$GLASS_STYLE' — pick one of: $VALID_GLASS_STYLES" ;;
+    esac
+fi
+
 # Asking for eight values of your own is asking for the preset to be `custom`.
 # One flag decides both so they cannot be remembered disagreeing with each other.
 [ -n "$RADIUS_CUSTOM_EXPLICIT" ] && { RADIUS_PRESET="custom"; RADIUS_PRESET_EXPLICIT=1; }
@@ -1510,6 +1541,7 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
                     app-blur) apply_app_blur ;;
                     css) install_css ;;
                     app-opacity) apply_app_opacity ;;
+                    glass-style) apply_glass_style ;;
                     adaptive-blur)
                         apply_adaptive_blur "$ADAPTIVE_BLUR"
                         ;;
