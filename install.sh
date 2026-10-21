@@ -72,7 +72,7 @@ WANT_EXTRAS=1
 EXT_LIST=""        # comma-separated UUIDs, replacing the pack. Empty = a pack
 EXT_LIST_EXPLICIT=""
 # Set by any flag, or any wizard answer, that picks the pack. Unset, the pack
-# is the remembered one ($CONF_DIR/extension-pack), and then the Recommended six.
+# is the remembered one ($CONF_DIR/extension-pack), and then the Recommended seven.
 EXT_PACK_EXPLICIT=""
 WANT_ICONS=1
 WANT_CURSORS=1
@@ -1017,6 +1017,24 @@ if [ -z "$EXT_PACK_EXPLICIT" ] && [ -r "$CONF_DIR/extension-pack" ]; then
             *" $ext_uuid "*) [ -n "$ext_uuid" ] && EXT_EXTRA+=("$ext_uuid") ;;
         esac
     done < <(tr ',' '\n' < "$CONF_DIR/extension-pack" 2>/dev/null || true)
+    # Recommended extensions the pack was never offered (see
+    # EXT_EXTRA_ADDED_LATER) join it, so an update installs them. A Minimal
+    # pack stays Minimal.
+    if [ "${#EXT_EXTRA[@]}" -gt 0 ]; then
+        if [ -r "$CONF_DIR/extension-catalog" ]; then
+            ext_seen=" $(tr ',' ' ' < "$CONF_DIR/extension-catalog") "
+        else
+            ext_seen=" ${EXT_EXTRA_ALL[*]} "
+            for ext_uuid in "${EXT_EXTRA_ADDED_LATER[@]}"; do
+                ext_seen="${ext_seen/ $ext_uuid / }"
+            done
+        fi
+        for ext_uuid in "${EXT_EXTRA_RECOMMENDED[@]}"; do
+            case "$ext_seen" in *" $ext_uuid "*) continue ;; esac
+            case " ${EXT_EXTRA[*]} " in *" $ext_uuid "*) continue ;; esac
+            EXT_EXTRA+=("$ext_uuid")
+        done
+    fi
     if [ "${#EXT_EXTRA[@]}" -eq 0 ]; then WANT_EXTRAS=0; else WANT_EXTRAS=1; fi
 fi
 if [ -z "$OSD_EXPLICIT" ] && [ "$(cat "$CONF_DIR/osd" 2>/dev/null || true)" = 0 ]; then

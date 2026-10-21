@@ -172,6 +172,7 @@ EXT_EXTRA_RECOMMENDED=(
     hotedge@jonathan.jdoda.ca
     kiwimenu@kemma
     copyous@boerdereinar.dev
+    wiggly@mojarch
 )
 
 EXT_EXTRA_ALL=(
@@ -181,8 +182,20 @@ EXT_EXTRA_ALL=(
     hotedge@jonathan.jdoda.ca
     kiwimenu@kemma
     copyous@boerdereinar.dev
+    wiggly@mojarch
     Vitals@CoreCoding.com
     restartto@tiagoporsch.github.io
+)
+
+# Recommended extensions added after the pack memo existed. A remembered pack
+# is an explicit list, so an update would never install something catalogued
+# after it was written. install_extensions records the catalogue the pack was
+# chosen from ($CONF_DIR/extension-catalog); an extension recommended now but
+# absent from that record was never offered, so the resolver adds it. A memo
+# written before the record existed is taken to have seen everything except
+# these.
+EXT_EXTRA_ADDED_LATER=(
+    wiggly@mojarch
 )
 
 # Catalogued and installable, but never switched on by a pack.
@@ -217,6 +230,8 @@ ext_description() {
             printf 'Kiwi Menu — macOS-style Applications menu on left of top bar' ;;
         copyous@boerdereinar.dev)
             printf 'Copyous — Modern clipboard history manager with preview' ;;
+        wiggly@mojarch)
+            printf 'Wiggly — Shake the mouse to magnify the cursor and find it' ;;
         Vitals@CoreCoding.com)
             printf 'Vitals — Live CPU, RAM, temp, load & network monitor in panel' ;;
         restartto@tiagoporsch.github.io)

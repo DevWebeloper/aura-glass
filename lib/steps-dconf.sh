@@ -1469,6 +1469,7 @@ apply_cursor_theme() {
     else
         APPLIED_CURSOR=""
     fi
+    apply_wiggly_cursor
 
     if [ "${DRY_RUN:-0}" != 1 ]; then
         mkdir -p "$CONF_DIR"
@@ -1477,6 +1478,39 @@ apply_cursor_theme() {
         else
             printf '%s\n' keep > "$memo"
         fi
+    fi
+}
+
+# Wiggly draws its magnified pointer from one SVG. Pointed at the default.svg
+# that ensure_scalable_cursors made for the active theme, the shaken cursor is
+# the same pointer at a larger size instead of Wiggly's own black arrow. A theme
+# with no SVG resets the key, so Wiggly falls back to its bundled icon rather
+# than a file from the previous theme. Its tuning keys come from extras.ini on
+# a fresh install; an update leaves dconf alone, so a key never set is filled
+# here with the same value.
+apply_wiggly_cursor() {
+    [ "${DRY_RUN:-0}" = 1 ] && return 0
+    case " ${EXT_EXTRA[*]:-} " in *" wiggly@mojarch "*) ;; *) return 0 ;; esac
+    local base=/org/gnome/shell/extensions/wiggly
+    local key val
+    while IFS='=' read -r key val; do
+        case "$key" in ''|'['*) continue ;; esac
+        [ -n "$(dconf read "$base/$key" 2>/dev/null || true)" ] \
+            || dconf write "$base/$key" "$val" 2>/dev/null || true
+    done < <(sed -n '/^\[wiggly\]/,/^\[/p' "$REPO_ROOT/dconf/extras.ini")
+
+    local theme svg="" d
+    theme="$(gsettings get org.gnome.desktop.interface cursor-theme 2>/dev/null | tr -d "'")"
+    for d in "$HOME/.local/share/icons" "$HOME/.icons" /usr/share/icons; do
+        if [ -f "$d/$theme/cursors_scalable/default/default.svg" ]; then
+            svg="$d/$theme/cursors_scalable/default/default.svg"
+            break
+        fi
+    done
+    if [ -n "$svg" ]; then
+        dconf write "$base/cursor-path" "'$svg'" 2>/dev/null || true
+    else
+        dconf reset "$base/cursor-path" 2>/dev/null || true
     fi
 }
 

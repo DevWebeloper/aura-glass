@@ -74,7 +74,7 @@ For "which file draws this button / owns this setting", use
 |---|---|
 | `core.ini` | Blur My Shell (pipelines, every component, sigmas, radii, app lists) and Custom OSD. Loaded on a fresh install or with `--force`, and skipped on an existing install (see ARCHITECTURE §7). |
 | `solid.ini` | On top of core when `WANT_BLUR=0`: every BMS component's `blur=false`, plus OSD alpha. |
-| `extras.ini` | Vitals, Hot Edge, AppIndicator settings, when extras are wanted. |
+| `extras.ini` | Vitals, Hot Edge, AppIndicator, Wiggly settings, when extras are wanted. |
 
 ### `patches/`
 
