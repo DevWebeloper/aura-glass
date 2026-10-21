@@ -160,6 +160,71 @@ ensure_gui_toolkit() {
     gui_toolkit_present
 }
 
+# What building gnome-rounded-blur takes (install_rounded_blur): a C compiler,
+# meson, pkg-config, g-ir-scanner/g-ir-compiler, GObject's GIR and mutter's
+# development files. An AUR helper used to pull these in on Arch; makepkg -d
+# and the meson build do not, so they are offered here. Arch's mutter and glib2
+# already ship their headers and GIRs. Debian names mutter's by its API number,
+# which is what the shell's major maps to below (ABI 16/17/18 for GNOME 48–50,
+# the release number from 51 on).
+ROUNDED_BLUR_BUILD_PKGS_ARCH="base-devel meson gobject-introspection"
+ROUNDED_BLUR_BUILD_PKGS_FEDORA="gcc meson pkgconf-pkg-config gobject-introspection-devel glib2-devel mutter-devel"
+ROUNDED_BLUR_BUILD_PKGS_SUSE="gcc meson pkgconf-pkg-config gobject-introspection-devel glib2-devel mutter-devel"
+
+rounded_blur_build_pkgs() {
+    case "$DISTRO_FAMILY" in
+        arch)   printf '%s' "$ROUNDED_BLUR_BUILD_PKGS_ARCH" ;;
+        fedora) printf '%s' "$ROUNDED_BLUR_BUILD_PKGS_FEDORA" ;;
+        suse)   printf '%s' "$ROUNDED_BLUR_BUILD_PKGS_SUSE" ;;
+        debian)
+            local api="${GNOME_MAJOR:-0}"
+            case "$api" in 48) api=16 ;; 49) api=17 ;; 50) api=18 ;; esac
+            printf 'build-essential meson pkg-config gobject-introspection gir1.2-glib-2.0-dev libmutter-%s-dev' "$api"
+            ;;
+        *)      return 1 ;;
+    esac
+}
+
+# Everything the build looks for, checked the way meson will look.
+rounded_blur_build_ready() {
+    local c
+    for c in meson cc pkg-config g-ir-scanner g-ir-compiler; do have "$c" || return 1; done
+    [ "${DISTRO_FAMILY:-}" = arch ] && { have makepkg || return 1; }
+    # Captured, not piped into grep -q: under pipefail grep's early exit
+    # SIGPIPEs pkg-config and the whole test reads as missing.
+    local pcs
+    pcs="$(pkg-config --list-all 2>/dev/null || true)"
+    grep -q '^libmutter-' <<<"$pcs" || return 1
+    local girdir
+    girdir="$(pkg-config --variable=girdir gobject-introspection-1.0 2>/dev/null || true)"
+    [ -r "${girdir:-/usr/share/gir-1.0}/GObject-2.0.gir" ] || [ -r /usr/share/gir-1.0/GObject-2.0.gir ]
+}
+
+# Offered, never fatal, like ensure_gui_toolkit: without them the library is
+# not built and popup blur keeps its corner shader fallback.
+ensure_rounded_blur_build_deps() {
+    rounded_blur_build_ready && return 0
+    local pkgs
+    pkgs="$(rounded_blur_build_pkgs)" || {
+        warn "unknown distro — gnome-rounded-blur needs a C compiler, meson, pkg-config,"
+        warn "gobject-introspection and mutter's development files"
+        return 1
+    }
+    info "building gnome-rounded-blur needs: $pkgs"
+    confirm "Install them?" 1 || return 1
+    case "$DISTRO_FAMILY" in
+        arch)   run sudo pacman -S --needed --noconfirm $pkgs ;;
+        fedora)
+            local dnf_cmd="dnf"
+            have dnf5 && dnf_cmd="dnf5"
+            run sudo "$dnf_cmd" install -y $pkgs
+            ;;
+        debian) run sudo apt-get install -y $pkgs ;;
+        suse)   run sudo zypper --non-interactive install $pkgs ;;
+    esac || return 1
+    rounded_blur_build_ready
+}
+
 # Nice to have, never fatal. msgfmt compiles Blur My Shell's translations when
 # it is built from git; without it the extension works and its preferences are
 # simply untranslated. Kept out of REQUIRED_CMDS so a missing gettext cannot

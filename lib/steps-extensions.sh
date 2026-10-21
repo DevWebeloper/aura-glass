@@ -400,8 +400,8 @@ install_rounded_blur() {
         return 0
     fi
 
-    if ! have meson; then
-        warn "meson not found, so gnome-rounded-blur cannot be built."
+    if ! ensure_rounded_blur_build_deps; then
+        warn "gnome-rounded-blur cannot be built without its build dependencies."
         warn "Popup blur remains dynamic with corner shader fallback."
         return 0
     fi
@@ -422,8 +422,7 @@ install_rounded_blur() {
         # pkgrel 1.1, one step above the AUR's 1, so an AUR helper's upgrade
         # does not swap this build back for the unpatched one of the same
         # release. -d: makepkg would otherwise want to install makedepends
-        # itself; meson is checked above, and the build says what else is
-        # missing.
+        # itself; ensure_rounded_blur_build_deps has seen to them above.
         cat > "$pkgdir/PKGBUILD" <<PKG
 pkgname=gnome-rounded-blur
 pkgver=$ROUNDEDBLUR_PKGVER
@@ -466,23 +465,34 @@ PKG
     ok "gnome-rounded-blur installed (with patches/$ROUNDEDBLUR_PATCH)"
 }
 
-# Whether the shell can load Blur.BlurEffect at all.
+# Whether the shell can load Blur.BlurEffect at all. The library links
+# libmutter, which lives in a private directory the shell finds by rpath and
+# gjs does not: /usr/lib/mutter-N on Arch, /usr/lib64/mutter-N on Fedora and
+# openSUSE, /usr/lib/<triplet>/mutter-N on Debian, with N the ABI (16/17/18)
+# up to GNOME 50 and the release from 51. Every one of them goes on the path,
+# or the probe fails on a working install and every run rebuilds.
 rounded_blur_loadable() {
-    LD_LIBRARY_PATH="/usr/lib/mutter-$GNOME_MAJOR:/usr/lib/mutter-18:${LD_LIBRARY_PATH:-}" \
+    local dirs='' d
+    for d in /usr/lib/mutter-* /usr/lib64/mutter-* /usr/lib/*-linux-gnu*/mutter-*; do
+        [ -d "$d" ] && dirs="$dirs$d:"
+    done
+    LD_LIBRARY_PATH="$dirs${LD_LIBRARY_PATH:-}" \
         gjs -c 'const Blur = imports.gi.Blur; void Blur.BlurEffect;' >/dev/null 2>&1
 }
 
 # Whether install_rounded_blur may reach for sudo, so install.sh only asks for
 # a password up front when it will be used (KI-11): only when it will build,
-# and both builds end in sudo (pacman -U, or meson install). There is no
-# rootless build: one in ~/.local is never found by the shell (KI-12).
+# and a build ends in sudo (pacman -U, or meson install), as does installing
+# its build dependencies. On an unknown distro without them nothing will run.
+# There is no rootless build: one in ~/.local is never found by the shell
+# (KI-12).
 rounded_blur_needs_root() {
     [ "${WANT_ROUNDED_BLUR:-1}" = 1 ] || return 1
     if rounded_blur_loadable && [ "${FORCE:-0}" != 1 ] \
        && patch_stamp_current rounded-blur-patch "$REPO_ROOT/patches/$ROUNDEDBLUR_PATCH"; then
         return 1
     fi
-    have meson
+    rounded_blur_build_ready || rounded_blur_build_pkgs >/dev/null
 }
 
 # Records the mutter it was built against, which is what makes staleness

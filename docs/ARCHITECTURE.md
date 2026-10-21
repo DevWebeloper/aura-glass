@@ -411,7 +411,10 @@ system-wide, where the shell finds it: on Arch as a `makepkg` package
 (`1.0.2-1.1`, one pkgrel above the AUR's) through `sudo pacman -U`, elsewhere
 with `meson … && sudo meson install`. Not through an AUR helper, which cannot
 apply a patch. The `rounded-blur-patch` stamp makes an unpatched install (the
-AUR package, or one from before the patch) rebuild once. There is no
+AUR package, or one from before the patch) rebuild once. Its build
+dependencies (compiler, meson, pkg-config, gobject-introspection, mutter's
+development files; Debian's `libmutter-N-dev` by API number) are offered by
+`ensure_rounded_blur_build_deps` in `lib/distro.sh`. There is no
 rootless build. One in `~/.local` never loads, because the shell searches
 neither `~/.local/lib` nor `~/.local/share/girepository-1.0` (KI-12), so an old
 one is removed.
