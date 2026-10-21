@@ -73,8 +73,8 @@ implementation view.
 | `--popup-brightness P` | 50–150, default 115 (preset) | `popup-brightness` | ✓ | full |
 | `--window-brightness P` (`--app-brightness`, `--window-blur-brightness`) | 50–150, default 100 | `window-brightness` | ✓ | `window-brightness` (except the last alias, which is full) |
 | `--grain N` / `--no-grain` | 0–1, default 0 | `grain` | | full |
-| `--glass-style S` | `frosted` (default), `liquid`, `vibrant`. Top bar and dock (vibrant also the overview and lock screen); liquid and vibrant make the dock's blur static | `glass-style` | | full |
-| `--liquid-windows` / `--no-liquid-windows` | off. Liquid behind app windows too; makes `[applications] static-blur` true | `liquid-windows` | | full |
+| `--glass-style S` | `frosted` (default), `liquid`, `vibrant`. Top bar and dock (vibrant: top bar, overview and lock screen, the dock stays frosted); liquid makes the dock's blur static | `glass-style` | | full |
+| `--liquid-windows` / `--no-liquid-windows` | off. The glass style (liquid or vibrant) behind app windows too; makes `[applications] static-blur` true | `liquid-windows` | | full |
 | `--radius-preset P` | `flat sharp adwaita soft medium default rounded` (`pill` → `rounded`). Default `default` | `radius-preset` | | full |
 | `--radius-custom W,M,Q,N,D,P,O,B` | 8 integers within `radius_bounds`. Implies `custom` | `radius-custom` (a 7-field memo is widened with `,9999`) | | full |
 | `--window-buttons close\|all` | unset = leave GNOME's layout | `window-buttons` | | `window-buttons` |

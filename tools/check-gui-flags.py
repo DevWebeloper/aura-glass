@@ -356,6 +356,9 @@ CASES = [
     ("liquid behind app windows", state(glass_style="liquid"),
      state(glass_style="liquid", liquid_windows=True), ["--liquid-windows"]),
 
+    ("vibrant behind app windows", state(glass_style="vibrant"),
+     state(glass_style="vibrant", liquid_windows=True), ["--liquid-windows"]),
+
     ("app windows back to frosted",
      state(glass_style="liquid", liquid_windows=True),
      state(glass_style="liquid"), ["--no-liquid-windows"]),

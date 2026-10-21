@@ -66,9 +66,9 @@ what's behind them like a lens and catch a light rim. Both surfaces are then
 static blur, computed once per wallpaper, so it costs no GPU while you work. The
 dock then blurs the wallpaper instead of the windows passing behind it. Pick it
 in **Glass → Glass style**, or run `./install.sh --settings-only --glass-style liquid -y`.
-The **Vibrant** style lets the colours behind the top bar, the dock and the
-overview come through richer and a little brighter, as macOS vibrancy does. It
-has the same static dock and the same zero cost
+The **Vibrant** style lets the colours behind the top bar and the overview come
+through richer and a little brighter, as macOS vibrancy does. The dock keeps its
+live frosted blur
 (`./install.sh --settings-only --glass-style vibrant -y`).
 
 **Adaptive performance** sits on top of Frosted. A top-bar menu offers
@@ -87,8 +87,8 @@ Open **Aura Glass** from the app grid, or run `aura-glass-settings`.
 - **Per-app blur.** A switch per app, the windows open right now, wildcard patterns, and the games that trigger Performance.
 - **Extensions, Packages, System, Updates, Uninstall.**
 
-**Liquid behind app windows** (`--liquid-windows`) puts it behind Files and every
-other blurred window too. Those then blur the wallpaper, not the window under them.
+**Glass style behind app windows** (`--liquid-windows`) puts liquid or vibrant
+behind Files and every other blurred window too. Those then blur the wallpaper, not the window under them.
 Changes can be previewed live and are applied with one button.
 
 ## Handy commands

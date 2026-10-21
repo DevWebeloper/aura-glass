@@ -268,11 +268,14 @@ PIPELINE_PY
 # Vibrant reaches one surface more than liquid: pipeline `lock screen`, the
 # blurred wallpaper behind the overview and the lock screen. Both are static
 # blur already, and the luminosity effect draws no edge, so it has no corner
-# radius to match and none of the popup pipeline's trouble. It switches the
-# dock to static blur for the same reason liquid does: on a dynamic dock the
-# effect would not run, and the dock would sit frosted next to a vibrant top
-# bar. It does not reach app windows. --liquid-windows stays liquid's, so a
-# switch from liquid with windows on puts their dynamic blur back.
+# radius to match and none of the popup pipeline's trouble. Unlike liquid it
+# leaves the dock alone: the dock keeps its dynamic blur of the windows behind
+# it, and so stays frosted, because a dynamic surface never runs the effect.
+# A colour boost there was not worth the live blur. App windows follow when
+# --liquid-windows asks, with the same trade as
+# liquid's (the flag and its memo keep liquid's name, which came first). The
+# switch is kept under frosted, so going back to either style brings the
+# windows back the way they were.
 #
 # The refraction effect rounds its own edge, so its corner radius must be the
 # one the pipeline's corner effect cuts at, or the rim would bend a corner the
@@ -334,8 +337,10 @@ apply_glass_style() {
 
     # An array: `lock screen` has a space in its name.
     local names=(panel dock)
-    [ "$want" = liquid ] && [ "$windows" = 1 ] && names+=(windows)
-    [ "$want" = vibrant ] && names+=("lock screen")
+    [ "$want" != frosted ] && [ "$windows" = 1 ] && names+=(windows)
+    # Vibrant drops the dock: on its dynamic blur the effect would never run.
+    [ "$want" = vibrant ] && names=(panel "lock screen")
+    [ "$want" = vibrant ] && [ "$windows" = 1 ] && names+=(windows)
 
     python3 - "$want" "${names[@]}" <<'STYLE_PY' || { warn "could not set the glass style"; return 0; }
 import re
@@ -436,7 +441,9 @@ if want == "liquid":
 #        mean HSV value went from 0.33 to 0.38 and the white clock and icons
 #        stayed as legible as on frosted.
 #        The lock screen pipeline gets 1.0: its blur is darkened to 0.8 on
-#        purpose so the clock reads, and vibrancy should not undo that.
+#        purpose so the clock reads, and vibrancy should not undo that. The
+#        windows pipeline gets 1.0 too: its brightness is the user's own
+#        --window-brightness, and a lift here would quietly move it.
 VIBRANT = ("'brightness_shift': <0.0>, 'brightness_multiplicator': <%s>, "
            "'contrast': <1.0>, 'contrast_center': <0.5>, "
            "'saturation_multiplicator': <1.35>")
@@ -454,7 +461,7 @@ if want == "vibrant":
             print("the `%s` pipeline has no static blur — it stays frosted"
                   % name, file=sys.stderr)
             continue
-        lift = "1.0" if name == "lock screen" else "1.06"
+        lift = "1.0" if name in ("lock screen", "windows") else "1.06"
         effect = ("<{'type': <'luminosity'>, 'id': <'%svibrant_%s'>, "
                   "'params': <{%s}>}>"
                   % (PREFIX, name.replace(" ", "_"), VIBRANT % lift))
@@ -476,17 +483,18 @@ if new != cur:
     subprocess.run(["dconf", "write", KEY, new], check=True)
 STYLE_PY
 
-    # The effects only run on static blur (see above). Leaving liquid or
-    # vibrant puts back the preset's value, but only for a surface one of them
-    # had switched: a dock a user made static on their own stays static.
-    if [ "$want" = liquid ] || [ "$want" = vibrant ]; then
+    # The effects only run on static blur (see above). Leaving liquid puts
+    # back the preset's value, but only for a surface liquid had switched: a
+    # dock a user made static on their own stays static. Vibrant keeps the
+    # dock dynamic, so it counts as leaving liquid here.
+    if [ "$want" = liquid ]; then
         run dconf write "$base/dash-to-dock/static-blur" true
-    elif [ "$previous" = liquid ] || [ "$previous" = vibrant ]; then
+    elif [ "$previous" = liquid ]; then
         restore_static_blur dash-to-dock
     fi
-    if [ "$want" = liquid ] && [ "$windows" = 1 ]; then
+    if [ "$want" != frosted ] && [ "$windows" = 1 ]; then
         run dconf write "$base/applications/static-blur" true
-    elif [ "$previous" = liquid ] && [ "$previous_windows" = 1 ]; then
+    elif { [ "$previous" = liquid ] || [ "$previous" = vibrant ]; } && [ "$previous_windows" = 1 ]; then
         restore_static_blur applications
     fi
 
@@ -499,8 +507,10 @@ STYLE_PY
         ok "liquid glass on the top bar, the dock and app windows (remembered for later runs)"
     elif [ "$want" = liquid ]; then
         ok "liquid glass on the top bar and the dock (remembered for later runs)"
+    elif [ "$want" = vibrant ] && [ "$windows" = 1 ]; then
+        ok "vibrant glass on the top bar, the overview and app windows (remembered for later runs)"
     elif [ "$want" = vibrant ]; then
-        ok "vibrant glass on the top bar, the dock and the overview (remembered for later runs)"
+        ok "vibrant glass on the top bar and the overview (remembered for later runs)"
     else
         ok "frosted glass on the top bar and the dock"
     fi

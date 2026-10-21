@@ -528,16 +528,16 @@ TITLEBUTTON_STYLES = [
 
 # The material on the top bar and the dock. Install-side: apply_glass_style in
 # lib/steps-dconf.sh, whose comment says why it stops at those two and why
-# liquid and vibrant make the dock's blur static.
+# liquid makes the dock's blur static.
 GLASS_STYLES = [
     ("frosted", "Frosted", "Blur alone"),
     ("liquid", "Liquid",
      "The edges bend what is behind them like a lens. The dock blurs the "
      "wallpaper, not the windows behind it"),
     ("vibrant", "Vibrant",
-     "The colours behind come through richer and a little brighter, the "
-     "overview's too. The dock blurs the wallpaper, not the windows behind it"),
-]
+     "The colours behind the top bar and the overview come through richer "
+     "and a little brighter. The dock keeps its live frosted blur"),
+]]
 
 # Appearance selectors share one small piece of row metadata.  Icon colour is
 # the only dependent list today: the family decides which variants it can
@@ -639,8 +639,8 @@ FLAG_LABELS = {
     "--window-buttons": ("appearance", "Titlebar buttons"),
     "--titlebar-button-style": ("appearance", "Titlebar button style"),
     "--glass-style": ("glass", "Glass style"),
-    "--liquid-windows": ("glass", "Liquid behind app windows"),
-    "--no-liquid-windows": ("glass", "Liquid behind app windows"),
+    "--liquid-windows": ("glass", "Glass style behind app windows"),
+    "--no-liquid-windows": ("glass", "Glass style behind app windows"),
     "--update-check": ("updates", "Daily update check"),
     "--no-update-check": ("updates", "Daily update check"),
     "--update-channel": ("updates", "Update channel"),
@@ -2337,7 +2337,7 @@ class Settings:
         if self.glass_style not in [g[0] for g in GLASS_STYLES]:
             self.glass_style = "frosted"
         # Kept whatever the style, as apply_glass_style keeps it, so going
-        # back to liquid brings the windows back the way they were.
+        # back to liquid or vibrant brings the windows back the way they were.
         self.liquid_windows = read_memo("liquid-windows", "0") == "1"
 
         # A user systemd unit rather than a look, but a remembered setting like
@@ -4659,7 +4659,7 @@ class Window(Adw.ApplicationWindow):
             "glass_style")
         style.add(self._glass_style_row)
         self._liquid_windows_row = Adw.SwitchRow(
-            title="Liquid behind app windows",
+            title="Glass style behind app windows",
             subtitle="Window blur turns static: a window blurs the wallpaper, "
                      "not the window under it",
             active=self._applied.liquid_windows)
@@ -6922,10 +6922,10 @@ class Window(Adw.ApplicationWindow):
         self._tint_rows["frosted"]["app"].set_sensitive(live)
         self._tint_rows["frosted"]["link"].set_sensitive(live)
 
-        # Only liquid has a refraction for app windows to take.
+        # Frosted has no effect for app windows to take.
         self._liquid_windows_row.set_sensitive(
             self._glass_style_row._ids[self._glass_style_row.get_selected()]
-            == "liquid")
+            != "frosted")
 
     def _mark_dirty(self):
         args = self._current().flags_against(self._applied)
