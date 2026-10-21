@@ -171,6 +171,7 @@ the GPU. **Agents never run these.** Humans only: `preview.sh`,
 | `docs/` | This documentation, plus historical `superpowers/` design records and upstream PR drafts in `pull-requests/`. |
 | `packaging/aur/` | `PKGBUILD`, `.SRCINFO`, `aura-glass.install` and a submission guide (with known issues, KI-13). |
 | `.github/` | `release-assets.yml` (tarball and zip on release), `traffic-tracker.yml` plus `scripts/update_traffic.py` (badge JSON in `badges/`, `traffic/`). |
+| `screenshots/*.webp`, `screenshots/showcase.gif` | README screenshots (click-through thumbnails) and the looping slideshow built from them. |
 | `screenshots/preview/` | Preview harness output (git-ignored). |
 | `.claude/` | Local `scene.py` GTK render helper and its README. Untracked, but not git-ignored. |
 | `.agents/`, `.superpowers/`, `.idea/`, `*.code-workspace` | Local agent and IDE state (ignored). |
