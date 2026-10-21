@@ -612,6 +612,15 @@ install_wallpapers() {
         info "dry-run: write $xml listing $n wallpapers"
     else
         mkdir -p "${xml%/*}"
+        # Written beside the folder, then renamed into it. GNOME Settings
+        # watches gnome-background-properties/ and parses a file the moment it
+        # changes, so writing in place let it read a half-written list ("parser
+        # error : Premature end of data in tag wallpapers", seen 2026-10-21).
+        # The temp file sits in the parent, not in the watched folder, so it is
+        # never parsed itself, and on the same filesystem, so the rename is
+        # atomic. An unchanged list is not renamed at all.
+        local tmp
+        tmp="$(mktemp "${xml%/*/*}/.aura-glass-wallpapers.XXXXXX")"
         {
             printf '<?xml version="1.0" encoding="UTF-8"?>\n'
             printf '<!DOCTYPE wallpapers SYSTEM "gnome-wp-list.dtd">\n<wallpapers>\n'
@@ -629,7 +638,13 @@ install_wallpapers() {
                 printf '  </wallpaper>\n'
             done
             printf '</wallpapers>\n'
-        } > "$xml"
+        } > "$tmp"
+        if cmp -s "$tmp" "$xml"; then
+            rm -f "$tmp"
+        else
+            chmod 644 "$tmp"
+            mv -f "$tmp" "$xml"
+        fi
     fi
     ok "$n in Settings > Appearance (files in $dir)"
 }
