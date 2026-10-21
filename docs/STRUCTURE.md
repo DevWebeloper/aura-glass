@@ -24,6 +24,7 @@ For "which file draws this button / owns this setting", use
 | `CLAUDE.md` / `AGENTS.md` / `llms.txt` | Instructions and an index for AI agents. |
 | `CONTRIBUTING.md` | The short contributor guide. |
 | `LICENSE` | MIT. |
+| `wallpapers/` | Bundled wallpapers (JPEG). `install_wallpapers` copies them and lists them in Settings > Appearance; it never sets one. |
 | `.gitignore` | Ignores preview screenshots, `__pycache__`, IDE files, `.agents/` and `*.code-workspace`. |
 
 ### `lib/`: the steps (sourced by `install.sh`; definitions only)
@@ -35,7 +36,7 @@ For "which file draws this button / owns this setting", use
 | `steps.sh` | Upstream pins, paths (`CONF_DIR`, `EXT_DIR`, `SRC_CACHE`, `BACKUP_DIR`), extension arrays and `ext_description`, `preflight`, `install_theme`, `finish`. **Sourced first**, because flag parsing reads `CONF_DIR`. |
 | `steps-migrate.sh` | Moving from `tahoe-glass` to `aura-glass`: `migrate_legacy_names`, `merge_backups`, `adopt_theme_dir`, `sweep_theme_orphans`. The one-time solid-era migration, `migrate_solid_era`. |
 | `steps-extensions.sh` | EGO installs, the pinned BMS and Custom OSD builds plus patches, the first-party extension (`install_aura_ext`), `install_rounded_blur`, enable/queue helpers, `refresh_bms_after_dconf`, `disable_retired_extensions`. |
-| `steps-assets.sh` | Icon packs (Colloid, Reversal, Hatter, MacTahoe) and accent mapping (`icon_base`, `accent_to_*`); pointers (Adwaita, AOSP, MacTahoe, Moga, original). |
+| `steps-assets.sh` | Icon packs (Colloid, Reversal, Hatter, MacTahoe) and accent mapping (`icon_base`, `accent_to_*`); pointers (Adwaita, AOSP, MacTahoe, Moga, original); `install_wallpapers`. |
 | `steps-fonts.sh` | `--font` installs: Inter, MiSans (Latin + Arabic), SF Pro. |
 | `steps-modes.sh` | Glass modes: `resolve_glass_mode`, `apply_glass_mode`, the drawers (`seed_glass_mode`, `load_glass_mode_memos`, `save_glass_mode_memos`), `remember_glass_mode`. |
 | `steps-css.sh` | `install_css` and the rewriter wrappers (transparency, tints, popup transparency, notification opacity, radius), `install_window_control_style`, display density (`measure_logical_ppi`, `density_css`). |
@@ -199,6 +200,8 @@ the GPU. **Agents never run these.** Humans only: `preview.sh`,
 ~/.local/share/gnome-shell/extensions/        user-theme, blur-my-shell, custom-osd, aura-glass-blur, extras
 ~/.local/share/icons/, ~/.icons/              icon and pointer packs
 ~/.local/share/fonts/aura-glass/              fonts from --font
+~/.local/share/backgrounds/aura-glass/        wallpapers/ copies
+~/.local/share/gnome-background-properties/aura-glass.xml   lists them in Settings > Appearance
 ~/.config/systemd/user/aura-glass-*.service|timer
 ~/.config/autostart/aura-glass-open-once.desktop   (until the first login spends it)
 ~/.cache/aura-glass/src/                      pinned upstream checkouts ($SRC_CACHE)

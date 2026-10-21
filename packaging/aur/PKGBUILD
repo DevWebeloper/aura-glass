@@ -44,7 +44,7 @@ package() {
     local destdir="$pkgdir/usr/share/$_pkgname"
     install -dm755 "$destdir"
     cp -r --preserve=mode,timestamps \
-        bin css dconf extensions gui lib patches systemd tokens tools install.sh uninstall.sh \
+        bin css dconf extensions gui lib patches systemd tokens tools wallpapers install.sh uninstall.sh \
         "$destdir/"
     # Read by bin/aura-glass-update-check and the settings window's Updates
     # page: this copy is not a git checkout, so they ask GitHub whether main
