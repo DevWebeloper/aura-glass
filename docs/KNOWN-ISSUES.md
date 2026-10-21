@@ -757,6 +757,32 @@ previous patch it reports KI-27's `MESSAGE_CORNER_EFFECT_NAME`.
 
 ---
 
+## KI-30
+
+**A gnome-shell update silently reverts the login-screen theme.**
+
+`install_gdm` compiles the theme into the distribution's
+`gnome-shell-theme.gresource` (`tweaks.sh -g`, with `#lockDialogGroup` pointing
+at `/usr/share/backgrounds/aura-gdm.png`). That file belongs to the gnome-shell
+package (or Yaru/Pop/Zorin's theme package), so any install or update of it puts
+the stock file back. The login screen loses the theme and the wallpaper, and the
+sync service keeps writing `aura-gdm.png` for a theme that no longer reads it.
+Seen 2026-10-21 after a gnome-shell reinstall on CachyOS.
+
+**Fix.** `record_gdm_gresource` (`lib/steps-gdm.sh`) finds the installed file by
+the wallpaper URL in its CSS among WhiteSur's candidate paths and writes its
+checksum to the `gdm-gresource` memo, in `sha256sum` format. `aura-glass-gdm-sync`
+checks it at login (and on `--once`, which every install run calls) and, on a
+mismatch, prints a warning and sends a notification asking for
+`install.sh --gdm`. It only warns: repairing needs root and a rebuild against
+the new shell. Uninstall removes the memo. An install from before this fix has
+no memo until its next `--gdm` run. Verified with a fixture (`AURA_GLASS_CONF`,
+stub `notify-send`): quiet when the file matches or there is no memo, warns
+once replaced. No pacman hook: restoring a saved gresource after a major shell
+update would put CSS built for the old shell on the new one.
+
+---
+
 ## Phase 3 fixes (2026-10-20, `07689ba`)
 
 - **KI-09** — `bin/aura-glass-adaptive` and `bin/aura-glass-panel-blur` now prefer the checkout's `tools/` worker when run from a checkout's `bin/`, like `aura-glass-operation`. The copies in `~/.local/bin` have no `tools/` beside them, so the services keep the installed worker. `AURA_GLASS_ADAPTIVE_WORKER` still wins.

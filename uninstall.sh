@@ -472,7 +472,7 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/app-tint-color" \
           "$CONF_DIR/shell-tint-color" \
           "$CONF_DIR/blur-strength" \
-          "$CONF_DIR/gdm-installed" \
+          "$CONF_DIR/gdm-installed" "$CONF_DIR/gdm-gresource" \
           "$CONF_DIR/gdm-monitors-synced" \
           "$CONF_DIR/radius-preset" \
           "$CONF_DIR/repo-path" \

@@ -10,6 +10,19 @@
 WHITESUR_REPO="https://github.com/vinceliuice/WhiteSur-gtk-theme.git"
 WHITESUR_REF="1912dee2e48d"
 
+# The files tweaks.sh -g may compile the login theme into, in WhiteSur's own
+# order (install_only_gdm_theme in libs/lib-install.sh at WHITESUR_REF): it takes
+# the first one the distribution ships. All of them belong to a distribution
+# package, so a gnome-shell (or Yaru/Pop/Zorin theme) update puts the stock file
+# back and the login screen silently loses the theme and its wallpaper.
+GDM_GRESOURCE_CANDIDATES=(
+    /usr/share/gnome-shell/theme/Pop/gnome-shell-theme.gresource
+    /usr/share/gnome-shell/theme/Yaru/gnome-shell-theme.gresource
+    /usr/share/gnome-shell/theme/ZorinBlue-Dark/gnome-shell-theme.gresource
+    /usr/share/gnome-shell/theme/ZorinBlue-Light/gnome-shell-theme.gresource
+    /usr/share/gnome-shell/gnome-shell-theme.gresource
+)
+
 get_desktop_wallpaper() {
     local uri
     uri="$(gsettings get org.gnome.desktop.background picture-uri-dark 2>/dev/null || true)"
@@ -242,6 +255,25 @@ install_gdm_sync_unit() {
     ok "GDM dynamic wallpaper sync daemon enabled"
 }
 
+# Remember which gresource tweaks.sh wrote and its checksum, in sha256sum's own
+# format, so bin/aura-glass-gdm-sync can tell at login that a package update
+# replaced it (sha256sum -c) and ask for ./install.sh --gdm. The file is found by
+# the wallpaper URL patched into its CSS above rather than by redoing WhiteSur's
+# choice: the gresource xml compresses nothing, so the CSS sits in it as text.
+record_gdm_gresource() {
+    remembering || return 0
+    local f
+    for f in "${GDM_GRESOURCE_CANDIDATES[@]}"; do
+        if [ -r "$f" ] && grep -qaF "file:///usr/share/backgrounds/aura-gdm.png" "$f"; then
+            mkdir -p "$CONF_DIR"
+            sha256sum "$f" > "$CONF_DIR/gdm-gresource"
+            return 0
+        fi
+    done
+    rm -f "$CONF_DIR/gdm-gresource"
+    warn "could not find the installed GDM theme; a gnome-shell update that reverts it will go unnoticed"
+}
+
 uninstall_gdm_sync_unit() {
     for u in aura-glass-gdm-sync.service tahoe-glass-gdm-sync.service; do
         if [ -f "$HOME/.config/systemd/user/$u" ]; then
@@ -329,6 +361,7 @@ install_gdm() {
         if sudo bash "$src/tweaks.sh" -g -b "$target_wall" -nb --silent-mode >"$gdm_log" 2>&1; then
             mkdir -p "$CONF_DIR"
             printf '%s\n' "dynamic" > "$CONF_DIR/gdm-installed"
+            record_gdm_gresource
             ok "GDM login screen theme installed (dynamic wallpaper sync)"
         else
             warn "GDM theme installation failed (log: $gdm_log)"
@@ -393,7 +426,7 @@ uninstall_gdm() {
     # Disable sync unit
     uninstall_gdm_sync_unit
 
-    rm -f "$CONF_DIR/gdm-installed"
+    rm -f "$CONF_DIR/gdm-installed" "$CONF_DIR/gdm-gresource"
     if [ "$restored" = 1 ]; then
         ok "GDM login screen restored to stock theme"
     else

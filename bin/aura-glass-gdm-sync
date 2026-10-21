@@ -5,6 +5,35 @@ set -euo pipefail
 TARGET_WALL="/usr/share/backgrounds/aura-gdm.png"
 [ -w "$TARGET_WALL" ] || [ ! -w "/usr/share/backgrounds/tahoe-gdm.png" ] || TARGET_WALL="/usr/share/backgrounds/tahoe-gdm.png"
 USER_MONITORS="$HOME/.config/monitors.xml"
+CONF_DIR="${AURA_GLASS_CONF:-$HOME/.config/aura-glass}"
+
+# The login theme lives in a gresource the gnome-shell package owns, so a package
+# update puts the stock one back and the login screen loses the theme and this
+# wallpaper without a word. install_gdm left the file's checksum in the
+# gdm-gresource memo (sha256sum format, path included). A mismatch only warns:
+# repairing it needs root and a rebuild for the new shell, which is install_gdm.
+check_gresource() {
+    local memo="$CONF_DIR/gdm-gresource"
+    [ -r "$memo" ] || return 0
+    sha256sum -c --status "$memo" >/dev/null 2>&1 && return 0
+
+    local line gr repo cmd
+    line="$(head -n1 "$memo")"
+    gr="${line#*  }"
+    repo="$(cat "$CONF_DIR/repo-path" 2>/dev/null || true)"
+    cmd="./install.sh --gdm"
+    [ -n "$repo" ] && cmd="$repo/install.sh --gdm"
+    echo "aura-glass-gdm-sync: $gr is no longer the Aura Glass login theme (a package update replaced it); run $cmd" >&2
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send \
+            --app-name="Aura Glass" \
+            --icon=preferences-desktop-appearance \
+            --hint=string:x-canonical-private-synchronous:aura-glass-gdm \
+            "Login screen theme was reset" \
+            "A system update replaced the GDM theme, so the login screen is back to stock. Run $cmd to reinstall it." \
+            || true
+    fi
+}
 
 get_wallpaper() {
     local uri
@@ -168,12 +197,14 @@ sync_monitors() {
 
 # One-shot sync mode
 if [ "${1:-}" = "--once" ] || [ "${1:-}" = "-1" ]; then
+    check_gresource || true
     sync_wallpaper || true
     sync_monitors || true
     exit 0
 fi
 
 # Initial sync on session start
+check_gresource || true
 sync_wallpaper || true
 sync_monitors || true
 
