@@ -44,6 +44,7 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 | [KI-27](#ki-27) | Low | **Fixed** (`07689ba`) | History cards never get rounded blur corners without gnome-rounded-blur (undefined constant in the notification patch) |
 | [KI-28](#ki-28) | Low | **Fixed** (`07689ba`) | The helper never sees adaptive `active` change, so its window opacity misses adaptive transitions |
 | [KI-29](#ki-29) | Low | **Fixed** (`07689ba`) | No check applies the Blur My Shell patches to the pin or catches undefined names in them (how KI-27 shipped) |
+| [KI-31](#ki-31) | Medium | **Fixed** | The overview sometimes keeps a stale blur after leaving a settings-app preview |
 
 ---
 
@@ -780,6 +781,32 @@ no memo until its next `--gdm` run. Verified with a fixture (`AURA_GLASS_CONF`,
 stub `notify-send`): quiet when the file matches or there is no memo, warns
 once replaced. No pacman hook: restoring a saved gresource after a major shell
 update would put CSS built for the old shell on the new one.
+
+---
+
+## KI-31
+
+**The overview sometimes keeps a stale blur after leaving a settings-app
+preview.** Reported 2026-10-21: after changing a setting in the settings app,
+the overview "sometimes" did not show it.
+
+**Cause** (code-read against Blur My Shell v73). `aura-glass-preview revert`
+restored the blur-my-shell subtree with `dconf reset -f` then `dconf load`.
+Between the two, `pipelines` is Blur My Shell's own default, which has none of
+the project's pipelines. `PipelinesManager.on_pipeline_update` emits
+`pipeline-destroyed` for each, and every `Pipeline` on one of them
+(`conveniences/pipeline.js`) moves itself to `pipeline_default`. The load
+brings the pipelines back, but a returning id only gets `pipeline-created`,
+which no `Pipeline` listens for. Whether the overview recovers then depends on
+the order its own `overview/pipeline` key change and the `pipelines` change
+arrive in, hence "sometimes". Blur My Shell's warnings do not reach this
+machine's journal, so there is no log of it.
+
+**Fix.** `cmd_revert` loads the snapshot in one `dconf load` (one change set,
+no pipeline ever missing) and then resets only the keys the snapshot does not
+have. Verified on a throwaway dconf path: changed, added and nested keys all
+return to the snapshot byte for byte. `tools/check-preview.sh` passes against
+the live install.
 
 ---
 
