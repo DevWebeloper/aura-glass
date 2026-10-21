@@ -1563,6 +1563,7 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     # is enough to be running the current one.
     install_gui
     install_update_check
+    install_wallpapers
     # Local, quick, needs nothing and is a plain user systemd unit — the same
     # grounds install_gui is here on. Without it the window's switch for it
     # would write a memo that nothing acted on until the next full install.
@@ -1618,6 +1619,7 @@ remember_glass_mode
 install_icon_sync
 install_gui
 install_update_check
+install_wallpapers
 flatpak_override
 install_panel_blur_unit
 install_adaptive_performance

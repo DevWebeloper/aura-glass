@@ -443,6 +443,11 @@ run rm -f "$HOME/.local/bin/aura-glass-update-check"
 run rm -rf "$HOME/.local/share/aura-glass"
 run rm -f "$HOME/.local/share/applications/io.github.DevWebeloper.AuraGlassSettings.desktop"
 run rm -f "$HOME/.local/share/icons/hicolor/scalable/apps/io.github.DevWebeloper.AuraGlassSettings.svg"
+# The bundled wallpapers and the entry that lists them in Settings > Appearance.
+# The picture-uri key is left alone: it is the user's choice, not ours, even
+# when it points at one of these (pick another in Settings > Appearance).
+run rm -rf "$HOME/.local/share/backgrounds/aura-glass"
+run rm -f "$HOME/.local/share/gnome-background-properties/aura-glass.xml"
 # The open-once autostart entry, if an install armed it and no login has spent
 # it yet. Left behind it would open a window that is no longer installed, on
 # every login, forever — the entry only deletes itself when it manages to run.

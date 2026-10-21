@@ -578,3 +578,58 @@ install_cursors() {
 }
 
 # --------------------------------------------------------------- css + dconf --
+
+# --------------------------------------------------------------- wallpapers --
+
+# The wallpapers in wallpapers/ are offered, not set: they go where GNOME looks
+# for wallpapers and a background-properties entry names them, so they appear
+# in Settings > Appearance beside the stock ones. Choosing one stays the user's
+# call — swapping their wallpaper on every re-run would undo that choice, and
+# the GDM sync and the accent follow whatever they pick anyway.
+#
+# JPEG rather than the WebP they were drawn in: GNOME's background loader goes
+# through gdk-pixbuf, and its WebP loader is a separate package most distros do
+# not install by default.
+install_wallpapers() {
+    step "Wallpapers"
+
+    local dir="$HOME/.local/share/backgrounds/aura-glass"
+    local xml="$HOME/.local/share/gnome-background-properties/aura-glass.xml"
+    local f name n=0
+
+    for f in "$REPO_ROOT"/wallpapers/*.jpg; do
+        [ -e "$f" ] || continue
+        install_if_changed "$f" "$dir/${f##*/}" 644
+        n=$((n + 1))
+    done
+    # Wallpapers dropped from the repo go from the picker too.
+    for f in "$dir"/*.jpg; do
+        [ -e "$f" ] || continue
+        [ -e "$REPO_ROOT/wallpapers/${f##*/}" ] || run rm -f "$f"
+    done
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: write $xml listing $n wallpapers"
+    else
+        mkdir -p "${xml%/*}"
+        {
+            printf '<?xml version="1.0" encoding="UTF-8"?>\n'
+            printf '<!DOCTYPE wallpapers SYSTEM "gnome-wp-list.dtd">\n<wallpapers>\n'
+            for f in "$dir"/*.jpg; do
+                [ -e "$f" ] || continue
+                # hex-and-sticky-emerald-gold.jpg -> Aura Glass Hex & Sticky Emerald Gold
+                name="${f##*/}"; name="${name%.jpg}"
+                name="$(printf '%s\n' "$name" | sed 's/-/ /g; s/\b\(.\)/\u\1/g; s/ And / \&amp; /g')"
+                printf '  <wallpaper deleted="false">\n'
+                printf '    <name>Aura Glass %s</name>\n' "$name"
+                printf '    <filename>%s</filename>\n' "$f"
+                printf '    <options>zoom</options>\n'
+                printf '    <shade_type>solid</shade_type>\n'
+                printf '    <pcolor>#000000</pcolor>\n    <scolor>#000000</scolor>\n'
+                printf '  </wallpaper>\n'
+            done
+            printf '</wallpapers>\n'
+        } > "$xml"
+    fi
+    ok "$n in Settings > Appearance (files in $dir)"
+}

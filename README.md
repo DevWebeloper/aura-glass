@@ -65,6 +65,10 @@ for:
 
 Non-interactive: `./install.sh --full -y`.
 
+Every install also adds the wallpapers in [wallpapers/](wallpapers/) to GNOME's
+own picker: **Settings › Appearance › Background**. They are offered, never
+set. The files live in `~/.local/share/backgrounds/aura-glass/`.
+
 **Then log out and back in.** Extensions can't be loaded into a running Wayland
 session. The settings app opens itself once on your next login.
 
