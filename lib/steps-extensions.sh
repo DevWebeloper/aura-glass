@@ -531,6 +531,9 @@ install_extensions() {
         else
             : > "$CONF_DIR/extension-pack"
         fi
+        # What the pack was chosen from, so a later release can tell an
+        # extension the user turned off from one that did not exist yet.
+        ( IFS=,; printf '%s\n' "${EXT_EXTRA_ALL[*]}" ) > "$CONF_DIR/extension-catalog"
     fi
     # Allow safe extensions that haven't updated metadata yet for newer GNOME releases to load.
     run gsettings set org.gnome.shell disable-extension-version-validation true

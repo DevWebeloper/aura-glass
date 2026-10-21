@@ -247,6 +247,7 @@ run dconf reset -f /org/gnome/shell/extensions/space-bar/
 run dconf reset -f /org/gnome/shell/extensions/vitals/
 run dconf reset -f /org/gnome/shell/extensions/clipboard-indicator/
 run dconf reset -f /org/gnome/shell/extensions/hotedge/
+run dconf reset -f /org/gnome/shell/extensions/wiggly/
 run dconf reset -f /org/gnome/shell/extensions/appindicator/
 ok "all extension configs reset to their defaults"
 
@@ -331,7 +332,8 @@ if [ "$REMOVE_EXTENSIONS" = 1 ]; then
              compiz-alike-magic-lamp-effect@hermes83.github.com \
              tiling-assistant@leleat-on-github \
              quick-settings-audio-panel@rayzeq.github.io \
-             add-to-steam@pupper.space copyous@boerdereinar.dev; do
+             add-to-steam@pupper.space copyous@boerdereinar.dev \
+             wiggly@mojarch; do
         if [ -d "$EXT_DIR/$u" ]; then
             run gnome-extensions disable "$u" 2>/dev/null || true
             dequeue_extension "$u" 2>/dev/null || true
@@ -470,6 +472,7 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/rounded-blur" \
           "$CONF_DIR/rounded-blur-choice" \
           "$CONF_DIR/extension-pack" \
+          "$CONF_DIR/extension-catalog" \
           "$CONF_DIR/osd" \
           "$CONF_DIR/window-menu" \
           "$CONF_DIR/app-transparency" \

@@ -189,7 +189,8 @@ by `save_glass_mode_memos`.
 | `update-available` | the version a check found | `aura-glass-update-check` |
 | `rounded-blur` | build stamp | `rounded_blur_stamp` |
 | `rounded-blur-choice` | `0\|1`, only after a typed `--rounded-blur` / `--no-rounded-blur`. Only a `0` is read back | `install_rounded_blur`; read in `install.sh`'s resolution block |
-| `extension-pack` | comma-separated UUIDs of the optional extensions chosen. Empty file = Minimal. Absent = the Recommended six | `install_extensions`; read in the resolution block |
+| `extension-pack` | comma-separated UUIDs of the optional extensions chosen. Empty file = Minimal. Absent = the Recommended seven | `install_extensions`; read in the resolution block |
+| `extension-catalog` | comma-separated UUIDs of `EXT_EXTRA_ALL` when the pack was chosen. A recommended extension missing from it joins a non-empty pack on an update. Absent = everything but `EXT_EXTRA_ADDED_LATER` | `install_extensions`; read in the resolution block |
 | `osd` | `0\|1`. Only a `0` is read back | `install_custom_osd`; read in the resolution block |
 | `bms-ref`, `bms-source` | installed BMS commit and `git\|ego`. `ego` is read back as `--no-bms-git` | `install_bms`; read in the resolution block |
 | `custom-osd-patch` (legacy `openbar-patch`), `rounded-blur-patch` | patch stamps | `patch_stamp_write` |

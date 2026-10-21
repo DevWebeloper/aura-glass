@@ -307,8 +307,9 @@ Catalogued in `lib/steps.sh`:
 | Tier | Contents |
 |---|---|
 | core | `user-theme@…` (from EGO), plus `blur-my-shell@aunetx` and `custom-osd@neuromorph` built from pinned commits, plus the first-party `aura-glass-blur@aura-glass.local` |
-| `EXT_EXTRA_RECOMMENDED` (6) | AppIndicator, Tiling Assistant, Quick Settings Audio Panel, Hot Edge, Kiwi Menu, Copyous |
-| `EXT_EXTRA_ALL` (8) | the six plus Vitals and Restart To |
+| `EXT_EXTRA_RECOMMENDED` (7) | AppIndicator, Tiling Assistant, Quick Settings Audio Panel, Hot Edge, Kiwi Menu, Copyous, Wiggly |
+| `EXT_EXTRA_ALL` (9) | the seven plus Vitals and Restart To |
+| `EXT_EXTRA_ADDED_LATER` | recommended extensions a remembered pack never offered; added to it on an update (`extension-catalog`) |
 | `EXT_NO_AUTO_ENABLE` | empty right now |
 
 - Upstreams are **pinned by commit** (table in §12). A theme that changes under
