@@ -243,9 +243,11 @@ PIPELINE_PY
 # The material on the top bar and the dock, and optionally behind app windows:
 # frosted (the blur alone), liquid (Blur My Shell's refraction effect after
 # the blur: the edge band bends the blurred backdrop like a lens and catches a
-# light rim) or vibrant (Blur My Shell's luminosity effect after the blur: the
+# light rim), vibrant (Blur My Shell's luminosity effect after the blur: the
 # colours behind the glass come through more saturated and a little brighter,
-# as macOS vibrancy does).
+# as macOS vibrancy does), tinted (Blur My Shell's color effect: the glass
+# takes on the accent's hue) or smoked (the luminosity effect again, darker
+# and greyer, so white text on it reads more easily).
 #
 # Only on static blur. Blur My Shell runs a pipeline's extra effects on static
 # blur alone: a dynamic surface goes through DummyPipeline, which builds the
@@ -277,6 +279,15 @@ PIPELINE_PY
 # switch is kept under frosted, so going back to either style brings the
 # windows back the way they were.
 #
+# Tinted and smoked reach what vibrant reaches, the top bar and pipeline
+# `lock screen`, and leave the dock dynamic for the same reason. They never
+# switch app windows to static: --liquid-windows is ignored under them, and
+# a switch from liquid or vibrant with windows on puts the windows' dynamic
+# blur back. Each already has a dynamic-safe counterpart on windows, owned by
+# its own flag and memo and left alone here: smoked is what a lower
+# --window-brightness does to the native blur behind a window, and tinted is
+# what --app-tint-color does to the window's own ground.
+#
 # The refraction effect rounds its own edge, so its corner radius must be the
 # one the pipeline's corner effect cuts at, or the rim would bend a corner the
 # corner effect has already cut away. It is read from that effect at run time
@@ -285,7 +296,34 @@ PIPELINE_PY
 # Our effects are told apart by their id prefix and removed before anything is
 # added, so a re-run, a switch back to frosted and apply_blur_strength's blob
 # rewrites all land in the same state.
-VALID_GLASS_STYLES="frosted liquid vibrant"
+VALID_GLASS_STYLES="frosted liquid vibrant tinted smoked"
+
+# The styles that may take app windows (--liquid-windows) along.
+glass_style_takes_windows() {   # STYLE
+    [ "$1" = liquid ] || [ "$1" = vibrant ]
+}
+
+# GNOME's nine accents as RGB, for tinted's color effect. GNOME exposes the
+# accent only as a name (org.gnome.desktop.interface accent-color, a
+# read-only keyword to St; see tokens/tokens.sh), and Blur My Shell's color
+# effect wants numbers, so this is the one place a name becomes a colour for
+# the shell. The values are libadwaita's accent backgrounds, the colour every
+# GTK app paints that accent in, so the tinted bar matches the apps' buttons.
+# gui/aura_glass_setup_wizard.py's ACCENTS swatches are the other copy;
+# tools/check-wizard-flags.py asserts the two agree.
+accent_hex() {   # NAME
+    case "$1" in
+        blue)   echo 3584e4 ;;
+        teal)   echo 2190a4 ;;
+        green)  echo 3a944a ;;
+        yellow) echo c88800 ;;
+        orange) echo ed5b00 ;;
+        red)    echo e62d42 ;;
+        pink)   echo d56199 ;;
+        slate)  echo 6f8396 ;;
+        *)      echo 9141ac ;;   # purple, and ACCENT_DEFAULT
+    esac
+}
 
 # Puts one static-blur key back to what dconf/core.ini ships, or to Blur My
 # Shell's own default where core.ini does not set it ([applications] does not).
@@ -337,12 +375,17 @@ apply_glass_style() {
 
     # An array: `lock screen` has a space in its name.
     local names=(panel dock)
-    [ "$want" != frosted ] && [ "$windows" = 1 ] && names+=(windows)
-    # Vibrant drops the dock: on its dynamic blur the effect would never run.
-    [ "$want" = vibrant ] && names=(panel "lock screen")
-    [ "$want" = vibrant ] && [ "$windows" = 1 ] && names+=(windows)
+    # The others drop the dock: on its dynamic blur the effect would never run.
+    [ "$want" = liquid ] || names=(panel "lock screen")
+    glass_style_takes_windows "$want" && [ "$windows" = 1 ] && names+=(windows)
 
+    # Read where install.sh resolves it (flag, memo, default), so a run that
+    # changes the accent tints with the new one. aura-glass-preview has no
+    # ACCENT of its own and lands on the memo.
+    local accent="${ACCENT:-$(cat "$CONF_DIR/accent" 2>/dev/null || true)}"
+    ACCENT_HEX="$(accent_hex "${accent:-${ACCENT_DEFAULT:-purple}}")" \
     python3 - "$want" "${names[@]}" <<'STYLE_PY' || { warn "could not set the glass style"; return 0; }
+import os
 import re
 import subprocess
 import sys
@@ -448,36 +491,76 @@ VIBRANT = ("'brightness_shift': <0.0>, 'brightness_multiplicator': <%s>, "
            "'contrast': <1.0>, 'contrast_center': <0.5>, "
            "'saturation_multiplicator': <1.35>")
 
-if want == "vibrant":
-    for name in names:
-        span = effects_span(new, name)
-        if span is None:
-            print("no `%s` pipeline in %s — it stays frosted" % (name, KEY),
-                  file=sys.stderr)
-            continue
-        effects = new[span[0]:span[1]]
-        blur = BLUR.search(effects)
-        if blur is None:
-            print("the `%s` pipeline has no static blur — it stays frosted"
-                  % name, file=sys.stderr)
-            continue
+#   tinted: Blur My Shell's color effect, blend_mode 16 (Color). Color keeps
+#        the backdrop's own brightness and takes only hue and saturation from
+#        the accent, so a tinted bar is exactly as light or dark as the frosted
+#        one and white text keeps the contrast the shell tint gave it. Soft
+#        light (11) was the other candidate; on a dark blur it mostly darkens
+#        two channels, which reads as a dimmer bar more than a coloured one.
+#        Alpha 0.3 is the blend amount (color.glsl mixes by it): enough for
+#        the accent to name the glass, while 70% of the wallpaper's own hue
+#        still shows through, so it stays glass rather than paint.
+TINTED = ("'color': <(%s, %s, %s, 0.3)>, 'blend_mode': <16>")
+#   smoked: the luminosity effect turned the other way.
+#        brightness_multiplicator 0.7   caps the brightest wallpaper patch
+#            behind the bar at 70% value, so white text keeps at least the
+#            contrast it has against a mid-grey; a bright cloud no longer
+#            washes the clock out.
+#        saturation_multiplicator 0.8   smoked glass is grey glass: a fifth
+#            of the colour drained, the wallpaper still recognisable.
+#        contrast 1.0   left alone on purpose. Raising it pivots on 0.5, so
+#            it would push bright patches up again, the opposite of what
+#            this style is for.
+SMOKED = ("'brightness_shift': <0.0>, 'brightness_multiplicator': <0.7>, "
+          "'contrast': <1.0>, 'contrast_center': <0.5>, "
+          "'saturation_multiplicator': <0.8>")
+
+
+def style_effect(name):
+    """This style's effect for the named pipeline, or None for liquid/frosted."""
+    if want == "vibrant":
         lift = "1.0" if name in ("lock screen", "windows") else "1.06"
-        effect = ("<{'type': <'luminosity'>, 'id': <'%svibrant_%s'>, "
-                  "'params': <{%s}>}>"
-                  % (PREFIX, name.replace(" ", "_"), VIBRANT % lift))
-        # Never after a corner effect. The shader divides hue and saturation,
-        # not only the value, by alpha, so on the corner's anti-aliased edge
-        # it turns the hue: a magenta rim round the whole top bar in the
-        # preview, whose pipeline cuts its corner before the blur. Before that
-        # corner the texture is opaque everywhere and the saturation still
-        # reaches the blur, just ahead of it rather than behind.
-        corner = CORNER.search(effects)
-        if corner is not None and corner.start() < blur.start():
-            at = span[0] + effects.rfind("<{", 0, corner.start())
-            new = new[:at] + effect + ", " + new[at:]
-        else:
-            at = span[0] + blur.end()
-            new = new[:at] + ", " + effect + new[at:]
+        kind, params = "luminosity", VIBRANT % lift
+    elif want == "smoked":
+        kind, params = "luminosity", SMOKED
+    elif want == "tinted":
+        hexa = os.environ.get("ACCENT_HEX", "9141ac")
+        rgb = [round(int(hexa[i:i + 2], 16) / 255.0, 4) for i in (0, 2, 4)]
+        kind, params = "color", TINTED % tuple(repr(c) for c in rgb)
+    else:
+        return None
+    return ("<{'type': <'%s'>, 'id': <'%s%s_%s'>, 'params': <{%s}>}>"
+            % (kind, PREFIX, want, name.replace(" ", "_"), params))
+
+
+for name in names if want in ("vibrant", "tinted", "smoked") else []:
+    span = effects_span(new, name)
+    if span is None:
+        print("no `%s` pipeline in %s — it stays frosted" % (name, KEY),
+              file=sys.stderr)
+        continue
+    effects = new[span[0]:span[1]]
+    blur = BLUR.search(effects)
+    if blur is None:
+        print("the `%s` pipeline has no static blur — it stays frosted"
+              % name, file=sys.stderr)
+        continue
+    effect = style_effect(name)
+    # Never after a corner effect. The luminosity shader divides hue and
+    # saturation, not only the value, by alpha, so on the corner's
+    # anti-aliased edge it turns the hue: a magenta rim round the whole top
+    # bar in the preview, whose pipeline cuts its corner before the blur.
+    # Before that corner the texture is opaque everywhere and the effect
+    # still reaches the blur, just ahead of it rather than behind. The color
+    # effect does not divide, but goes in the same place so every style
+    # shapes the same pixels.
+    corner = CORNER.search(effects)
+    if corner is not None and corner.start() < blur.start():
+        at = span[0] + effects.rfind("<{", 0, corner.start())
+        new = new[:at] + effect + ", " + new[at:]
+    else:
+        at = span[0] + blur.end()
+        new = new[:at] + ", " + effect + new[at:]
 
 if new != cur:
     subprocess.run(["dconf", "write", KEY, new], check=True)
@@ -492,9 +575,9 @@ STYLE_PY
     elif [ "$previous" = liquid ]; then
         restore_static_blur dash-to-dock
     fi
-    if [ "$want" != frosted ] && [ "$windows" = 1 ]; then
+    if glass_style_takes_windows "$want" && [ "$windows" = 1 ]; then
         run dconf write "$base/applications/static-blur" true
-    elif { [ "$previous" = liquid ] || [ "$previous" = vibrant ]; } && [ "$previous_windows" = 1 ]; then
+    elif glass_style_takes_windows "$previous" && [ "$previous_windows" = 1 ]; then
         restore_static_blur applications
     fi
 
@@ -511,6 +594,10 @@ STYLE_PY
         ok "vibrant glass on the top bar, the overview and app windows (remembered for later runs)"
     elif [ "$want" = vibrant ]; then
         ok "vibrant glass on the top bar and the overview (remembered for later runs)"
+    elif [ "$want" = tinted ]; then
+        ok "glass tinted toward the ${accent:-${ACCENT_DEFAULT:-purple}} accent on the top bar and the overview (remembered for later runs)"
+    elif [ "$want" = smoked ]; then
+        ok "smoked glass on the top bar and the overview (remembered for later runs)"
     else
         ok "frosted glass on the top bar and the dock"
     fi

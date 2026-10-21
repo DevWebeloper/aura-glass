@@ -57,7 +57,7 @@ implementation view.
 
 | Flag (aliases) | Values / default | Memo | Drawer | Incr. |
 |---|---|---|---|---|
-| `--accent C` | `blue teal green yellow orange red pink purple slate`. Default `purple` | `accent` | | `accent` (+ `cursor-theme` when the pointer is Moga) |
+| `--accent C` | `blue teal green yellow orange red pink purple slate`. Default `purple` | `accent` | | `accent` (+ `cursor-theme` when the pointer is Moga, + `glass-style` when the glass style is tinted) |
 | `--glass-mode M` | `frosted` \| `performance` | `glass-mode` | | full |
 | `--blur` / `--no-blur` | `--no-blur` ⇒ performance | (via `glass-mode`) | | full |
 | `--window-blur` / `--no-window-blur` | on. `--no-window-blur` also sets scope `none` and level 0.95 unless a level was given | `window-blur` | | full |
@@ -73,8 +73,8 @@ implementation view.
 | `--popup-brightness P` | 50–150, default 115 (preset) | `popup-brightness` | ✓ | full |
 | `--window-brightness P` (`--app-brightness`, `--window-blur-brightness`) | 50–150, default 100 | `window-brightness` | ✓ | `window-brightness` (except the last alias, which is full) |
 | `--grain N` / `--no-grain` | 0–1, default 0 | `grain` | | full |
-| `--glass-style S` | `frosted` (default), `liquid`, `vibrant`. Top bar and dock (vibrant: top bar, overview and lock screen, the dock stays frosted); liquid makes the dock's blur static | `glass-style` | | full |
-| `--liquid-windows` / `--no-liquid-windows` | off. The glass style (liquid or vibrant) behind app windows too; makes `[applications] static-blur` true | `liquid-windows` | | full |
+| `--glass-style S` | `frosted` (default), `liquid`, `vibrant`, `tinted` (accent colour), `smoked`. Liquid: top bar and dock, and makes the dock's blur static. The others: top bar, overview and lock screen; the dock stays frosted | `glass-style` | | full |
+| `--liquid-windows` / `--no-liquid-windows` | off. Liquid or vibrant behind app windows too (ignored under tinted and smoked); makes `[applications] static-blur` true | `liquid-windows` | | full |
 | `--radius-preset P` | `flat sharp adwaita soft medium default rounded` (`pill` → `rounded`). Default `default` | `radius-preset` | | full |
 | `--radius-custom W,M,Q,N,D,P,O,B` | 8 integers within `radius_bounds`. Implies `custom` | `radius-custom` (a 7-field memo is widened with `,9999`) | | full |
 | `--window-buttons close\|all` | unset = leave GNOME's layout | `window-buttons` | | `window-buttons` |
@@ -102,6 +102,7 @@ implementation view.
 | `window-brightness` | `apply_window_brightness` |
 | `app-blur` | `apply_app_blur` |
 | `css` | `install_css` (the whole CSS pipeline + `aura-glass-apply`) |
+| `glass-style` | `apply_glass_style` (an accent edit under the tinted style) |
 | `adaptive-blur` | `apply_adaptive_blur active\|restore` |
 
 These are ignored by the classifier: `--settings-only --incremental --plan-json --yes -y --dry-run -n`.
@@ -134,7 +135,7 @@ not adaptive).
 | `blur-strength` | 25–200 | `apply_blur_strength` |
 | `popup-brightness`, `window-brightness` | 50–150 | `apply_popup_brightness`, `apply_window_brightness` |
 | `grain` | 0–1 | `apply_grain` |
-| `glass-style` | `frosted\|liquid\|vibrant` | `apply_glass_style` |
+| `glass-style` | `frosted\|liquid\|vibrant\|tinted\|smoked` | `apply_glass_style` |
 | `liquid-windows` | `0\|1`, kept under frosted | `apply_glass_style` |
 | `titlebutton-style` | `minimal\|adwaita\|material\|flat` | `install_window_control_style` |
 | `window-buttons` | `close\|all` | `apply_window_buttons` |

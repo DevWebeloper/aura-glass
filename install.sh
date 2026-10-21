@@ -200,11 +200,13 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       plain blur), liquid (the edges bend what is behind them
                       like a lens, with a light rim) or vibrant (the colours
                       behind come through more saturated and a little
-                      brighter; the overview and lock screen too, the dock
-                      stays frosted). Liquid makes the dock blur the
+                      brighter), tinted (toward the accent colour) or smoked
+                      (darker and greyer, for white text). Vibrant, tinted
+                      and smoked reach the overview and lock screen too and
+                      leave the dock frosted. Liquid makes the dock blur the
                       wallpaper rather than the windows passing behind it. Frosted mode only. Remembered
                       for later runs
-    --liquid-windows  the glass style (liquid or vibrant) behind app windows
+    --liquid-windows  liquid or vibrant behind app windows
                       too. Window blur turns static: a window blurs the
                       wallpaper, not the window under it
     --no-liquid-windows
@@ -1539,6 +1541,7 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
                     app-blur) apply_app_blur ;;
                     css) install_css ;;
                     app-opacity) apply_app_opacity ;;
+                    glass-style) apply_glass_style ;;
                     adaptive-blur)
                         apply_adaptive_blur "$ADAPTIVE_BLUR"
                         ;;

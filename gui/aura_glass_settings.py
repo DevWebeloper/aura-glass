@@ -537,6 +537,12 @@ GLASS_STYLES = [
     ("vibrant", "Vibrant",
      "The colours behind the top bar and the overview come through richer "
      "and a little brighter. The dock keeps its live frosted blur"),
+    ("tinted", "Tinted",
+     "The top bar and the overview take on your accent colour. The dock "
+     "keeps its live frosted blur"),
+    ("smoked", "Smoked",
+     "The top bar and the overview turn darker and greyer, so white text "
+     "reads more easily. The dock keeps its live frosted blur"),
 ]
 
 # Appearance selectors share one small piece of row metadata.  Icon colour is
@@ -679,6 +685,7 @@ PLAN_ACTIONS = {
     "app-blur": "the per-app blur lists",
     "css": "the stylesheets",
     "app-opacity": "the window opacity",
+    "glass-style": "the tinted glass",
 }
 
 
@@ -6922,10 +6929,12 @@ class Window(Adw.ApplicationWindow):
         self._tint_rows["frosted"]["app"].set_sensitive(live)
         self._tint_rows["frosted"]["link"].set_sensitive(live)
 
-        # Frosted has no effect for app windows to take.
+        # Only liquid and vibrant take app windows along (glass_style_takes_
+        # windows in lib/steps-dconf.sh); tinted and smoked never make window
+        # blur static.
         self._liquid_windows_row.set_sensitive(
             self._glass_style_row._ids[self._glass_style_row.get_selected()]
-            != "frosted")
+            in ("liquid", "vibrant"))
 
     def _mark_dirty(self):
         args = self._current().flags_against(self._applied)

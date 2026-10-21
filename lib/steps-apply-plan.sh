@@ -42,6 +42,11 @@ select_apply_actions() {
     if [ "${CURSORS:-}" = moga ] && [ -n "${ACCENT_EXPLICIT:-}" ]; then
         _apply_add cursor-theme
     fi
+    # The tinted glass style is coloured with the accent (accent_hex in
+    # steps-dconf.sh), so an accent edit has to re-tint the shell too.
+    if [ -n "${ACCENT_EXPLICIT:-}" ] && [ "$(cat "$CONF_DIR/glass-style" 2>/dev/null || true)" = tinted ]; then
+        _apply_add glass-style
+    fi
 }
 
 apply_source_fingerprint() {

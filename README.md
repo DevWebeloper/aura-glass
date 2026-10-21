@@ -70,6 +70,10 @@ The **Vibrant** style lets the colours behind the top bar and the overview come
 through richer and a little brighter, as macOS vibrancy does. The dock keeps its
 live frosted blur
 (`./install.sh --settings-only --glass-style vibrant -y`).
+**Tinted** colours the same glass toward your accent, and **Smoked** makes it
+darker and greyer so white text reads more easily (`--glass-style tinted`,
+`--glass-style smoked`). Behind app windows the matching settings are the
+window tint colour and window blur brightness, which keep the live blur.
 
 **Adaptive performance** sits on top of Frosted. A top-bar menu offers
 **Auto / Full Glass / Performance**. In *Auto*, blur is dropped temporarily
