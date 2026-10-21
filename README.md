@@ -61,6 +61,12 @@ session. The settings app opens itself once on your next login.
 Each mode remembers its own tint and transparency. Switch between them in
 **Aura Glass Settings → Glass**, or run `./install.sh --settings-only --glass-mode performance -y`.
 
+Frosted has a **Liquid** style for the top bar and the dock: their edges bend
+what's behind them like a lens and catch a light rim. Both surfaces are then
+static blur, computed once per wallpaper, so it costs no GPU while you work. The
+dock then blurs the wallpaper instead of the windows passing behind it. Pick it
+in **Glass → Glass style**, or run `./install.sh --settings-only --glass-style liquid -y`.
+
 **Adaptive performance** sits on top of Frosted. A top-bar menu offers
 **Auto / Full Glass / Performance**. In *Auto*, blur is dropped temporarily
 while you're on battery, while the GPU is busy (≥ 80 % for ~6 s), or while a game

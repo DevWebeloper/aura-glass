@@ -70,6 +70,7 @@ a restart.
 | Popup blur brightness (50–150 %) | `[popup] brightness` + pipeline `popups` | `apply_popup_brightness` → `tools/apply-popup-brightness.py` |
 | Window blur brightness (50–150 %) | `[applications] brightness` | `apply_window_brightness` |
 | Grain (0–1) | the noise effect in pipelines | `apply_grain` |
+| Glass style (frosted / liquid) | a `refraction` effect (id prefix `effect_aura_glass_style_`) after the blur in pipelines `panel` and `dock`, corner radius copied from that pipeline's corner effect; liquid also sets `[dash-to-dock] static-blur=true` | `apply_glass_style`. Memo `$C/glass-style` (top-level, not a drawer field) |
 | Popup blur on/off | `[popup] blur` + `shell-popup-blur.css` present/absent | `apply_popup_blur`, `install_css` |
 | Notification blur on/off | `[popup] notification` + `shell-notification-blur.css` | `apply_notification_blur`, `install_css` |
 | Per-app blur lists | `[applications] whitelist/blacklist`, memos `app-blur-allow/-block` | `apply_app_blur`. Window menu: `aura-glass-preview app-blur` |

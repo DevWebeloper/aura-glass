@@ -526,6 +526,16 @@ TITLEBUTTON_STYLES = [
      "No disc at all — the glyph brightens instead"),
 ]
 
+# The material on the top bar and the dock. Install-side: apply_glass_style in
+# lib/steps-dconf.sh, whose comment says why it stops at those two and why
+# liquid makes the dock's blur static.
+GLASS_STYLES = [
+    ("frosted", "Frosted", "Blur alone"),
+    ("liquid", "Liquid",
+     "The edges bend what is behind them like a lens. The dock blurs the "
+     "wallpaper, not the windows behind it"),
+]
+
 # Appearance selectors share one small piece of row metadata.  Icon colour is
 # the only dependent list today: the family decides which variants it can
 # offer.  The other rows are still registered here so rebuilding Appearance
@@ -542,6 +552,7 @@ CONTEXTUAL_CHOICE_METADATA = {
     "cursors": {"enabled_when": "available"},
     "window_buttons": {"enabled_when": "available"},
     "titlebutton_style": {"enabled_when": "available"},
+    "glass_style": {"enabled_when": "available"},
 }
 
 # The sidebar: (id, title, icon, builder method), in the order shown.
@@ -624,6 +635,7 @@ FLAG_LABELS = {
     "--font": ("appearance", "Interface font"),
     "--window-buttons": ("appearance", "Titlebar buttons"),
     "--titlebar-button-style": ("appearance", "Titlebar button style"),
+    "--glass-style": ("glass", "Glass style"),
     "--update-check": ("updates", "Daily update check"),
     "--no-update-check": ("updates", "Daily update check"),
     "--update-channel": ("updates", "Update channel"),
@@ -2314,6 +2326,12 @@ class Settings:
         if self.titlebutton_style not in [s[0] for s in TITLEBUTTON_STYLES]:
             self.titlebutton_style = "minimal"
 
+        # A top-level memo, not a drawer field: Performance has no blur for a
+        # style to shape, so there is nothing for a second copy to hold.
+        self.glass_style = read_memo("glass-style", "frosted") or "frosted"
+        if self.glass_style not in [g[0] for g in GLASS_STYLES]:
+            self.glass_style = "frosted"
+
         # A user systemd unit rather than a look, but a remembered setting like
         # any other, so it rides on Apply.
         # Its default is the machine's, not a literal: the rebuild is for
@@ -2485,6 +2503,8 @@ class Settings:
             args += ["--window-buttons", self.window_buttons]
         if self.titlebutton_style != other.titlebutton_style:
             args += ["--titlebar-button-style", self.titlebutton_style]
+        if self.glass_style != other.glass_style:
+            args += ["--glass-style", self.glass_style]
         # --radius-custom implies the custom preset, so it stands in for
         # --radius-preset rather than joining it. Sent when the eight values
         # moved even if the preset name did not, because "custom" says nothing
@@ -4619,6 +4639,15 @@ class Window(Adw.ApplicationWindow):
 
         page.add(glass)
         page.add(self._build_blur_strength_group("frosted"))
+
+        style = Adw.PreferencesGroup(
+            title="Glass style",
+            description="The material on the top bar and the dock.")
+        self._glass_style_row = self._combo(
+            "Style", "", GLASS_STYLES, self._applied.glass_style,
+            "glass_style")
+        style.add(self._glass_style_row)
+        page.add(style)
         page.add(self._build_window_brightness_group("frosted"))
         page.add(self._build_popup_brightness_group("frosted"))
         page.add(self._build_notification_ground_group("frosted"))
@@ -6843,6 +6872,8 @@ class Window(Adw.ApplicationWindow):
             self._window_buttons_row.get_selected()]
         s.titlebutton_style = self._titlebutton_style_row._ids[
             self._titlebutton_style_row.get_selected()]
+        s.glass_style = self._glass_style_row._ids[
+            self._glass_style_row.get_selected()]
         s.panel_blur_fix = self._panel_blur_row.get_active()
         s.update_check = self._update_check_row.get_active()
         # Not settings, so they never differ and never produce a flag. Carried so
@@ -7105,6 +7136,9 @@ class Window(Adw.ApplicationWindow):
         self._refill_contextual_choice(
             self._titlebutton_style_row, TITLEBUTTON_STYLES,
             self._applied.titlebutton_style, "titlebutton_style")
+        self._refill_contextual_choice(
+            self._glass_style_row, GLASS_STYLES,
+            self._applied.glass_style, "glass_style")
         self._panel_blur_row.set_active(self._applied.panel_blur_fix)
         self._update_check_row.set_active(self._applied.update_check)
         self._update_channel_row.set_selected(

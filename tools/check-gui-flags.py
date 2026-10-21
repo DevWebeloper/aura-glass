@@ -67,6 +67,7 @@ def state(**kw):
     s.font = kw.get("font", "system")
     s.window_buttons = kw.get("window_buttons", "")
     s.titlebutton_style = kw.get("titlebutton_style", "minimal")
+    s.glass_style = kw.get("glass_style", "frosted")
     s.panel_blur_fix = kw.get("panel_blur_fix", True)
     s.update_check = kw.get("update_check", True)
     s.update_channel = kw.get("update_channel", "release")
@@ -338,6 +339,12 @@ CASES = [
     ("titlebar button style back to minimal",
      state(titlebutton_style="material"), FROSTED,
      ["--titlebar-button-style", "minimal"]),
+
+    ("glass style to liquid", FROSTED, state(glass_style="liquid"),
+     ["--glass-style", "liquid"]),
+
+    ("glass style back to frosted", state(glass_style="liquid"), FROSTED,
+     ["--glass-style", "frosted"]),
 
     # The family goes out bare, so install.sh maps it to a colour Reversal
     # ships. Naming the colour here would need a second copy of that mapping —

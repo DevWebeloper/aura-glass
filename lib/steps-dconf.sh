@@ -128,6 +128,7 @@ load_dconf() {
     apply_app_blur
     apply_app_opacity
     apply_radius_dconf
+    apply_glass_style
     sync_osd_profile
     refresh_bms_after_dconf
 }
@@ -237,6 +238,176 @@ for _token, _kind, _rel, pattern in raw_entries({"TOKEN_RADIUS_WINDOW"}):
 if new != cur:
     subprocess.run(["dconf", "write", KEY, new], check=True)
 PIPELINE_PY
+}
+
+# The material on the top bar and the dock: frosted (the blur alone) or liquid
+# (Blur My Shell's refraction effect after the blur: the edge band bends the
+# blurred backdrop like a lens and catches a light rim).
+#
+# Only the top bar and the dock, and only as static blur. Blur My Shell runs a
+# pipeline's extra effects on static blur alone: a dynamic surface goes through
+# DummyPipeline, which builds the native blur and nothing else from it. Chaining
+# one more shader after a dynamic blur does not work either. The shader gets
+# the actor's own texture, which is empty, not the blurred backdrop. That is
+# the same reason a dynamic popup's corners come out square without
+# gnome-rounded-blur (see [blur-my-shell/popup] in dconf/core.ini). So liquid
+# switches the dock to static blur, which blurs the wallpaper rather than the
+# windows passing behind it. Menus, notifications and app windows keep their
+# dynamic frosted blur. Their pipeline is one for every popup surface, with
+# radii from 12 to 33, and one refraction corner radius cannot fit them all.
+#
+# Static blur is computed once per wallpaper or layout change, so the shader
+# costs nothing while the desktop repaints. Measured on the panel with
+# tools/gpu-sample.py (amdgpu, 15 s idle): median 20% liquid and frosted alike.
+#
+# The refraction effect rounds its own edge, so its corner radius must be the
+# one the pipeline's corner effect cuts at, or the rim would bend a corner the
+# corner effect has already cut away. It is read from that effect at run time
+# rather than kept as another copy of the number.
+#
+# Our effects are told apart by their id prefix and removed before anything is
+# added, so a re-run, a switch back to frosted and apply_blur_strength's blob
+# rewrites all land in the same state.
+VALID_GLASS_STYLES="frosted liquid"
+
+apply_glass_style() {
+    local base=/org/gnome/shell/extensions/blur-my-shell
+    local want="${GLASS_STYLE:-}" memo="$CONF_DIR/glass-style" previous
+    previous="$(cat "$memo" 2>/dev/null || true)"
+    if [ -z "${GLASS_STYLE_EXPLICIT:-}" ] || [ -z "$want" ]; then
+        want="${previous:-frosted}"
+    fi
+    case " $VALID_GLASS_STYLES " in
+        *" $want "*) ;;
+        *) warn "unknown glass style '$want' — using frosted"; want=frosted ;;
+    esac
+
+    # Performance has no blur for a style to shape. The choice is still
+    # remembered, so it is there when frosted comes back.
+    if [ "${WANT_BLUR:-1}" != 1 ]; then
+        if [ -n "${GLASS_STYLE_EXPLICIT:-}" ] && remembering; then
+            mkdir -p "$CONF_DIR"
+            printf '%s\n' "$want" > "$memo"
+        fi
+        skip "glass style left alone (no blur to shape)"
+        return 0
+    fi
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: glass style $want on the top bar and the dock"
+        return 0
+    fi
+
+    python3 - "$want" <<'STYLE_PY' || { warn "could not set the glass style"; return 0; }
+import re
+import subprocess
+import sys
+
+want = sys.argv[1]
+KEY = "/org/gnome/shell/extensions/blur-my-shell/pipelines"
+PREFIX = "effect_aura_glass_style_"
+cur = subprocess.run(["dconf", "read", KEY],
+                     capture_output=True, text=True).stdout.strip()
+if not cur:
+    sys.exit(0)
+
+# Every effect's params are a flat dict, so [^{}]* cannot run past its end.
+OURS = re.compile(r"(, )?<\{'type': <'[a-z_]+'>, 'id': <'%s[a-z_]+'>, "
+                  r"'params': <\{[^{}]*\}>\}>(, )?" % PREFIX)
+
+
+def strip(match):
+    # Keep one separator when the effect sat between two others.
+    return ", " if match.group(1) and match.group(2) else ""
+
+
+new = OURS.sub(strip, cur)
+
+# The refraction effect's look is Blur My Shell's own default (strength 0.42,
+# bezel 22, falloff 2.4, rim 4.8, gloss 0.55, shadow 0.28). The three
+# values that differ only remove cost or a second copy of something:
+#   blur_radius 0     the native blur before it has already blurred. Its own
+#                     blur would be a second gaussian, run once per pass.
+#   rgb_fringing 0    one backdrop read per pixel instead of three. The
+#                     colour split also read as a defect on white text.
+#   tint 0            the tint is css/'s job (--shell-tint-color). A second
+#                     one here would ignore that choice.
+LIQUID = ("'strength': <0.42>, 'blur_radius': <0.0>, 'edge_size': <22.0>, "
+          "'falloff': <2.4>, 'corner_radius': <%s>, 'rim_width': <4.8>, "
+          "'rgb_fringing': <0.0>, 'gloss': <0.55>, 'tint': <0.0>, "
+          "'shadow': <0.28>")
+BLUR = re.compile(r"<\{'type': <'native_static_gaussian_blur'>, 'id': <'[^']*'>, "
+                  r"'params': <\{[^{}]*\}>\}>")
+CORNER = re.compile(r"'type': <'corner'>, 'id': <'[^']*'>, "
+                    r"'params': <\{'radius': <([0-9.]+)>")
+
+
+def effects_span(blob, name):
+    """Start and end of the named pipeline's effect list, brackets excluded."""
+    head = "'name': <'%s'>, 'effects': <[" % name
+    start = blob.find(head)
+    if start < 0:
+        return None
+    start += len(head)
+    depth, i, quoted = 1, start, False
+    while i < len(blob):
+        c = blob[i]
+        if c == "'":
+            quoted = not quoted
+        elif not quoted and c == "[":
+            depth += 1
+        elif not quoted and c == "]":
+            depth -= 1
+            if depth == 0:
+                return start, i
+        i += 1
+    return None
+
+
+if want == "liquid":
+    for name in ("panel", "dock"):
+        span = effects_span(new, name)
+        if span is None:
+            print("no `%s` pipeline in %s — it stays frosted" % (name, KEY),
+                  file=sys.stderr)
+            continue
+        effects = new[span[0]:span[1]]
+        blur = BLUR.search(effects)
+        corner = CORNER.search(effects)
+        if blur is None:
+            print("the `%s` pipeline has no static blur — it stays frosted"
+                  % name, file=sys.stderr)
+            continue
+        radius = float(corner.group(1)) if corner else 0.0
+        effect = ("<{'type': <'refraction'>, 'id': <'%srefraction_%s'>, "
+                  "'params': <{%s}>}>" % (PREFIX, name, LIQUID % repr(radius)))
+        at = span[0] + blur.end()
+        new = new[:at] + ", " + effect + new[at:]
+
+if new != cur:
+    subprocess.run(["dconf", "write", KEY, new], check=True)
+STYLE_PY
+
+    # The dock's refraction only runs on static blur (see above). Frosted puts
+    # back the preset's value, but only when coming back from liquid: a dock a
+    # user made static on their own stays static.
+    if [ "$want" = liquid ]; then
+        run dconf write "$base/dash-to-dock/static-blur" true
+    elif [ "$previous" = liquid ]; then
+        run dconf write "$base/dash-to-dock/static-blur" \
+            "$(awk -F= '/^\[/{s=($0=="[blur-my-shell/dash-to-dock]")} s&&$1=="static-blur"{print $2; exit}' \
+                "$REPO_ROOT/dconf/core.ini")"
+    fi
+
+    if remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$want" > "$memo"
+    fi
+    if [ "$want" = liquid ]; then
+        ok "liquid glass on the top bar and the dock (remembered for later runs)"
+    else
+        ok "frosted glass on the top bar and the dock"
+    fi
 }
 
 # [applications] opacity controls the compositor-level window actor opacity for

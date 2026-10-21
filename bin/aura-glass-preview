@@ -293,6 +293,11 @@ cmd_set() {
     # corner back to the shipped 30 behind a window painted at the candidate.
     # load_dconf in lib/steps-dconf.sh keeps the same order for the same reason.
     apply_radius_dconf >/dev/null
+
+    # After the radius, as in load_dconf: the strength block's reset drops the
+    # remembered style's refraction effects from the blob, and they take their
+    # corner radius from the corner effect apply_radius_dconf writes.
+    apply_glass_style >/dev/null
 }
 
 cmd_apps() {
