@@ -31,7 +31,7 @@ generate_gdm_wallpaper() {
 
     python3 - "$src" "$dst" <<'PY' || return 1
 import os, sys, urllib.parse, subprocess
-from PIL import Image, ImageFilter, ImageEnhance
+from PIL import Image, ImageFilter, ImageEnhance, ImageOps
 
 src = sys.argv[1]
 dst = sys.argv[2]
@@ -39,35 +39,106 @@ dst = sys.argv[2]
 if not os.path.exists(src):
     sys.exit(1)
 
-if src.lower().endswith(('.svg', '.svgz')):
-    try:
-        subprocess.run([
-            "magick", "-density", "150", src,
-            "-resize", "2560x1440^", "-gravity", "center", "-extent", "2560x1440",
-            "-blur", "0x30", "-fill", "black", "-colorize", "40%", dst
-        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        sys.exit(0)
-    except Exception:
-        pass
 
-try:
-    im = Image.open(src).convert('RGB')
-    im.thumbnail((2560, 1440), Image.Resampling.LANCZOS)
-    im = im.filter(ImageFilter.GaussianBlur(radius=30))
-    enhancer = ImageEnhance.Brightness(im)
-    im = enhancer.enhance(0.55)
-    im.save(dst, format="PNG")
-    sys.exit(0)
-except Exception:
+def render():
+    if src.lower().endswith(('.svg', '.svgz')):
+        try:
+            subprocess.run([
+                "magick", "-density", "150", src,
+                "-resize", "2560x1440^", "-gravity", "center", "-extent", "2560x1440",
+                "-blur", "0x30", "-fill", "black", "-colorize", "40%", dst
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True
+        except Exception:
+            pass
+
     try:
-        subprocess.run([
-            "magick", src,
-            "-resize", "2560x1440^", "-gravity", "center", "-extent", "2560x1440",
-            "-blur", "0x30", "-fill", "black", "-colorize", "40%", dst
-        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        sys.exit(0)
+        im = Image.open(src).convert('RGB')
+        im.thumbnail((2560, 1440), Image.Resampling.LANCZOS)
+        im = im.filter(ImageFilter.GaussianBlur(radius=30))
+        enhancer = ImageEnhance.Brightness(im)
+        im = enhancer.enhance(0.55)
+        im.save(dst, format="PNG")
+        return True
     except Exception:
-        sys.exit(1)
+        try:
+            subprocess.run([
+                "magick", src,
+                "-resize", "2560x1440^", "-gravity", "center", "-extent", "2560x1440",
+                "-blur", "0x30", "-fill", "black", "-colorize", "40%", dst
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True
+        except Exception:
+            return False
+
+
+def monitor_rects():
+    """Logical rects of this session's monitors: the layout sync_monitors copies to GDM."""
+    try:
+        import gi
+        gi.require_version('Gio', '2.0')
+        from gi.repository import Gio
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        state = bus.call_sync(
+            'org.gnome.Mutter.DisplayConfig', '/org/gnome/Mutter/DisplayConfig',
+            'org.gnome.Mutter.DisplayConfig', 'GetCurrentState',
+            None, None, Gio.DBusCallFlags.NONE, 2000, None).unpack()
+    except Exception:
+        return []
+    serial, monitors, logical, props = state
+    modes = {}
+    for spec, mode_list, _ in monitors:
+        for mode in mode_list:
+            if mode[6].get('is-current'):
+                modes[spec[0]] = (mode[1], mode[2])
+    physical = props.get('layout-mode') == 2
+    rects = []
+    for x, y, scale, transform, _, specs, _ in logical:
+        if not specs or specs[0][0] not in modes:
+            continue
+        w, h = modes[specs[0][0]]
+        if transform % 2:
+            w, h = h, w
+        if not physical:
+            w, h = round(w / scale), round(h / scale)
+        rects.append((x, y, w, h))
+    return rects
+
+
+# The greeter has no per-monitor backgrounds (layout.js returns early from
+# _updateBackgrounds when sessionMode.isGreeter), so this image is only ever
+# drawn as the `#lockDialogGroup` CSS background, and that actor spans the whole
+# stage. With one image, background-size: cover stretched it across every
+# monitor at once. Instead lay it out like the stage: one zoomed copy per
+# monitor rect, the canvas the size of the stage's bounding box, so cover maps
+# it back 1:1. Gaps between unequal monitors are never on screen; they take the
+# theme's #lockDialogGroup background-color.
+def span_monitors():
+    rects = monitor_rects()
+    if len(rects) < 2:
+        return
+    x0 = min(r[0] for r in rects)
+    y0 = min(r[1] for r in rects)
+    width = max(r[0] + r[2] for r in rects) - x0
+    height = max(r[1] + r[3] for r in rects) - y0
+    # The image is blurred, so 3840 px across keeps the file small with no
+    # visible loss on a wide two-monitor stage.
+    k = min(1.0, 3840 / width)
+    im = Image.open(dst).convert('RGB')
+    canvas = Image.new('RGB', (max(1, round(width * k)), max(1, round(height * k))), (0x22, 0x22, 0x26))
+    for x, y, w, h in rects:
+        tile = ImageOps.fit(im, (max(1, round(w * k)), max(1, round(h * k))), Image.Resampling.LANCZOS)
+        canvas.paste(tile, (round((x - x0) * k), round((y - y0) * k)))
+    canvas.save(dst, format="PNG")
+
+
+if not render():
+    sys.exit(1)
+try:
+    span_monitors()
+except Exception:
+    pass
+sys.exit(0)
 PY
 }
 
