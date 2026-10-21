@@ -66,6 +66,10 @@ what's behind them like a lens and catch a light rim. Both surfaces are then
 static blur, computed once per wallpaper, so it costs no GPU while you work. The
 dock then blurs the wallpaper instead of the windows passing behind it. Pick it
 in **Glass → Glass style**, or run `./install.sh --settings-only --glass-style liquid -y`.
+The **Vibrant** style lets the colours behind the top bar, the dock and the
+overview come through richer and a little brighter, as macOS vibrancy does. It
+has the same static dock and the same zero cost
+(`./install.sh --settings-only --glass-style vibrant -y`).
 
 **Adaptive performance** sits on top of Frosted. A top-bar menu offers
 **Auto / Full Glass / Performance**. In *Auto*, blur is dropped temporarily

@@ -347,6 +347,12 @@ CASES = [
     ("glass style back to frosted", state(glass_style="liquid"), FROSTED,
      ["--glass-style", "frosted"]),
 
+    ("glass style to vibrant", FROSTED, state(glass_style="vibrant"),
+     ["--glass-style", "vibrant"]),
+
+    ("glass style from liquid to vibrant", state(glass_style="liquid"),
+     state(glass_style="vibrant"), ["--glass-style", "vibrant"]),
+
     ("liquid behind app windows", state(glass_style="liquid"),
      state(glass_style="liquid", liquid_windows=True), ["--liquid-windows"]),
 

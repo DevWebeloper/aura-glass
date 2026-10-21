@@ -73,7 +73,7 @@ implementation view.
 | `--popup-brightness P` | 50–150, default 115 (preset) | `popup-brightness` | ✓ | full |
 | `--window-brightness P` (`--app-brightness`, `--window-blur-brightness`) | 50–150, default 100 | `window-brightness` | ✓ | `window-brightness` (except the last alias, which is full) |
 | `--grain N` / `--no-grain` | 0–1, default 0 | `grain` | | full |
-| `--glass-style S` | `frosted` (default), `liquid`. Top bar and dock only; liquid makes the dock's blur static | `glass-style` | | full |
+| `--glass-style S` | `frosted` (default), `liquid`, `vibrant`. Top bar and dock (vibrant also the overview and lock screen); liquid and vibrant make the dock's blur static | `glass-style` | | full |
 | `--liquid-windows` / `--no-liquid-windows` | off. Liquid behind app windows too; makes `[applications] static-blur` true | `liquid-windows` | | full |
 | `--radius-preset P` | `flat sharp adwaita soft medium default rounded` (`pill` → `rounded`). Default `default` | `radius-preset` | | full |
 | `--radius-custom W,M,Q,N,D,P,O,B` | 8 integers within `radius_bounds`. Implies `custom` | `radius-custom` (a 7-field memo is widened with `,9999`) | | full |
@@ -134,7 +134,7 @@ not adaptive).
 | `blur-strength` | 25–200 | `apply_blur_strength` |
 | `popup-brightness`, `window-brightness` | 50–150 | `apply_popup_brightness`, `apply_window_brightness` |
 | `grain` | 0–1 | `apply_grain` |
-| `glass-style` | `frosted\|liquid` | `apply_glass_style` |
+| `glass-style` | `frosted\|liquid\|vibrant` | `apply_glass_style` |
 | `liquid-windows` | `0\|1`, kept under frosted | `apply_glass_style` |
 | `titlebutton-style` | `minimal\|adwaita\|material\|flat` | `install_window_control_style` |
 | `window-buttons` | `close\|all` | `apply_window_buttons` |

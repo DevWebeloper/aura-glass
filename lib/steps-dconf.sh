@@ -241,9 +241,11 @@ PIPELINE_PY
 }
 
 # The material on the top bar and the dock, and optionally behind app windows:
-# frosted (the blur alone) or liquid (Blur My Shell's refraction effect after
+# frosted (the blur alone), liquid (Blur My Shell's refraction effect after
 # the blur: the edge band bends the blurred backdrop like a lens and catches a
-# light rim).
+# light rim) or vibrant (Blur My Shell's luminosity effect after the blur: the
+# colours behind the glass come through more saturated and a little brighter,
+# as macOS vibrancy does).
 #
 # Only on static blur. Blur My Shell runs a pipeline's extra effects on static
 # blur alone: a dynamic surface goes through DummyPipeline, which builds the
@@ -263,6 +265,15 @@ PIPELINE_PY
 # costs nothing while the desktop repaints. Measured on the panel with
 # tools/gpu-sample.py (amdgpu, 15 s idle): median 20% liquid and frosted alike.
 #
+# Vibrant reaches one surface more than liquid: pipeline `lock screen`, the
+# blurred wallpaper behind the overview and the lock screen. Both are static
+# blur already, and the luminosity effect draws no edge, so it has no corner
+# radius to match and none of the popup pipeline's trouble. It switches the
+# dock to static blur for the same reason liquid does: on a dynamic dock the
+# effect would not run, and the dock would sit frosted next to a vibrant top
+# bar. It does not reach app windows. --liquid-windows stays liquid's, so a
+# switch from liquid with windows on puts their dynamic blur back.
+#
 # The refraction effect rounds its own edge, so its corner radius must be the
 # one the pipeline's corner effect cuts at, or the rim would bend a corner the
 # corner effect has already cut away. It is read from that effect at run time
@@ -271,7 +282,7 @@ PIPELINE_PY
 # Our effects are told apart by their id prefix and removed before anything is
 # added, so a re-run, a switch back to frosted and apply_blur_strength's blob
 # rewrites all land in the same state.
-VALID_GLASS_STYLES="frosted liquid"
+VALID_GLASS_STYLES="frosted liquid vibrant"
 
 # Puts one static-blur key back to what dconf/core.ini ships, or to Blur My
 # Shell's own default where core.ini does not set it ([applications] does not).
@@ -321,10 +332,12 @@ apply_glass_style() {
         return 0
     fi
 
-    local names="panel dock"
-    [ "$want" = liquid ] && [ "$windows" = 1 ] && names="$names windows"
+    # An array: `lock screen` has a space in its name.
+    local names=(panel dock)
+    [ "$want" = liquid ] && [ "$windows" = 1 ] && names+=(windows)
+    [ "$want" = vibrant ] && names+=("lock screen")
 
-    python3 - "$want" $names <<'STYLE_PY' || { warn "could not set the glass style"; return 0; }
+    python3 - "$want" "${names[@]}" <<'STYLE_PY' || { warn "could not set the glass style"; return 0; }
 import re
 import subprocess
 import sys
@@ -410,16 +423,65 @@ if want == "liquid":
         at = span[0] + blur.end()
         new = new[:at] + ", " + effect + new[at:]
 
+# The luminosity effect converts to HSV and back in its own pass, so it needs
+# no rgb_to_hsl / hsl_to_rgb pair around it: one shader, one texture read per
+# pixel, run once per static blur.
+#   saturation_multiplicator 1.35   in tools/preview.sh on the default
+#        wallpaper the frosted top bar averages HSV saturation 0.76, so 1.35
+#        already reaches the clamp at 1. 1.6 rendered pixel for pixel the
+#        same there, and would only push a muted wallpaper further: at 1.35
+#        a greyish 0.3 becomes 0.4, a colour cast rather than a poster.
+#   brightness_multiplicator 1.06   a small lift, so the colour reads as light
+#        coming through rather than paint on top. In the preview the bar's
+#        mean HSV value went from 0.33 to 0.38 and the white clock and icons
+#        stayed as legible as on frosted.
+#        The lock screen pipeline gets 1.0: its blur is darkened to 0.8 on
+#        purpose so the clock reads, and vibrancy should not undo that.
+VIBRANT = ("'brightness_shift': <0.0>, 'brightness_multiplicator': <%s>, "
+           "'contrast': <1.0>, 'contrast_center': <0.5>, "
+           "'saturation_multiplicator': <1.35>")
+
+if want == "vibrant":
+    for name in names:
+        span = effects_span(new, name)
+        if span is None:
+            print("no `%s` pipeline in %s — it stays frosted" % (name, KEY),
+                  file=sys.stderr)
+            continue
+        effects = new[span[0]:span[1]]
+        blur = BLUR.search(effects)
+        if blur is None:
+            print("the `%s` pipeline has no static blur — it stays frosted"
+                  % name, file=sys.stderr)
+            continue
+        lift = "1.0" if name == "lock screen" else "1.06"
+        effect = ("<{'type': <'luminosity'>, 'id': <'%svibrant_%s'>, "
+                  "'params': <{%s}>}>"
+                  % (PREFIX, name.replace(" ", "_"), VIBRANT % lift))
+        # Never after a corner effect. The shader divides hue and saturation,
+        # not only the value, by alpha, so on the corner's anti-aliased edge
+        # it turns the hue: a magenta rim round the whole top bar in the
+        # preview, whose pipeline cuts its corner before the blur. Before that
+        # corner the texture is opaque everywhere and the saturation still
+        # reaches the blur, just ahead of it rather than behind.
+        corner = CORNER.search(effects)
+        if corner is not None and corner.start() < blur.start():
+            at = span[0] + effects.rfind("<{", 0, corner.start())
+            new = new[:at] + effect + ", " + new[at:]
+        else:
+            at = span[0] + blur.end()
+            new = new[:at] + ", " + effect + new[at:]
+
 if new != cur:
     subprocess.run(["dconf", "write", KEY, new], check=True)
 STYLE_PY
 
-    # The refraction only runs on static blur (see above). Leaving liquid puts
-    # back the preset's value, but only for a surface liquid had switched: a
-    # dock a user made static on their own stays static.
-    if [ "$want" = liquid ]; then
+    # The effects only run on static blur (see above). Leaving liquid or
+    # vibrant puts back the preset's value, but only for a surface one of them
+    # had switched: a dock a user made static on their own stays static.
+    if [ "$want" = liquid ] || [ "$want" = vibrant ]; then
         run dconf write "$base/dash-to-dock/static-blur" true
-    elif [ "$previous" = liquid ]; then
+    elif [ "$previous" = liquid ] || [ "$previous" = vibrant ]; then
         restore_static_blur dash-to-dock
     fi
     if [ "$want" = liquid ] && [ "$windows" = 1 ]; then
@@ -437,6 +499,8 @@ STYLE_PY
         ok "liquid glass on the top bar, the dock and app windows (remembered for later runs)"
     elif [ "$want" = liquid ]; then
         ok "liquid glass on the top bar and the dock (remembered for later runs)"
+    elif [ "$want" = vibrant ]; then
+        ok "vibrant glass on the top bar, the dock and the overview (remembered for later runs)"
     else
         ok "frosted glass on the top bar and the dock"
     fi

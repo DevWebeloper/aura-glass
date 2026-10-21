@@ -528,12 +528,15 @@ TITLEBUTTON_STYLES = [
 
 # The material on the top bar and the dock. Install-side: apply_glass_style in
 # lib/steps-dconf.sh, whose comment says why it stops at those two and why
-# liquid makes the dock's blur static.
+# liquid and vibrant make the dock's blur static.
 GLASS_STYLES = [
     ("frosted", "Frosted", "Blur alone"),
     ("liquid", "Liquid",
      "The edges bend what is behind them like a lens. The dock blurs the "
      "wallpaper, not the windows behind it"),
+    ("vibrant", "Vibrant",
+     "The colours behind come through richer and a little brighter, the "
+     "overview's too. The dock blurs the wallpaper, not the windows behind it"),
 ]
 
 # Appearance selectors share one small piece of row metadata.  Icon colour is
