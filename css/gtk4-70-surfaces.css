@@ -195,11 +195,15 @@ tooltip label {
  * block rather than rewriting rules outside it. Appended after the theme at
  * equal specificity, this wins — which is the whole mechanism.
  *
- * Deliberately not restated for the maximized case. The theme's
- * `.maximized window` and `window.maximized` rules are more specific than this
- * one and square the corners of a maximized window, which is correct at every
+ * A maximized or fullscreen window is squared in the block below, at every
  * preset: a rounded corner on a window filling the screen cuts a notch out of
- * the display, and no radius preset should be able to ask for that.
+ * the display, and no radius preset should be able to ask for that. The
+ * theme's own `.maximized window` / `window.maximized { border-radius: 0 }`
+ * was supposed to do it, but `window.csd` here is the same specificity and
+ * comes later, so every client-side-decorated (that is, every GTK4 and
+ * libadwaita) window kept its 30px corners when maximized. The square rule
+ * has to be ours and come after this one. Blur My Shell squares the blur
+ * behind it to match (`[applications] corner-when-maximized`, default false).
  *
  * 30 also has to equal the blur behind it — see TOKEN_RADIUS_WINDOW in
  * tokens/tokens.sh, and the same note in css/gtk3-tweaks.css.
@@ -221,6 +225,7 @@ window.fullscreen {
    * and every GTK app logged "Unknown name of pseudo-class" twice
    * at startup. `.fullscreen` is the style class GTK actually sets
    * on a fullscreen window, and it is already in the list. */
+  border-radius: 0;
   padding: 0;
 }
 

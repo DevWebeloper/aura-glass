@@ -51,8 +51,8 @@ MANIFEST = [
     # now because a radius preset that moves every other corner has to move this
     # one too, and the theme's copy is not ours to rewrite: our block is
     # appended after the theme's rule at equal specificity, so it wins there.
-    # The theme's `.maximized window` / `window.maximized` rules are more
-    # specific and still square a maximized window, which is what we want.
+    # A maximized or fullscreen window is squared by the rule after it in the
+    # same sheet, which this pattern deliberately does not reach.
     ("TOKEN_RADIUS_WINDOW", "css", "css/gtk4-70-surfaces.css",
      r"^window,\nwindow\.background,\nwindow\.csd \{[^}]*?border-radius: (\d+)px"),
     ("TOKEN_RADIUS_WINDOW", "ini", "dconf/core.ini",

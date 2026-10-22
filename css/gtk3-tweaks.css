@@ -80,6 +80,26 @@ video,
   border-top-right-radius: 30px;
 }
 
+/* A maximized or fullscreen window fills the screen, so a rounded corner only
+ * cuts a notch out of the display. This sheet loads at PRIORITY_USER, so the
+ * 30px above beat the theme's own square-when-maximized rules outright; they
+ * are restated here, more specific than the rules above, so they win back.
+ * Blur My Shell squares the blur behind a maximized or fullscreen window to
+ * match (`[applications] corner-when-maximized`, default false). Tiled windows
+ * are left rounded: the blur behind them stays rounded too.
+ */
+.maximized decoration,
+.fullscreen decoration {
+  border-radius: 0;
+}
+
+.maximized .titlebar,
+.maximized .titlebar.background,
+.fullscreen .titlebar,
+.fullscreen .titlebar.background {
+  border-radius: 0;
+}
+
 /* ---------- Window titlebars and decoration frames ----------
  * Electron apps (Vesktop, Discord, Obsidian, Slack), Chrome, and standard GTK3
  * apps render their titlebar through GTK3. Upstream Tahoe-Dark blanks them with
