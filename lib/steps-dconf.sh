@@ -236,7 +236,12 @@ for _token, _kind, _rel, pattern in raw_entries({"TOKEN_RADIUS_WINDOW"}):
             start, end = m.span(i)
             new = new[:start] + want + new[end:]
 
-if new != cur:
+# dconf prints a double back in full (0.7 as 0.69999999999999996), so the
+# texts differ even when nothing moved. Compared as numbers, an unchanged
+# blob is not written again — a pipelines write rebuilds every blur effect.
+_num = re.compile(r"-?\d+\.\d+(?:e[-+]?\d+)?")
+if (_num.sub(lambda m: repr(float(m.group())), new)
+        != _num.sub(lambda m: repr(float(m.group())), cur)):
     subprocess.run(["dconf", "write", KEY, new], check=True)
 PIPELINE_PY
 }
@@ -563,7 +568,10 @@ for name in names if want in ("vibrant", "tinted", "smoked") else []:
         at = span[0] + blur.end()
         new = new[:at] + ", " + effect + new[at:]
 
-if new != cur:
+# Compared as numbers: see the note in apply_pipeline_radius.
+_num = re.compile(r"-?\d+\.\d+(?:e[-+]?\d+)?")
+if (_num.sub(lambda m: repr(float(m.group())), new)
+        != _num.sub(lambda m: repr(float(m.group())), cur)):
     subprocess.run(["dconf", "write", KEY, new], check=True)
 STYLE_PY
 
@@ -1086,7 +1094,10 @@ cur = subprocess.run(["dconf", "read", KEY], capture_output=True, text=True).std
 if not cur:
     sys.exit(0)
 new = re.sub(r"('noise': <)[0-9.]+(>)", lambda m: m.group(1) + repr(want) + m.group(2), cur)
-if new != cur:
+# Compared as numbers: see the note in apply_pipeline_radius.
+_num = re.compile(r"-?\d+\.\d+(?:e[-+]?\d+)?")
+if (_num.sub(lambda m: repr(float(m.group())), new)
+        != _num.sub(lambda m: repr(float(m.group())), cur)):
     subprocess.run(["dconf", "write", KEY, new], check=True)
 PY
     run mkdir -p "$CONF_DIR"
@@ -1226,7 +1237,10 @@ if pipe_name and blob and pipe_name in blob:
                     lambda m: "%s%s%s" % (m.group(1), repr(want), m.group(3)),
                     blob[start:end])
     new = blob[:start] + sliced + blob[end:]
-    if new != blob:
+    # Compared as numbers: see the note in apply_pipeline_radius.
+    _num = re.compile(r"-?\d+\.\d+(?:e[-+]?\d+)?")
+    if (_num.sub(lambda m: repr(float(m.group())), new)
+            != _num.sub(lambda m: repr(float(m.group())), blob)):
         subprocess.run(["dconf", "write", BASE + "/pipelines", new], check=True)
 PY
 
@@ -1348,7 +1362,10 @@ def scale(match):
 
 
 new = re.sub(pattern, scale, cur)
-if new != cur:
+# Compared as numbers: see the note in apply_pipeline_radius.
+_num = re.compile(r"-?\d+\.\d+(?:e[-+]?\d+)?")
+if (_num.sub(lambda m: repr(float(m.group())), new)
+        != _num.sub(lambda m: repr(float(m.group())), cur)):
     subprocess.run(["dconf", "write", KEY, new], check=True)
 PY
 
@@ -1697,7 +1714,9 @@ apply_wiggly_cursor() {
         fi
     done
     if [ -n "$svg" ]; then
-        dconf write "$base/cursor-path" "'$svg'" 2>/dev/null || true
+        # Only when it moved: an identical write still reaches Wiggly as a change.
+        [ "$(dconf read "$base/cursor-path" 2>/dev/null || true)" = "'$svg'" ] \
+            || dconf write "$base/cursor-path" "'$svg'" 2>/dev/null || true
     else
         dconf reset "$base/cursor-path" 2>/dev/null || true
     fi
