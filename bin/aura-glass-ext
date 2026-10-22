@@ -30,6 +30,12 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=lib/steps-extensions.sh
 . "$REPO_ROOT/lib/steps-extensions.sh"
 
+# install.sh sets this in preflight. The install paths here check every build
+# against it (ext_supports_shell, the extensions.gnome.org query), and under
+# set -u an unset one ended every `install` with "GNOME_MAJOR: unbound variable"
+# before anything was installed.
+GNOME_MAJOR="${GNOME_MAJOR:-$(gnome_major)}" || die "gnome-shell not found"
+
 usage() {
     cat <<EOF
 usage: aura-glass-ext <command> [uuid]
