@@ -156,6 +156,25 @@ case "$raw" in
     *) failures+=("switching back to frosted should restore shell-tint-color #224488 (line not seen)") ;;
 esac
 
+# --blur-refresh owns hacks-level in frosted: efficient (also the flagless
+# default) is 0, accurate is 2. Performance keeps solid.ini's 0 and writes
+# nothing for it, and a misspelling is refused rather than read as efficient.
+HACKS="dry-run: dconf write /org/gnome/shell/extensions/blur-my-shell/hacks-level"
+case "$(in_scratch --glass-mode frosted 2>&1)" in
+    *"$HACKS 0"*) ;;
+    *) failures+=("frosted with no --blur-refresh should write hacks-level 0") ;;
+esac
+case "$(in_scratch --glass-mode frosted --blur-refresh accurate 2>&1)" in
+    *"$HACKS 2"*) ;;
+    *) failures+=("--blur-refresh accurate should write hacks-level 2") ;;
+esac
+case "$(in_scratch --glass-mode performance --blur-refresh accurate 2>&1)" in
+    *"$HACKS 2"*) failures+=("performance must not write the frosted refresh level") ;;
+esac
+if in_scratch --blur-refresh sometimes >/dev/null 2>&1; then
+    failures+=("a misspelled --blur-refresh was accepted")
+fi
+
 out="$(in_scratch --glass-mode frosted)"
 case "$out" in
     *"Standing the extensions down"*)

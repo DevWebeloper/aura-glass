@@ -75,6 +75,7 @@ a restart.
 | Notification blur on/off | `[popup] notification` + `shell-notification-blur.css` | `apply_notification_blur`, `install_css` |
 | Per-app blur lists | `[applications] whitelist/blacklist`, memos `app-blur-allow/-block` | `apply_app_blur`. Window menu: `aura-glass-preview app-blur` |
 | Rounded dynamic blur | `gnome-rounded-blur` library | `install_rounded_blur` |
+| Blur refresh (efficient / accurate) | Blur My Shell `hacks-level` (0 / 2) in Frosted; Performance keeps `solid.ini`'s 0 | `apply_blur_refresh`, memo `$C/blur-refresh` (top-level). At 0 the helper's settle repaint (`_initSettle` in `extensions/…/extension.js`) repaints the stage once after activity |
 
 ## 5. Modes and adaptive
 

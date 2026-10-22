@@ -14,6 +14,10 @@
  * and emits WindowsChanged and FocusChanged signals.
  *
  * It stays installed and enabled in every mode, Performance included.
+ *
+ * And it repaints the stage once after activity while Blur My Shell runs with
+ * clipped redraws (hacks-level 0, --blur-refresh efficient), which clears the
+ * patches a partial repaint can leave in a dynamic blur. See _initSettle.
  */
 
 import Gio from 'gi://Gio';
@@ -30,6 +34,12 @@ import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/ex
 
 const BMS_UUID = 'blur-my-shell@aunetx';
 const BMS_SCHEMA_ID = 'org.gnome.shell.extensions.blur-my-shell.applications';
+const BMS_ROOT_SCHEMA_ID = 'org.gnome.shell.extensions.blur-my-shell';
+
+// The settle repaint (see _initSettle): how long the stage has to be quiet
+// before it, and how long continuous activity may go without one.
+const SETTLE_QUIET_MS = 250;
+const SETTLE_MAX_MS = 1000;
 
 // Pinned back onto the whitelist by every install.sh run (app_blur_pin_allow
 // in lib/steps-dconf.sh) — the same string is duplicated in
@@ -190,6 +200,7 @@ export default class AuraGlassBlurExtension extends Extension {
                         this._settings = null;
                     }
                     this._updateOpacityFromConfig();
+                    this._syncSettle();
                 }
             }) ?? 0;
 
@@ -212,6 +223,7 @@ export default class AuraGlassBlurExtension extends Extension {
 
         this._buildPanelMenu();
         this._initOpacityMonitor();
+        this._initSettle();
     }
 
     // --no-window-menu writes window-menu=0, and the conf monitor brings any
@@ -258,6 +270,12 @@ export default class AuraGlassBlurExtension extends Extension {
     }
 
     disable() {
+        this._stopSettle();
+        if (this._bmsRoot && this._hacksChangedId)
+            this._bmsRoot.disconnect(this._hacksChangedId);
+        this._hacksChangedId = 0;
+        this._bmsRoot = null;
+
         if (this._extStateChangedId) {
             Main.extensionManager?.disconnect?.(this._extStateChangedId);
             this._extStateChangedId = 0;
@@ -436,7 +454,7 @@ export default class AuraGlassBlurExtension extends Extension {
     // instead (ext_supports_shell checks the same two places). `trusted:
     // false` is exactly what GNOME Shell's own Extension.getSettings() passes
     // for a schema living in an extension's own directory.
-    _openBmsApplicationsSettings() {
+    _openBmsApplicationsSettings(schemaId = BMS_SCHEMA_ID) {
         const dirs = [
             GLib.build_filenamev([GLib.get_user_data_dir(), 'gnome-shell',
                 'extensions', BMS_UUID, 'schemas']),
@@ -453,7 +471,7 @@ export default class AuraGlassBlurExtension extends Extension {
             } catch (e) {
                 continue;
             }
-            const schema = source.lookup(BMS_SCHEMA_ID, true);
+            const schema = source.lookup(schemaId, true);
             if (schema)
                 return new Gio.Settings({settings_schema: schema});
         }
@@ -703,6 +721,117 @@ export default class AuraGlassBlurExtension extends Extension {
             });
     }
 
+    // ---- Settle repaint (--blur-refresh efficient) --------------------------
+    //
+    // With clipped redraws on, a frame repaints only what was damaged. Shell's
+    // background blur copies its whole box out of the framebuffer, but only the
+    // clip holds freshly painted pixels, so inside a small damaged rectangle the
+    // blur can take in a band of the last finished frame instead of what is
+    // behind the window. The result is a faint patch that stays until something
+    // repaints the area whole. It does not build up, because the pixels outside
+    // the clip are not repainted from it, so one full repaint clears it.
+    //
+    // That is what this does: a quarter second after the stage goes quiet, or
+    // once a second while it never does, one global.stage.queue_redraw(). The
+    // views that repaint for it are remembered so their next after-paint is not
+    // taken for new damage, which would otherwise schedule the next one and
+    // never stop. Against hacks-level 2, which repaints everything on every
+    // frame, that is at most one full frame a second.
+    //
+    // Off whenever it would repaint for nothing or get in the way: hacks-level
+    // other than 0 (Blur My Shell already repaints in full, or the user chose
+    // its own level), Blur My Shell not running, Performance, the adaptive
+    // overlay active, or a fullscreen window focused — a game or video owns
+    // the screen there, and an extra stage repaint is the last thing it needs.
+
+    _initSettle() {
+        this._settleViews = null;
+        this._settleTimer = 0;
+        this._afterPaintId = 0;
+        this._dirtySince = 0;
+        this._lastPaint = 0;
+        this._bmsRoot = this._openBmsApplicationsSettings(BMS_ROOT_SCHEMA_ID);
+        this._hacksChangedId = this._bmsRoot?.connect(
+            'changed::hacks-level', () => this._syncSettle()) ?? 0;
+        this._syncSettle();
+    }
+
+    _settleWanted() {
+        if (!this._bmsRoot || !global.blur_my_shell)
+            return false;
+        try {
+            if (this._bmsRoot.get_int('hacks-level') !== 0)
+                return false;
+        } catch (e) {
+            return false;
+        }
+        return readState('glass-mode') !== 'performance' &&
+            readState('adaptive-performance', 'active') !== '1';
+    }
+
+    _syncSettle() {
+        if (this._settleWanted()) {
+            if (!this._afterPaintId) {
+                this._afterPaintId = global.stage.connect('after-paint',
+                    (_stage, view) => this._onAfterPaint(view));
+            }
+        } else {
+            this._stopSettle();
+        }
+    }
+
+    _stopSettle() {
+        if (this._afterPaintId) {
+            global.stage.disconnect(this._afterPaintId);
+            this._afterPaintId = 0;
+        }
+        if (this._settleTimer) {
+            GLib.source_remove(this._settleTimer);
+            this._settleTimer = 0;
+        }
+        this._settleViews = null;
+        this._dirtySince = 0;
+    }
+
+    _onAfterPaint(view) {
+        // A view repainting for the settle itself is not new damage.
+        if (this._settleViews?.delete(view))
+            return;
+        const now = GLib.get_monotonic_time();
+        this._lastPaint = now;
+        if (!this._dirtySince)
+            this._dirtySince = now;
+        if (!this._settleTimer)
+            this._armSettle(SETTLE_QUIET_MS);
+    }
+
+    _armSettle(delayMs) {
+        this._settleTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT_IDLE,
+            Math.max(16, Math.round(delayMs)), () => {
+                this._settleTimer = 0;
+                this._settle();
+                return GLib.SOURCE_REMOVE;
+            });
+    }
+
+    _settle() {
+        if (!this._dirtySince)
+            return;
+        const now = GLib.get_monotonic_time();
+        const quietMs = (now - this._lastPaint) / 1000;
+        const busyMs = (now - this._dirtySince) / 1000;
+        if (quietMs < SETTLE_QUIET_MS && busyMs < SETTLE_MAX_MS) {
+            this._armSettle(Math.min(SETTLE_QUIET_MS - quietMs,
+                SETTLE_MAX_MS - busyMs));
+            return;
+        }
+        this._dirtySince = 0;
+        if (this._fullscreen)
+            return;
+        this._settleViews = new Set(global.stage.peek_stage_views());
+        global.stage.queue_redraw();
+    }
+
     // ---- Window actor opacity (live without restart) -----------------------
 
     _initOpacityMonitor() {
@@ -728,8 +857,10 @@ export default class AuraGlassBlurExtension extends Extension {
                     // file and rename it over the real one, which arrives as
                     // RENAMED with the real name on the other file.
                     const name = (eventType === Gio.FileMonitorEvent.RENAMED ? other : file)?.get_basename();
-                    if (OPACITY_STATE_FILES.has(name))
+                    if (OPACITY_STATE_FILES.has(name)) {
                         this._updateOpacityFromConfig();
+                        this._syncSettle();
+                    }
                     else if (name === 'window-menu')
                         this._syncWindowMenu();
                 });
@@ -755,6 +886,7 @@ export default class AuraGlassBlurExtension extends Extension {
             return;
         }
 
+        const mode = readState('glass-mode');
         if (mode === 'performance') {
             const opStr = readState('app-opacity');
             let opacity = 252;

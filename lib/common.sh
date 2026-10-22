@@ -16,12 +16,71 @@ skip()  { printf '    %s·%s %s%s%s\n' "$C_DIM" "$C_OFF" "$C_DIM" "$*" "$C_OFF";
 die()   { printf '\n%serror:%s %s\n\n' "$C_RED" "$C_OFF" "$*" >&2; exit 1; }
 
 # run CMD... — echoes in --dry-run instead of executing.
+#
+# A `dconf write` or `gsettings set` of the value the key already holds is
+# skipped. dconf does not compare: it stores the value again and every listener
+# hears a change. A no-op `--settings-only` used to make 37 of those writes
+# (measured 2026-10-22, every one to the value already there), and each one woke
+# something: Blur My Shell rebuilt its pipelines and effects, User Themes reloaded
+# the shell theme over the same theme, GTK re-read icons, cursor and fonts. That
+# is the flicker and the GPU spike a retune of nothing used to cost. A dry run
+# still prints every write, because what it describes is the intent.
 run() {
     if [ "${DRY_RUN:-0}" = 1 ]; then
         printf '    %sdry-run:%s %s\n' "$C_DIM" "$C_OFF" "$*"
         return 0
     fi
+    if already_in_place "$@"; then
+        return 0
+    fi
     "$@"
+}
+
+# already_in_place CMD... — true only for a dconf write or gsettings set whose
+# value is already the key's. Anything it cannot read or compare is "no", so
+# the write goes ahead exactly as before.
+already_in_place() {
+    local current
+    case "${1:-} ${2:-}" in
+        "dconf write")
+            [ "$#" = 4 ] || return 1
+            current="$(dconf read "$3" 2>/dev/null)" || return 1
+            [ -n "$current" ] || return 1
+            same_gvariant "$current" "$4"
+            ;;
+        "gsettings set")
+            [ "$#" = 5 ] || return 1
+            current="$(gsettings get "$3" "$4" 2>/dev/null)" || return 1
+            [ -n "$current" ] || return 1
+            # gsettings takes a bare string where it prints a quoted one.
+            same_gvariant "$current" "$5" || same_gvariant "$current" "'$5'"
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+# same_gvariant A B — two GVariant texts that mean the same value. Same text;
+# or two numbers equal by value, since this writes 1.00 and 0.70 where dconf
+# prints 1.0 and 0.69999999999999996; or, for the structured values (the
+# pipelines blob, the app lists), the same value once GLib has parsed both.
+# Without PyGObject the last comparison says no and the write happens.
+same_gvariant() {
+    [ "$1" = "$2" ] && return 0
+    local number='^-?[0-9]+(\.[0-9]+)?$'
+    if [[ "$1" =~ $number ]] && [[ "$2" =~ $number ]]; then
+        awk -v a="$1" -v b="$2" 'BEGIN { exit !(a + 0 == b + 0) }'
+        return
+    fi
+    case "$1" in
+        "{"*|"["*|"@"*) ;;
+        *) return 1 ;;
+    esac
+    python3 - "$1" "$2" 2>/dev/null <<'PY'
+import sys
+from gi.repository import GLib
+a, b = (GLib.Variant.parse(None, text, None, None) for text in sys.argv[1:3])
+sys.exit(0 if a.equal(b) else 1)
+PY
 }
 
 # install_if_changed SOURCE DESTINATION MODE — install an owned artifact only

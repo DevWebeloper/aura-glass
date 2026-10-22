@@ -58,6 +58,10 @@ sync_mode_owned_keys() {
     fi
     while IFS="$(printf '\t')" read -r key value; do
         [ -n "$key" ] || continue
+        # In frosted the refresh level is the user's (apply_blur_refresh, which
+        # load_dconf runs next). Writing core.ini's first would restart Blur My
+        # Shell twice on the way in for anyone who chose accurate.
+        [ "$want" = 1 ] && [ "$key" = blur-my-shell/hacks-level ] && continue
         run dconf write "/org/gnome/shell/extensions/$key" "$value"
     done < <(mode_owned_dconf_keys "$want")
     if [ "$want" = 1 ]; then
@@ -128,6 +132,7 @@ load_dconf() {
     apply_app_blur
     apply_app_opacity
     apply_fullscreen_blur
+    apply_blur_refresh
     apply_radius_dconf
     apply_glass_style
     sync_osd_profile
@@ -236,7 +241,12 @@ for _token, _kind, _rel, pattern in raw_entries({"TOKEN_RADIUS_WINDOW"}):
             start, end = m.span(i)
             new = new[:start] + want + new[end:]
 
-if new != cur:
+# dconf prints a double back in full (0.7 as 0.69999999999999996), so the
+# texts differ even when nothing moved. Compared as numbers, an unchanged
+# blob is not written again — a pipelines write rebuilds every blur effect.
+_num = re.compile(r"-?\d+\.\d+(?:e[-+]?\d+)?")
+if (_num.sub(lambda m: repr(float(m.group())), new)
+        != _num.sub(lambda m: repr(float(m.group())), cur)):
     subprocess.run(["dconf", "write", KEY, new], check=True)
 PIPELINE_PY
 }
@@ -563,7 +573,10 @@ for name in names if want in ("vibrant", "tinted", "smoked") else []:
         at = span[0] + blur.end()
         new = new[:at] + ", " + effect + new[at:]
 
-if new != cur:
+# Compared as numbers: see the note in apply_pipeline_radius.
+_num = re.compile(r"-?\d+\.\d+(?:e[-+]?\d+)?")
+if (_num.sub(lambda m: repr(float(m.group())), new)
+        != _num.sub(lambda m: repr(float(m.group())), cur)):
     subprocess.run(["dconf", "write", KEY, new], check=True)
 STYLE_PY
 
@@ -667,6 +680,45 @@ apply_fullscreen_blur() {
     else
         run dconf write "$base/applications/unblur-when-fullscreen" true
         ok "fullscreen windows drop their blur and go opaque"
+    fi
+}
+
+# How Frosted repaints its blur: Blur My Shell's hacks-level, which is the
+# largest single GPU cost this theme has a say in. See hacks-level in
+# dconf/core.ini for the measurements. efficient (0) keeps clipped redraws and
+# lets the Aura Glass Helper clear what they can leave behind; accurate (2)
+# repaints the whole stage every frame, as every release before this did.
+#
+# Frosted only. Performance owns hacks-level through dconf/solid.ini, and the
+# adaptive overlay saves and restores it with the other mode-owned keys, so this
+# writes nothing while blur is off. The choice is still remembered, so it is
+# there on the way back. Written every run because load_dconf skips core.ini on
+# an existing install. A change of level restarts Blur My Shell (its own
+# hacks-level handler), so the same level is never written again — run skips it.
+apply_blur_refresh() {
+    local base=/org/gnome/shell/extensions/blur-my-shell
+    local want="${BLUR_REFRESH:-}" memo="$CONF_DIR/blur-refresh"
+
+    if [ -z "${BLUR_REFRESH_EXPLICIT:-}" ] || [ -z "$want" ]; then
+        want="$(cat "$memo" 2>/dev/null || true)"
+    fi
+    case "$want" in efficient|accurate) ;; *) want=efficient ;; esac
+
+    if remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$want" > "$memo"
+    fi
+
+    if [ "${WANT_BLUR:-1}" != 1 ]; then
+        skip "blur refresh '$want' kept for frosted — nothing to repaint while blur is off"
+        return 0
+    fi
+    if [ "$want" = accurate ]; then
+        run dconf write "$base/hacks-level" 2
+        ok "blur refresh accurate — the whole screen repaints every frame (remembered for later runs)"
+    else
+        run dconf write "$base/hacks-level" 0
+        ok "blur refresh efficient — only what changed repaints, the blur stays live"
     fi
 }
 
@@ -1086,7 +1138,10 @@ cur = subprocess.run(["dconf", "read", KEY], capture_output=True, text=True).std
 if not cur:
     sys.exit(0)
 new = re.sub(r"('noise': <)[0-9.]+(>)", lambda m: m.group(1) + repr(want) + m.group(2), cur)
-if new != cur:
+# Compared as numbers: see the note in apply_pipeline_radius.
+_num = re.compile(r"-?\d+\.\d+(?:e[-+]?\d+)?")
+if (_num.sub(lambda m: repr(float(m.group())), new)
+        != _num.sub(lambda m: repr(float(m.group())), cur)):
     subprocess.run(["dconf", "write", KEY, new], check=True)
 PY
     run mkdir -p "$CONF_DIR"
@@ -1226,7 +1281,10 @@ if pipe_name and blob and pipe_name in blob:
                     lambda m: "%s%s%s" % (m.group(1), repr(want), m.group(3)),
                     blob[start:end])
     new = blob[:start] + sliced + blob[end:]
-    if new != blob:
+    # Compared as numbers: see the note in apply_pipeline_radius.
+    _num = re.compile(r"-?\d+\.\d+(?:e[-+]?\d+)?")
+    if (_num.sub(lambda m: repr(float(m.group())), new)
+            != _num.sub(lambda m: repr(float(m.group())), blob)):
         subprocess.run(["dconf", "write", BASE + "/pipelines", new], check=True)
 PY
 
@@ -1348,7 +1406,10 @@ def scale(match):
 
 
 new = re.sub(pattern, scale, cur)
-if new != cur:
+# Compared as numbers: see the note in apply_pipeline_radius.
+_num = re.compile(r"-?\d+\.\d+(?:e[-+]?\d+)?")
+if (_num.sub(lambda m: repr(float(m.group())), new)
+        != _num.sub(lambda m: repr(float(m.group())), cur)):
     subprocess.run(["dconf", "write", KEY, new], check=True)
 PY
 
@@ -1697,7 +1758,9 @@ apply_wiggly_cursor() {
         fi
     done
     if [ -n "$svg" ]; then
-        dconf write "$base/cursor-path" "'$svg'" 2>/dev/null || true
+        # Only when it moved: an identical write still reaches Wiggly as a change.
+        [ "$(dconf read "$base/cursor-path" 2>/dev/null || true)" = "'$svg'" ] \
+            || dconf write "$base/cursor-path" "'$svg'" 2>/dev/null || true
     else
         dconf reset "$base/cursor-path" 2>/dev/null || true
     fi
