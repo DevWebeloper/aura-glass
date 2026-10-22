@@ -60,7 +60,7 @@ sync_mode_owned_keys() {
         [ -n "$key" ] || continue
         # In frosted the refresh level is the user's (apply_blur_refresh, which
         # load_dconf runs next). Writing core.ini's first would restart Blur My
-        # Shell twice on the way in for anyone who chose accurate.
+        # Shell twice on the way in for anyone who chose efficient.
         [ "$want" = 1 ] && [ "$key" = blur-my-shell/hacks-level ] && continue
         run dconf write "/org/gnome/shell/extensions/$key" "$value"
     done < <(mode_owned_dconf_keys "$want")
@@ -686,8 +686,8 @@ apply_fullscreen_blur() {
 # How Frosted repaints its blur: Blur My Shell's hacks-level, which is the
 # largest single GPU cost this theme has a say in. See hacks-level in
 # dconf/core.ini for the measurements. efficient (0) keeps clipped redraws and
-# lets the Aura Glass Helper clear what they can leave behind; accurate (2)
-# repaints the whole stage every frame, as every release before this did.
+# lets the Aura Glass Helper clear what they can leave behind; accurate (2, the
+# default) repaints the whole stage every frame, as every release before this did.
 #
 # Frosted only. Performance owns hacks-level through dconf/solid.ini, and the
 # adaptive overlay saves and restores it with the other mode-owned keys, so this
@@ -702,7 +702,7 @@ apply_blur_refresh() {
     if [ -z "${BLUR_REFRESH_EXPLICIT:-}" ] || [ -z "$want" ]; then
         want="$(cat "$memo" 2>/dev/null || true)"
     fi
-    case "$want" in efficient|accurate) ;; *) want=efficient ;; esac
+    case "$want" in efficient|accurate) ;; *) want=accurate ;; esac
 
     if remembering; then
         mkdir -p "$CONF_DIR"
@@ -715,10 +715,10 @@ apply_blur_refresh() {
     fi
     if [ "$want" = accurate ]; then
         run dconf write "$base/hacks-level" 2
-        ok "blur refresh accurate — the whole screen repaints every frame (remembered for later runs)"
+        ok "blur refresh accurate — the whole screen repaints every frame"
     else
         run dconf write "$base/hacks-level" 0
-        ok "blur refresh efficient — only what changed repaints, the blur stays live"
+        ok "blur refresh efficient — only what changed repaints, the blur stays live (remembered for later runs)"
     fi
 }
 

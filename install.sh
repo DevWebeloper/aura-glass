@@ -135,7 +135,7 @@ LIQUID_WINDOWS=""   # empty = remembered choice, then 0
 LIQUID_WINDOWS_EXPLICIT=""
 FULLSCREEN_BLUR=""  # empty = remembered choice, then 0
 FULLSCREEN_BLUR_EXPLICIT=""
-BLUR_REFRESH=""     # empty = remembered choice, then efficient
+BLUR_REFRESH=""     # empty = remembered choice, then accurate
 BLUR_REFRESH_EXPLICIT=""
 BLUR_STRENGTH=""    # empty = remembered choice, then the tuned radii (100)
 ADAPTIVE_BLUR=""     # private transient writer: active | restore, never memoed
@@ -220,10 +220,10 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --no-fullscreen-blur
                       a fullscreen window (a video, a game) drops its blur
                       and goes opaque until it leaves fullscreen (the default)
-    --blur-refresh R  how Frosted repaints the blur: efficient (the default)
-                      repaints only what changed, which costs a fraction of
-                      the GPU; accurate repaints the whole screen every frame,
-                      the old behaviour. Both keep the blur dynamic. Remembered
+    --blur-refresh R  how Frosted repaints the blur: accurate (the default)
+                      repaints the whole screen every frame, exact everywhere;
+                      efficient repaints only what changed, about a third less
+                      GPU. Both keep the blur dynamic. Remembered
     --blur-strength P how far every blur reaches, as a percentage of the tuned
                       radii: 25-200, 100 is the tuned look (remembered)
     --popup-brightness P

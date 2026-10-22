@@ -115,10 +115,10 @@ Open **Aura Glass** from the app grid, or run `aura-glass-settings`.
 **Blur fullscreen windows** (`--fullscreen-blur`) is off by default, so a
 fullscreen video or game drops the blur behind it and turns opaque.
 
-**Blur refresh** (`--blur-refresh efficient|accurate`) is efficient by default:
-Frosted repaints only what changed, and the blur stays live. On the
-maintainer's RX 7600 that took a busy desktop from about 57% GPU to 10%.
-Accurate repaints the whole screen every frame, as earlier releases did.
+**Blur refresh** (`--blur-refresh accurate|efficient`) is accurate by default:
+Frosted repaints the whole screen every frame, exact everywhere. Efficient
+repaints only what changed and keeps the blur live; on the maintainer's RX 7600
+that was about a third less GPU on the same screen (37% to 23%).
 
 **Glass style behind app windows** (`--liquid-windows`) puts liquid or vibrant
 behind Files and every other blurred window too. Those then blur the wallpaper, not the window under them.
