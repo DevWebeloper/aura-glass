@@ -1,0 +1,162 @@
+diff --git a/src/components/applications.js b/src/components/applications.js
+index 1e72aed..9498a98 100644
+--- a/src/components/applications.js
++++ b/src/components/applications.js
+@@ -65,6 +65,29 @@ function matchesAnyClass(values, patterns) {
+     return values.some(value => matchesAnyPattern(value, patterns));
+ }
+ 
++/// True when a window covers its whole monitor: maximized both ways,
++/// fullscreen, or sized over the monitor's whole work area without either flag.
++/// The last is what Tiling Assistant does with maximize-with-gap on (dragging a
++/// window to the top tiles it to the work area minus the gaps, which are 0 by
++/// default), and what any tiler that resizes rather than maximizes leaves.
++/// Behind such a window the only thing left to show is the
++/// wallpaper, so a static blur of the wallpaper looks the same as the dynamic
++/// blur of the stage there. It costs far less: the static blur is computed once
++/// and cached, where the dynamic one copies and re-blurs the window's whole
++/// area from the framebuffer every time anything under or in it repaints, and a
++/// maximized window is the largest area there is. A smaller window keeps the
++/// dynamic blur, since other windows show through it.
++function coversMonitor(meta_window) {
++    if (meta_window.fullscreen
++        || (meta_window.maximized_horizontally && meta_window.maximized_vertically))
++        return true;
++    const area = meta_window.get_work_area_current_monitor();
++    const frame = meta_window.get_frame_rect();
++    return frame.x <= area.x && frame.y <= area.y
++        && frame.x + frame.width >= area.x + area.width
++        && frame.y + frame.height >= area.y + area.height;
++}
++
+ export const ApplicationsBlur = class ApplicationsBlur {
+     constructor(connections, settings, effects_manager) {
+         this.connections = connections;
+@@ -249,16 +272,25 @@ export const ApplicationsBlur = class ApplicationsBlur {
+         );
+ 
+         // update the clip, position, and/or size when the window changes
++        // A tiler can fill the monitor by resizing alone (see coversMonitor),
++        // so a size change can also cross between static and dynamic.
+         this.connections.connect(
+             meta_window, 'size-changed',
+-            _ => this.update_size(pid)
++            _ => {
++                this.update_window_state(meta_window);
++                this.update_size(pid);
++            }
++        );
++        // Connected whatever the blur type: a window can turn static later by
++        // being maximized. update_size only needs the position for a static
++        // blur, which is clipped from a monitor-sized actor.
++        this.connections.connect(
++            meta_window, 'position-changed',
++            _ => {
++                if (meta_window.bms_static_blur)
++                    this.update_size(pid);
++            }
+         );
+-        if (this.settings.applications.STATIC_BLUR) {
+-            this.connections.connect(
+-                meta_window, 'position-changed',
+-                _ => this.update_size(pid)
+-            );
+-        }
+ 
+         // remove the blur when the window is unmanaged
+         this.connections.connect(
+@@ -270,16 +302,16 @@ export const ApplicationsBlur = class ApplicationsBlur {
+         // Class/list changes can recreate the effect many times per window.
+         this.connections.connect(
+             meta_window, 'notify::maximized-horizontally',
+-            _ => this.update_corner_radius(meta_window)
++            _ => this.update_window_state(meta_window)
+         );
+         this.connections.connect(
+             meta_window, 'notify::maximized-vertically',
+-            _ => this.update_corner_radius(meta_window)
++            _ => this.update_window_state(meta_window)
+         );
+         this.connections.connect(
+             meta_window, 'notify::fullscreen',
+             _ => {
+-                this.update_corner_radius(meta_window);
++                this.update_window_state(meta_window);
+                 this.reconcile_window_visibility(meta_window);
+             }
+         );
+@@ -294,7 +326,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+             const meta_window = this.meta_window_map.get(pid);
+             const blur_actor = meta_window.blur_actor;
+             if (blur_actor) {
+-                if (this.settings.applications.STATIC_BLUR) {
++                if (meta_window.bms_static_blur) {
+                     const bg_manager = meta_window.bg_manager;
+                     const bg_actor_monitor_index = bg_manager.backgroundActor.monitor;
+                     const window_monitor_index = meta_window.get_monitor();
+@@ -414,7 +446,14 @@ export const ApplicationsBlur = class ApplicationsBlur {
+ 
+         let blur_actor;
+ 
+-        if (this.settings.applications.STATIC_BLUR) {
++        // Static for every window when the setting says so, else only for a
++        // window that covers its monitor (see coversMonitor). Recorded on the
++        // window so the size, corner and X11 code below follows the type this
++        // effect was built as, and update_window_state can tell when it no
++        // longer fits.
++        meta_window.bms_static_blur = this.wants_static_blur(meta_window);
++
++        if (meta_window.bms_static_blur) {
+             const pipeline = new Pipeline(this.effects_manager, global.blur_my_shell._pipelines_manager, this.settings.applications.PIPELINE);
+             const bg_managers = [];
+             blur_actor = pipeline.create_background_with_effects(
+@@ -459,7 +498,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+         // in `remove_blur`, whereas the signals for the meta window are disconnected
+         // when the window is untracked or the whole component is disabled
+ 
+-        if (this.settings.applications.STATIC_BLUR && meta_window.get_client_type() === Meta.WindowClientType.X11) {
++        if (meta_window.bms_static_blur && meta_window.get_client_type() === Meta.WindowClientType.X11) {
+             this.connections.connect(window_actor, 'child-added', _ => {
+                 if (!meta_window.blur_actor) {
+                     this._warn("can't move blur actor to back, it doesn't exist");
+@@ -508,6 +547,23 @@ export const ApplicationsBlur = class ApplicationsBlur {
+         );
+     }
+ 
++    wants_static_blur(meta_window) {
++        return this.settings.applications.STATIC_BLUR || coversMonitor(meta_window);
++    }
++
++    /// Follows a maximize, unmaximize, fullscreen or size change: rebuilds the blur as
++    /// the other type when the window crossed between covering its monitor and
++    /// not, then updates the corners.
++    update_window_state(meta_window) {
++        if (meta_window.blur_actor
++            && meta_window.bms_static_blur !== this.wants_static_blur(meta_window)) {
++            this.remove_blur(meta_window.bms_pid);
++            this.create_blur_effect(meta_window);
++            return; // create_blur_effect sets the corners itself
++        }
++        this.update_corner_radius(meta_window);
++    }
++
+     /// Update the corner radius based on window state (0 for maximized/fullscreen)
+     /// if the preferences say so.
+     update_corner_radius(meta_window) {
+@@ -516,7 +572,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+ 
+         let use_0_radius = !this.settings.applications.CORNER_WHEN_MAXIMIZED && (is_maximized || is_fullscreen);
+ 
+-        if (this.settings.applications.STATIC_BLUR) {
++        if (meta_window.bms_static_blur) {
+             meta_window.bg_manager?._bms_pipeline?.effects.forEach(effect => {
+                 if (effect.constructor.name === "CornerEffect")
+                     effect.straight_corners = use_0_radius;
+@@ -684,6 +740,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+                 // whether we are blurred or not
+                 delete meta_window.blur_actor;
+                 delete meta_window.bg_manager;
++                delete meta_window.bms_static_blur;
+ 
+                 // disconnect the signals of the window actor
+                 this.paint_signals.disconnect_all_for_actor(blur_actor);

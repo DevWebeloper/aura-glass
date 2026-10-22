@@ -316,7 +316,8 @@ Catalogued in `lib/steps.sh`:
   the CSS gives a half-applied look with no error.
 - Blur My Shell patches, applied in order: `blur-my-shell-overview.patch`,
   `blur-my-shell-subwindows.patch`, `blur-my-shell-notifications.patch` (adds the
-  separate `popup/notification` key). Custom OSD gets
+  separate `popup/notification` key), `blur-my-shell-static-maximized.patch`
+  (static blur for full-screen windows, dynamic for smaller ones). Custom OSD gets
   `custom-osd-gnome50.patch`. Copyous gets `copyous-gnome51.patch`.
 - `bin/aura-glass-ext` exposes the catalogue one UUID at a time
   (`list | install | remove | enable | disable | recommended | full`). The
@@ -339,12 +340,6 @@ Catalogued in `lib/steps.sh`:
    it.
 3. The **adaptive profile menu** (Auto / Full Glass / Performance), which calls
    `aura-glass-adaptive profile <p>`.
-4. The **settle repaint**. While Blur My Shell's `hacks-level` is 0
-   (`--blur-refresh efficient`), Frosted, adaptive not active and no fullscreen
-   window focused, it watches the stage's `after-paint` and queues one full
-   `global.stage.queue_redraw()` 250 ms after activity, or once a second during
-   it. That clears the patches a clipped redraw can leave in a dynamic blur.
-   The views that repaint for it are not counted as new damage.
 
 ---
 

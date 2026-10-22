@@ -48,7 +48,7 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 | [KI-32](#ki-32) | Medium | **Fixed** | Updating from the settings app greys out Install or stops at a git error (detached HEAD, local edits, diverged history, re-cut tag) |
 | [KI-33](#ki-33) | Medium | **Fixed** (`feat/efficient-blur-qol`) | The helper threw `ReferenceError: mode is not defined` on every enable, so Performance never got its window opacity |
 | [KI-34](#ki-34) | Medium | **Fixed** (`feat/efficient-blur-qol`) | Every retune rewrote ~37 dconf/gsettings keys to the values already there, waking Blur My Shell, User Themes and GTK |
-| [KI-35](#ki-35) | High | **Fixed** (`feat/efficient-blur-qol`, needs a live look) | Frosted repainted the whole stage every frame (`hacks-level=2`): about a third more GPU than needed (37% vs 23% on the same screen) |
+| [KI-35](#ki-35) | Info | By design (decided 2026-10-22) | Frosted repaints the whole stage every frame (`hacks-level=2`). Lower levels left visible patches and saved nothing once windows redraw; window blur is the real cost |
 
 ---
 
@@ -887,28 +887,29 @@ byte-identical; a brightness change makes exactly its 2 writes.
 
 ## KI-35
 
-**Frosted repainted the whole screen every frame.**
+**Frosted repaints the whole screen every frame. Kept on purpose.**
 
-**Symptom.** On the maintainer's RX 7600 (3440×1440 at 180 Hz plus the laptop
-panel), a Frosted desktop with something small moving (a cursor, a spinner, a
-streaming window) held the GPU at a median 57%.
+**What it costs.** Blur My Shell's `hacks-level=2` turns clipped redraws off,
+so any damage repaints the whole monitor and every blur actor on it.
 
-**Root cause.** `dconf/core.ini` shipped Blur My Shell's `hacks-level=2`,
-which sets `DISABLE_CLIPPED_REDRAWS` on the whole stage: any damage repaints
-both monitors and every blur actor on them. It was chosen for an overview
-staleness that `patches/blur-my-shell-overview.patch` has since fixed another
-way. Level 1 measured 53%: it queues a full blur-actor repaint from every paint
-of one.
+**What was tried** (live, RX 7600, 3440×1440 at 180 Hz plus the laptop panel,
+2026-10-22, shipped on main for a few hours as `--blur-refresh`):
 
-**Fix.** `--blur-refresh efficient|accurate` (memo `blur-refresh`, default
-efficient) owns `hacks-level` in Frosted: 0 or 2. At 0 a small damaged
-rectangle can blur in a band of the last finished frame, so the helper repaints
-the stage once 250 ms after activity, or once a second during it, which clears
-that. Measured live, `hacks-level` changed between runs: idle median 57% → 10%,
-overview toggle p90 58% → 28%, but those runs had different windows on screen.
-Interleaved with the same ones after a re-login: level 0 23%, level 2 37%,
-three times each. The settle was exercised in a headless shell (it fires once
-per burst, ignores its own repaint, stops at level 2).
+- `hacks-level 0` with a stage repaint from the helper after activity. Faint
+  patches showed in the blur wherever something kept moving, because Shell's
+  background blur blits its whole box while only the redraw clip is fresh.
+- `0` plus repainting the whole blur of each blurred window stacked over a
+  damaged one, in that frame. Correct, and no cheaper than 2.
+
+Back to back with a YouTube video and a streaming window on screen: 2 at
+53–57%, 0 at 60–63%, 0 with the window repaint at 65%. Window blur itself is
+the cost: off 11%, on 55%, about five points per blurred window. A blurred
+window that redraws has its whole blur recomputed whatever the level.
+
+**Decision.** Always 2 in Frosted. `pin_frosted_hacks_level` writes core.ini's
+value on every frosted run, which also brings back an install that the
+short-lived flag left at 0, and drops its `blur-refresh` memo. The flag is
+gone; `uninstall.sh` still removes the memo.
 
 ---
 

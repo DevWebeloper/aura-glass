@@ -69,13 +69,13 @@ a restart.
 | Blur strength (25–200 %) | every BMS sigma and the `unscaled_radius` values in `pipelines` | `apply_blur_strength`. Memo `$C/blur-strength` (frosted drawer) |
 | Popup blur brightness (50–150 %) | `[popup] brightness` + pipeline `popups` | `apply_popup_brightness` → `tools/apply-popup-brightness.py` |
 | Window blur brightness (50–150 %) | `[applications] brightness` | `apply_window_brightness` |
+| Static blur behind a full-screen window, dynamic behind a smaller one | `patches/blur-my-shell-static-maximized.patch`: a window maximized both ways, fullscreen, or sized over its monitor's whole work area (Tiling Assistant's drag-to-top with `maximize-with-gap`) is rebuilt on the `windows` pipeline (static, cached wallpaper blur) and goes back to dynamic when it shrinks. `[applications] static-blur=true` (liquid windows) still makes every window static | `install_bms` |
 | Grain (0–1) | the noise effect in pipelines | `apply_grain` |
 | Glass style (frosted / liquid / vibrant / tinted / smoked) | a `refraction` effect (id prefix `effect_aura_glass_style_`) after the blur in pipelines `panel` and `dock`, corner radius copied from that pipeline's corner effect; liquid also sets `[dash-to-dock] static-blur=true`. `--liquid-windows` adds pipeline `windows` and `[applications] static-blur=true`. Vibrant is a `luminosity` effect (saturation 1.35, brightness 1.06, 1.0 on the lock screen and windows) after the blur in pipeline `lock screen` and before the corner in `panel`, leaving the dock dynamic; with `--liquid-windows` also pipeline `windows` and `[applications] static-blur=true`. Tinted is a `color` effect (accent RGB from `accent_hex`, alpha 0.3, blend Color) and smoked a `luminosity` effect (brightness 0.7, saturation 0.8), both in `panel` and `lock screen` only, never windows. An `--accent` incremental Apply adds the `glass-style` action under tinted | `apply_glass_style`. Memos `$C/glass-style`, `$C/liquid-windows` (top-level, not drawer fields) |
 | Popup blur on/off | `[popup] blur` + `shell-popup-blur.css` present/absent | `apply_popup_blur`, `install_css` |
 | Notification blur on/off | `[popup] notification` + `shell-notification-blur.css` | `apply_notification_blur`, `install_css` |
 | Per-app blur lists | `[applications] whitelist/blacklist`, memos `app-blur-allow/-block` | `apply_app_blur`. Window menu: `aura-glass-preview app-blur` |
 | Rounded dynamic blur | `gnome-rounded-blur` library | `install_rounded_blur` |
-| Blur refresh (efficient / accurate) | Blur My Shell `hacks-level` (0 / 2) in Frosted; Performance keeps `solid.ini`'s 0 | `apply_blur_refresh`, memo `$C/blur-refresh` (top-level). At 0 the helper's settle repaint (`_initSettle` in `extensions/…/extension.js`) repaints the stage once after activity |
 
 ## 5. Modes and adaptive
 

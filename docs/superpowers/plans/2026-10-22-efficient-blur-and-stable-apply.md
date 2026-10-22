@@ -4,6 +4,8 @@
 > (the maintainer asked for it to be made, then checked before anything is
 > pushed). Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Outcome (2026-10-22):** Tasks 1, 3 (crash fix) and the Discard / Ctrl+S half of 4 shipped. `--blur-refresh`, the settle repaint and the GPU row were shipped, tried live and removed: see KI-35 for why Frosted stays at `hacks-level=2`.
+
 **Goal:** cut Frosted's GPU cost without giving up dynamic blur, stop retunes
 from waking the shell for settings that did not change, and make the settings
 window quicker to use.

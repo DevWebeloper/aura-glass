@@ -83,6 +83,7 @@ For "which file draws this button / owns this setting", use
 | `blur-my-shell-overview.patch` | BMS: take blur out of overview window previews when `blur-on-overview` is false |
 | `blur-my-shell-subwindows.patch` | BMS: blur a blurred app's ATTACHED dialogs and UTILITY palettes too |
 | `blur-my-shell-notifications.patch` | BMS: split notifications onto their own `popup/notification` key |
+| `blur-my-shell-static-maximized.patch` | BMS: static blur for a window that covers its monitor (maximized both ways, fullscreen, or filling the work area), dynamic for smaller ones |
 | `custom-osd-gnome50.patch` | Custom OSD on GNOME 50/51 |
 | `copyous-gnome51.patch` | Copyous on GNOME 51 |
 | `gnome-rounded-blur-offstage.patch` | gnome-rounded-blur: place the background blur right in screenshots (off-stage paints) |

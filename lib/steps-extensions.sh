@@ -130,12 +130,13 @@ install_bms() {
        && patch_stamp_current bms-overview-patch "$REPO_ROOT/patches/$BMS_PATCH" \
        && patch_stamp_current bms-subwindow-patch "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH" \
        && patch_stamp_current bms-notification-patch "$REPO_ROOT/patches/$BMS_NOTIF_PATCH" \
+       && patch_stamp_current bms-static-patch "$REPO_ROOT/patches/$BMS_STATIC_PATCH" \
        && ext_supports_shell "$EXT_DIR/$BMS_UUID" "$GNOME_MAJOR"; then
         skip "$BMS_UUID already built from $BMS_REF"
         return 0
     fi
 
-    info "building Blur My Shell from $BMS_REF + patches/$BMS_PATCH + patches/$BMS_SUBWIN_PATCH + patches/$BMS_NOTIF_PATCH"
+    info "building Blur My Shell from $BMS_REF + patches/$BMS_PATCH + patches/$BMS_SUBWIN_PATCH + patches/$BMS_NOTIF_PATCH + patches/$BMS_STATIC_PATCH"
     local src="$SRC_CACHE/blur-my-shell"
     if [ -d "$src/.git" ]; then
         run git -C "$src" checkout --quiet -- . 2>/dev/null || true
@@ -160,6 +161,8 @@ install_bms() {
             || die "the Blur My Shell subwindow patch did not apply — upstream may have moved"
         git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_NOTIF_PATCH" \
             || die "the Blur My Shell notification patch did not apply — upstream may have moved"
+        git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_STATIC_PATCH" \
+            || die "the Blur My Shell static-maximized patch did not apply — upstream may have moved"
     fi
 
     local podir=(--podir=../po)
@@ -169,7 +172,7 @@ install_bms() {
     fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: apply patches/$BMS_PATCH, patches/$BMS_SUBWIN_PATCH and patches/$BMS_NOTIF_PATCH, gnome-extensions pack in $src/src, then install the zip"
+        info "dry-run: apply patches/$BMS_PATCH, patches/$BMS_SUBWIN_PATCH, patches/$BMS_NOTIF_PATCH and patches/$BMS_STATIC_PATCH, gnome-extensions pack in $src/src, then install the zip"
         return 0
     fi
 
@@ -225,7 +228,8 @@ install_bms() {
     patch_stamp_write bms-overview-patch "$REPO_ROOT/patches/$BMS_PATCH"
     patch_stamp_write bms-subwindow-patch "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH"
     patch_stamp_write bms-notification-patch "$REPO_ROOT/patches/$BMS_NOTIF_PATCH"
-    ok "$BMS_UUID (built from $BMS_REF, with the popup component, the overview patch, the subwindow patch, and the notification patch)"
+    patch_stamp_write bms-static-patch "$REPO_ROOT/patches/$BMS_STATIC_PATCH"
+    ok "$BMS_UUID (built from $BMS_REF, with the popup component, the overview patch, the subwindow patch, the notification patch, and the static-maximized patch)"
 }
 
 # aura-glass-blur@aura-glass.local — "Blur This App" in the window right-click

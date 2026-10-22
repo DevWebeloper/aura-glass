@@ -9,7 +9,7 @@ python3 tests/check-bms-patches.py /path/to/blur-my-shell-upstream-clone
 
 The second check requires Python, Git, tar, Node.js, and an existing Blur My
 Shell clone containing `BMS_REF` from `lib/steps.sh`. It archives that commit
-into a temporary directory and applies all three Aura patches in installer
+into a temporary directory and applies all four Aura patches in installer
 order. It never fetches or modifies the clone.
 
 Production window selection, tracking, signal management, popup reset, and
