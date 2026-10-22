@@ -532,14 +532,14 @@ TITLEBUTTON_STYLES = [
 # liquid makes the dock's blur static.
 # --blur-refresh. The ids are install.sh's, the default is apply_blur_refresh's.
 BLUR_REFRESH_MODES = [
-    ("accurate", "Accurate",
-     "Repaints the whole screen every frame. Exact everywhere, and the "
-     "heaviest thing this theme can ask of a GPU"),
     ("efficient", "Efficient",
      "Repaints only what changed. The blur stays live and the GPU does "
      "about a third less work"),
+    ("accurate", "Accurate",
+     "Repaints the whole screen every frame. Exact everywhere, and the "
+     "heaviest thing this theme can ask of a GPU"),
 ]
-BLUR_REFRESH_DEFAULT = "accurate"
+BLUR_REFRESH_DEFAULT = "efficient"
 
 
 def gpu_busy_percent():
@@ -5147,10 +5147,10 @@ class Window(Adw.ApplicationWindow):
         # not the reason anyone opened this tab.
         page.add(tip_card(
             "<b>Blur is the most expensive thing in this window.</b> It costs "
-            "GPU and battery — more on integrated graphics or a 4K screen. If "
-            "the desktop feels slow, set <b>Blur refresh</b> to Efficient "
-            "first, then turn off <b>Blur behind all application windows</b>, "
-            "or switch to Performance."))
+            "GPU and battery — more on integrated graphics or a 4K screen. "
+            "Keep <b>Blur refresh</b> on Efficient. If the desktop still "
+            "feels slow, turn off <b>Blur behind all application windows</b> "
+            "next, or switch to Performance."))
 
         return self._mode_tab("frosted", page)
 

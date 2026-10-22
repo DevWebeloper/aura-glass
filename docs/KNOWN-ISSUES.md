@@ -48,7 +48,7 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 | [KI-32](#ki-32) | Medium | **Fixed** | Updating from the settings app greys out Install or stops at a git error (detached HEAD, local edits, diverged history, re-cut tag) |
 | [KI-33](#ki-33) | Medium | **Fixed** (`feat/efficient-blur-qol`) | The helper threw `ReferenceError: mode is not defined` on every enable, so Performance never got its window opacity |
 | [KI-34](#ki-34) | Medium | **Fixed** (`feat/efficient-blur-qol`) | Every retune rewrote ~37 dconf/gsettings keys to the values already there, waking Blur My Shell, User Themes and GTK |
-| [KI-35](#ki-35) | Medium | **Mitigated** (`feat/efficient-blur-qol`, opt-in) | Frosted repaints the whole stage every frame (`hacks-level=2`). `--blur-refresh efficient` cuts about a third; accurate stays the default |
+| [KI-35](#ki-35) | High | **Fixed** (`feat/efficient-blur-qol`, needs a live look) | Frosted repainted the whole stage every frame (`hacks-level=2`): about a third more GPU than needed (37% vs 23% on the same screen) |
 
 ---
 
@@ -887,7 +887,7 @@ byte-identical; a brightness change makes exactly its 2 writes.
 
 ## KI-35
 
-**Frosted repaints the whole screen every frame.**
+**Frosted repainted the whole screen every frame.**
 
 **Symptom.** On the maintainer's RX 7600 (3440×1440 at 180 Hz plus the laptop
 panel), a Frosted desktop with something small moving (a cursor, a spinner, a
@@ -900,9 +900,8 @@ staleness that `patches/blur-my-shell-overview.patch` has since fixed another
 way. Level 1 measured 53%: it queues a full blur-actor repaint from every paint
 of one.
 
-**Fix.** `--blur-refresh accurate|efficient` (memo `blur-refresh`, default
-accurate, the maintainer's choice after trying efficient live) owns
-`hacks-level` in Frosted: 2 or 0. At 0 a small damaged
+**Fix.** `--blur-refresh efficient|accurate` (memo `blur-refresh`, default
+efficient) owns `hacks-level` in Frosted: 0 or 2. At 0 a small damaged
 rectangle can blur in a band of the last finished frame, so the helper repaints
 the stage once 250 ms after activity, or once a second during it, which clears
 that. Measured live, `hacks-level` changed between runs: idle median 57% → 10%,
