@@ -21,7 +21,6 @@ select_apply_actions() {
             --window-buttons|--window-buttons=*) _apply_add window-buttons ;;
             --window-brightness|--window-brightness=*|--app-brightness|--app-brightness=*) _apply_add window-brightness ;;
             --fullscreen-blur|--no-fullscreen-blur) _apply_add fullscreen-blur ;;
-            --blur-refresh|--blur-refresh=*) _apply_add blur-refresh ;;
             --app-blur-allow|--app-blur-allow=*|--app-blur-block|--app-blur-block=*) _apply_add app-blur ;;
             # The level is written twice: the GTK stylesheet's alpha (css) and
             # Blur My Shell's window actor opacity, which is all a browser or

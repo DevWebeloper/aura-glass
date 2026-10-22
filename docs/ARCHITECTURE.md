@@ -339,12 +339,6 @@ Catalogued in `lib/steps.sh`:
    it.
 3. The **adaptive profile menu** (Auto / Full Glass / Performance), which calls
    `aura-glass-adaptive profile <p>`.
-4. The **settle repaint**. While Blur My Shell's `hacks-level` is 0
-   (`--blur-refresh efficient`), Frosted, adaptive not active and no fullscreen
-   window focused, it watches the stage's `after-paint` and queues one full
-   `global.stage.queue_redraw()` 250 ms after activity, or once a second during
-   it. That clears the patches a clipped redraw can leave in a dynamic blur.
-   The views that repaint for it are not counted as new damage.
 
 ---
 

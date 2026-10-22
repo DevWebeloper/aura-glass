@@ -58,10 +58,6 @@ sync_mode_owned_keys() {
     fi
     while IFS="$(printf '\t')" read -r key value; do
         [ -n "$key" ] || continue
-        # In frosted the refresh level is the user's (apply_blur_refresh, which
-        # load_dconf runs next). Writing core.ini's first would restart Blur My
-        # Shell twice on the way in for anyone who chose accurate.
-        [ "$want" = 1 ] && [ "$key" = blur-my-shell/hacks-level ] && continue
         run dconf write "/org/gnome/shell/extensions/$key" "$value"
     done < <(mode_owned_dconf_keys "$want")
     if [ "$want" = 1 ]; then
@@ -132,7 +128,7 @@ load_dconf() {
     apply_app_blur
     apply_app_opacity
     apply_fullscreen_blur
-    apply_blur_refresh
+    pin_frosted_hacks_level
     apply_radius_dconf
     apply_glass_style
     sync_osd_profile
@@ -683,43 +679,22 @@ apply_fullscreen_blur() {
     fi
 }
 
-# How Frosted repaints its blur: Blur My Shell's hacks-level, which is the
-# largest single GPU cost this theme has a say in. See hacks-level in
-# dconf/core.ini for the measurements. efficient (0) keeps clipped redraws and
-# lets the Aura Glass Helper clear what they can leave behind; accurate (2)
-# repaints the whole stage every frame, as every release before this did.
-#
-# Frosted only. Performance owns hacks-level through dconf/solid.ini, and the
-# adaptive overlay saves and restores it with the other mode-owned keys, so this
-# writes nothing while blur is off. The choice is still remembered, so it is
-# there on the way back. Written every run because load_dconf skips core.ini on
-# an existing install. A change of level restarts Blur My Shell (its own
-# hacks-level handler), so the same level is never written again — run skips it.
-apply_blur_refresh() {
-    local base=/org/gnome/shell/extensions/blur-my-shell
-    local want="${BLUR_REFRESH:-}" memo="$CONF_DIR/blur-refresh"
-
-    if [ -z "${BLUR_REFRESH_EXPLICIT:-}" ] || [ -z "$want" ]; then
-        want="$(cat "$memo" 2>/dev/null || true)"
-    fi
-    case "$want" in efficient|accurate) ;; *) want=efficient ;; esac
-
-    if remembering; then
-        mkdir -p "$CONF_DIR"
-        printf '%s\n' "$want" > "$memo"
-    fi
-
-    if [ "${WANT_BLUR:-1}" != 1 ]; then
-        skip "blur refresh '$want' kept for frosted — nothing to repaint while blur is off"
-        return 0
-    fi
-    if [ "$want" = accurate ]; then
-        run dconf write "$base/hacks-level" 2
-        ok "blur refresh accurate — the whole screen repaints every frame (remembered for later runs)"
-    else
-        run dconf write "$base/hacks-level" 0
-        ok "blur refresh efficient — only what changed repaints, the blur stays live"
-    fi
+# Frosted repaints the whole stage every frame: Blur My Shell's hacks-level at
+# core.ini's value (2). See hacks-level there for why lower levels were tried and
+# dropped. Written on every frosted run, not only on the way in from another
+# mode, because a short-lived --blur-refresh (2026-10-22) left installs at 0 and
+# load_dconf skips core.ini on an existing install. Its memo goes with it.
+# Performance and the adaptive overlay keep solid.ini's 0, so nothing is written
+# while blur is off. run skips the write when the level is already in place,
+# which matters: every change of level restarts Blur My Shell.
+pin_frosted_hacks_level() {
+    if remembering; then rm -f "$CONF_DIR/blur-refresh"; fi
+    [ "${WANT_BLUR:-1}" = 1 ] || return 0
+    local key value
+    while IFS="$(printf '\t')" read -r key value; do
+        [ "$key" = blur-my-shell/hacks-level ] || continue
+        run dconf write "/org/gnome/shell/extensions/$key" "$value"
+    done < <(mode_owned_dconf_keys 1)
 }
 
 # The popup keys themselves ship in dconf/core.ini so the whole preset stays

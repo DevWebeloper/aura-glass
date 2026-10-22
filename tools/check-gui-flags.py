@@ -70,7 +70,6 @@ def state(**kw):
     s.glass_style = kw.get("glass_style", "frosted")
     s.liquid_windows = kw.get("liquid_windows", False)
     s.fullscreen_blur = kw.get("fullscreen_blur", False)
-    s.blur_refresh = kw.get("blur_refresh", "efficient")
     s.panel_blur_fix = kw.get("panel_blur_fix", True)
     s.update_check = kw.get("update_check", True)
     s.update_channel = kw.get("update_channel", "release")
@@ -373,12 +372,6 @@ CASES = [
 
     ("blur kept on fullscreen windows", FROSTED,
      state(fullscreen_blur=True), ["--fullscreen-blur"]),
-
-    ("blur refresh back to the whole screen", FROSTED,
-     state(blur_refresh="accurate"), ["--blur-refresh", "accurate"]),
-
-    ("blur refresh efficient again", state(blur_refresh="accurate"),
-     FROSTED, ["--blur-refresh", "efficient"]),
 
     ("fullscreen windows drop the blur again", state(fullscreen_blur=True),
      FROSTED, ["--no-fullscreen-blur"]),

@@ -34,7 +34,6 @@ def main():
         assert plan(temp, "--app-transparency", "0.82")["actions"] == ["css", "app-opacity"]
         assert plan(temp, "--no-app-transparency")["actions"] == ["css", "app-opacity"]
         assert plan(temp, "--radius-preset", "soft")["actions"] == ["full"]
-        assert plan(temp, "--blur-refresh", "accurate")["actions"] == ["blur-refresh"]
     print("check-incremental-apply: OK")
 
 
