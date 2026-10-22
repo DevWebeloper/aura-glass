@@ -530,6 +530,35 @@ TITLEBUTTON_STYLES = [
 # The material on the top bar and the dock. Install-side: apply_glass_style in
 # lib/steps-dconf.sh, whose comment says why it stops at those two and why
 # liquid makes the dock's blur static.
+# --blur-refresh. The ids are install.sh's, the default is apply_blur_refresh's.
+BLUR_REFRESH_MODES = [
+    ("efficient", "Efficient",
+     "Repaints only what changed. The blur stays live and the GPU does a "
+     "fraction of the work"),
+    ("accurate", "Accurate",
+     "Repaints the whole screen every frame. Exact everywhere, and the "
+     "heaviest thing this theme can ask of a GPU"),
+]
+BLUR_REFRESH_DEFAULT = "efficient"
+
+
+def gpu_busy_percent():
+    """The busiest GPU's load, as the adaptive worker reads it, else None.
+
+    tools/aura_glass_adaptive.py reads the same files the same way: amdgpu's
+    gpu_busy_percent, the highest of them when there are two cards. A machine
+    without one (Intel, NVIDIA) has no number here rather than a zero.
+    """
+    readings = []
+    for path in glob.glob("/sys/class/drm/card*/device/gpu_busy_percent"):
+        try:
+            with open(path, encoding="utf-8") as stream:
+                readings.append(int(stream.read().strip()))
+        except (OSError, ValueError):
+            continue
+    return max(readings) if readings else None
+
+
 GLASS_STYLES = [
     ("frosted", "Frosted", "Blur alone"),
     ("liquid", "Liquid",
@@ -609,7 +638,8 @@ NAV_SECTIONS = [
 SEARCH_INDEX = {
     "glass": ["frosted", "performance", "blur", "tint", "opacity",
              "transparency", "popup blur", "window blur", "scope",
-             "notification", "notifications", "banner"],
+             "notification", "notifications", "banner", "gpu", "refresh",
+             "efficient", "accurate", "battery"],
     "appearance": ["accent", "colour", "color", "font", "icon", "cursor",
                   "pointer", "cursor size", "pointer size", "titlebar",
                   "window buttons", "colloid", "reversal", "hatter",
@@ -650,6 +680,7 @@ FLAG_LABELS = {
     "--liquid-windows": ("glass", "Glass style behind app windows"),
     "--no-liquid-windows": ("glass", "Glass style behind app windows"),
     "--fullscreen-blur": ("glass", "Blur fullscreen windows"),
+    "--blur-refresh": ("glass", "Blur refresh"),
     "--no-fullscreen-blur": ("glass", "Blur fullscreen windows"),
     "--update-check": ("updates", "Daily update check"),
     "--no-update-check": ("updates", "Daily update check"),
@@ -2656,6 +2687,11 @@ class Settings:
         self.liquid_windows = read_memo("liquid-windows", "0") == "1"
         # Off unless asked, as apply_fullscreen_blur defaults it.
         self.fullscreen_blur = read_memo("fullscreen-blur", "0") == "1"
+        # Mode independent like the one above, and defaulted as
+        # apply_blur_refresh defaults it.
+        self.blur_refresh = read_memo("blur-refresh", BLUR_REFRESH_DEFAULT)
+        if self.blur_refresh not in [m[0] for m in BLUR_REFRESH_MODES]:
+            self.blur_refresh = BLUR_REFRESH_DEFAULT
 
         # A user systemd unit rather than a look, but a remembered setting like
         # any other, so it rides on Apply.
@@ -2836,6 +2872,8 @@ class Settings:
         if self.fullscreen_blur != other.fullscreen_blur:
             args.append("--fullscreen-blur" if self.fullscreen_blur
                         else "--no-fullscreen-blur")
+        if self.blur_refresh != other.blur_refresh:
+            args += ["--blur-refresh", self.blur_refresh]
         # --radius-custom implies the custom preset, so it stands in for
         # --radius-preset rather than joining it. Sent when the eight values
         # moved even if the preset name did not, because "custom" says nothing
@@ -3599,6 +3637,14 @@ class Window(Adw.ApplicationWindow):
             trigger=Gtk.ShortcutTrigger.parse_string("<Control>f"),
             action=Gtk.CallbackAction.new(
                 lambda *_a: self._search_entry.grab_focus() or True)))
+        # Ctrl+S applies, the save key of every other editor on the desktop.
+        # Only when Apply itself could be pressed, so it can never start a
+        # second run over one already going.
+        search_shortcut.add_shortcut(Gtk.Shortcut(
+            trigger=Gtk.ShortcutTrigger.parse_string("<Control>s"),
+            action=Gtk.CallbackAction.new(
+                lambda *_a: (self._apply.get_sensitive()
+                             and self._on_apply(self._apply)) or True)))
         self.add_controller(search_shortcut)
 
         self._sidebar.select_row(self._sidebar.get_row_at_index(0))
@@ -3667,7 +3713,17 @@ class Window(Adw.ApplicationWindow):
             max_content_height=300, propagate_natural_height=True,
             hscrollbar_policy=Gtk.PolicyType.NEVER,
             margin_top=6, margin_bottom=6, margin_start=6, margin_end=6)
-        pending_popover = Gtk.Popover(child=pending_scroller)
+        # Undo every edit not yet applied, in one place, rather than hunting
+        # down each row the dots point at. The same thing closing the window
+        # and choosing Discard does, minus the closing.
+        discard = Gtk.Button(label="Discard changes",
+                             margin_start=6, margin_end=6, margin_bottom=6)
+        discard.add_css_class("destructive-action")
+        discard.connect("clicked", self._on_discard_changes)
+        pending_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        pending_box.append(pending_scroller)
+        pending_box.append(discard)
+        pending_popover = Gtk.Popover(child=pending_box)
         self._pending_button.set_popover(pending_popover)
 
         self._log_toggle_btn = Gtk.Button(label="Show Log", valign=Gtk.Align.CENTER)
@@ -3973,6 +4029,21 @@ class Window(Adw.ApplicationWindow):
         dialog.connect("response", response)
         open_over(dialog, self)
         return True
+
+    def _on_discard_changes(self, _button):
+        """Put every row back to what is installed, and the desktop with it."""
+        self._pending_button.get_popover().popdown()
+        if self._running:
+            return
+        if self._preview_timer:
+            GLib.source_remove(self._preview_timer)
+            self._preview_timer = 0
+        # Asynchronous, and a no-op when nothing is previewing. A preview
+        # never writes a memo, so the disk _reload reads is already the
+        # installed state whether or not the revert has finished.
+        self._preview_revert()
+        self._reload()
+        self._toasts.add_toast(Adw.Toast(title="Changes discarded"))
 
     def _discard_and_close(self):
         """Close only after an active preview has been asynchronously reverted."""
@@ -5047,15 +5118,55 @@ class Window(Adw.ApplicationWindow):
         reach.add(self._notification_row)
         page.add(reach)
 
+        # What the blur costs, and the one control that changes the cost
+        # without changing the look. The load row is a reading, not a
+        # setting: it is there so the choice above it can be judged on this
+        # machine rather than on the numbers in dconf/core.ini.
+        gpu = Adw.PreferencesGroup(
+            title="GPU",
+            description="How the blur is repainted. Both keep it live.")
+        self._blur_refresh_row = self._combo(
+            "Blur refresh", "", BLUR_REFRESH_MODES,
+            self._applied.blur_refresh, "blur_refresh")
+        gpu.add(self._blur_refresh_row)
+        self._gpu_load_row = Adw.ActionRow(
+            title="GPU load now",
+            subtitle="The busiest GPU, read every two seconds while this "
+                     "page is open",
+            visible=gpu_busy_percent() is not None)
+        self._gpu_load_label = Gtk.Label(label="—")
+        self._gpu_load_label.add_css_class("numeric")
+        self._gpu_load_row.add_suffix(self._gpu_load_label)
+        gpu.add(self._gpu_load_row)
+        page.add(gpu)
+        if self._gpu_load_row.get_visible():
+            timer = GLib.timeout_add_seconds(2, self._sync_gpu_load)
+            self.connect("destroy", lambda *_a: GLib.source_remove(timer))
+
         # Last on the page rather than first: the cost is worth knowing, but
         # not the reason anyone opened this tab.
         page.add(tip_card(
             "<b>Blur is the most expensive thing in this window.</b> It costs "
-            "GPU and battery — more on integrated graphics or a 4K screen. If "
-            "the desktop feels slow, turn off <b>Blur behind all application "
-            "windows</b> first, or switch to Performance."))
+            "GPU and battery — more on integrated graphics or a 4K screen. "
+            "Keep <b>Blur refresh</b> on Efficient. If the desktop still "
+            "feels slow, turn off <b>Blur behind all application windows</b> "
+            "next, or switch to Performance."))
 
         return self._mode_tab("frosted", page)
+
+    def _sync_gpu_load(self):
+        """Refresh the GPU load row, only while someone can see it.
+
+        Reads nothing while the window is hidden or on another page, so the
+        window does not keep a GPU readout of its own going in the background.
+        """
+        if not self.get_mapped():
+            return GLib.SOURCE_CONTINUE
+        if self._stack.get_visible_child_name() != "glass":
+            return GLib.SOURCE_CONTINUE
+        busy = gpu_busy_percent()
+        self._gpu_load_label.set_label("—" if busy is None else "%d%%" % busy)
+        return GLib.SOURCE_CONTINUE
 
     def _opacity_scale(self, percent):
         """One opacity bar, with the label that reports it kept on its side.
@@ -7335,6 +7446,8 @@ class Window(Adw.ApplicationWindow):
             self._glass_style_row.get_selected()]
         s.liquid_windows = self._liquid_windows_row.get_active()
         s.fullscreen_blur = self._fullscreen_blur_row.get_active()
+        s.blur_refresh = self._blur_refresh_row._ids[
+            self._blur_refresh_row.get_selected()]
         s.panel_blur_fix = self._panel_blur_row.get_active()
         s.update_check = self._update_check_row.get_active()
         # Not settings, so they never differ and never produce a flag. Carried so
@@ -7611,6 +7724,9 @@ class Window(Adw.ApplicationWindow):
             self._applied.glass_style, "glass_style")
         self._liquid_windows_row.set_active(self._applied.liquid_windows)
         self._fullscreen_blur_row.set_active(self._applied.fullscreen_blur)
+        self._refill_contextual_choice(
+            self._blur_refresh_row, BLUR_REFRESH_MODES,
+            self._applied.blur_refresh, "blur_refresh")
         self._panel_blur_row.set_active(self._applied.panel_blur_fix)
         self._update_check_row.set_active(self._applied.update_check)
         self._loading = False
