@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# Put the aura-glass checkout on exactly one release, or one branch's newest
+# commit, and run the full installer from it.
+#
+#   aura-glass-update vX.Y.Z      a release tag
+#   aura-glass-update main        main's newest commit (or any other branch)
+#   aura-glass-update --no-install <target>   switch the checkout only
+#
+# This replaces `git pull --ff-only`, which is what the settings window used to
+# run. A pull asks the checkout to already be in a state it can move on from: on
+# a branch, tracking a remote branch, with no local edits and no history of its
+# own. Real checkouts are often none of those — a release tag checked out by
+# hand is a detached HEAD, a hand-edited stylesheet is a dirty tree, a tag that
+# was re-cut on the remote clobbers on fetch, and a main that someone committed
+# on has diverged. Each of those used to grey the Install button out or stop the
+# pull with git's own message, and none of them is something a theme user should
+# have to untangle. So nothing here asks what state the checkout is in; it is
+# moved to the named ref, and whatever was there is kept somewhere it can be got
+# back from rather than refused or thrown away:
+#
+#   local edits        → git stash, with a message naming when and from where
+#   a diverged branch  → a branch aura-glass-backup/<branch>-<timestamp>
+#
+# A tag is checked out detached, which is what bin/aura-glass-update-check
+# already reads as "on the released line". A branch is reset to its remote copy
+# and set to track it, which is what it reads as "following commits".
+#
+# Everything is in main() and called on the last line, because bash reads a
+# script as it runs it, and the checkout below may replace this very file when
+# it is run from the repository rather than from ~/.local/bin.
+set -euo pipefail
+
+main() {
+    local install=1
+    if [ "${1:-}" = "--no-install" ]; then
+        install=0
+        shift
+    fi
+    local target="${1:-}"
+    if [ -z "$target" ]; then
+        echo "usage: aura-glass-update [--no-install] <vX.Y.Z | branch>" >&2
+        exit 2
+    fi
+
+    local conf="${AURA_GLASS_CONF:-$HOME/.config/aura-glass}"
+    local repo
+    repo="$(cat "$conf/repo-path" 2>/dev/null || true)"
+    if [ -z "$repo" ] || [ ! -d "$repo/.git" ]; then
+        if [ -n "$repo" ] && [ -r "$repo/.packaged" ]; then
+            echo "aura-glass-update: installed from a package — update it with your package manager" >&2
+        else
+            echo "aura-glass-update: no git checkout recorded in $conf/repo-path" >&2
+        fi
+        exit 1
+    fi
+    local g=(git -C "$repo")
+
+    if ! "${g[@]}" remote get-url origin >/dev/null 2>&1; then
+        echo "aura-glass-update: $repo has no origin remote to update from" >&2
+        exit 1
+    fi
+
+    # --force so a tag that was moved on the remote replaces the local one rather
+    # than stopping the fetch with "would clobber existing tag". --tags brings
+    # the branches too (the default refspec still applies). Nothing is pruned:
+    # a tag or branch someone made locally is theirs.
+    echo "==> Fetching releases and branches from origin"
+    "${g[@]}" fetch --force --tags origin
+
+    local kind ref
+    if "${g[@]}" rev-parse -q --verify "refs/tags/$target^{commit}" >/dev/null; then
+        kind=tag
+        ref="refs/tags/$target"
+    elif "${g[@]}" rev-parse -q --verify "refs/remotes/origin/$target^{commit}" >/dev/null; then
+        kind=branch
+        ref="refs/remotes/origin/$target"
+    else
+        echo "aura-glass-update: origin has no release or branch called $target" >&2
+        exit 1
+    fi
+
+    local stamp
+    stamp="$(date +%Y%m%d-%H%M%S)"
+    local from
+    from="$("${g[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
+    [ "$from" = HEAD ] && from="$("${g[@]}" rev-parse --short=7 HEAD)"
+
+    # Untracked files too: one the target ref also has would stop the checkout
+    # with "would be overwritten", which is the same dead end as a dirty tree.
+    if [ -n "$("${g[@]}" status --porcelain)" ]; then
+        "${g[@]}" stash push --include-untracked \
+            -m "aura-glass update $stamp (local edits on $from)" >/dev/null
+        echo "==> Your local edits were stashed. Get them back with:"
+        echo "      git -C $repo stash list"
+        echo "      git -C $repo stash pop"
+    fi
+
+    if [ "$kind" = tag ]; then
+        echo "==> Switching to release $target"
+        "${g[@]}" checkout --quiet --detach "$ref"
+    else
+        # Commits on the local branch that the remote does not have would be
+        # dropped by the reset below, so they get a branch of their own first.
+        if "${g[@]}" rev-parse -q --verify "refs/heads/$target" >/dev/null \
+            && [ -n "$("${g[@]}" rev-list "$ref..refs/heads/$target" 2>/dev/null)" ]; then
+            local backup="aura-glass-backup/$target-$stamp"
+            "${g[@]}" branch "$backup" "refs/heads/$target"
+            echo "==> Your local commits on $target are kept on the branch $backup"
+        fi
+        echo "==> Switching to the newest commit on $target"
+        "${g[@]}" checkout --quiet -B "$target" --track "origin/$target"
+    fi
+    echo "    now at $("${g[@]}" log -1 --format='%h %s')"
+
+    if [ "$install" = 0 ]; then
+        return 0
+    fi
+
+    echo "==> Running the installer"
+    bash "$repo/install.sh" --gui
+    # The installer finished, so whatever the update check found is now what is
+    # installed — the window stops offering it.
+    rm -f "$conf/update-available"
+}
+
+main "$@"

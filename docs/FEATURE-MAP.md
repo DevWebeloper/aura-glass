@@ -107,6 +107,7 @@ a restart.
 | Dependencies, distro detection | `lib/distro.sh` |
 | Legacy rename (`tahoe-glass`) | `lib/steps-migrate.sh` |
 | Update check / channel | `bin/aura-glass-update-check`, `systemd/aura-glass-update-check.*`, `current_branch` / `is_test_build` in the GUI |
+| Installing an update, release list, history | `bin/aura-glass-update`, `updates_snapshot` / `_render_updates` / `update_blockers` in the GUI |
 | Uninstall | `uninstall.sh` |
 
 ## 8. Which numbers are written twice (change them together)

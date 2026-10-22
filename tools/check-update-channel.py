@@ -155,14 +155,16 @@ case("a branch with an inherited tag", True, "feature/gui-post-install@", None,
 case("a branch with no tag at all", True, "feature/fresh@", None,
      branch="feature/fresh")
 
-# The blockers that survive. Installing edits the working tree, and these two are
-# still cases where pulling would fail confusingly or throw away work.
-case("a branch with local edits", True, "feature/gui-post-install@",
-     "uncommitted", branch="feature/gui-post-install", dirty=True)
+# Local edits and a detached HEAD used to block an install, and were the reason
+# the Install button went grey for people who had done nothing wrong. They are
+# not blockers any more: bin/aura-glass-update stashes the edits and moves a
+# detached HEAD itself.
+case("a branch with local edits", True, "feature/gui-post-install@", None,
+     branch="feature/gui-post-install", dirty=True)
 
 # A detached HEAD has no branch to follow the commits of, so it belongs to the
-# released line — and is still refused an install, as it was before.
-case("a detached HEAD", False, "v0.1.7", "detached HEAD",
+# released line.
+case("a detached HEAD", False, "v0.1.7", None,
      tags=("v0.1.7",), detach=True)
 
 # The regression this whole change is: being on a branch is not a blocker.
@@ -172,6 +174,86 @@ with tempfile.TemporaryDirectory() as tmp:
         note("a branch is still refused an install — testers cannot update")
     if current_branch(repo) != "feature/gui-post-install":
         note("current_branch: %r" % current_branch(repo))
+
+# bin/aura-glass-update, against the states that used to stop a pull dead.
+UPDATE = os.path.join(ROOT, "bin", "aura-glass-update")
+
+
+def update(conf, target):
+    env = dict(os.environ, AURA_GLASS_CONF=conf, GIT_AUTHOR_NAME="t",
+               GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t",
+               GIT_COMMITTER_EMAIL="t@t")
+    return subprocess.run(["bash", UPDATE, "--no-install", target], env=env,
+                          capture_output=True, text=True)
+
+
+def out(repo, *args):
+    return subprocess.run(["git", "-C", repo] + list(args), check=True,
+                          capture_output=True, text=True).stdout.strip()
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    # A dirty, detached checkout with a newer release on the remote: switched
+    # to the release, the edit stashed rather than lost.
+    repo, conf = build(tmp, tags=("v0.1.7",), detach=True, dirty=True)
+    git(repo, "checkout", "-q", "main")
+    git(repo, "stash")
+    git(repo, "commit", "--allow-empty", "-m", "two")
+    git(repo, "tag", "v0.1.8")
+    git(repo, "push", "-q", "origin", "main", "v0.1.8")
+    git(repo, "checkout", "-q", "--detach", "v0.1.7")
+    git(repo, "stash", "pop")
+    res = update(conf, "v0.1.8")
+    if res.returncode != 0:
+        note("update to a tag from a dirty detached HEAD failed: %s"
+             % (res.stderr.strip() or res.stdout.strip()))
+    elif out(repo, "describe", "--tags", "--exact-match") != "v0.1.8":
+        note("update to v0.1.8 left HEAD at %s" % out(repo, "describe", "--tags"))
+    elif "aura-glass update" not in out(repo, "stash", "list"):
+        note("the local edit was not stashed under an aura-glass message")
+    elif current_branch(repo) is not None:
+        note("a release install should leave a detached HEAD")
+
+with tempfile.TemporaryDirectory() as tmp:
+    # main diverged from origin: reset to origin's main, the local commit kept
+    # on a backup branch, upstream set so the commits line works afterwards.
+    repo, conf = build(tmp)
+    remote = os.path.join(tmp, "remote")
+    other = os.path.join(tmp, "other")
+    subprocess.run(["git", "clone", "-q", "-b", "main", remote, other], check=True)
+    git(other, "commit", "--allow-empty", "-m", "theirs")
+    git(other, "push", "-q", "origin", "main")
+    git(repo, "commit", "--allow-empty", "-m", "mine")
+    res = update(conf, "main")
+    if res.returncode != 0:
+        note("update of a diverged main failed: %s"
+             % (res.stderr.strip() or res.stdout.strip()))
+    else:
+        if out(repo, "log", "-1", "--format=%s") != "theirs":
+            note("diverged main was not moved to origin's main")
+        backups = out(repo, "branch", "--list", "aura-glass-backup/*")
+        if not backups or out(repo, "log", "-1", "--format=%s",
+                              backups.split()[-1]) != "mine":
+            note("the local commit on main was not kept on a backup branch")
+        if out(repo, "rev-parse", "--abbrev-ref", "@{upstream}") != "origin/main":
+            note("main does not track origin/main after the update")
+
+with tempfile.TemporaryDirectory() as tmp:
+    # A tag re-cut on the remote must replace the stale local one, not stop the
+    # fetch with "would clobber existing tag".
+    repo, conf = build(tmp, tags=("v0.1.7",))
+    other = os.path.join(tmp, "other")
+    subprocess.run(["git", "clone", "-q", "-b", "main", os.path.join(tmp, "remote"), other],
+                   check=True)
+    git(other, "commit", "--allow-empty", "-m", "recut")
+    git(other, "tag", "-f", "v0.1.7")
+    git(other, "push", "-q", "--force", "origin", "main", "v0.1.7")
+    res = update(conf, "v0.1.7")
+    if res.returncode != 0:
+        note("update to a re-cut tag failed: %s"
+             % (res.stderr.strip() or res.stdout.strip()))
+    elif out(repo, "log", "-1", "--format=%s") != "recut":
+        note("a re-cut tag did not replace the local one")
 
 if fail:
     print("\nupdate channel FAILED\n")

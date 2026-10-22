@@ -250,7 +250,7 @@ cursor-size and font keys (what `original` / `system` restore).
 | Variable | Read by | Effect |
 |---|---|---|
 | `AURA_GLASS_DIR` (`TAHOE_GLASS_DIR`) | `aura-glass-apply`, `aura-glass-preview`, adaptive worker | override `$C` |
-| `AURA_GLASS_CONF` | `aura-glass-update-check` | override `$C` (test fixtures) |
+| `AURA_GLASS_CONF` | `aura-glass-update-check`, `aura-glass-update` | override `$C` (test fixtures) |
 | `AURA_GLASS_THEME` (`TAHOE_GLASS_THEME`) | `aura-glass-apply`, preview harness | theme directory name |
 | `AURA_GLASS_GUI` | `aura-glass-settings` | run the window from a checkout's `gui/` |
 | `AURA_GLASS_ICONS` | `aura-glass-icon-sync` | icon base to follow |

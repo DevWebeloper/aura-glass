@@ -84,6 +84,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import threading
 
 from preview_queue import PreviewQueue
 
@@ -621,7 +622,8 @@ SEARCH_INDEX = {
     "packages": ["icon pack", "cursor pack", "remove pack", "disk"],
     "system": ["dependencies", "rounded blur library", "gdm", "login screen",
               "monitor", "panel blur", "password", "sudo"],
-    "updates": ["release", "version", "update check", "repair", "reapply",
+    "updates": ["release", "version", "update check", "changelog",
+                "history", "tag", "downgrade", "repair", "reapply",
                 "reinstall", "settings app"],
     "uninstall": ["remove", "revert", "delete"],
 }
@@ -1458,6 +1460,31 @@ button.aura-swatch {
 button.aura-swatch:hover {
   background-color: alpha(@window_fg_color, 0.12);
 }
+
+/* The badges on the Updates page's releases. Tinted rather than filled, so a
+ * column of them reads as labels and not as a row of buttons. */
+.aura-pill {
+  border-radius: 99px;
+  padding: 1px 9px;
+  font-size: smaller;
+  font-weight: bold;
+  background-color: alpha(@window_fg_color, 0.10);
+}
+.aura-pill.installed {
+  color: @success_color;
+  background-color: alpha(@success_color, 0.18);
+}
+.aura-pill.latest {
+  color: @accent_color;
+  background-color: alpha(@accent_bg_color, 0.20);
+}
+.aura-pill.beta {
+  color: @warning_color;
+  background-color: alpha(@warning_color, 0.18);
+}
+.aura-graph {
+  color: @accent_color;
+}
 """]
     for ident, values in RADIUS_PRESET_VALUES.items():
         parts.append(".aura-preset-%s { border-radius: %dpx; }\n"
@@ -2155,13 +2182,15 @@ def packaged(repo):
 
 
 def update_blockers(repo):
-    """Why `git pull` here would be a bad idea. Empty list means go ahead.
+    """Why an update cannot be installed from this window. Empty means go ahead.
 
-    Updating edits the user's working tree, which is the most destructive thing
-    this window can do. Every one of these is a case where pulling would either
-    fail confusingly or throw away work, so each is refused with the reason
-    rather than worked around — stashing on someone's behalf is not this
-    program's decision to make.
+    Only the cases with nothing to switch: no checkout, a package, no remote.
+    A dirty tree, a detached HEAD, a branch with no upstream and a diverged
+    history used to be here too, and every one of them greyed the Install button
+    out for someone who had done nothing but check out a tag or touch a file.
+    bin/aura-glass-update now handles those itself — edits are stashed and local
+    commits kept on a backup branch — so refusing them here would refuse an
+    update that would work.
     """
     if not repo:
         return ["The aura-glass checkout is gone."]
@@ -2169,30 +2198,219 @@ def update_blockers(repo):
     if package:
         return ["Installed from the %s package — update it with your package "
                 "manager (for example yay -Syu %s)." % (package[0], package[0])]
-
-    reasons = []
     if git_out(repo, "rev-parse", "--is-inside-work-tree") != "true":
         return ["%s is not a git checkout." % repo]
+    if git_out(repo, "remote", "get-url", "origin") is None:
+        return ["The checkout has no origin remote to update from."]
+    return []
 
-    if git_out(repo, "status", "--porcelain"):
-        reasons.append("You have uncommitted changes there. Commit or stash "
-                       "them first — this will not do it for you.")
 
-    branch = git_out(repo, "rev-parse", "--abbrev-ref", "HEAD")
-    if branch in (None, "HEAD"):
-        reasons.append("The checkout is on a detached HEAD rather than a branch.")
-    else:
-        # Being on a branch other than main is not a blocker: it is the other
-        # line this window knows about, and pulling it is what someone testing
-        # that branch asked for. What still has to hold either way is that there
-        # is a remote branch to pull from — and --ff-only, which is what actually
-        # refuses a checkout whose history has diverged from it.
-        upstream = git_out(repo, "rev-parse", "--abbrev-ref",
-                           "--symbolic-full-name", "@{upstream}")
-        if upstream is None:
-            reasons.append("The branch %s is not tracking a remote branch."
-                           % branch)
-    return reasons
+# The tags that are releases of this project, the same set the update check's
+# sed keeps. Anything else in refs/tags (a wip, an experiment) is not offered.
+RELEASE_TAG = re.compile(r"^v[0-9][0-9.]*(-beta)?$")
+
+# The branch every release is cut from, as its remote-tracking ref.
+MAIN_REF = "refs/remotes/origin/main"
+
+
+def fetch_releases(repo):
+    """Bring the remote's tags and branches into the checkout's .git. Never raises.
+
+    --force for the same reason bin/aura-glass-update gives: a re-cut tag must
+    replace the stale local copy, not stop the fetch. Only refs move — the
+    working tree is untouched — so this is safe to run just because the Updates
+    page was opened. True if it worked.
+    """
+    try:
+        res = subprocess.run(
+            ["git", "-C", repo, "fetch", "--quiet", "--force", "--tags",
+             "origin"],
+            capture_output=True, text=True, timeout=60,
+            env=dict(os.environ, GIT_TERMINAL_PROMPT="0"))
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return res.returncode == 0
+
+
+def list_releases(repo):
+    """Every release tag the checkout knows, newest first.
+
+    Each is a dict of tag, sha (the commit, peeled through an annotated tag),
+    date and the tag's own subject line. versionsort.suffix puts v1.2.0-beta
+    below v1.2.0, which is the order they were cut in.
+    """
+    out = git_out(repo, "-c", "versionsort.suffix=-beta", "for-each-ref",
+                  "--sort=-v:refname",
+                  "--format=%(refname:strip=2)%00%(objectname)%00"
+                  "%(*objectname)%00%(creatordate:short)%00%(contents:subject)",
+                  "refs/tags")
+    releases = []
+    for line in (out or "").splitlines():
+        fields = line.split("\0")
+        if len(fields) != 5 or not RELEASE_TAG.match(fields[0]):
+            continue
+        tag, obj, peeled, date, subject = fields
+        releases.append({"tag": tag, "sha": peeled or obj, "date": date,
+                         "subject": subject})
+    return releases
+
+
+def commit_subjects(repo, since, until, limit=60):
+    """The non-merge commit subjects in since..until, newest first.
+
+    The changelog of last resort: a release with no GitHub notes still shows
+    what went into it. since may be None for the first release there is.
+    """
+    span = until if since is None else "%s..%s" % (since, until)
+    out = git_out(repo, "log", "--no-merges", "--format=%s",
+                  "--max-count=%d" % limit, span)
+    return [l for l in (out or "").splitlines() if l]
+
+
+def count_commits(repo, since, until):
+    out = git_out(repo, "rev-list", "--count", "%s..%s" % (since, until))
+    return int(out) if out and out.isdigit() else 0
+
+
+def history_lines(repo, ref=MAIN_REF, limit=150):
+    """main's history as `git log --graph` draws it, one dict per line.
+
+    A commit line has sha, short, date, refs (the release tags on it) and
+    subject; a line that only continues the graph (the | and / lines) has just
+    graph. Decorations are limited to release tags so a local branch name does
+    not end up in someone's history view.
+    """
+    out = git_out(repo, "log", "--graph", "--max-count=%d" % limit,
+                  "--decorate=full", "--decorate-refs=refs/tags",
+                  "--format=%x00%H%x00%h%x00%cs%x00%D%x00%s", ref)
+    lines = []
+    for raw in (out or "").splitlines():
+        graph, sep, rest = raw.partition("\0")
+        if not sep:
+            lines.append({"graph": raw.rstrip()})
+            continue
+        sha, short, date, decor, subject = (rest.split("\0") + [""] * 5)[:5]
+        tags = [d.strip()[len("tag: refs/tags/"):] for d in decor.split(",")
+                if d.strip().startswith("tag: refs/tags/")]
+        lines.append({"graph": graph.rstrip(), "sha": sha, "short": short,
+                      "date": date, "subject": subject,
+                      "tags": [t for t in tags if RELEASE_TAG.match(t)]})
+    return lines
+
+
+def first_release_with(repo, sha):
+    """The oldest release tag that contains sha, or None if none does yet."""
+    out = git_out(repo, "-c", "versionsort.suffix=-beta", "tag", "--contains",
+                  sha, "--sort=v:refname")
+    for tag in (out or "").splitlines():
+        if RELEASE_TAG.match(tag):
+            return tag
+    return None
+
+
+def github_slug(repo):
+    """owner/name when origin is on github.com, else None."""
+    url = git_out(repo, "remote", "get-url", "origin") or ""
+    found = re.match(r"^(?:https://github\.com/|git@github\.com:|"
+                     r"ssh://git@github\.com/)([^/]+/[^/]+?)(?:\.git)?/?$", url)
+    return found.group(1) if found else None
+
+
+def github_release_notes(repo):
+    """{tag: (title, markdown body)} from GitHub's releases, or {} offline.
+
+    The notes a release was published with are the changelog people actually
+    wrote, so they are preferred over commit subjects when there are any. One
+    unauthenticated request; GitHub allows sixty an hour, and the page asks once
+    per refresh. Anything but github.com, or any failure at all, is {} and the
+    commit subjects stand in.
+    """
+    slug = github_slug(repo)
+    if not slug:
+        return {}
+    import urllib.request
+    request = urllib.request.Request(
+        "https://api.github.com/repos/%s/releases?per_page=100" % slug,
+        headers={"Accept": "application/vnd.github+json",
+                 "User-Agent": "aura-glass-settings"})
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            rows = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError):
+        return {}
+    notes = {}
+    for row in rows if isinstance(rows, list) else []:
+        if isinstance(row, dict) and row.get("tag_name") and not row.get("draft"):
+            notes[row["tag_name"]] = (row.get("name") or "",
+                                      row.get("body") or "")
+    return notes
+
+
+def markdown_markup(text, limit=4000):
+    """Release-note markdown as Pango markup: headings, bullets, bold, code.
+
+    Not a markdown parser — the four things release notes here use, and the
+    rest left as text. Escaped first, so nothing in a note can break the label.
+    """
+    out = []
+    for line in text.replace("\r", "")[:limit].splitlines():
+        line = GLib.markup_escape_text(line.rstrip())
+        heading = re.match(r"^#{1,6}\s+(.*)$", line)
+        if heading:
+            line = "<b>%s</b>" % heading.group(1)
+        else:
+            line = re.sub(r"^(\s*)[-*]\s+", r"\1  •  ", line)
+        line = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", line)
+        line = re.sub(r"`([^`]+)`", r"<tt>\1</tt>", line)
+        out.append(line)
+    # Runs of blank lines collapse to one; markdown leaves plenty.
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+
+
+def updates_snapshot(repo, fetch):
+    """Everything the Updates page lists, read in one go off the main thread.
+
+    fetch also asks the network: origin's refs, then GitHub's notes. Without it
+    the page shows what the checkout already knows, which is instant and what
+    the window opens with.
+    """
+    fetched = fetch_releases(repo) if fetch else None
+    releases = list_releases(repo)
+    for older, rel in zip(releases[1:] + [None], releases):
+        rel["changes"] = commit_subjects(
+            repo, older["sha"] if older else None, rel["sha"])
+    have_main = git_out(repo, "rev-parse", "-q", "--verify", MAIN_REF) is not None
+    main = None
+    if have_main:
+        since = releases[0]["sha"] if releases else None
+        main = {"short": git_out(repo, "rev-parse", "--short=7", MAIN_REF),
+                "date": git_out(repo, "log", "-1", "--format=%cs", MAIN_REF),
+                "ahead": (count_commits(repo, since, MAIN_REF)
+                          if since else None),
+                "changes": commit_subjects(repo, since, MAIN_REF, limit=40)}
+    branch = current_branch(repo)
+    test = None
+    if branch and branch not in RELEASE_BRANCHES:
+        remote = "refs/remotes/origin/%s" % branch
+        if git_out(repo, "rev-parse", "-q", "--verify", remote) is not None:
+            test = {"branch": branch,
+                    "short": git_out(repo, "rev-parse", "--short=7", remote),
+                    "behind": count_commits(repo, "HEAD", remote),
+                    "changes": commit_subjects(repo, "HEAD", remote, limit=40)}
+    return {
+        "fetched": fetched,
+        "releases": releases,
+        "main": main,
+        "test": test,
+        "head": git_out(repo, "rev-parse", "HEAD"),
+        "head_tag": git_out(repo, "describe", "--tags", "--exact-match",
+                            "HEAD"),
+        "branch": branch,
+        "dirty": bool(git_out(repo, "status", "--porcelain")),
+        "history": history_lines(repo) if have_main else [],
+        "notes": github_release_notes(repo) if fetch else None,
+        "slug": github_slug(repo),
+    }
 
 
 class Settings:
@@ -3758,6 +3976,10 @@ class Window(Adw.ApplicationWindow):
         if row is None:
             return
         self._stack.set_visible_child_name(row._section)
+        # Opening Updates is asking what is out there, so the first visit in a
+        # session fetches. Later ones show what that fetch found.
+        if row._section == "updates" and not self._updates_fetched:
+            self._refresh_updates(True)
         self._content_page.set_title(row.get_title())
         self._window_title.set_title(row.get_title())
 
@@ -6734,6 +6956,8 @@ class Window(Adw.ApplicationWindow):
         updates = self._updates_group
 
         self._version_row = Adw.ActionRow(title="Version")
+        self._version_row.add_prefix(Gtk.Image.new_from_icon_name(
+            "emblem-default-symbolic"))
         self._check_button = Gtk.Button(label="Check now",
                                         valign=Gtk.Align.CENTER)
         self._check_button.connect("clicked", self._on_check_updates)
@@ -6742,7 +6966,10 @@ class Window(Adw.ApplicationWindow):
 
         self._update_button_row = Adw.ActionRow(
             title="Install update",
-            subtitle="Pulls the new release and runs the full installer")
+            subtitle="Switches the checkout to the new release and runs the "
+                     "full installer")
+        self._update_button_row.add_prefix(Gtk.Image.new_from_icon_name(
+            "software-update-available-symbolic"))
         self._update_button = Gtk.Button(valign=Gtk.Align.CENTER)
         self._update_button.add_css_class("suggested-action")
         self._update_button.connect("clicked", self._on_install_update)
@@ -6755,20 +6982,76 @@ class Window(Adw.ApplicationWindow):
         self._update_button.set_child(pressed)
         self._update_button_row.add_suffix(self._update_button)
         updates.add(self._update_button_row)
+        page.add(updates)
 
+        # ---- every release, and the history they were cut from
+        #
+        # One list a person can pick any version from — newer, older, the same
+        # one again — rather than one button that only ever means "the next
+        # one". Each release opens into its notes and its own Install, so what
+        # changed is read where it is chosen. History is the same refs drawn as
+        # git draws them, for anyone who wants to see where a release sits.
+        self._releases_group = Adw.PreferencesGroup(
+            title="Releases",
+            description="Pick any version to read what changed and install it.")
+        self._browse_switcher = Adw.ToggleGroup()
+        self._browse_switcher.add(Adw.Toggle(name="releases", label="Releases"))
+        self._browse_switcher.add(Adw.Toggle(name="history", label="History"))
+        self._browse_switcher.set_active_name("releases")
+        self._browse_switcher.set_valign(Gtk.Align.CENTER)
+        self._browse_switcher.connect("notify::active-name",
+                                      self._on_browse_switched)
+        refresh = Gtk.Button(icon_name="view-refresh-symbolic",
+                             valign=Gtk.Align.CENTER,
+                             tooltip_text="Fetch releases from the remote")
+        refresh.add_css_class("flat")
+        refresh.connect("clicked", lambda _b: self._refresh_updates(True))
+        self._browse_refresh = refresh
+        suffix = Gtk.Box(spacing=6)
+        suffix.append(refresh)
+        suffix.append(self._browse_switcher)
+        self._releases_group.set_header_suffix(suffix)
+
+        self._browse_status = Gtk.Label(xalign=0, wrap=True, margin_bottom=6)
+        self._browse_status.add_css_class("dim-label")
+        self._browse_status.add_css_class("caption")
+        self._releases_group.add(self._browse_status)
+
+        self._browse_stack = Gtk.Stack(
+            transition_type=Gtk.StackTransitionType.CROSSFADE,
+            vhomogeneous=False)
+        self._release_list = Gtk.ListBox(
+            selection_mode=Gtk.SelectionMode.NONE)
+        self._release_list.add_css_class("boxed-list")
+        self._browse_stack.add_named(self._release_list, "releases")
+        self._history_list = Gtk.ListBox(
+            selection_mode=Gtk.SelectionMode.NONE)
+        self._history_list.add_css_class("card")
+        self._history_list.add_css_class("aura-history")
+        self._history_list.connect("row-activated", self._on_history_row)
+        self._browse_stack.add_named(self._history_list, "history")
+        self._releases_group.add(self._browse_stack)
+        page.add(self._releases_group)
+        self._release_rows = {}
+        self._updates_data = None
+        self._updates_fetched = False
+        self._updates_loading = False
+        self._updates_fetch_queued = False
+
+        settings = Adw.PreferencesGroup(title="Notifications")
         self._update_check_row = Adw.SwitchRow(
             title="Check daily",
             subtitle="One notification per release, in the background",
             active=self._applied.update_check)
         self._update_check_row.connect("notify::active", self._on_changed,
                                        "update_check")
-        updates.add(self._update_check_row)
+        settings.add(self._update_check_row)
 
         self._update_channel_row = self._combo(
             "Update channel", "", UPDATE_CHANNELS,
             self._applied.update_channel, "update_channel")
-        updates.add(self._update_channel_row)
-        page.add(updates)
+        settings.add(self._update_channel_row)
+        page.add(settings)
 
         repair = Adw.PreferencesGroup(
             title="Repair installation",
@@ -6822,6 +7105,9 @@ class Window(Adw.ApplicationWindow):
         page.add(self._update_log_group)
 
         self._sync_updates()
+        # What the checkout already knows, straight away and without the
+        # network. Opening the page is what goes to the remote.
+        self._refresh_updates(False)
 
         return page
 
@@ -7228,9 +7514,8 @@ class Window(Adw.ApplicationWindow):
             self._updates_group.set_description(
                 "This checkout is on the branch %s, not the released line, so "
                 "the check asks the git remote whether that branch has moved "
-                "rather than which releases exist. To go back to releases, run "
-                "git checkout main in the checkout once the branch has been "
-                "merged." % current_branch(self._repo))
+                "rather than which releases exist. To go back to releases, "
+                "install one from the list below." % current_branch(self._repo))
         elif follows_commits(self._repo):
             self._version_row.set_title("Latest commits")
             self._updates_group.set_description(
@@ -7264,19 +7549,332 @@ class Window(Adw.ApplicationWindow):
         self._update_button_row.set_visible(bool(pending))
 
         if pending and blockers:
-            # Shown rather than hidden. Someone who edited the checkout should
-            # find out why the button is off, not wonder whether the update
-            # notification was wrong.
+            # Shown rather than hidden. Someone whose install cannot be updated
+            # from here should find out why the button is off, not wonder
+            # whether the update notification was wrong.
             self._update_button_row.set_subtitle(blockers[0])
             self._update_button.set_sensitive(False)
+        if pending:
+            self._update_button_row.set_title("%s is available" % pending)
         elif pending:
             self._update_button_row.set_subtitle(
-                "Pulls %s and runs the full installer in a terminal" % pending)
+                "Switches the checkout to %s and runs the full installer in a "
+                "terminal" % pending)
             self._update_button.set_sensitive(not self._running)
+
+    # ---- the release list -------------------------------------------------
+
+    def _refresh_updates(self, fetch):
+        """Re-read the release list, off the main thread, and redraw it.
+
+        fetch goes to the network (origin's refs and GitHub's notes) first. A
+        thread rather than the async subprocess calls used elsewhere because a
+        listing is a dozen git calls and an HTTP request in a row, and none of
+        them may stall the window while the network is slow.
+        """
+        repo = self._repo
+        if not repo or packaged(repo):
+            self._render_updates(None)
+            return
+        if self._updates_loading:
+            # The local read the window opens with is often still running when
+            # the page is first shown. Its fetch goes next rather than nowhere.
+            self._updates_fetch_queued = self._updates_fetch_queued or fetch
+            return
+        self._updates_loading = True
+        self._browse_refresh.set_sensitive(False)
+        if fetch:
+            self._browse_status.set_label("Fetching releases from the remote…")
+
+        def work():
+            try:
+                data = updates_snapshot(repo, fetch)
+            except Exception as exc:  # a listing must never take the window down
+                data = {"error": str(exc)}
+            GLib.idle_add(done, data)
+
+        def done(data):
+            self._updates_loading = False
+            self._browse_refresh.set_sensitive(True)
+            if fetch:
+                self._updates_fetched = True
+            # Notes are only read when fetching. A local re-read keeps the ones
+            # the last fetch brought rather than dropping back to commits.
+            if self._updates_data and data.get("notes") is None:
+                data["notes"] = self._updates_data.get("notes")
+            self._updates_data = data
+            self._render_updates(data)
+            if self._updates_fetch_queued:
+                self._updates_fetch_queued = False
+                self._refresh_updates(True)
+            return GLib.SOURCE_REMOVE
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _render_updates(self, data):
+        for listbox in (self._release_list, self._history_list):
+            while (child := listbox.get_first_child()) is not None:
+                listbox.remove(child)
+        self._release_rows = {}
+
+        if data is None or "error" in data:
+            package = packaged(self._repo)
+            if package:
+                text = ("Installed from the %s package — releases come through "
+                        "your package manager." % package[0])
+            elif data and "error" in data:
+                text = "Could not read the releases: %s" % data["error"]
+            else:
+                text = "No git checkout to list releases from."
+            self._browse_status.set_label(text)
+            self._browse_stack.set_visible(False)
+            return
+        self._browse_stack.set_visible(True)
+
+        status = []
+        if data["fetched"] is False:
+            status.append("Could not reach the remote — showing what this "
+                          "checkout already knows.")
+        if data["dirty"]:
+            status.append("The checkout has local edits. Installing stashes "
+                          "them first (git stash list to get them back).")
+        if not data["releases"]:
+            status.append("No releases yet — press refresh to fetch them.")
+        self._browse_status.set_label(" ".join(status))
+        self._browse_status.set_visible(bool(status))
+
+        notes = data.get("notes") or {}
+        head = data["head"]
+        on_main = data["branch"] in RELEASE_BRANCHES
+
+        if data["test"]:
+            test = data["test"]
+            installed = test["behind"] == 0
+            row = self._release_row(
+                title=test["branch"],
+                subtitle=("Test build · %s" % test["short"]) + (
+                    "" if installed else " · %d new commit%s"
+                    % (test["behind"], "" if test["behind"] == 1 else "s")),
+                pills=[("Installed", "installed")] if installed else
+                      [("Test build", "beta")],
+                body=self._commit_markup(test["changes"],
+                                         "Nothing new on this branch."),
+                target=test["branch"], installed=installed)
+            self._release_list.append(row)
+
+        if data["main"]:
+            main = data["main"]
+            installed = on_main and head is not None and \
+                git_out(self._repo, "rev-parse", MAIN_REF) == head
+            ahead = main["ahead"]
+            subtitle = "Newest commit · %s · %s" % (main["short"], main["date"])
+            if ahead:
+                subtitle += " · %d commit%s after %s" % (
+                    ahead, "" if ahead == 1 else "s",
+                    data["releases"][0]["tag"])
+            row = self._release_row(
+                title="main — latest commits",
+                subtitle=subtitle,
+                pills=[("Installed", "installed")] if installed else
+                      [("Unreleased", "beta")] if ahead else [],
+                body=self._commit_markup(
+                    main["changes"], "main has nothing beyond the newest "
+                    "release."),
+                target="main", installed=installed)
+            self._release_list.append(row)
+
+        newest = data["releases"][0]["tag"] if data["releases"] else None
+        for rel in data["releases"]:
+            tag = rel["tag"]
+            installed = data["head_tag"] == tag or (
+                not on_main and data["branch"] is None and head == rel["sha"])
+            pills = []
+            if installed:
+                pills.append(("Installed", "installed"))
+            if tag == newest:
+                pills.append(("Latest", "latest"))
+            if tag.endswith("-beta"):
+                pills.append(("Pre-release", "beta"))
+            title, body = notes.get(tag, ("", ""))
+            # Release titles open with their own tag, which is already the
+            # row's title; "v0.3.5 — Hex & Sticky" under "v0.3.5" says it twice.
+            title = re.sub(r"^%s\s*[—–:-]?\s*" % re.escape(tag), "", title)
+            subject = rel["subject"] if rel["subject"] != tag else ""
+            if body.strip():
+                markup = markdown_markup(body)
+            else:
+                markup = self._commit_markup(rel["changes"],
+                                             "No changes recorded.")
+            row = self._release_row(
+                title=tag,
+                subtitle=" · ".join(x for x in (
+                    rel["date"], title or subject) if x),
+                pills=pills, body=markup, target=tag, installed=installed,
+                link=("https://github.com/%s/releases/tag/%s"
+                      % (data["slug"], tag)) if data["slug"] else None)
+            self._release_list.append(row)
+            self._release_rows[tag] = row
+
+        for line in data["history"]:
+            self._history_list.append(self._history_row(line, head))
+
+    @staticmethod
+    def _commit_markup(subjects, empty):
+        if not subjects:
+            return GLib.markup_escape_text(empty)
+        return "\n".join("  •  " + GLib.markup_escape_text(s)
+                         for s in subjects)
+
+    def _release_row(self, title, subtitle, pills, body, target, installed,
+                     link=None):
+        """One release: its name and badges, opening into its notes and Install."""
+        row = Adw.ExpanderRow()
+        plain_row(row, title, subtitle)
+        for text, kind in pills:
+            pill = Gtk.Label(label=text, valign=Gtk.Align.CENTER)
+            pill.add_css_class("aura-pill")
+            pill.add_css_class(kind)
+            row.add_suffix(pill)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
+                      margin_top=12, margin_bottom=12, margin_start=12,
+                      margin_end=12)
+        notes = Gtk.Label(xalign=0, wrap=True, selectable=True,
+                          use_markup=True)
+        notes.set_markup(body)
+        box.append(notes)
+
+        actions = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+        if link:
+            actions.append(Gtk.LinkButton(uri=link, label="View on GitHub"))
+        button = Gtk.Button(label="Reinstall" if installed else "Install",
+                            valign=Gtk.Align.CENTER)
+        if not installed:
+            button.add_css_class("suggested-action")
+        button.connect("clicked", lambda _b: self._confirm_install(
+            target, installed))
+        actions.append(button)
+        box.append(actions)
+
+        holder = Gtk.ListBoxRow(activatable=False, selectable=False,
+                                child=box)
+        row.add_row(holder)
+        return row
+
+    def _history_row(self, line, head):
+        """One line of the graph: a commit to click, or a connector."""
+        graph = Gtk.Label(label=line["graph"], xalign=0,
+                          valign=Gtk.Align.START)
+        graph.add_css_class("monospace")
+        graph.add_css_class("aura-graph")
+        box = Gtk.Box(spacing=10, margin_start=12, margin_end=12)
+        box.append(graph)
+        if "sha" not in line:
+            return Gtk.ListBoxRow(activatable=False, selectable=False,
+                                  child=box)
+
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True,
+                       margin_top=6, margin_bottom=6)
+        subject = Gtk.Label(label=line["subject"], xalign=0,
+                            ellipsize=Pango.EllipsizeMode.END)
+        meta = Gtk.Label(label="%s · %s" % (line["short"], line["date"]),
+                         xalign=0)
+        meta.add_css_class("caption")
+        meta.add_css_class("dim-label")
+        text.append(subject)
+        text.append(meta)
+        box.append(text)
+        if line["sha"] == head:
+            pill = Gtk.Label(label="Installed", valign=Gtk.Align.CENTER)
+            pill.add_css_class("aura-pill")
+            pill.add_css_class("installed")
+            box.append(pill)
+        for tag in line["tags"]:
+            pill = Gtk.Label(label=tag, valign=Gtk.Align.CENTER)
+            pill.add_css_class("aura-pill")
+            pill.add_css_class("latest")
+            box.append(pill)
+        row = Gtk.ListBoxRow(child=box)
+        row._line = line
+        return row
+
+    def _on_browse_switched(self, switcher, _param):
+        self._browse_stack.set_visible_child_name(switcher.get_active_name())
+
+    def _on_history_row(self, _list, row):
+        """A tagged commit opens its release; any other says which one has it."""
+        line = getattr(row, "_line", None)
+        if line is None:
+            return
+        tag = line["tags"][0] if line["tags"] else \
+            first_release_with(self._repo, line["sha"])
+        if line["tags"] and tag in self._release_rows:
+            self._browse_switcher.set_active_name("releases")
+            self._release_rows[tag].set_expanded(True)
+            self._release_rows[tag].grab_focus()
+            return
+        body = git_out(self._repo, "log", "-1", "--format=%b",
+                       line["sha"]) or ""
+        where = ("First released in %s." % tag) if tag else \
+            "Not in a release yet — install main to get it."
+        dialog = AlertWindow(
+            heading=line["subject"],
+            body="%s · %s\n\n%s%s" % (line["short"], line["date"],
+                                     body.strip() + "\n\n" if body.strip()
+                                     else "", where))
+        dialog.add_response("close", "Close")
+        dialog.add_response("open", "Open %s" % tag if tag else "Open main")
+        dialog.set_response_appearance("open", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("open")
+        dialog.set_close_response("close")
+
+        def answered(_d, response):
+            if response != "open":
+                return
+            self._browse_switcher.set_active_name("releases")
+            target = self._release_rows.get(tag) if tag else \
+                self._release_list.get_row_at_index(0)
+            if target is not None:
+                target.set_expanded(True)
+                target.grab_focus()
+
+        dialog.connect("response", answered)
+        open_over(dialog, self)
+
+    def _confirm_install(self, target, installed):
+        """Say what Install is about to do to the checkout, then do it."""
+        blockers = update_blockers(self._repo)
+        if blockers:
+            self._toasts.add_toast(Adw.Toast(title=blockers[0]))
+            return
+        branch = target in RELEASE_BRANCHES or not RELEASE_TAG.match(target)
+        what = ("the newest commit on %s" % target) if branch else target
+        body = ("Switches the checkout to %s and runs the full installer in a "
+                "terminal." % what)
+        if git_out(self._repo, "status", "--porcelain"):
+            body += (" Your local edits in the checkout are stashed first — "
+                     "git stash pop brings them back.")
+        if branch:
+            body += (" Commits of your own on %s are kept on a backup branch."
+                     % target)
+        dialog = AlertWindow(
+            heading=("Reinstall %s?" if installed else "Install %s?")
+            % ("main" if target == "main" else target),
+            body=body)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("install", "Reinstall" if installed else "Install")
+        dialog.set_response_appearance("install",
+                                       Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("install")
+        dialog.set_close_response("cancel")
+        dialog.connect("response", lambda _d, r: r == "install"
+                       and self._run_update(target))
+        open_over(dialog, self)
 
     def _on_check_updates(self, _button):
         self._check_button.set_sensitive(False)
         self._check_button.set_label("Checking…")
+        self._refresh_updates(True)
 
         checker = os.path.join(os.path.expanduser("~/.local/bin"),
                                "aura-glass-update-check")
@@ -7338,28 +7936,38 @@ class Window(Adw.ApplicationWindow):
             self._sync_updates()
             self._toasts.add_toast(Adw.Toast(title=blockers[0]))
             return
+        # The update check names a release by its tag and a commit line as
+        # branch@sha; either way what to install is the tag or the branch.
+        pending = self._applied.update_available or ""
+        self._confirm_install(pending.rpartition("@")[0] or pending, False)
 
-        # --ff-only so an update can never create a merge commit in someone's
-        # checkout, and never rewrites anything: if the branch has diverged this
-        # stops with git's own message rather than trying to be clever.
-        #
-        # The full installer, not --settings-only: a release can bump the
-        # upstream theme ref, add an extension or add a stylesheet, and none of
-        # those reach the desktop through the settings-only path.
-        #
-        # Run in a real terminal so prompts (git auth, sudo, log out) remain
-        # fully interactive and usable.
-        #
-        # Chained with && rather than under set -e: keep_open has to outlive a
-        # failure to show it, and set -e ended the shell before its status
-        # line and its "Press Enter". The update-available memo goes only once
-        # the install finished, so the window stops offering what it just did.
-        script = ("git -C %s pull --ff-only && bash %s --gui && rm -f %s\n"
-                  % (GLib.shell_quote(self._repo),
-                     GLib.shell_quote(os.path.join(self._repo, "install.sh")),
-                     GLib.shell_quote(os.path.join(CONF_DIR,
-                                                   "update-available"))))
+    def _run_update(self, target):
+        """Hand target to bin/aura-glass-update in a terminal.
 
+        The installed copy when there is one: it is outside the checkout the
+        update rewrites. The repository's own is the fallback, and is safe too —
+        it runs from a main() it has read in full before the checkout moves.
+
+        A terminal rather than this window's log for the reasons that always
+        applied: git can ask for credentials and the full installer for sudo.
+        The update-available memo goes only once the install finished, so the
+        window stops offering what it just did.
+        """
+        if self._running:
+            self._toasts.add_toast(Adw.Toast(
+                title="Another installer operation is already running"))
+            return
+        if self._preview_active or self._preview_proc is not None or \
+                self._preview_timer or self._preview_terminal_requested:
+            self._toasts.add_toast(Adw.Toast(
+                title="Apply or revert the live preview before updating"))
+            return
+        updater = os.path.join(os.path.expanduser("~/.local/bin"),
+                               "aura-glass-update")
+        if not os.path.exists(updater):
+            updater = os.path.join(self._repo, "bin", "aura-glass-update")
+        script = "bash %s %s\n" % (GLib.shell_quote(updater),
+                                   GLib.shell_quote(target))
         if self.run_in_terminal(script, "Theme update"):
             self._update_button_row.set_subtitle(
                 "Theme update opened in a terminal — follow its progress there")

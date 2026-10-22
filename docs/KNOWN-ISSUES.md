@@ -45,6 +45,7 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 | [KI-28](#ki-28) | Low | **Fixed** (`07689ba`) | The helper never sees adaptive `active` change, so its window opacity misses adaptive transitions |
 | [KI-29](#ki-29) | Low | **Fixed** (`07689ba`) | No check applies the Blur My Shell patches to the pin or catches undefined names in them (how KI-27 shipped) |
 | [KI-31](#ki-31) | Medium | **Fixed** | The overview sometimes keeps a stale blur after leaving a settings-app preview |
+| [KI-32](#ki-32) | Medium | **Fixed** | Updating from the settings app greys out Install or stops at a git error (detached HEAD, local edits, diverged history, re-cut tag) |
 
 ---
 
@@ -807,6 +808,32 @@ no pipeline ever missing) and then resets only the keys the snapshot does not
 have. Verified on a throwaway dconf path: changed, added and nested keys all
 return to the snapshot byte for byte. `tools/check-preview.sh` passes against
 the live install.
+
+---
+
+## KI-32
+
+**Updating from the settings app greys out Install or stops at a git error.**
+Reported 2026-10-22: users see Install disabled, or a git message about a
+different HEAD or the worktree, and cannot get to the release.
+
+**Cause.** The Updates page ran `git pull --ff-only` and, before it,
+`update_blockers` refused any checkout that was not a clean branch tracking a
+remote. Real checkouts are often a release tag checked out by hand (detached
+HEAD), carry a hand-edited file (dirty tree), have a `main` someone committed on
+(diverged), or hold a tag that was re-cut on the remote (fetch refuses to
+clobber it). Each one either greyed Install out or stopped the pull.
+
+**Fix.** `bin/aura-glass-update <tag|branch>` replaces the pull. It fetches with
+`--force --tags`, stashes local edits under an `aura-glass update` message,
+keeps local commits on `aura-glass-backup/<branch>-<timestamp>`, then checks
+out the tag detached or resets the branch to `origin/<branch>` with tracking,
+and runs `install.sh --gui`. `update_blockers` keeps only the cases with
+nothing to switch: no checkout, a package, no `origin`. The Updates page now
+lists every release (GitHub notes, or commit subjects as a fallback), `main`'s
+unreleased commits and a history graph, each with its own Install, so any
+version can be picked, including an older one. `tools/check-update-channel.py`
+covers a dirty detached HEAD, a diverged `main` and a re-cut tag.
 
 ---
 

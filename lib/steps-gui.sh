@@ -191,6 +191,11 @@ install_update_check() {
 
     run install -Dm755 "$REPO_ROOT/bin/aura-glass-update-check" \
         "$HOME/.local/bin/aura-glass-update-check"
+    # What the settings window's Install runs: puts the checkout on one release
+    # or branch tip and runs the installer. Here rather than with the other
+    # commands because, like the check, it only means anything in a checkout.
+    run install -Dm755 "$REPO_ROOT/bin/aura-glass-update" \
+        "$HOME/.local/bin/aura-glass-update"
 
     if [ "${DRY_RUN:-0}" != 1 ]; then
         mkdir -p "$CONF_DIR"
