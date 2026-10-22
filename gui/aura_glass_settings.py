@@ -5516,6 +5516,14 @@ class Window(Adw.ApplicationWindow):
                                "remove")
                 row.add_prefix(button)
 
+            if entry.get("prefs"):
+                button = Gtk.Button(icon_name="emblem-system-symbolic",
+                                    valign=Gtk.Align.CENTER,
+                                    tooltip_text="Open this extension's settings")
+                button.add_css_class("flat")
+                button.connect("clicked", self._on_ext_prefs, entry["uuid"])
+                row.add_suffix(button)
+
             group.add(row)
             self._ext_rows.append((group, row))
 
@@ -5561,6 +5569,19 @@ class Window(Adw.ApplicationWindow):
             self._toasts.add_toast(Adw.Toast(title=failed))
 
         stream_command(argv, self._run_line, done)
+
+    def _on_ext_prefs(self, _button, uuid):
+        """The extension's own settings window, opened by the shell.
+
+        Not waited on: it is a separate window the extension owns, and
+        nothing it changes is this app's to re-read.
+        """
+        try:
+            Gio.Subprocess.new(["gnome-extensions", "prefs", uuid],
+                               Gio.SubprocessFlags.NONE)
+        except GLib.Error as exc:
+            self._toasts.add_toast(Adw.Toast(
+                title="Could not open the settings — %s" % exc.message))
 
     def _on_ext_action(self, _button, uuid, action):
         self._run_ext(action, uuid,

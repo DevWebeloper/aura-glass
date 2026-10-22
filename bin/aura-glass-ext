@@ -63,6 +63,13 @@ ext_installed() {
     [ -d "$EXT_DIR/$1" ] || [ -d "/usr/share/gnome-shell/extensions/$1" ]
 }
 
+# From prefs.js on disk rather than `gnome-extensions list --prefs`, for the
+# same reason as ext_enabled below: the running shell knows nothing about one
+# installed after login, and that one still has a settings window to open.
+ext_has_prefs() {
+    [ -f "$EXT_DIR/$1/prefs.js" ] || [ -f "/usr/share/gnome-shell/extensions/$1/prefs.js" ]
+}
+
 # From the gsettings key rather than from `gnome-extensions list --enabled`,
 # because that asks the running shell and the shell does not know about one
 # enqueued for the next session — which is the state enqueue_extension leaves
@@ -101,10 +108,11 @@ cmd_list() {
         printf '  {"uuid": "%s", "tier": "%s", "description": "%s", ' \
             "$(json_escape "$uuid")" "$(ext_tier "$uuid")" \
             "$(json_escape "$(ext_description "$uuid")")"
-        printf '"installed": %s, "enabled": %s, "system": %s}' \
+        printf '"installed": %s, "enabled": %s, "system": %s, "prefs": %s}' \
             "$(ext_installed "$uuid" && echo true || echo false)" \
             "$(ext_enabled "$uuid" && echo true || echo false)" \
-            "$([ -d "/usr/share/gnome-shell/extensions/$uuid" ] && echo true || echo false)"
+            "$([ -d "/usr/share/gnome-shell/extensions/$uuid" ] && echo true || echo false)" \
+            "$(ext_has_prefs "$uuid" && echo true || echo false)"
     done
     printf '\n]\n'
 }

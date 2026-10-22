@@ -69,7 +69,7 @@ for e in json.load(sys.stdin):
     description = (e.get("description") or "").strip()
     if not description or description == e["uuid"]:
         print("%s has no description of its own" % e["uuid"])
-    for key in ("installed", "enabled", "system", "tier"):
+    for key in ("installed", "enabled", "system", "tier", "prefs"):
         if key not in e:
             print("%s is missing the %s field" % (e["uuid"], key))
 ')"
