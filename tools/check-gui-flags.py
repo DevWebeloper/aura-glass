@@ -69,6 +69,7 @@ def state(**kw):
     s.titlebutton_style = kw.get("titlebutton_style", "minimal")
     s.glass_style = kw.get("glass_style", "frosted")
     s.liquid_windows = kw.get("liquid_windows", False)
+    s.fullscreen_blur = kw.get("fullscreen_blur", False)
     s.panel_blur_fix = kw.get("panel_blur_fix", True)
     s.update_check = kw.get("update_check", True)
     s.update_channel = kw.get("update_channel", "release")
@@ -368,6 +369,12 @@ CASES = [
     ("app windows back to frosted",
      state(glass_style="liquid", liquid_windows=True),
      state(glass_style="liquid"), ["--no-liquid-windows"]),
+
+    ("blur kept on fullscreen windows", FROSTED,
+     state(fullscreen_blur=True), ["--fullscreen-blur"]),
+
+    ("fullscreen windows drop the blur again", state(fullscreen_blur=True),
+     FROSTED, ["--no-fullscreen-blur"]),
 
     # The family goes out bare, so install.sh maps it to a colour Reversal
     # ships. Naming the colour here would need a second copy of that mapping —

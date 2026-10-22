@@ -112,6 +112,9 @@ Open **Aura Glass** from the app grid, or run `aura-glass-settings`.
 - **Per-app blur.** A switch per app, the windows open right now, wildcard patterns, and the games that trigger Performance.
 - **Extensions, Packages, System, Updates, Uninstall.**
 
+**Blur fullscreen windows** (`--fullscreen-blur`) is off by default, so a
+fullscreen video or game drops the blur behind it and turns opaque.
+
 **Glass style behind app windows** (`--liquid-windows`) puts liquid or vibrant
 behind Files and every other blurred window too. Those then blur the wallpaper, not the window under them.
 Changes can be previewed live and are applied with one button.

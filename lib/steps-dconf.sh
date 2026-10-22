@@ -127,6 +127,7 @@ load_dconf() {
     apply_notification_blur
     apply_app_blur
     apply_app_opacity
+    apply_fullscreen_blur
     apply_radius_dconf
     apply_glass_style
     sync_osd_profile
@@ -639,6 +640,33 @@ apply_app_opacity() {
         ok "window actor opacity set to $opacity (${pct}% opacity, translucent blur for apps)"
     else
         ok "window actor opacity set to 255 (opaque actor)"
+    fi
+}
+
+# Whether a fullscreen window keeps its blur. Off by default: see
+# unblur-when-fullscreen in dconf/core.ini for why. Written on every run, not
+# only by core.ini, because load_dconf skips core.ini on an existing install
+# and a remembered --fullscreen-blur has to survive a flagless re-run.
+apply_fullscreen_blur() {
+    local base=/org/gnome/shell/extensions/blur-my-shell
+    local want="${FULLSCREEN_BLUR:-}" memo="$CONF_DIR/fullscreen-blur"
+
+    if [ -z "${FULLSCREEN_BLUR_EXPLICIT:-}" ] || [ -z "$want" ]; then
+        want="$(cat "$memo" 2>/dev/null || true)"
+    fi
+    [ "$want" = 1 ] || want=0
+
+    if remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$want" > "$memo"
+    fi
+
+    if [ "$want" = 1 ]; then
+        run dconf write "$base/applications/unblur-when-fullscreen" false
+        ok "fullscreen windows keep their blur (remembered for later runs)"
+    else
+        run dconf write "$base/applications/unblur-when-fullscreen" true
+        ok "fullscreen windows drop their blur and go opaque"
     fi
 }
 

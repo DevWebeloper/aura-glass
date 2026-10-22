@@ -133,6 +133,8 @@ GLASS_STYLE=""      # empty = remembered choice, then frosted
 GLASS_STYLE_EXPLICIT=""
 LIQUID_WINDOWS=""   # empty = remembered choice, then 0
 LIQUID_WINDOWS_EXPLICIT=""
+FULLSCREEN_BLUR=""  # empty = remembered choice, then 0
+FULLSCREEN_BLUR_EXPLICIT=""
 BLUR_STRENGTH=""    # empty = remembered choice, then the tuned radii (100)
 ADAPTIVE_BLUR=""     # private transient writer: active | restore, never memoed
 POPUP_BRIGHTNESS=""      # empty = remembered choice, then the preset (115)
@@ -211,6 +213,10 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       wallpaper, not the window under it
     --no-liquid-windows
                       app windows keep the frosted blur (the default)
+    --fullscreen-blur keep the blur behind a window while it is fullscreen
+    --no-fullscreen-blur
+                      a fullscreen window (a video, a game) drops its blur
+                      and goes opaque until it leaves fullscreen (the default)
     --blur-strength P how far every blur reaches, as a percentage of the tuned
                       radii: 25-200, 100 is the tuned look (remembered)
     --popup-brightness P
@@ -367,6 +373,8 @@ parse_flags() {
         --glass-style=*) GLASS_STYLE="${1#*=}"; GLASS_STYLE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --liquid-windows)    LIQUID_WINDOWS=1; LIQUID_WINDOWS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-liquid-windows) LIQUID_WINDOWS=0; LIQUID_WINDOWS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --fullscreen-blur)    FULLSCREEN_BLUR=1; FULLSCREEN_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-fullscreen-blur) FULLSCREEN_BLUR=0; FULLSCREEN_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --blur-strength) BLUR_STRENGTH="${2:-100}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --blur-strength=*) BLUR_STRENGTH="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --adaptive-blur) ADAPTIVE_BLUR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
@@ -1559,6 +1567,7 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
                     app-blur) apply_app_blur ;;
                     css) install_css ;;
                     app-opacity) apply_app_opacity ;;
+                    fullscreen-blur) apply_fullscreen_blur ;;
                     glass-style) apply_glass_style ;;
                     adaptive-blur)
                         apply_adaptive_blur "$ADAPTIVE_BLUR"

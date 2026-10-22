@@ -647,6 +647,8 @@ FLAG_LABELS = {
     "--glass-style": ("glass", "Glass style"),
     "--liquid-windows": ("glass", "Glass style behind app windows"),
     "--no-liquid-windows": ("glass", "Glass style behind app windows"),
+    "--fullscreen-blur": ("glass", "Blur fullscreen windows"),
+    "--no-fullscreen-blur": ("glass", "Blur fullscreen windows"),
     "--update-check": ("updates", "Daily update check"),
     "--no-update-check": ("updates", "Daily update check"),
     "--update-channel": ("updates", "Update channel"),
@@ -2346,6 +2348,8 @@ class Settings:
         # Kept whatever the style, as apply_glass_style keeps it, so going
         # back to liquid or vibrant brings the windows back the way they were.
         self.liquid_windows = read_memo("liquid-windows", "0") == "1"
+        # Off unless asked, as apply_fullscreen_blur defaults it.
+        self.fullscreen_blur = read_memo("fullscreen-blur", "0") == "1"
 
         # A user systemd unit rather than a look, but a remembered setting like
         # any other, so it rides on Apply.
@@ -2523,6 +2527,9 @@ class Settings:
         if self.liquid_windows != other.liquid_windows:
             args.append("--liquid-windows" if self.liquid_windows
                         else "--no-liquid-windows")
+        if self.fullscreen_blur != other.fullscreen_blur:
+            args.append("--fullscreen-blur" if self.fullscreen_blur
+                        else "--no-fullscreen-blur")
         # --radius-custom implies the custom preset, so it stands in for
         # --radius-preset rather than joining it. Sent when the eight values
         # moved even if the preset name did not, because "custom" says nothing
@@ -4704,6 +4711,15 @@ class Window(Adw.ApplicationWindow):
             active=frosted.get("scope", "all") != "gtk")
         self._blur_all_row.connect("notify::active", self._on_changed, "scope")
         reach.add(self._blur_all_row)
+
+        self._fullscreen_blur_row = Adw.SwitchRow(
+            title="Blur fullscreen windows",
+            subtitle="Off drops the blur behind a fullscreen video or game "
+                     "and makes it opaque",
+            active=self._applied.fullscreen_blur)
+        self._fullscreen_blur_row.connect("notify::active", self._on_changed,
+                                          "fullscreen_blur")
+        reach.add(self._fullscreen_blur_row)
 
         self._popup_row = Adw.SwitchRow(
             title="Blur behind menus and the top bar",
@@ -6901,6 +6917,7 @@ class Window(Adw.ApplicationWindow):
         s.glass_style = self._glass_style_row._ids[
             self._glass_style_row.get_selected()]
         s.liquid_windows = self._liquid_windows_row.get_active()
+        s.fullscreen_blur = self._fullscreen_blur_row.get_active()
         s.panel_blur_fix = self._panel_blur_row.get_active()
         s.update_check = self._update_check_row.get_active()
         # Not settings, so they never differ and never produce a flag. Carried so
@@ -6916,6 +6933,8 @@ class Window(Adw.ApplicationWindow):
         """
         # Nothing to widen when there is no window blur to widen.
         self._blur_all_row.set_sensitive(self._window_blur_row.get_active())
+        self._fullscreen_blur_row.set_sensitive(
+            self._window_blur_row.get_active())
         # Nothing to set a level on when translucency itself is off.
         live = self._transparency_on.get_active()
         self._transparency_row.set_sensitive(live)
@@ -7174,6 +7193,7 @@ class Window(Adw.ApplicationWindow):
             self._glass_style_row, GLASS_STYLES,
             self._applied.glass_style, "glass_style")
         self._liquid_windows_row.set_active(self._applied.liquid_windows)
+        self._fullscreen_blur_row.set_active(self._applied.fullscreen_blur)
         self._panel_blur_row.set_active(self._applied.panel_blur_fix)
         self._update_check_row.set_active(self._applied.update_check)
         self._update_channel_row.set_selected(
