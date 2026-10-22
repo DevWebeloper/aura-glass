@@ -7708,6 +7708,12 @@ class Window(Adw.ApplicationWindow):
         # main's tip: a release when it is tagged, a tag (v0.3.5+N) when it is
         # not. Everything older is there to read, not to install.
         tip = data["main"]["tip"] if data["main"] else None
+        # On a test branch the branch row is what is installed, even when the
+        # branch sits on the same commit as one of main's: two Installed badges
+        # would say the checkout is on both lines at once. Main's newest then
+        # shows Install, which is how a tester goes back to the released line.
+        if data["test"]:
+            head = None
 
         tags = data["main"]["tags"] if data["main"] else []
         shown_tags = tags[:SHOWN_VERSIONS] + [
