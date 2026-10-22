@@ -58,6 +58,16 @@ BMS_SUBWIN_PATCH="blur-my-shell-subwindows.patch"
 # gated independently in extension.js and components/popup/targets.js. See
 # the patch's own comments.
 BMS_NOTIF_PATCH="blur-my-shell-notifications.patch"
+# Applied after BMS_NOTIF_PATCH: upstream picks static or dynamic window blur
+# once, for every window, from `applications/static-blur`. This makes a window
+# that covers its monitor (maximized both ways, fullscreen, or sized over the
+# whole work area, which is how Tiling Assistant's drag-to-top with
+# maximize-with-gap leaves it) static while it does, and leaves smaller windows
+# dynamic. Behind a full-screen window there
+# is only the wallpaper, so the cached static blur looks the same there and
+# stops the largest blurred area being re-blurred every frame it redraws. See
+# the patch's own comments.
+BMS_STATIC_PATCH="blur-my-shell-static-maximized.patch"
 
 ROUNDEDBLUR_REPO="https://github.com/kancko/gnome-rounded-blur.git"
 ROUNDEDBLUR_REF="a4db9e5947b1"    # v1.0.2

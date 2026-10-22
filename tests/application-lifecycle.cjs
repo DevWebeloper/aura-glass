@@ -28,6 +28,10 @@ function fixture({staticBlur = false, dynamicOpacity = false} = {}) {
         get_wm_class: () => 'Editor', get_gtk_application_id: () => 'Editor',
         get_transient_for: () => null, get_frame_type: () => 0,
         get_client_type: () => 1, get_monitor: () => 0,
+        maximized_horizontally: false, maximized_vertically: false, fullscreen: false,
+        frame: {x: 100, y: 100, width: 800, height: 600},
+        get_frame_rect() { return this.frame; },
+        get_work_area_current_monitor: () => ({x: 0, y: 32, width: 1920, height: 1048}),
     });
     const counts = {created: 0, removed: 0, enabled: 0};
     class DummyPipeline {
@@ -153,5 +157,32 @@ test('whitelist override takes effect immediately in all-apps mode', () => {
     settings.applications.WHITELIST = [];
     callbacks['applications.WHITELIST_changed']();
     assert.equal(window.blur_actor, undefined, 'removing override restores the blacklist decision');
+});
+test('a window that covers its monitor gets static blur, a smaller one dynamic', () => {
+    const {app, window, actor, counts} = fixture();
+    app.update_all_windows();
+    assert.equal(window.bms_static_blur, false, 'a normal window starts dynamic');
+    const windowHandlers = window.handlers.size;
+    window.maximized_horizontally = true; window.emit('notify::maximized-horizontally');
+    assert.equal(window.bms_static_blur, false, 'maximized one way only is not full screen');
+    window.maximized_vertically = true; window.emit('notify::maximized-vertically');
+    assert.equal(window.bms_static_blur, true, 'maximized both ways turns static');
+    assert.equal(counts.created, 2);
+    window.maximized_horizontally = window.maximized_vertically = false;
+    window.emit('notify::maximized-horizontally'); window.emit('notify::maximized-vertically');
+    assert.equal(window.bms_static_blur, false, 'unmaximized turns dynamic again');
+    window.fullscreen = true; window.emit('notify::fullscreen');
+    assert.equal(window.bms_static_blur, true, 'fullscreen turns static');
+    assert.equal(counts.created - counts.removed, 1, 'old pipelines are released on each switch');
+    assert.equal(actor.children.length, 1, 'one blur actor stays on the window');
+    assert.equal(window.handlers.size, windowHandlers, 'switches add no Meta.Window handlers');
+});
+test('a window resized over the whole work area is static without maximize flags', () => {
+    const {app, window} = fixture();
+    app.update_all_windows();
+    window.frame = {x: 0, y: 32, width: 1920, height: 1048}; window.emit('size-changed');
+    assert.equal(window.bms_static_blur, true, 'Tiling Assistant tile-to-work-area turns static');
+    window.frame = {x: 0, y: 32, width: 960, height: 1048}; window.emit('size-changed');
+    assert.equal(window.bms_static_blur, false, 'a half tile turns dynamic again');
 });
 process.exitCode = failures ? 1 : 0;
