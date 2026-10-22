@@ -2255,16 +2255,18 @@ def list_releases(repo):
     out = git_out(repo, "-c", "versionsort.suffix=-beta", "for-each-ref",
                   "--sort=-v:refname",
                   "--format=%(refname:strip=2)%00%(objectname)%00"
-                  "%(*objectname)%00%(creatordate:short)%00%(contents:subject)",
+                  "%(*objectname)%00%(creatordate:short)%00%(contents:subject)"
+                  "%00%(creatordate:unix)",
                   "refs/tags")
     releases = []
     for line in (out or "").splitlines():
         fields = line.split("\0")
-        if len(fields) != 5 or not RELEASE_TAG.match(fields[0]):
+        if len(fields) != 6 or not RELEASE_TAG.match(fields[0]):
             continue
-        tag, obj, peeled, date, subject = fields
+        tag, obj, peeled, date, subject, stamp = fields
         releases.append({"tag": tag, "sha": peeled or obj, "date": date,
-                         "subject": subject})
+                         "subject": subject,
+                         "time": int(stamp) if stamp.isdigit() else 0})
     return releases
 
 
@@ -2401,14 +2403,15 @@ def updates_snapshot(repo, fetch):
         since = releases[0]["sha"] if releases else None
         span = MAIN_REF if since is None else "%s..%s" % (since, MAIN_REF)
         out = git_out(repo, "log", "--first-parent", "--max-count=200",
-                      "--format=%H%x00%h%x00%cs%x00%s", span)
+                      "--format=%H%x00%h%x00%cs%x00%s%x00%ct", span)
         head = git_out(repo, "rev-parse", "HEAD")
         tags = []
         for i, line in enumerate((out or "").splitlines()):
             fields = line.split("\0")
-            if len(fields) != 4:
+            if len(fields) != 5:
                 continue
-            tag = dict(zip(("sha", "short", "date", "subject"), fields))
+            tag = dict(zip(("sha", "short", "date", "subject"), fields[:4]))
+            tag["time"] = int(fields[4]) if fields[4].isdigit() else 0
             # Named only where it will be shown: one describe per row.
             if i < SHOWN_VERSIONS or tag["sha"] == head:
                 tag["name"] = version_name(repo, tag["sha"])
@@ -7105,27 +7108,12 @@ class Window(Adw.ApplicationWindow):
         self._browse_stack = Gtk.Stack(
             transition_type=Gtk.StackTransitionType.CROSSFADE,
             vhomogeneous=False)
-        # Tags (every commit on main, v0.3.5+N) above Releases, each under a
-        # caption: same list shape, two kinds of version.
-        self._tag_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        self._tag_list.add_css_class("boxed-list")
-        self._tag_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
-                                spacing=6, margin_bottom=18)
-        tags_title = Gtk.Label(label="Tags", xalign=0)
-        tags_title.add_css_class("heading")
-        self._tag_box.append(tags_title)
-        self._tag_box.append(self._tag_list)
-
+        # Tags (every commit on main, v0.3.5+N) and releases in one list,
+        # newest first by date.
         self._release_list = Gtk.ListBox(
             selection_mode=Gtk.SelectionMode.NONE)
         self._release_list.add_css_class("boxed-list")
-        releases_title = Gtk.Label(label="Releases", xalign=0)
-        releases_title.add_css_class("heading")
-        browse = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        browse.append(self._tag_box)
-        browse.append(releases_title)
-        browse.append(self._release_list)
-        self._browse_stack.add_named(browse, "releases")
+        self._browse_stack.add_named(self._release_list, "releases")
         self._history_list = Gtk.ListBox(
             selection_mode=Gtk.SelectionMode.NONE)
         self._history_list.add_css_class("card")
@@ -7672,8 +7660,7 @@ class Window(Adw.ApplicationWindow):
         threading.Thread(target=work, daemon=True).start()
 
     def _render_updates(self, data):
-        for listbox in (self._tag_list, self._release_list,
-                        self._history_list):
+        for listbox in (self._release_list, self._history_list):
             while (child := listbox.get_first_child()) is not None:
                 listbox.remove(child)
         self._release_rows = {}
@@ -7729,9 +7716,8 @@ class Window(Adw.ApplicationWindow):
         tags = data["main"]["tags"] if data["main"] else []
         shown_tags = tags[:SHOWN_VERSIONS] + [
             t for t in tags[SHOWN_VERSIONS:] if t["sha"] == head]
-        for tag in shown_tags:
-            self._tag_list.append(self._tag_row(tag, head, tip))
-        self._tag_box.set_visible(bool(shown_tags))
+        # One list, newest first by date, tags and releases side by side.
+        entries = [(t["time"], self._tag_row(t, head, tip)) for t in shown_tags]
 
         # Five, newest first, and the installed one too when it is older — a
         # list of every version ever cut buries the two people look for.
@@ -7760,13 +7746,16 @@ class Window(Adw.ApplicationWindow):
             row = self._release_row(
                 title=tag,
                 subtitle=" · ".join(x for x in (
-                    rel["date"], title or subject) if x),
+                    "Release", rel["date"], title or subject) if x),
                 pills=pills, body=markup, target="main", installed=installed,
                 link=("https://github.com/%s/releases/tag/%s"
                       % (data["slug"], tag)) if data["slug"] else None,
                 can_install=rel["sha"] == tip)
-            self._release_list.append(row)
+            entries.append((rel["time"], row))
             self._release_rows[tag] = row
+
+        for _time, row in sorted(entries, key=lambda e: e[0], reverse=True):
+            self._release_list.append(row)
 
         for line in data["history"]:
             self._history_list.append(self._history_row(line, head))
@@ -7782,7 +7771,8 @@ class Window(Adw.ApplicationWindow):
         """One tag (a commit on main): its name, what it did, and — only for the
         newest — Install."""
         row = Adw.ActionRow()
-        plain_row(row, tag["name"], "%s · %s" % (tag["date"], tag["subject"]))
+        plain_row(row, tag["name"],
+                  "Tag · %s · %s" % (tag["date"], tag["subject"]))
         if tag["sha"] == head:
             pill = Gtk.Label(label="Installed", valign=Gtk.Align.CENTER)
             pill.add_css_class("aura-pill")
