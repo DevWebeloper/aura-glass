@@ -255,6 +255,21 @@ with tempfile.TemporaryDirectory() as tmp:
     elif out(repo, "log", "-1", "--format=%s") != "recut":
         note("a re-cut tag did not replace the local one")
 
+with tempfile.TemporaryDirectory() as tmp:
+    # One commit by its hash, the way the Releases tab installs a commit on main
+    # that no tag holds yet: detached at exactly that commit.
+    repo, conf = build(tmp, tags=("v0.1.7",))
+    git(repo, "commit", "--allow-empty", "-m", "untagged")
+    git(repo, "push", "-q", "origin", "main")
+    sha = out(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-q", "--detach", "v0.1.7")
+    res = update(conf, sha[:7])
+    if res.returncode != 0:
+        note("update to a commit hash failed: %s"
+             % (res.stderr.strip() or res.stdout.strip()))
+    elif out(repo, "rev-parse", "HEAD") != sha or current_branch(repo):
+        note("update to a commit hash did not detach at that commit")
+
 if fail:
     print("\nupdate channel FAILED\n")
     sys.exit(1)
