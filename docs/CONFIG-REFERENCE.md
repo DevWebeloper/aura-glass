@@ -189,8 +189,8 @@ by `save_glass_mode_memos`.
 | `repo-path` | the checkout the GUI, preview, update check and worker run from. **Only written when the GUI is installed** | `install_gui` |
 | `apply-source-fingerprint` | sha256 of the apply sources | `--incremental` full fallback |
 | `panel-blur-fix`, `update-check` | `0\|1` | `install_panel_blur_unit`, `install_update_check` |
-| `update-channel` | `release\|latest` | `install_update_check` |
-| `update-available` | the version a check found | `aura-glass-update-check` |
+| `update-channel` | `release\|latest`. Still written, **no longer read**: every commit on main is offered as a tag (`v0.3.5+N`) either way | `install_update_check` |
+| `update-available` | the version a check found: a release `vX.Y.Z`, a tag `vX.Y.Z+N`, or `branch@sha` on a test build | `aura-glass-update-check` |
 | `rounded-blur` | build stamp | `rounded_blur_stamp` |
 | `rounded-blur-choice` | `0\|1`, only after a typed `--rounded-blur` / `--no-rounded-blur`. Only a `0` is read back | `install_rounded_blur`; read in `install.sh`'s resolution block |
 | `extension-pack` | comma-separated UUIDs of the optional extensions chosen. Empty file = Minimal. Absent = the Recommended seven | `install_extensions`; read in the resolution block |

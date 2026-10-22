@@ -10,9 +10,12 @@
 # There are two lines to follow, and which one applies is whatever branch the
 # checkout is on rather than a setting someone has to keep in step with it:
 #
-#   main, master, or a detached HEAD — the released line. "Released" means a tag,
-#   not a commit, so the tag at HEAD is compared against the newest vN.N.N tag on
-#   the remote.
+#   main, master, or a detached HEAD — the released line. It has two kinds of
+#   version: releases (the vN.N.N tags) and tags (every commit on main, named
+#   after the release before it: v0.3.5+16 is the sixteenth commit after
+#   v0.3.5). A newer release on the remote is announced first; failing that,
+#   main having moved past what is installed is announced as its newest tag.
+#   Either way the offer is the newest of the two, which is always main's tip.
 #
 #   any other branch — a test build. There are no tags on a branch being tested,
 #   and the tags it can see belong to releases that do not contain it, so the
@@ -23,17 +26,14 @@
 # ls-remote pipeline ends in || true, since under pipefail a failed git inside
 # $(...) used to exit 128 before the message saying why.
 #
-# Either way the remote is asked with git ls-remote, which is one cheap request,
+# Release tags are asked for with git ls-remote, which is one cheap request,
 # needs no API token, is not rate limited, and works for any git remote rather
-# than only for GitHub. Nothing is fetched into the checkout — this never touches
-# the working tree.
+# than only for GitHub. Naming main's tip as v0.3.5+16 needs its history, so the
+# released line then fetches origin into .git — refs and objects only; this never
+# touches the working tree.
 #
-# A checkout on main can also opt in to following commits instead of tags, with
-# the update-channel memo ("latest", set by --update-channel latest or the
-# settings window). main is then compared commit-for-commit like a test branch,
-# and a newer release tag on the remote still gets its own "release is
-# available" notification, so a big release is never lost among the commits.
-# Absent or anything else is "release", the tag line above.
+# The update-channel memo used to choose between those two kinds on main. Every
+# commit is now offered as a tag either way, so it is no longer read.
 #
 # The answer is left in $CONF_DIR/update-available, holding the version, so the
 # settings window can show it without going to the network itself. Absent means
@@ -108,17 +108,29 @@ up_to_date() {
 
 branch="$(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 
-channel="$(cat "$CONF_DIR/update-channel" 2>/dev/null || true)"
-
-# Which line is followed: tags, or commits. Only main and master have a choice;
-# a detached HEAD has no branch to follow and any other branch has no tags of its
-# own, so those two are not up to the memo.
+# Which line is followed: main, master and a detached HEAD are the released
+# line; any other branch is a test build following its own commits.
 line=tags
 case "$branch" in
-main|master) [ "$channel" = latest ] && line=commits ;;
-HEAD|"") ;;
+main|master|HEAD|"") ;;
 *) line=commits ;;
 esac
+
+# What a commit on the released line is called: the release tag at it, or the
+# release before it plus how many commits later (v0.3.5+16), or its short hash
+# when no release is behind it at all. gui/aura_glass_settings.py's
+# version_name says the same, and the two must agree.
+version_name() {
+    local d n
+    d="$(git -C "$REPO" describe --tags --long --match 'v[0-9]*' "$1" 2>/dev/null || true)"
+    if [ -z "$d" ]; then
+        git -C "$REPO" rev-parse --short=7 "$1"
+        return
+    fi
+    d="${d%-g*}"
+    n="${d##*-}"
+    if [ "$n" = 0 ]; then printf '%s\n' "${d%-*}"; else printf '%s+%s\n' "${d%-*}" "$n"; fi
+}
 
 case "$line" in
 tags)
@@ -153,12 +165,29 @@ tags)
     # of the remote, are both "nothing to do" — the second happens while cutting
     # a release.
     newest="$(printf '%s\n%s\n' "$local_version" "$remote_version" | sort -V | tail -n 1)"
-    if [ "$local_version" = "$remote_version" ] || [ "$newest" = "$local_version" ]; then
-        up_to_date "$local_version"
+    if [ "$local_version" != "$remote_version" ] && [ "$newest" != "$local_version" ]; then
+        headline="Aura Glass $remote_version is available"
+        body="You have $local_version. Open Aura Glass settings to install it."
+    else
+        # No newer release. Has main moved on past what is installed? A fetch
+        # that fails here is not "could not tell": the release question above
+        # was answered, and that answer stands.
+        GIT_TERMINAL_PROMPT=0 git -C "$REPO" fetch --quiet --force --tags origin \
+            2>/dev/null || true
+        local_sha="$(git -C "$REPO" rev-parse HEAD)"
+        tip="$(git -C "$REPO" rev-parse -q --verify refs/remotes/origin/main 2>/dev/null \
+            || git -C "$REPO" rev-parse -q --verify refs/remotes/origin/master 2>/dev/null || true)"
+        # Level with main, or ahead of it (someone committing on their own
+        # main), is nothing to install.
+        if [ -z "$tip" ] || [ "$tip" = "$local_sha" ] \
+            || git -C "$REPO" merge-base --is-ancestor "$tip" HEAD 2>/dev/null; then
+            up_to_date "$(version_name HEAD)"
+        fi
+        local_version="$(version_name HEAD)"
+        remote_version="$(version_name "$tip")"
+        headline="Aura Glass $remote_version is available"
+        body="You have $local_version. Open Aura Glass settings to install it."
     fi
-
-    headline="Aura Glass $remote_version is available"
-    body="You have $local_version. Open Aura Glass settings to install it."
     ;;
 commits)
     local_sha="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)"
@@ -200,28 +229,8 @@ commits)
         up_to_date "$local_version"
     fi
 
-    case "$branch" in
-    main|master)
-        headline="Aura Glass has new changes"
-        body="$branch has moved on since $local_version. Open Aura Glass settings to install it."
-        # A release cut since this checkout's own newest tag is the news worth
-        # leading with, so it takes the headline and the commits ride along.
-        tag_local="$(git -C "$REPO" describe --tags --abbrev=0 2>/dev/null || true)"
-        tag_remote="$(
-            git -C "$REPO" ls-remote --tags --refs origin 2>/dev/null \
-                | sed -n 's#.*refs/tags/\(v[0-9][0-9.]*\(-beta\)\?\)$#\1#p' \
-                | sort -V | tail -n 1 || true
-        )"
-        if [ -n "$tag_local" ] && [ -n "$tag_remote" ] && [ "$tag_local" != "$tag_remote" ] \
-            && [ "$(printf '%s\n%s\n' "$tag_local" "$tag_remote" | sort -V | tail -n 1)" = "$tag_remote" ]; then
-            headline="Aura Glass $tag_remote is available"
-        fi
-        ;;
-    *)
-        headline="A new Aura Glass test build is available"
-        body="$branch has moved on since $local_version. Open Aura Glass settings to install it."
-        ;;
-    esac
+    headline="A new Aura Glass test build is available"
+    body="$branch has moved on since $local_version. Open Aura Glass settings to install it."
     ;;
 esac
 

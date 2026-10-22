@@ -2130,21 +2130,34 @@ def is_test_build(repo):
 def follows_commits(repo):
     """Whether the update check compares commits rather than release tags.
 
-    A branch other than main always does. main does when the update-channel memo
-    says latest, the same rule bin/aura-glass-update-check applies.
+    A branch other than main does; main and a detached HEAD are the released
+    line, whose every commit is a tag of its own (see version_name). The same
+    rule bin/aura-glass-update-check applies.
     """
-    branch = current_branch(repo)
-    if branch is None:
-        return False
-    if branch not in RELEASE_BRANCHES:
-        return True
-    return read_memo("update-channel", "release") == "latest"
+    return is_test_build(repo)
+
+
+def version_name(repo, ref="HEAD"):
+    """A commit on the released line, named the way people read versions.
+
+    The release tag at it (v0.3.5), or the release before it plus how many
+    commits later (v0.3.5+16) — every commit on main is a "tag" of its own this
+    way, with nothing to create on GitHub. bin/aura-glass-update-check's
+    version_name says exactly the same, and the two must agree.
+    """
+    d = git_out(repo, "describe", "--tags", "--long", "--match", "v[0-9]*", ref)
+    if not d:
+        return git_out(repo, "rev-parse", "--short=7", ref)
+    d = d.rsplit("-g", 1)[0]
+    tag, _, count = d.rpartition("-")
+    return tag if count == "0" else "%s+%s" % (tag, count)
 
 
 def installed_version(repo):
     """What is installed, in the terms its own line is measured in.
 
-    A release is a tag. A test build has no tag of its own — the newest one it
+    A release is its tag, a later commit on main is v0.3.5+N. A test build has no
+    tag of its own — the newest one it
     can see belongs to a release cut before the branch existed, and naming the
     checkout after it would claim it holds a release it does not — so it is named
     for the branch and the commit, the way the update check names it.
@@ -2156,7 +2169,7 @@ def installed_version(repo):
         return "%s %s" % package
     branch = current_branch(repo)
     if not follows_commits(repo):
-        return git_out(repo, "describe", "--tags", "--abbrev=0")
+        return version_name(repo)
     short = git_out(repo, "rev-parse", "--short=7", "HEAD")
     return "%s@%s" % (branch, short) if short else None
 
@@ -2382,12 +2395,25 @@ def updates_snapshot(repo, fetch):
     have_main = git_out(repo, "rev-parse", "-q", "--verify", MAIN_REF) is not None
     main = None
     if have_main:
+        # main's own line since the newest release, newest first: each commit
+        # is a tag (v0.3.5+N). First-parent, so a merged branch counts as the
+        # one commit that brought it in rather than as every commit on it.
         since = releases[0]["sha"] if releases else None
-        main = {"short": git_out(repo, "rev-parse", "--short=7", MAIN_REF),
-                "date": git_out(repo, "log", "-1", "--format=%cs", MAIN_REF),
-                "ahead": (count_commits(repo, since, MAIN_REF)
-                          if since else None),
-                "changes": commit_subjects(repo, since, MAIN_REF, limit=40)}
+        span = MAIN_REF if since is None else "%s..%s" % (since, MAIN_REF)
+        out = git_out(repo, "log", "--first-parent", "--max-count=200",
+                      "--format=%H%x00%h%x00%cs%x00%s", span)
+        head = git_out(repo, "rev-parse", "HEAD")
+        tags = []
+        for i, line in enumerate((out or "").splitlines()):
+            fields = line.split("\0")
+            if len(fields) != 4:
+                continue
+            tag = dict(zip(("sha", "short", "date", "subject"), fields))
+            # Named only where it will be shown: one describe per row.
+            if i < SHOWN_VERSIONS or tag["sha"] == head:
+                tag["name"] = version_name(repo, tag["sha"])
+            tags.append(tag)
+        main = {"tip": git_out(repo, "rev-parse", MAIN_REF), "tags": tags}
     branch = current_branch(repo)
     test = None
     if branch and branch not in RELEASE_BRANCHES:
@@ -7008,8 +7034,8 @@ class Window(Adw.ApplicationWindow):
         # this checkout is on. These are what a released install reads.
         self._updates_group = Adw.PreferencesGroup(
             title="Updates",
-            description="Checks the git remote for release tags. Never "
-                        "installs anything on its own.")
+            description="Checks the git remote for new releases and tags. "
+                        "Never installs anything on its own.")
         updates = self._updates_group
 
         self._version_row = Adw.ActionRow(title="Version")
@@ -7050,7 +7076,9 @@ class Window(Adw.ApplicationWindow):
         # git draws them, for anyone who wants to see where a release sits.
         self._releases_group = Adw.PreferencesGroup(
             title="Releases",
-            description="Pick any version to read what changed and install it.")
+            description="Every commit on main is a tag, and a release is a tag "
+                        "with notes. The newest is the one to install; older "
+                        "ones show what changed.")
         self._browse_switcher = Adw.ToggleGroup()
         self._browse_switcher.add(Adw.Toggle(name="releases", label="Releases"))
         self._browse_switcher.add(Adw.Toggle(name="history", label="History"))
@@ -7077,10 +7105,27 @@ class Window(Adw.ApplicationWindow):
         self._browse_stack = Gtk.Stack(
             transition_type=Gtk.StackTransitionType.CROSSFADE,
             vhomogeneous=False)
+        # Tags (every commit on main, v0.3.5+N) above Releases, each under a
+        # caption: same list shape, two kinds of version.
+        self._tag_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        self._tag_list.add_css_class("boxed-list")
+        self._tag_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
+                                spacing=6, margin_bottom=18)
+        tags_title = Gtk.Label(label="Tags", xalign=0)
+        tags_title.add_css_class("heading")
+        self._tag_box.append(tags_title)
+        self._tag_box.append(self._tag_list)
+
         self._release_list = Gtk.ListBox(
             selection_mode=Gtk.SelectionMode.NONE)
         self._release_list.add_css_class("boxed-list")
-        self._browse_stack.add_named(self._release_list, "releases")
+        releases_title = Gtk.Label(label="Releases", xalign=0)
+        releases_title.add_css_class("heading")
+        browse = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        browse.append(self._tag_box)
+        browse.append(releases_title)
+        browse.append(self._release_list)
+        self._browse_stack.add_named(browse, "releases")
         self._history_list = Gtk.ListBox(
             selection_mode=Gtk.SelectionMode.NONE)
         self._history_list.add_css_class("card")
@@ -7536,17 +7581,12 @@ class Window(Adw.ApplicationWindow):
                 "the check asks the git remote whether that branch has moved "
                 "rather than which releases exist. To go back to releases, "
                 "install one from the list below." % current_branch(self._repo))
-        elif follows_commits(self._repo):
-            self._version_row.set_title("Latest commits")
-            self._updates_group.set_description(
-                "The check asks the git remote whether main has new commits, "
-                "and still announces a new release when one is tagged. It "
-                "never installs anything on its own.")
         else:
             self._version_row.set_title("Version")
             self._updates_group.set_description(
-                "The check asks the git remote which release tags exist. "
-                "It never installs anything on its own.")
+                "The check asks the git remote for new releases and new tags "
+                "on main, and offers the newest. It never installs anything "
+                "on its own.")
 
         if version is None:
             self._version_row.set_subtitle(
@@ -7632,7 +7672,8 @@ class Window(Adw.ApplicationWindow):
         threading.Thread(target=work, daemon=True).start()
 
     def _render_updates(self, data):
-        for listbox in (self._release_list, self._history_list):
+        for listbox in (self._tag_list, self._release_list,
+                        self._history_list):
             while (child := listbox.get_first_child()) is not None:
                 listbox.remove(child)
         self._release_rows = {}
@@ -7665,7 +7706,6 @@ class Window(Adw.ApplicationWindow):
 
         notes = data.get("notes") or {}
         head = data["head"]
-        on_main = data["branch"] in RELEASE_BRANCHES
 
         if data["test"]:
             test = data["test"]
@@ -7681,47 +7721,31 @@ class Window(Adw.ApplicationWindow):
                 target=test["branch"], installed=installed)
             self._release_list.append(row)
 
-        if data["main"]:
-            main = data["main"]
-            installed = on_main and head is not None and \
-                git_out(self._repo, "rev-parse", MAIN_REF) == head
-            ahead = main["ahead"]
-            # One entry for everything since the last release, installed as a
-            # whole: main's newest commit, never a pick of single commits.
-            subtitle = "Not released yet · %s" % main["date"]
-            if ahead:
-                subtitle += " · %d change%s since %s" % (
-                    ahead, "" if ahead == 1 else "s",
-                    data["releases"][0]["tag"])
-            row = self._release_row(
-                title="Latest",
-                subtitle=subtitle,
-                pills=[("Installed", "installed")] if installed else [],
-                body=self._commit_markup(
-                    main["changes"][:SHOWN_VERSIONS], "Nothing new since the "
-                    "newest release.") + (
-                    "\n<i>…and %d more</i>" % (len(main["changes"])
-                                               - SHOWN_VERSIONS)
-                    if len(main["changes"]) > SHOWN_VERSIONS else ""),
-                target="main", installed=installed)
-            self._release_list.append(row)
+        # Only the newest version can be installed, and the newest is always
+        # main's tip: a release when it is tagged, a tag (v0.3.5+N) when it is
+        # not. Everything older is there to read, not to install.
+        tip = data["main"]["tip"] if data["main"] else None
 
-        newest = data["releases"][0]["tag"] if data["releases"] else None
+        tags = data["main"]["tags"] if data["main"] else []
+        shown_tags = tags[:SHOWN_VERSIONS] + [
+            t for t in tags[SHOWN_VERSIONS:] if t["sha"] == head]
+        for tag in shown_tags:
+            self._tag_list.append(self._tag_row(tag, head, tip))
+        self._tag_box.set_visible(bool(shown_tags))
+
         # Five, newest first, and the installed one too when it is older — a
         # list of every version ever cut buries the two people look for.
         releases = data["releases"]
         shown = releases[:SHOWN_VERSIONS] + [
-            r for r in releases[SHOWN_VERSIONS:]
-            if data["head_tag"] == r["tag"] or head == r["sha"]]
+            r for r in releases[SHOWN_VERSIONS:] if head == r["sha"]]
         for rel in shown:
             tag = rel["tag"]
-            installed = data["head_tag"] == tag or (
-                not on_main and data["branch"] is None and head == rel["sha"])
+            installed = head == rel["sha"]
             # One badge at most: three side by side read as a puzzle. What is
             # installed is the answer people look for first; failing that, which
-            # one is newest. A -beta tag says so in its own name.
+            # one is newest.
             pills = [("Installed", "installed")] if installed else \
-                [("Latest", "latest")] if tag == newest else []
+                [("Latest", "latest")] if rel["sha"] == tip else []
             title, body = notes.get(tag, ("", ""))
             # Release titles open with their own tag, which is already the
             # row's title; "v0.3.5 — Hex & Sticky" under "v0.3.5" says it twice.
@@ -7737,9 +7761,10 @@ class Window(Adw.ApplicationWindow):
                 title=tag,
                 subtitle=" · ".join(x for x in (
                     rel["date"], title or subject) if x),
-                pills=pills, body=markup, target=tag, installed=installed,
+                pills=pills, body=markup, target="main", installed=installed,
                 link=("https://github.com/%s/releases/tag/%s"
-                      % (data["slug"], tag)) if data["slug"] else None)
+                      % (data["slug"], tag)) if data["slug"] else None,
+                can_install=rel["sha"] == tip)
             self._release_list.append(row)
             self._release_rows[tag] = row
 
@@ -7753,8 +7778,26 @@ class Window(Adw.ApplicationWindow):
         return "\n".join("  •  " + GLib.markup_escape_text(s)
                          for s in subjects)
 
+    def _tag_row(self, tag, head, tip):
+        """One tag (a commit on main): its name, what it did, and — only for the
+        newest — Install."""
+        row = Adw.ActionRow()
+        plain_row(row, tag["name"], "%s · %s" % (tag["date"], tag["subject"]))
+        if tag["sha"] == head:
+            pill = Gtk.Label(label="Installed", valign=Gtk.Align.CENTER)
+            pill.add_css_class("aura-pill")
+            pill.add_css_class("installed")
+            row.add_suffix(pill)
+        elif tag["sha"] == tip:
+            button = Gtk.Button(label="Install", valign=Gtk.Align.CENTER)
+            button.add_css_class("suggested-action")
+            button.connect("clicked", lambda _b: self._confirm_install(
+                "main", False, tag["name"]))
+            row.add_suffix(button)
+        return row
+
     def _release_row(self, title, subtitle, pills, body, target, installed,
-                     link=None):
+                     link=None, can_install=True):
         """One release: its name and badges, opening into its notes and Install."""
         row = Adw.ExpanderRow()
         plain_row(row, title, subtitle)
@@ -7775,13 +7818,14 @@ class Window(Adw.ApplicationWindow):
         actions = Gtk.Box(spacing=8, halign=Gtk.Align.END)
         if link:
             actions.append(Gtk.LinkButton(uri=link, label="View on GitHub"))
-        button = Gtk.Button(label="Reinstall" if installed else "Install",
-                            valign=Gtk.Align.CENTER)
-        if not installed:
-            button.add_css_class("suggested-action")
-        button.connect("clicked", lambda _b: self._confirm_install(
-            target, installed))
-        actions.append(button)
+        if can_install:
+            button = Gtk.Button(label="Reinstall" if installed else "Install",
+                                valign=Gtk.Align.CENTER)
+            if not installed:
+                button.add_css_class("suggested-action")
+            button.connect("clicked", lambda _b: self._confirm_install(
+                target, installed, title))
+            actions.append(button)
         box.append(actions)
 
         holder = Gtk.ListBoxRow(activatable=False, selectable=False,
@@ -7869,25 +7913,30 @@ class Window(Adw.ApplicationWindow):
         dialog.connect("response", answered)
         open_over(dialog, self)
 
-    def _confirm_install(self, target, installed):
-        """Say what Install is about to do to the checkout, then do it."""
+    def _confirm_install(self, target, installed, name=None):
+        """Say what Install is about to do to the checkout, then do it.
+
+        name is what the version is called in the list (v0.3.6, v0.3.5+16)
+        when target is main's tip, which is the only version offered.
+        """
         blockers = update_blockers(self._repo)
         if blockers:
             self._toasts.add_toast(Adw.Toast(title=blockers[0]))
             return
         branch = target in RELEASE_BRANCHES or not RELEASE_TAG.match(target)
-        what = ("the newest commit on %s" % target) if branch else target
+        what = name or (("the newest commit on %s" % target) if branch
+                        else target)
         body = ("Switches the checkout to %s and runs the full installer in a "
                 "terminal." % what)
         if git_out(self._repo, "status", "--porcelain"):
             body += (" Your local edits in the checkout are stashed first — "
                      "git stash pop brings them back.")
-        if branch:
+        if branch and name is None:
             body += (" Commits of your own on %s are kept on a backup branch."
                      % target)
         dialog = AlertWindow(
             heading=("Reinstall %s?" if installed else "Install %s?")
-            % ("main" if target == "main" else target),
+            % (name or target),
             body=body)
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("install", "Reinstall" if installed else "Install")
@@ -7964,10 +8013,15 @@ class Window(Adw.ApplicationWindow):
             self._sync_updates()
             self._toasts.add_toast(Adw.Toast(title=blockers[0]))
             return
-        # The update check names a release by its tag and a commit line as
-        # branch@sha; either way what to install is the tag or the branch.
+        # A test build's offer is branch@sha, and its branch is what to install.
+        # On the released line the offer is a release or a tag (v0.3.6,
+        # v0.3.5+16), and either one is main's tip.
         pending = self._applied.update_available or ""
-        self._confirm_install(pending.rpartition("@")[0] or pending, False)
+        branch = pending.rpartition("@")[0]
+        if branch:
+            self._confirm_install(branch, False)
+        else:
+            self._confirm_install("main", False, pending)
 
     def _run_update(self, target):
         """Hand target to bin/aura-glass-update in a terminal.

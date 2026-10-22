@@ -120,6 +120,26 @@ expect 10 "a real release beside junk"      v0.1.7 v0.1.7 zz-experiment v0.1.8
 # Nothing to compare against.
 expect 1  "no tags on the remote at all"    v0.1.7
 
+# ---- tags: every commit on main --------------------------------------------
+#
+# No newer release, but main has moved on: that commit is offered, named after
+# the release before it. Pushed from a second clone so the checkout has never
+# seen it, which is the real situation before a check fetches.
+build v0.1.7 v0.1.7 || note "tags: could not build the fixture"
+git_quiet clone -b main "$TMP/remote" "$TMP/clone"
+( cd "$TMP/clone" && : > two && git -c user.email=t@t -c user.name=t add two >/dev/null 2>&1 \
+  && git -c user.email=t@t -c user.name=t commit -m two >/dev/null 2>&1 \
+  && git push origin main >/dev/null 2>&1 ) || note "tags: could not push a commit"
+check_run 10 "a commit on main after the release is offered" "v0.1.7+1"
+# Once installed, it is what the checkout is, under the same name.
+git_quiet -C "$TMP/work" pull --ff-only origin main
+out="$(AURA_GLASS_CONF="$TMP/conf" bash "$CHECK" 2>&1 || true)"
+[ "$out" = "up to date (v0.1.7+1)" ] || note "an installed tag: '$out', want 'up to date (v0.1.7+1)'"
+# A commit of one's own on main is ahead, not an update.
+( cd "$TMP/work" && : > three && git -c user.email=t@t -c user.name=t add three >/dev/null 2>&1 \
+  && git -c user.email=t@t -c user.name=t commit -m three >/dev/null 2>&1 ) || true
+check_run 0 "a local commit on main is not an update"
+
 # ---- the test-build line ---------------------------------------------------
 #
 # Someone testing a branch is not on the released line: there are no tags on the
