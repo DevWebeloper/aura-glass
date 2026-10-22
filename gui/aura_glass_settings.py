@@ -2369,6 +2369,10 @@ def markdown_markup(text, limit=4000):
     """
     out = []
     for line in text.replace("\r", "")[:limit].splitlines():
+        # The "What's New in vX" banner every release opens with repeats the
+        # row it sits under.
+        if re.match(r"^#{1,6}\s+.*what.s new in", line, re.I):
+            continue
         line = GLib.markup_escape_text(line.rstrip())
         heading = re.match(r"^#{1,6}\s+(.*)$", line)
         if heading:
@@ -2380,6 +2384,60 @@ def markdown_markup(text, limit=4000):
         out.append(line)
     # Runs of blank lines collapse to one; markdown leaves plenty.
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+
+
+# Commit subjects here follow `type(scope): what`. Read out in a changelog that
+# is jargon, so the type becomes a plain word and the scope goes.
+CHANGE_KINDS = {"feat": "New", "fix": "Fixed", "perf": "Faster"}
+CHANGE_ORDER = ("New", "Fixed", "Faster", "Other")
+# Housekeeping nobody installing the theme needs to read about.
+CHANGE_HIDDEN = ("chore", "ci", "build", "test", "style")
+
+
+def humanize_change(subject):
+    """(kind, sentence) for a commit subject, or None if it is housekeeping.
+
+    "feat(updates): name every commit" -> ("New", "Name every commit").
+    Anything not in that shape is kept as it is, under Other.
+    """
+    found = re.match(r"^(\w+)(?:\([^)]*\))?!?:\s*(.+)$", subject)
+    if not found:
+        return ("Other", subject)
+    kind, text = found.group(1).lower(), found.group(2).strip()
+    if kind in CHANGE_HIDDEN:
+        return None
+    text = re.sub(r"\s*\[skip ci\]$", "", text)
+    return (CHANGE_KINDS.get(kind, "Other"), text[:1].upper() + text[1:])
+
+
+def changes_markup(subjects, empty="No changes recorded."):
+    """Commit subjects as a short changelog: New, Fixed, Faster, Other."""
+    groups = {}
+    for subject in subjects:
+        change = humanize_change(subject)
+        if change and change[1] not in groups.get(change[0], []):
+            groups.setdefault(change[0], []).append(change[1])
+    if not groups:
+        return GLib.markup_escape_text(empty)
+    parts = []
+    for kind in CHANGE_ORDER:
+        if kind in groups:
+            parts.append("<b>%s</b>\n%s" % (kind, "\n".join(
+                "  •  " + GLib.markup_escape_text(t) for t in groups[kind])))
+    return "\n\n".join(parts)
+
+
+def tag_changes(repo, sha):
+    """What one tag (a commit on main's own line) brought in, as subjects.
+
+    A merge brought in a whole branch, so its changes are that branch's
+    commits; anything else is the one commit.
+    """
+    parents = (git_out(repo, "rev-list", "--parents", "-n", "1", sha) or "").split()
+    if len(parents) > 2:
+        return commit_subjects(repo, parents[1], sha, limit=40)
+    subject = git_out(repo, "log", "-1", "--format=%s", sha)
+    return [subject] if subject else []
 
 
 def updates_snapshot(repo, fetch):
@@ -2415,6 +2473,7 @@ def updates_snapshot(repo, fetch):
             # Named only where it will be shown: one describe per row.
             if i < SHOWN_VERSIONS or tag["sha"] == head:
                 tag["name"] = version_name(repo, tag["sha"])
+                tag["changes"] = tag_changes(repo, tag["sha"])
             tags.append(tag)
         main = {"tip": git_out(repo, "rev-parse", MAIN_REF), "tags": tags}
     branch = current_branch(repo)
@@ -7699,7 +7758,7 @@ class Window(Adw.ApplicationWindow):
                     "" if installed else " · %d new commit%s"
                     % (test["behind"], "" if test["behind"] == 1 else "s")),
                 pills=[("Installed", "installed")] if installed else [],
-                body=self._commit_markup(test["changes"],
+                body=changes_markup(test["changes"],
                                          "Nothing new on this branch."),
                 target=test["branch"], installed=installed)
             self._release_list.append(row)
@@ -7743,8 +7802,7 @@ class Window(Adw.ApplicationWindow):
             if body.strip():
                 markup = markdown_markup(body)
             else:
-                markup = self._commit_markup(rel["changes"],
-                                             "No changes recorded.")
+                markup = changes_markup(rel["changes"])
             row = self._release_row(
                 title=tag,
                 subtitle=" · ".join(x for x in (
@@ -7762,39 +7820,43 @@ class Window(Adw.ApplicationWindow):
         for line in data["history"]:
             self._history_list.append(self._history_row(line, head))
 
-    @staticmethod
-    def _commit_markup(subjects, empty):
-        if not subjects:
-            return GLib.markup_escape_text(empty)
-        return "\n".join("  •  " + GLib.markup_escape_text(s)
-                         for s in subjects)
-
     def _tag_row(self, tag, head, tip):
-        """One tag (a commit on main): its name, what it did, and — only for the
-        newest — Install."""
-        # One line each, ellipsized: a long commit subject wrapping to three
-        # lines squeezes the Install button into a sliver.
-        row = Adw.ActionRow(title_lines=1, subtitle_lines=1)
-        plain_row(row, tag["name"],
-                  "Tag · %s · %s" % (tag["date"], tag["subject"]))
-        if tag["sha"] == head:
-            pill = Gtk.Label(label="Installed", valign=Gtk.Align.CENTER)
-            pill.add_css_class("aura-pill")
-            pill.add_css_class("installed")
-            row.add_suffix(pill)
-        elif tag["sha"] == tip:
-            button = Gtk.Button(label="Install", valign=Gtk.Align.CENTER)
-            button.add_css_class("suggested-action")
-            button.connect("clicked", lambda _b: self._confirm_install(
-                "main", False, tag["name"]))
-            row.add_suffix(button)
-        return row
+        """One tag (a commit on main): opens into what it changed. Only the
+        newest has Install."""
+        # A merge's own subject ("Merge branch ...") says nothing; the first
+        # change it brought in says what it was.
+        subjects = [tag["subject"]]
+        if tag["subject"].startswith("Merge "):
+            subjects = tag.get("changes", []) + subjects
+        change = next((c for c in map(humanize_change, subjects) if c), None)
+        installed = tag["sha"] == head
+        return self._release_row(
+            title=tag["name"],
+            subtitle="Tag · %s · %s" % (tag["date"],
+                                       change[1] if change else tag["subject"]),
+            pills=[("Installed", "installed")] if installed else
+                  [("Latest", "latest")] if tag["sha"] == tip else [],
+            body=changes_markup(tag.get("changes", [tag["subject"]]),
+                                "Housekeeping only — nothing you would see."),
+            target="main", installed=installed, can_install=tag["sha"] == tip)
 
     def _release_row(self, title, subtitle, pills, body, target, installed,
                      link=None, can_install=True):
-        """One release: its name and badges, opening into its notes and Install."""
+        """One version: its name and badge, and a click opens what changed.
+
+        The newest, when it is not installed yet, wears Install on the row
+        itself rather than a Latest badge — the button is the news.
+        """
         row = Adw.ExpanderRow(title_lines=1, subtitle_lines=1)
         plain_row(row, title, subtitle)
+        offer = can_install and not installed
+        if offer:
+            pills = [p for p in pills if p[1] != "latest"]
+            button = Gtk.Button(label="Install", valign=Gtk.Align.CENTER)
+            button.add_css_class("suggested-action")
+            button.connect("clicked", lambda _b: self._confirm_install(
+                target, False, title))
+            row.add_suffix(button)
         for text, kind in pills:
             pill = Gtk.Label(label=text, valign=Gtk.Align.CENTER)
             pill.add_css_class("aura-pill")
@@ -7812,15 +7874,13 @@ class Window(Adw.ApplicationWindow):
         actions = Gtk.Box(spacing=8, halign=Gtk.Align.END)
         if link:
             actions.append(Gtk.LinkButton(uri=link, label="View on GitHub"))
-        if can_install:
-            button = Gtk.Button(label="Reinstall" if installed else "Install",
-                                valign=Gtk.Align.CENTER)
-            if not installed:
-                button.add_css_class("suggested-action")
+        if can_install and installed:
+            button = Gtk.Button(label="Reinstall", valign=Gtk.Align.CENTER)
             button.connect("clicked", lambda _b: self._confirm_install(
-                target, installed, title))
+                target, True, title))
             actions.append(button)
-        box.append(actions)
+        if actions.get_first_child() is not None:
+            box.append(actions)
 
         holder = Gtk.ListBoxRow(activatable=False, selectable=False,
                                 child=box)
