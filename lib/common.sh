@@ -68,7 +68,9 @@ same_gvariant() {
     [ "$1" = "$2" ] && return 0
     local number='^-?[0-9]+(\.[0-9]+)?$'
     if [[ "$1" =~ $number ]] && [[ "$2" =~ $number ]]; then
-        awk -v a="$1" -v b="$2" 'BEGIN { exit !(a + 0 == b + 0) }'
+        # LC_NUMERIC=C: under a decimal-comma locale mawk reads 1.15 as 1,
+        # so a new brightness would look already in place (#18).
+        LC_NUMERIC=C awk -v a="$1" -v b="$2" 'BEGIN { exit !(a + 0 == b + 0) }'
         return
     fi
     case "$1" in

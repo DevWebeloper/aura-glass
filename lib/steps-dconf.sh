@@ -1199,8 +1199,10 @@ apply_popup_brightness() {
     fi
 
     local base=/org/gnome/shell/extensions/blur-my-shell
+    # LC_NUMERIC=C: mawk (Debian's awk) prints the locale's decimal comma,
+    # and dconf rejects 1,15 as GVariant text (#18).
     run dconf write "$base/popup/brightness" \
-        "$(awk -v p="$want" 'BEGIN { printf "%.2f", p / 100 }')"
+        "$(LC_NUMERIC=C awk -v p="$want" 'BEGIN { printf "%.2f", p / 100 }')"
 
     python3 "$REPO_ROOT/tools/apply-popup-brightness.py" "$want" \
         || { warn "could not light the popup blur"; return 0; }
@@ -1237,8 +1239,9 @@ apply_window_brightness() {
     fi
 
     local base=/org/gnome/shell/extensions/blur-my-shell
+    # LC_NUMERIC=C for the same reason as the popup brightness (#18).
     run dconf write "$base/applications/brightness" \
-        "$(awk -v p="$want" 'BEGIN { printf "%.2f", p / 100 }')"
+        "$(LC_NUMERIC=C awk -v p="$want" 'BEGIN { printf "%.2f", p / 100 }')"
 
     python3 - "$want" <<'PY' || { warn "could not light the window blur"; return 0; }
 import re, subprocess, sys
