@@ -46,6 +46,9 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 | [KI-29](#ki-29) | Low | **Fixed** (`07689ba`) | No check applies the Blur My Shell patches to the pin or catches undefined names in them (how KI-27 shipped) |
 | [KI-31](#ki-31) | Medium | **Fixed** | The overview sometimes keeps a stale blur after leaving a settings-app preview |
 | [KI-32](#ki-32) | Medium | **Fixed** | Updating from the settings app greys out Install or stops at a git error (detached HEAD, local edits, diverged history, re-cut tag) |
+| [KI-33](#ki-33) | Medium | **Fixed** (`feat/efficient-blur-qol`) | The helper threw `ReferenceError: mode is not defined` on every enable, so Performance never got its window opacity |
+| [KI-34](#ki-34) | Medium | **Fixed** (`feat/efficient-blur-qol`) | Every retune rewrote ~37 dconf/gsettings keys to the values already there, waking Blur My Shell, User Themes and GTK |
+| [KI-35](#ki-35) | High | **Fixed** (`feat/efficient-blur-qol`, needs a live look) | Frosted repainted the whole stage every frame (`hacks-level=2`): 57% GPU on a busy idle desktop where 10% does |
 
 ---
 
@@ -834,6 +837,78 @@ lists every release (GitHub notes, or commit subjects as a fallback), `main`'s
 unreleased commits and a history graph, each with its own Install, so any
 version can be picked, including an older one. `tools/check-update-channel.py`
 covers a dirty detached HEAD, a diverged `main` and a re-cut tag.
+
+---
+
+## KI-33
+
+**The helper's opacity sync crashed.**
+
+**Symptom.** The journal logs `ReferenceError: mode is not defined` from
+`_updateOpacityFromConfig` (`extensions/aura-glass-blur@aura-glass.local/extension.js`)
+at every enable and every Blur My Shell state change. In Performance, where
+Blur My Shell's application blur is off, the window opacity that branch exists
+to set was never applied.
+
+**Root cause.** The branch compared a `mode` that nothing in the function
+declared.
+
+**Fix.** Read `glass-mode` with `readState` first. Verify: no ReferenceError in
+`journalctl --user -b | grep aura-glass-blur` after the next login.
+
+---
+
+## KI-34
+
+**Retunes rewrote what they did not change.**
+
+**Symptom.** A flagless `./install.sh --settings-only -y` made 37 dconf and
+gsettings writes (logged 2026-10-22 with wrapper scripts first on `PATH`), every
+one to the value already there. dconf stores and announces a write whether or
+not the value changed, so each one woke its listener: Blur My Shell rebuilt
+pipelines and effects, User Themes reloaded the shell theme, GTK re-read icons,
+cursor and fonts. That is a flicker and a GPU spike for a retune of nothing, and
+the adaptive worker's transitions paid it twice.
+
+**Root cause.** `run` executed every write, and the inline Python pipeline
+writers compared the blob as text, while dconf prints a double back in full
+(`0.7` as `0.69999999999999996`), so the window brightness writer rewrote the
+whole `pipelines` key every run.
+
+**Fix.** `run` skips a `dconf write` or `gsettings set` whose value is already
+in place (`already_in_place`, `same_gvariant` in `lib/common.sh`: same text,
+numbers equal by value, or structured values equal once GLib parses them). Dry
+runs still print every write. The five pipeline writers compare doubles by
+value, and `apply_wiggly_cursor` writes the cursor path only when it moved.
+Verified live: a no-op retune makes 0 writes and leaves `dconf dump /`
+byte-identical; a brightness change makes exactly its 2 writes.
+
+---
+
+## KI-35
+
+**Frosted repainted the whole screen every frame.**
+
+**Symptom.** On the maintainer's RX 7600 (3440×1440 at 180 Hz plus the laptop
+panel), a Frosted desktop with something small moving (a cursor, a spinner, a
+streaming window) held the GPU at a median 57%.
+
+**Root cause.** `dconf/core.ini` shipped Blur My Shell's `hacks-level=2`,
+which sets `DISABLE_CLIPPED_REDRAWS` on the whole stage: any damage repaints
+both monitors and every blur actor on them. It was chosen for an overview
+staleness that `patches/blur-my-shell-overview.patch` has since fixed another
+way. Level 1 measured 53%: it queues a full blur-actor repaint from every paint
+of one.
+
+**Fix.** `--blur-refresh efficient|accurate` (memo `blur-refresh`, default
+efficient) owns `hacks-level` in Frosted: 0 or 2. At 0 a small damaged
+rectangle can blur in a band of the last finished frame, so the helper repaints
+the stage once 250 ms after activity, or once a second during it, which clears
+that. Measured live, `hacks-level` changed between runs: idle median 57% → 10%,
+overview toggle p90 58% → 28%. The settle was exercised in a headless shell (it
+fires once per burst, ignores its own repaint, stops at level 2). Whether any
+patch is visible between settles needs a look on the real desktop after a
+re-login.
 
 ---
 
