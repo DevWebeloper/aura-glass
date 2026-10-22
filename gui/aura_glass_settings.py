@@ -7077,11 +7077,7 @@ class Window(Adw.ApplicationWindow):
         # one". Each release opens into its notes and its own Install, so what
         # changed is read where it is chosen. History is the same refs drawn as
         # git draws them, for anyone who wants to see where a release sits.
-        self._releases_group = Adw.PreferencesGroup(
-            title="Releases",
-            description="Every commit on main is a tag, and a release is a tag "
-                        "with notes. The newest is the one to install; older "
-                        "ones show what changed.")
+        self._releases_group = Adw.PreferencesGroup(title="Releases")
         self._browse_switcher = Adw.ToggleGroup()
         self._browse_switcher.add(Adw.Toggle(name="releases", label="Releases"))
         self._browse_switcher.add(Adw.Toggle(name="history", label="History"))
@@ -7770,7 +7766,9 @@ class Window(Adw.ApplicationWindow):
     def _tag_row(self, tag, head, tip):
         """One tag (a commit on main): its name, what it did, and — only for the
         newest — Install."""
-        row = Adw.ActionRow()
+        # One line each, ellipsized: a long commit subject wrapping to three
+        # lines squeezes the Install button into a sliver.
+        row = Adw.ActionRow(title_lines=1, subtitle_lines=1)
         plain_row(row, tag["name"],
                   "Tag · %s · %s" % (tag["date"], tag["subject"]))
         if tag["sha"] == head:
@@ -7789,7 +7787,7 @@ class Window(Adw.ApplicationWindow):
     def _release_row(self, title, subtitle, pills, body, target, installed,
                      link=None, can_install=True):
         """One release: its name and badges, opening into its notes and Install."""
-        row = Adw.ExpanderRow()
+        row = Adw.ExpanderRow(title_lines=1, subtitle_lines=1)
         plain_row(row, title, subtitle)
         for text, kind in pills:
             pill = Gtk.Label(label=text, valign=Gtk.Align.CENTER)
