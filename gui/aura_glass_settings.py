@@ -594,6 +594,8 @@ NAV_SECTIONS = [
      "System"),
     ("updates", "Updates", "software-update-available-symbolic",
      "_build_updates_page", "System"),
+    ("maintenance", "Maintenance", "applications-engineering-symbolic",
+     "_build_maintenance_page", "System"),
     ("uninstall", "Uninstall", "user-trash-symbolic", "_build_uninstall_page",
      None),
 ]
@@ -622,9 +624,10 @@ SEARCH_INDEX = {
     "packages": ["icon pack", "cursor pack", "remove pack", "disk"],
     "system": ["dependencies", "rounded blur library", "gdm", "login screen",
               "monitor", "panel blur", "password", "sudo"],
-    "updates": ["release", "version", "update check", "changelog",
-                "history", "tag", "downgrade", "repair", "reapply",
-                "reinstall", "settings app"],
+    "updates": ["release", "version", "changelog", "history", "tag",
+                "downgrade"],
+    "maintenance": ["update check", "notification", "channel", "repair",
+                    "reapply", "reinstall", "settings app"],
     "uninstall": ["remove", "revert", "delete"],
 }
 
@@ -651,9 +654,9 @@ FLAG_LABELS = {
     "--no-liquid-windows": ("glass", "Glass style behind app windows"),
     "--fullscreen-blur": ("glass", "Blur fullscreen windows"),
     "--no-fullscreen-blur": ("glass", "Blur fullscreen windows"),
-    "--update-check": ("updates", "Daily update check"),
-    "--no-update-check": ("updates", "Daily update check"),
-    "--update-channel": ("updates", "Update channel"),
+    "--update-check": ("maintenance", "Daily update check"),
+    "--no-update-check": ("maintenance", "Daily update check"),
+    "--update-channel": ("maintenance", "Update channel"),
     "--panel-blur-fix": ("system", "Panel blur fix"),
     "--no-panel-blur-fix": ("system", "Panel blur fix"),
     "--radius-preset": ("radius", "Corner rounding"),
@@ -6943,6 +6946,63 @@ class Window(Adw.ApplicationWindow):
             self._block.insert(min(idx_block, len(self._block)), pattern)
         self._app_changed()
 
+    def _build_maintenance_page(self):
+        """The update notifications and the repair buttons, off the Updates page.
+
+        Updates is for choosing a version; these are set once and left, or
+        reached for when something is broken. Kept apart so the release list is
+        the first thing on Updates rather than below a pile of switches.
+        """
+        page = Adw.PreferencesPage()
+
+        settings = Adw.PreferencesGroup(title="Notifications")
+        self._update_check_row = Adw.SwitchRow(
+            title="Check daily",
+            subtitle="One notification per release, in the background",
+            active=self._applied.update_check)
+        self._update_check_row.connect("notify::active", self._on_changed,
+                                       "update_check")
+        settings.add(self._update_check_row)
+
+        self._update_channel_row = self._combo(
+            "Update channel", "", UPDATE_CHANNELS,
+            self._applied.update_channel, "update_channel")
+        settings.add(self._update_channel_row)
+        page.add(settings)
+
+        repair = Adw.PreferencesGroup(
+            title="Repair installation",
+            description="These use the current saved selection. Reapply is a "
+                        "settings-only refresh; Full reinstall replaces the "
+                        "installed files and keeps the settings app included.")
+
+        reapply_row = Adw.ActionRow(
+            title="Reapply settings",
+            subtitle="Reapplies saved dconf, CSS and GNOME settings in a "
+                     "terminal so prompts remain usable, without reinstalling "
+                     "the theme or extension packages")
+        self._repair_reapply = Gtk.Button(label="Reapply",
+                                          valign=Gtk.Align.CENTER,
+                                          sensitive=self._repo is not None)
+        self._repair_reapply.connect("clicked", self._on_reapply_settings)
+        reapply_row.add_suffix(self._repair_reapply)
+        repair.add(reapply_row)
+
+        reinstall_row = Adw.ActionRow(
+            title="Full reinstall with settings app",
+            subtitle="Reinstalls the current selection in a terminal so any "
+                     "password prompt remains usable; it does not select the "
+                     "Complete Experience package")
+        self._repair_full = Gtk.Button(label="Open terminal",
+                                       valign=Gtk.Align.CENTER,
+                                       sensitive=self._repo is not None)
+        self._repair_full.connect("clicked", self._on_full_reinstall)
+        reinstall_row.add_suffix(self._repair_full)
+        repair.add(reinstall_row)
+
+        page.add(repair)
+        return page
+
     def _build_updates_page(self):
         page = Adw.PreferencesPage()
 
@@ -7038,55 +7098,8 @@ class Window(Adw.ApplicationWindow):
         self._updates_loading = False
         self._updates_fetch_queued = False
 
-        settings = Adw.PreferencesGroup(title="Notifications")
-        self._update_check_row = Adw.SwitchRow(
-            title="Check daily",
-            subtitle="One notification per release, in the background",
-            active=self._applied.update_check)
-        self._update_check_row.connect("notify::active", self._on_changed,
-                                       "update_check")
-        settings.add(self._update_check_row)
-
-        self._update_channel_row = self._combo(
-            "Update channel", "", UPDATE_CHANNELS,
-            self._applied.update_channel, "update_channel")
-        settings.add(self._update_channel_row)
-        page.add(settings)
-
-        repair = Adw.PreferencesGroup(
-            title="Repair installation",
-            description="These use the current saved selection. Reapply is a "
-                        "settings-only refresh; Full reinstall replaces the "
-                        "installed files and keeps the settings app included.")
-
-        reapply_row = Adw.ActionRow(
-            title="Reapply settings",
-            subtitle="Reapplies saved dconf, CSS and GNOME settings in a "
-                     "terminal so prompts remain usable, without reinstalling "
-                     "the theme or extension packages")
-        self._repair_reapply = Gtk.Button(label="Reapply",
-                                          valign=Gtk.Align.CENTER,
-                                          sensitive=self._repo is not None)
-        self._repair_reapply.connect("clicked", self._on_reapply_settings)
-        reapply_row.add_suffix(self._repair_reapply)
-        repair.add(reapply_row)
-
-        reinstall_row = Adw.ActionRow(
-            title="Full reinstall with settings app",
-            subtitle="Reinstalls the current selection in a terminal so any "
-                     "password prompt remains usable; it does not select the "
-                     "Complete Experience package")
-        self._repair_full = Gtk.Button(label="Open terminal",
-                                       valign=Gtk.Align.CENTER,
-                                       sensitive=self._repo is not None)
-        self._repair_full.connect("clicked", self._on_full_reinstall)
-        reinstall_row.add_suffix(self._repair_full)
-        repair.add(reinstall_row)
-
-        page.add(repair)
-
         # An update is the one thing this window starts that is not quick: it
-        # is a git pull and then the full installer, which fetches the theme,
+        # is a fetch and checkout and then the full installer, which fetches the theme,
         # the extensions and whatever a release added. So its output is shown
         # on the page rather than folded away like Apply's — with nothing to
         # read, a minute of silence and a hang look the same.
@@ -7698,8 +7711,9 @@ class Window(Adw.ApplicationWindow):
             title, body = notes.get(tag, ("", ""))
             # Release titles open with their own tag, which is already the
             # row's title; "v0.3.5 — Hex & Sticky" under "v0.3.5" says it twice.
-            title = re.sub(r"^%s\s*[—–:-]?\s*" % re.escape(tag), "", title)
-            subject = rel["subject"] if rel["subject"] != tag else ""
+            own_tag = r"^%s\s*[—–:-]?\s*" % re.escape(tag)
+            title = re.sub(own_tag, "", title)
+            subject = re.sub(own_tag, "", rel["subject"])
             if body.strip():
                 markup = markdown_markup(body)
             else:

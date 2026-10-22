@@ -125,7 +125,8 @@ is decided by `select_apply_actions`. See
 | Extensions | System | Every catalogued extension: switch, install/remove, recommended and full packs, via `bin/aura-glass-ext` |
 | Packages | System | Disk cost per pack and removal (`$HOME` packs deleted in place, `/usr` packs handed to a terminal) |
 | System | System | Dependencies, rounded-blur, panel-blur fix, login screen, monitor sync |
-| Updates | System | Version, check, install update; every release (notes, Install/Reinstall), `main`'s unreleased commits, a history graph; daily check and channel; reapply settings, full reinstall |
+| Updates | System | Version, check, install update; every release (notes, Install/Reinstall), `main`'s unreleased commits, a history graph |
+| Maintenance | System | Daily update check and channel; reapply settings, full reinstall |
 | Uninstall | none | Built into the stack (other code needs its widgets), opened from the primary menu, not the sidebar |
 
 The order matters: Glass is built before Per-app blur, because the app list asks
