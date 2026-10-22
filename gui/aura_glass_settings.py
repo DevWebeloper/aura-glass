@@ -2205,8 +2205,8 @@ def update_blockers(repo):
 # sed keeps. Anything else in refs/tags (a wip, an experiment) is not offered.
 RELEASE_TAG = re.compile(r"^v[0-9][0-9.]*(-beta)?$")
 
-# How many releases, and how many unreleased commits, the Releases tab lists.
-# The installed one is added when it is older; History shows everything.
+# How many releases the Releases tab lists. The installed one is added when it
+# is older; History shows everything.
 SHOWN_VERSIONS = 5
 
 # The branch every release is cut from, as its remote-tracking ref.
@@ -2383,19 +2383,11 @@ def updates_snapshot(repo, fetch):
     main = None
     if have_main:
         since = releases[0]["sha"] if releases else None
-        # Every commit main has gained since the newest release, each one
-        # installable on its own: a commit pushed to main is downloadable by
-        # anyone the moment they check, without waiting for a tag.
-        span = MAIN_REF if since is None else "%s..%s" % (since, MAIN_REF)
-        out = git_out(repo, "log", "--no-merges", "--max-count=200",
-                      "--format=%H%x00%h%x00%cs%x00%s", span)
-        commits = []
-        for line in (out or "").splitlines():
-            fields = line.split("\0")
-            if len(fields) == 4:
-                commits.append(dict(zip(("sha", "short", "date", "subject"),
-                                        fields)))
-        main = {"commits": commits}
+        main = {"short": git_out(repo, "rev-parse", "--short=7", MAIN_REF),
+                "date": git_out(repo, "log", "-1", "--format=%cs", MAIN_REF),
+                "ahead": (count_commits(repo, since, MAIN_REF)
+                          if since else None),
+                "changes": commit_subjects(repo, since, MAIN_REF, limit=40)}
     branch = current_branch(repo)
     test = None
     if branch and branch not in RELEASE_BRANCHES:
@@ -7085,31 +7077,10 @@ class Window(Adw.ApplicationWindow):
         self._browse_stack = Gtk.Stack(
             transition_type=Gtk.StackTransitionType.CROSSFADE,
             vhomogeneous=False)
-        # Unreleased commits, then releases, as two lists under their own
-        # captions on the one tab: same Install, different promises.
-        self._commit_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        self._commit_list.add_css_class("boxed-list")
-        self._commit_more = Gtk.Label(xalign=0)
-        self._commit_more.add_css_class("dim-label")
-        self._commit_more.add_css_class("caption")
-        self._commit_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
-                                   spacing=6, margin_bottom=18)
-        commits_title = Gtk.Label(label="New on main", xalign=0)
-        commits_title.add_css_class("heading")
-        self._commit_box.append(commits_title)
-        self._commit_box.append(self._commit_list)
-        self._commit_box.append(self._commit_more)
-
         self._release_list = Gtk.ListBox(
             selection_mode=Gtk.SelectionMode.NONE)
         self._release_list.add_css_class("boxed-list")
-        releases_title = Gtk.Label(label="Releases", xalign=0)
-        releases_title.add_css_class("heading")
-        browse = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        browse.append(self._commit_box)
-        browse.append(releases_title)
-        browse.append(self._release_list)
-        self._browse_stack.add_named(browse, "releases")
+        self._browse_stack.add_named(self._release_list, "releases")
         self._history_list = Gtk.ListBox(
             selection_mode=Gtk.SelectionMode.NONE)
         self._history_list.add_css_class("card")
@@ -7661,8 +7632,7 @@ class Window(Adw.ApplicationWindow):
         threading.Thread(target=work, daemon=True).start()
 
     def _render_updates(self, data):
-        for listbox in (self._commit_list, self._release_list,
-                        self._history_list):
+        for listbox in (self._release_list, self._history_list):
             while (child := listbox.get_first_child()) is not None:
                 listbox.remove(child)
         self._release_rows = {}
@@ -7711,25 +7681,34 @@ class Window(Adw.ApplicationWindow):
                 target=test["branch"], installed=installed)
             self._release_list.append(row)
 
-        # Five of each, newest first, and the installed one too when it is
-        # older than that — a list of every version ever cut buries the two
-        # people actually look for. History has the rest.
-        shown_commits = []
         if data["main"]:
-            commits = data["main"]["commits"]
-            shown_commits = commits[:SHOWN_VERSIONS] + [
-                c for c in commits[SHOWN_VERSIONS:] if c["sha"] == head]
-        for commit in shown_commits:
-            self._commit_list.append(self._commit_row(commit, head))
-        hidden = len(data["main"]["commits"]) - len(shown_commits) \
-            if data["main"] else 0
-        self._commit_more.set_label(
-            "%d older unreleased commit%s in History"
-            % (hidden, "" if hidden == 1 else "s") if hidden > 0 else "")
-        self._commit_more.set_visible(hidden > 0)
-        self._commit_box.set_visible(bool(shown_commits))
+            main = data["main"]
+            installed = on_main and head is not None and \
+                git_out(self._repo, "rev-parse", MAIN_REF) == head
+            ahead = main["ahead"]
+            # One entry for everything since the last release, installed as a
+            # whole: main's newest commit, never a pick of single commits.
+            subtitle = "Not released yet · %s" % main["date"]
+            if ahead:
+                subtitle += " · %d change%s since %s" % (
+                    ahead, "" if ahead == 1 else "s",
+                    data["releases"][0]["tag"])
+            row = self._release_row(
+                title="Latest",
+                subtitle=subtitle,
+                pills=[("Installed", "installed")] if installed else [],
+                body=self._commit_markup(
+                    main["changes"][:SHOWN_VERSIONS], "Nothing new since the "
+                    "newest release.") + (
+                    "\n<i>…and %d more</i>" % (len(main["changes"])
+                                               - SHOWN_VERSIONS)
+                    if len(main["changes"]) > SHOWN_VERSIONS else ""),
+                target="main", installed=installed)
+            self._release_list.append(row)
 
         newest = data["releases"][0]["tag"] if data["releases"] else None
+        # Five, newest first, and the installed one too when it is older — a
+        # list of every version ever cut buries the two people look for.
         releases = data["releases"]
         shown = releases[:SHOWN_VERSIONS] + [
             r for r in releases[SHOWN_VERSIONS:]
@@ -7766,24 +7745,6 @@ class Window(Adw.ApplicationWindow):
 
         for line in data["history"]:
             self._history_list.append(self._history_row(line, head))
-
-    def _commit_row(self, commit, head):
-        """One unreleased commit: what it says, and its own Install."""
-        row = Adw.ActionRow()
-        plain_row(row, commit["subject"],
-                  "%s · %s" % (commit["short"], commit["date"]))
-        if commit["sha"] == head:
-            pill = Gtk.Label(label="Installed", valign=Gtk.Align.CENTER)
-            pill.add_css_class("aura-pill")
-            pill.add_css_class("installed")
-            row.add_suffix(pill)
-        else:
-            button = Gtk.Button(label="Install", valign=Gtk.Align.CENTER)
-            button.add_css_class("flat")
-            button.connect("clicked", lambda _b: self._confirm_install(
-                commit["sha"], False, commit["short"]))
-            row.add_suffix(button)
-        return row
 
     @staticmethod
     def _commit_markup(subjects, empty):
@@ -7865,9 +7826,6 @@ class Window(Adw.ApplicationWindow):
         row._line = line
         return row
 
-    def _head(self):
-        return (self._updates_data or {}).get("head")
-
     def _on_browse_switched(self, switcher, _param):
         self._browse_stack.set_visible_child_name(switcher.get_active_name())
 
@@ -7886,52 +7844,39 @@ class Window(Adw.ApplicationWindow):
         body = git_out(self._repo, "log", "-1", "--format=%b",
                        line["sha"]) or ""
         where = ("First released in %s." % tag) if tag else \
-            "Not in a release yet."
+            "Not in a release yet — install main to get it."
         dialog = AlertWindow(
             heading=line["subject"],
             body="%s · %s\n\n%s%s" % (line["short"], line["date"],
                                      body.strip() + "\n\n" if body.strip()
                                      else "", where))
         dialog.add_response("close", "Close")
-        if tag:
-            dialog.add_response("open", "Open %s" % tag)
-        dialog.add_response("install", "Install this commit")
-        dialog.set_response_appearance("install",
-                                       Adw.ResponseAppearance.SUGGESTED)
-        dialog.set_default_response("open" if tag else "install")
+        dialog.add_response("open", "Open %s" % tag if tag else "Open main")
+        dialog.set_response_appearance("open", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("open")
         dialog.set_close_response("close")
 
         def answered(_d, response):
-            if response == "install":
-                self._confirm_install(line["sha"], line["sha"] == self._head(),
-                                      line["short"])
-            elif response == "open":
-                self._browse_switcher.set_active_name("releases")
-                target = self._release_rows.get(tag)
-                if target is not None:
-                    target.set_expanded(True)
-                    target.grab_focus()
-                else:
-                    self._toasts.add_toast(Adw.Toast(
-                        title="%s is older than the releases listed — "
-                              "install this commit instead" % tag))
+            if response != "open":
+                return
+            self._browse_switcher.set_active_name("releases")
+            target = self._release_rows.get(tag) if tag else \
+                self._release_list.get_row_at_index(0)
+            if target is not None:
+                target.set_expanded(True)
+                target.grab_focus()
 
         dialog.connect("response", answered)
         open_over(dialog, self)
 
-    def _confirm_install(self, target, installed, commit=None):
-        """Say what Install is about to do to the checkout, then do it.
-
-        commit is the short name of target when target is a commit's hash.
-        """
+    def _confirm_install(self, target, installed):
+        """Say what Install is about to do to the checkout, then do it."""
         blockers = update_blockers(self._repo)
         if blockers:
             self._toasts.add_toast(Adw.Toast(title=blockers[0]))
             return
-        branch = commit is None and (target in RELEASE_BRANCHES
-                                     or not RELEASE_TAG.match(target))
-        what = ("the newest commit on %s" % target) if branch else \
-            ("commit %s" % commit) if commit else target
+        branch = target in RELEASE_BRANCHES or not RELEASE_TAG.match(target)
+        what = ("the newest commit on %s" % target) if branch else target
         body = ("Switches the checkout to %s and runs the full installer in a "
                 "terminal." % what)
         if git_out(self._repo, "status", "--porcelain"):
@@ -7942,7 +7887,7 @@ class Window(Adw.ApplicationWindow):
                      % target)
         dialog = AlertWindow(
             heading=("Reinstall %s?" if installed else "Install %s?")
-            % (commit or target),
+            % ("main" if target == "main" else target),
             body=body)
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("install", "Reinstall" if installed else "Install")

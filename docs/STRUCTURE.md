@@ -98,7 +98,7 @@ For "which file draws this button / owns this setting", use
 | `aura-glass-open-once` | First-login autostart: removes its own `.desktop` file, then opens the settings window. | `install_first_open_autostart` |
 | `aura-glass-ext` | Extension catalogue: `list`, `install`/`remove`/`enable`/`disable UUID`, `recommended`, `full`. | not installed; run from the checkout |
 | `aura-glass-update-check` | Compare the checkout with the remote's tags or branch. `--notify` is used by the timer. | `install_update_check` |
-| `aura-glass-update` | Put the checkout on a release tag, a branch tip or one commit by hash (stash edits, back up diverged commits), then run `install.sh --gui`. `--no-install` switches only. What the Updates page's Install runs. | `install_update_check` |
+| `aura-glass-update` | Put the checkout on a release tag or a branch tip (stash edits, back up diverged commits), then run `install.sh --gui`. `--no-install` switches only. What the Updates page's Install runs. | `install_update_check` |
 | `aura-glass-icon-sync` | Follow light/dark with the icon variant (service). | `install_icon_sync` |
 | `aura-glass-panel-blur` | Launcher for `aura_glass_panel_blur.py` (service). | `install_panel_blur_unit` |
 | `aura-glass-gdm-sync` | Push wallpaper and monitors to GDM (service, `--once`). | `install_gdm_sync_unit` |

@@ -4,8 +4,6 @@
 #
 #   aura-glass-update vX.Y.Z      a release tag
 #   aura-glass-update main        main's newest commit (or any other branch)
-#   aura-glass-update <sha>       one commit, so anything pushed to main is
-#                                 installable before it is tagged
 #   aura-glass-update --no-install <target>   switch the checkout only
 #
 # This replaces `git pull --ff-only`, which is what the settings window used to
@@ -23,10 +21,9 @@
 #   local edits        → git stash, with a message naming when and from where
 #   a diverged branch  → a branch aura-glass-backup/<branch>-<timestamp>
 #
-# A tag or a single commit is checked out detached, which is what
-# bin/aura-glass-update-check reads as "on the released line". A branch is reset
-# to its remote copy and set to track it, which is what it reads as "following
-# commits".
+# A tag is checked out detached, which is what bin/aura-glass-update-check
+# already reads as "on the released line". A branch is reset to its remote copy
+# and set to track it, which is what it reads as "following commits".
 #
 # Everything is in main() and called on the last line, because bash reads a
 # script as it runs it, and the checkout below may replace this very file when
@@ -41,7 +38,7 @@ main() {
     fi
     local target="${1:-}"
     if [ -z "$target" ]; then
-        echo "usage: aura-glass-update [--no-install] <vX.Y.Z | branch | commit>" >&2
+        echo "usage: aura-glass-update [--no-install] <vX.Y.Z | branch>" >&2
         exit 2
     fi
 
@@ -77,14 +74,8 @@ main() {
     elif "${g[@]}" rev-parse -q --verify "refs/remotes/origin/$target^{commit}" >/dev/null; then
         kind=branch
         ref="refs/remotes/origin/$target"
-    elif [[ "$target" =~ ^[0-9a-f]{7,40}$ ]] \
-        && "${g[@]}" rev-parse -q --verify "$target^{commit}" >/dev/null; then
-        # A hash only, never a name: a branch or tag that merely looks like
-        # hex is answered by the two cases above.
-        kind=commit
-        ref="$("${g[@]}" rev-parse "$target^{commit}")"
     else
-        echo "aura-glass-update: origin has no release, branch or commit called $target" >&2
+        echo "aura-glass-update: origin has no release or branch called $target" >&2
         exit 1
     fi
 
@@ -106,12 +97,6 @@ main() {
 
     if [ "$kind" = tag ]; then
         echo "==> Switching to release $target"
-        "${g[@]}" checkout --quiet --detach "$ref"
-    elif [ "$kind" = commit ]; then
-        # Detached, like a release: there is no branch to follow from a single
-        # commit, and the update check reads a detached HEAD as the released
-        # line, so a tag cut later is still announced.
-        echo "==> Switching to commit ${ref:0:7}"
         "${g[@]}" checkout --quiet --detach "$ref"
     else
         # Commits on the local branch that the remote does not have would be
