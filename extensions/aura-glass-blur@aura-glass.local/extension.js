@@ -13,6 +13,9 @@
  * It answers ListWindows (for the settings app's "Open now" list), GetFocusState,
  * and emits WindowsChanged and FocusChanged signals.
  *
+ * It also shades the top bar while the focused window fills the panel's
+ * monitor (PANEL_SHADE_CLASS, painted by css/shell-00-flat.css).
+ *
  * It stays installed and enabled in every mode, Performance included.
  */
 
@@ -69,6 +72,10 @@ const DBUS_IFACE = `
     </signal>
   </interface>
 </node>`;
+
+// Added to Main.panel while the focused window fills the panel's monitor.
+// css/shell-00-flat.css paints it; the name is duplicated there.
+const PANEL_SHADE_CLASS = 'aura-glass-maximized';
 
 const PROFILES = ['auto', 'full', 'performance'];
 // State files whose change can move the window opacity this extension owns.
@@ -153,6 +160,23 @@ function rootWindowClass(window) {
     return classes.length ? classes[classes.length - 1] : null;
 }
 
+// Mirrors coversMonitor in patches/blur-my-shell-static-maximized.patch, so the
+// top bar shades for exactly the windows Blur My Shell treats as filling the
+// screen: maximized both ways, fullscreen, or sized over the whole work area
+// without either flag. The last is Tiling Assistant's drag-to-top or maximize
+// with maximize-with-gap on: it resizes to the work area instead of
+// maximizing, so GTK never sees the window as maximized either.
+function coversMonitor(window) {
+    if (window.fullscreen ||
+        (window.maximized_horizontally && window.maximized_vertically))
+        return true;
+    const area = window.get_work_area_current_monitor();
+    const frame = window.get_frame_rect();
+    return frame.x <= area.x && frame.y <= area.y &&
+        frame.x + frame.width >= area.x + area.width &&
+        frame.y + frame.height >= area.y + area.height;
+}
+
 // The same frame-type gate check_blur applies in Blur My Shell's
 // components/applications.js (patched by patches/blur-my-shell-subwindows.patch
 // to include ATTACHED and UTILITY too) — a window neither this nor Blur My
@@ -176,6 +200,7 @@ export default class AuraGlassBlurExtension extends Extension {
         this._focusedWmClass = '';
         this._focusedWindow = null;
         this._focusedWindowFullscreenId = 0;
+        this._focusedWindowGeometryIds = [];
 
         this._settings = this._openBmsApplicationsSettings();
         this._syncWindowMenu();
@@ -205,6 +230,15 @@ export default class AuraGlassBlurExtension extends Extension {
         this._destroyIds = new Map();
         for (const actor of global.get_window_actors())
             this._trackWindow(actor.get_meta_window());
+
+        // The overview gives the top bar its own look, so the shade lifts
+        // while it is open and comes back with the window when it closes.
+        this._overviewIds = [
+            Main.overview.connect('showing', () => this._syncPanelShade(true)),
+            Main.overview.connect('hidden', () => this._syncPanelShade(false)),
+        ];
+        this._monitorsChangedId = Main.layoutManager.connect(
+            'monitors-changed', () => this._syncPanelShade());
 
         this._focusWindowId = global.display.connect(
             'focus-window', (_display, window) => this._watchFocusedWindow(window));
@@ -282,6 +316,14 @@ export default class AuraGlassBlurExtension extends Extension {
         }
         this._watchFocusedWindow(null);
 
+        for (const id of this._overviewIds ?? [])
+            Main.overview.disconnect(id);
+        this._overviewIds = null;
+        if (this._monitorsChangedId) {
+            Main.layoutManager.disconnect(this._monitorsChangedId);
+            this._monitorsChangedId = 0;
+        }
+
         if (this._windowsChangedTimer) {
             GLib.source_remove(this._windowsChangedTimer);
             this._windowsChangedTimer = 0;
@@ -320,14 +362,41 @@ export default class AuraGlassBlurExtension extends Extension {
             this._focusedWindow.disconnect(this._focusedWindowFullscreenId);
             this._focusedWindowFullscreenId = 0;
         }
+        for (const id of this._focusedWindowGeometryIds)
+            this._focusedWindow.disconnect(id);
+        this._focusedWindowGeometryIds = [];
         this._focusedWindow = window ?? null;
         if (this._focusedWindow) {
             this._focusedWindowFullscreenId = this._focusedWindow.connect(
                 'notify::fullscreen', () => {
                     this._updateFocusState();
+                    this._syncPanelShade();
                 });
+            // size-changed and position-changed catch a tiler's resize to the
+            // work area and a move to another monitor, which set no flag.
+            this._focusedWindowGeometryIds = [
+                'notify::maximized-horizontally',
+                'notify::maximized-vertically',
+                'size-changed',
+                'position-changed',
+            ].map(signal => this._focusedWindow.connect(
+                signal, () => this._syncPanelShade()));
         }
         this._updateFocusState();
+        this._syncPanelShade();
+    }
+
+    // The panel lives on the primary monitor, so a window filling another
+    // monitor leaves it alone.
+    _syncPanelShade(overviewVisible = Main.overview.visible) {
+        const window = this._focusedWindow;
+        const shade = Boolean(window) && !overviewVisible &&
+            window.get_monitor() === Main.layoutManager.primaryIndex &&
+            coversMonitor(window);
+        if (shade)
+            Main.panel.add_style_class_name(PANEL_SHADE_CLASS);
+        else
+            Main.panel.remove_style_class_name(PANEL_SHADE_CLASS);
     }
 
     _updateFocusState() {
