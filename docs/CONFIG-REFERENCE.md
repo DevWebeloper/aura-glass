@@ -19,6 +19,8 @@ implementation view.
 
 ### Run control
 
+`--reset` moves every remembered choice (`RESET_MEMOS` in `lib/steps-migrate.sh`) to `$C/backups/reset-<time>/` before anything reads a memo, so the run and the wizard start from defaults. A cancelled wizard puts them back. Machine state (`repo-path`, stamps, `bms-ref`, GDM records) stays.
+
 | Flag | Effect |
 |---|---|
 | *(none, in a TTY)* / `--interactive` | Setup wizard: the GTK window, else the text wizard. |

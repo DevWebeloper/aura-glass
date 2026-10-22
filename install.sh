@@ -155,6 +155,7 @@ UPDATE_CHANNEL=""
 ASSUME_YES=0
 DRY_RUN=0
 FORCE=0
+RESET=0
 EXPLICIT_FLAGS=0
 FORCE_INTERACTIVE=0
 
@@ -335,6 +336,9 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       network and no root. This is what aura-glass-settings runs
     --no-deps         never touch the package manager
     --force           reinstall things that are already present
+    --reset           forget every remembered choice first, so the run (and
+                      the wizard, with --interactive) starts from the defaults.
+                      The old choices are kept in backups/reset-<time>/
     -y, --yes         answer yes to every prompt (non-interactive)
     -n, --dry-run     print what would happen, change nothing
     -h, --help        this
@@ -482,6 +486,7 @@ parse_flags() {
         --deps-only)     DEPS_ONLY=1; EXPLICIT_FLAGS=1; shift ;;
         --no-deps)       WANT_DEPS=0; EXPLICIT_FLAGS=1; shift ;;
         --force)         FORCE=1; EXPLICIT_FLAGS=1; shift ;;
+        --reset)         RESET=1; EXPLICIT_FLAGS=1; shift ;;
         -y|--yes)        ASSUME_YES=1; EXPLICIT_FLAGS=1; shift ;;
         -n|--dry-run)    DRY_RUN=1; EXPLICIT_FLAGS=1; shift ;;
         -h|--help)       usage; exit 0 ;;
@@ -501,6 +506,9 @@ parse_flags "$@"
 # memo that the resolution below reads.
 migrate_legacy_names
 migrate_solid_era
+# After the migrations, which may rewrite memos this then moves aside, and
+# before anything below reads one.
+reset_remembered_choices
 
 # Resolve remembered accent or default
 if [ -z "$ACCENT" ] && [ -r "$CONF_DIR/accent" ]; then
@@ -533,7 +541,7 @@ if { [ "$EXPLICIT_FLAGS" = 0 ] || [ "$FORCE_INTERACTIVE" = 1 ]; } && [ "$ASSUME_
             ASSUME_YES=1
             FROM_GUI_WIZARD=1
             ;;
-        1) printf '\n  Installation cancelled.\n\n'; exit 0 ;;
+        1) restore_reset_choices; printf '\n  Installation cancelled.\n\n'; exit 0 ;;
     esac
 fi
 
@@ -1003,6 +1011,7 @@ ${C_BLD}=======================================================${C_OFF}
 
 EOF
     if ! confirm "Proceed with installation?" 1; then
+        restore_reset_choices
         printf '\n  Installation cancelled.\n\n'
         exit 0
     fi

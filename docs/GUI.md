@@ -125,8 +125,7 @@ is decided by `select_apply_actions`. See
 | Extensions | System | Every catalogued extension: switch, install/remove, recommended and full packs, via `bin/aura-glass-ext` |
 | Packages | System | Disk cost per pack and removal (`$HOME` packs deleted in place, `/usr` packs handed to a terminal) |
 | System | System | Dependencies, rounded-blur, panel-blur fix, login screen, monitor sync |
-| Updates | System | Version, check, install update; every release (notes, Install/Reinstall), `main`'s unreleased commits, a history graph |
-| Maintenance | System | Daily update check and channel; reapply settings, full reinstall |
+| Updates | System | Two tabs. **Updates**: version, check, install update; every release (notes, one badge, Install/Reinstall), `main`'s unreleased commits, a history graph. **Maintenance**: daily update check; reapply settings; reset theme to defaults (`--reset --force --gui --interactive`). No channel row: the line follows what was installed from the list; `--update-channel` stays for the CLI |
 | Uninstall | none | Built into the stack (other code needs its widgets), opened from the primary menu, not the sidebar |
 
 The order matters: Glass is built before Per-app blur, because the app list asks
@@ -142,7 +141,7 @@ as a quick apply and its steps or a full reapply and why.
 
 - **Extension switches** apply immediately through `aura-glass-ext`, streamed into the same log.
 - **Packages**: a filesystem delete under `$HOME`, or the package manager in a terminal for `/usr`.
-- **Anything needing root** (deps `--deps-only`, rounded-blur, GDM, monitor sync, uninstall scopes) and the long operations (reapply settings, full reinstall, update) **open a real terminal** from `TERMINALS` (ptyxis, kgx, gnome-terminal, konsole, alacritty, kitty, foot, wezterm, x-terminal-emulator, xterm). `sudo` down a pipe would block forever. If no terminal is found, the command is shown to copy. Terminals aren't waited on, so those rows show the last state read.
+- **Anything needing root** (deps `--deps-only`, rounded-blur, GDM, monitor sync, uninstall scopes) and the long operations (reapply settings, reset to defaults, update) **open a real terminal** from `TERMINALS` (ptyxis, kgx, gnome-terminal, konsole, alacritty, kitty, foot, wezterm, x-terminal-emulator, xterm). `sudo` down a pipe would block forever. If no terminal is found, the command is shown to copy. Terminals aren't waited on, so those rows show the last state read.
 - **Reapply CSS** runs `aura-glass-apply --force-reload` in a terminal.
 - **Games list** writes `$CONF_DIR/adaptive-fullscreen-apps`, then `aura-glass-adaptive refresh`.
 

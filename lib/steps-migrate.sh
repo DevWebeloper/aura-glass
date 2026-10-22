@@ -312,3 +312,61 @@ restore_stood_down_extensions() {
     done < "$record"
     ok "$back extension(s) back on"
 }
+
+# --reset: forget every remembered choice, so this run and the wizard it opens
+# start from the defaults a first install would. What the settings window's
+# "Reset to defaults" runs, together with --force (reinstall everything,
+# core.ini included) and --interactive (ask the questions again).
+#
+# Choices only. What records the state of the machine — repo-path, patch and
+# build stamps, bms-ref, the GDM records, the preview journal, backups/ and the
+# installed sheet copies — stays, because forgetting it would make this run
+# misjudge what is installed rather than what was chosen.
+#
+# Moved, not deleted, into backups/reset-<stamp>/: a reset someone regrets is a
+# directory to copy back. Before the wizard, because both wizards pre-fill from
+# these memos and a reset that showed the old answers would not look like one;
+# restore_reset_choices puts them back if the wizard is then cancelled, since
+# nothing was installed to go with the defaults.
+RESET_MEMOS=(
+    glass-mode modes accent radius-preset radius-custom
+    app-transparency app-opacity app-tint-color shell-tint-color
+    notification-opacity blur-strength popup-brightness window-brightness grain
+    glass-style liquid-windows fullscreen-blur titlebutton-style window-buttons
+    window-blur app-blur-scope app-blur-allow app-blur-block
+    popup-blur notification-blur
+    adaptive-profile adaptive-fullscreen-apps
+    icon-pack icons cursor-pack cursor-size font
+    panel-blur-fix update-check update-channel rounded-blur-choice
+    extension-pack extension-catalog osd bms-source
+)
+
+reset_remembered_choices() {
+    [ "${RESET:-0}" = 1 ] || return 0
+    step "Resetting to defaults"
+    RESET_DIR="$BACKUP_DIR/reset-$(date +%Y%m%d-%H%M%S)"
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: would move the remembered choices to $RESET_DIR"
+        return 0
+    fi
+    mkdir -p "$RESET_DIR"
+    local name moved=0
+    for name in "${RESET_MEMOS[@]}"; do
+        if [ -e "$CONF_DIR/$name" ]; then
+            mv "$CONF_DIR/$name" "$RESET_DIR/"
+            moved=$((moved + 1))
+        fi
+    done
+    ok "$moved remembered choice(s) moved to $RESET_DIR — everything starts from its default"
+}
+
+restore_reset_choices() {
+    [ -n "${RESET_DIR:-}" ] && [ -d "$RESET_DIR" ] || return 0
+    local path
+    for path in "$RESET_DIR"/* "$RESET_DIR"/.[!.]*; do
+        [ -e "$path" ] || continue
+        [ -e "$CONF_DIR/${path##*/}" ] || mv "$path" "$CONF_DIR/"
+    done
+    rmdir "$RESET_DIR" 2>/dev/null || true
+    info "nothing was reset — your choices are as they were"
+}

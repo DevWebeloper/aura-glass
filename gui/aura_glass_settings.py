@@ -594,8 +594,6 @@ NAV_SECTIONS = [
      "System"),
     ("updates", "Updates", "software-update-available-symbolic",
      "_build_updates_page", "System"),
-    ("maintenance", "Maintenance", "applications-engineering-symbolic",
-     "_build_maintenance_page", "System"),
     ("uninstall", "Uninstall", "user-trash-symbolic", "_build_uninstall_page",
      None),
 ]
@@ -625,9 +623,8 @@ SEARCH_INDEX = {
     "system": ["dependencies", "rounded blur library", "gdm", "login screen",
               "monitor", "panel blur", "password", "sudo"],
     "updates": ["release", "version", "changelog", "history", "tag",
-                "downgrade"],
-    "maintenance": ["update check", "notification", "channel", "repair",
-                    "reapply", "reinstall", "settings app"],
+                "downgrade", "maintenance", "update check", "notification",
+                "repair", "reapply", "reinstall", "reset", "defaults"],
     "uninstall": ["remove", "revert", "delete"],
 }
 
@@ -654,9 +651,9 @@ FLAG_LABELS = {
     "--no-liquid-windows": ("glass", "Glass style behind app windows"),
     "--fullscreen-blur": ("glass", "Blur fullscreen windows"),
     "--no-fullscreen-blur": ("glass", "Blur fullscreen windows"),
-    "--update-check": ("maintenance", "Daily update check"),
-    "--no-update-check": ("maintenance", "Daily update check"),
-    "--update-channel": ("maintenance", "Update channel"),
+    "--update-check": ("updates", "Daily update check"),
+    "--no-update-check": ("updates", "Daily update check"),
+    "--update-channel": ("updates", "Update channel"),
     "--panel-blur-fix": ("system", "Panel blur fix"),
     "--no-panel-blur-fix": ("system", "Panel blur fix"),
     "--radius-preset": ("radius", "Corner rounding"),
@@ -1480,10 +1477,6 @@ button.aura-swatch:hover {
 .aura-pill.latest {
   color: @accent_color;
   background-color: alpha(@accent_bg_color, 0.20);
-}
-.aura-pill.beta {
-  color: @warning_color;
-  background-color: alpha(@warning_color, 0.18);
 }
 .aura-graph {
   color: @accent_color;
@@ -6947,11 +6940,11 @@ class Window(Adw.ApplicationWindow):
         self._app_changed()
 
     def _build_maintenance_page(self):
-        """The update notifications and the repair buttons, off the Updates page.
+        """The Updates page's Maintenance tab: notifications and repair.
 
         Updates is for choosing a version; these are set once and left, or
-        reached for when something is broken. Kept apart so the release list is
-        the first thing on Updates rather than below a pile of switches.
+        reached for when something is broken. A tab of their own so the release
+        list is the first thing on Updates rather than below a pile of switches.
         """
         page = Adw.PreferencesPage()
 
@@ -6963,18 +6956,17 @@ class Window(Adw.ApplicationWindow):
         self._update_check_row.connect("notify::active", self._on_changed,
                                        "update_check")
         settings.add(self._update_check_row)
-
-        self._update_channel_row = self._combo(
-            "Update channel", "", UPDATE_CHANNELS,
-            self._applied.update_channel, "update_channel")
-        settings.add(self._update_channel_row)
+        # No channel row. Which line the check follows is now chosen by what is
+        # installed from the Releases list — a release, or main's newest commit
+        # — so a second switch for it would only be able to disagree. The memo
+        # and --update-channel stay for the command line.
         page.add(settings)
 
         repair = Adw.PreferencesGroup(
             title="Repair installation",
-            description="These use the current saved selection. Reapply is a "
-                        "settings-only refresh; Full reinstall replaces the "
-                        "installed files and keeps the settings app included.")
+            description="Reapply refreshes what you have chosen. Reset starts "
+                        "over: everything reinstalled on the theme's defaults, "
+                        "then the setup wizard to choose again.")
 
         reapply_row = Adw.ActionRow(
             title="Reapply settings",
@@ -6988,17 +6980,18 @@ class Window(Adw.ApplicationWindow):
         reapply_row.add_suffix(self._repair_reapply)
         repair.add(reapply_row)
 
-        reinstall_row = Adw.ActionRow(
-            title="Full reinstall with settings app",
-            subtitle="Reinstalls the current selection in a terminal so any "
-                     "password prompt remains usable; it does not select the "
-                     "Complete Experience package")
-        self._repair_full = Gtk.Button(label="Open terminal",
+        reset_row = Adw.ActionRow(
+            title="Reset theme to defaults",
+            subtitle="Forgets every choice, reinstalls everything and opens "
+                     "the setup wizard, in a terminal. Old choices are kept "
+                     "in backups/")
+        self._repair_full = Gtk.Button(label="Reset",
                                        valign=Gtk.Align.CENTER,
                                        sensitive=self._repo is not None)
-        self._repair_full.connect("clicked", self._on_full_reinstall)
-        reinstall_row.add_suffix(self._repair_full)
-        repair.add(reinstall_row)
+        self._repair_full.add_css_class("destructive-action")
+        self._repair_full.connect("clicked", self._on_reset_defaults)
+        reset_row.add_suffix(self._repair_full)
+        repair.add(reset_row)
 
         page.add(repair)
         return page
@@ -7122,7 +7115,20 @@ class Window(Adw.ApplicationWindow):
         # network. Opening the page is what goes to the remote.
         self._refresh_updates(False)
 
-        return page
+        # Two tabs on one sidebar entry, the way Glass carries its two modes.
+        self._updates_stack = Adw.ViewStack(vexpand=True)
+        self._updates_stack.add_titled_with_icon(
+            page, "versions", "Updates", "software-update-available-symbolic")
+        self._updates_stack.add_titled_with_icon(
+            self._build_maintenance_page(), "maintenance", "Maintenance",
+            "applications-engineering-symbolic")
+        switcher = Adw.ViewSwitcher(stack=self._updates_stack,
+                                    policy=Adw.ViewSwitcherPolicy.WIDE,
+                                    halign=Gtk.Align.CENTER, margin_top=12)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        box.append(switcher)
+        box.append(self._updates_stack)
+        return box
 
     # ---- state ------------------------------------------------------------
 
@@ -7207,8 +7213,7 @@ class Window(Adw.ApplicationWindow):
         s.cursors = self._cursors_row._ids[self._cursors_row.get_selected()]
         s.cursor_size = int(self._cursor_size_row.get_value())
         s.font = self._font_row._ids[self._font_row.get_selected()]
-        s.update_channel = self._update_channel_row._ids[
-            self._update_channel_row.get_selected()]
+        s.update_channel = self._applied.update_channel
         s.window_buttons = self._window_buttons_row._ids[
             self._window_buttons_row.get_selected()]
         s.titlebutton_style = self._titlebutton_style_row._ids[
@@ -7495,8 +7500,6 @@ class Window(Adw.ApplicationWindow):
         self._fullscreen_blur_row.set_active(self._applied.fullscreen_blur)
         self._panel_blur_row.set_active(self._applied.panel_blur_fix)
         self._update_check_row.set_active(self._applied.update_check)
-        self._update_channel_row.set_selected(
-            self._update_channel_row._ids.index(self._applied.update_channel))
         self._loading = False
         self._rebuild_app_list()
         self._sync_sensitivity()
@@ -7668,8 +7671,7 @@ class Window(Adw.ApplicationWindow):
                 subtitle=("Test build · %s" % test["short"]) + (
                     "" if installed else " · %d new commit%s"
                     % (test["behind"], "" if test["behind"] == 1 else "s")),
-                pills=[("Installed", "installed")] if installed else
-                      [("Test build", "beta")],
+                pills=[("Installed", "installed")] if installed else [],
                 body=self._commit_markup(test["changes"],
                                          "Nothing new on this branch."),
                 target=test["branch"], installed=installed)
@@ -7688,8 +7690,7 @@ class Window(Adw.ApplicationWindow):
             row = self._release_row(
                 title="main — latest commits",
                 subtitle=subtitle,
-                pills=[("Installed", "installed")] if installed else
-                      [("Unreleased", "beta")] if ahead else [],
+                pills=[("Installed", "installed")] if installed else [],
                 body=self._commit_markup(
                     main["changes"], "main has nothing beyond the newest "
                     "release."),
@@ -7701,13 +7702,11 @@ class Window(Adw.ApplicationWindow):
             tag = rel["tag"]
             installed = data["head_tag"] == tag or (
                 not on_main and data["branch"] is None and head == rel["sha"])
-            pills = []
-            if installed:
-                pills.append(("Installed", "installed"))
-            if tag == newest:
-                pills.append(("Latest", "latest"))
-            if tag.endswith("-beta"):
-                pills.append(("Pre-release", "beta"))
+            # One badge at most: three side by side read as a puzzle. What is
+            # installed is the answer people look for first; failing that, which
+            # one is newest. A -beta tag says so in its own name.
+            pills = [("Installed", "installed")] if installed else \
+                [("Latest", "latest")] if tag == newest else []
             title, body = notes.get(tag, ("", ""))
             # Release titles open with their own tag, which is already the
             # row's title; "v0.3.5 — Hex & Sticky" under "v0.3.5" says it twice.
@@ -8010,7 +8009,7 @@ class Window(Adw.ApplicationWindow):
                 "Reapply settings opened in a terminal — follow its progress "
                 "there")
 
-    def _on_full_reinstall(self, _button):
+    def _on_reset_defaults(self, _button):
         if self._running:
             self._toasts.add_toast(Adw.Toast(
                 title="Another installer operation is already running"))
@@ -8021,15 +8020,38 @@ class Window(Adw.ApplicationWindow):
         if self._preview_active or self._preview_proc is not None or \
                 self._preview_timer or self._preview_terminal_requested:
             self._toasts.add_toast(Adw.Toast(
-                title="Apply or revert the live preview before reinstalling"))
+                title="Apply or revert the live preview before resetting"))
             return
-        if self.run_in_terminal(
-                self._install_cmd("--force --gui --yes"),
-                "Full reinstall"):
-            self._apply_status.remove_css_class("error")
-            self._apply_status.set_label(
-                "Full reinstall opened in a terminal — follow its progress "
-                "there")
+        dialog = AlertWindow(
+            heading="Reset the theme to its defaults?",
+            body="Every choice you made here is forgotten, everything is "
+                 "reinstalled, and the setup wizard opens so you can choose "
+                 "again. Cancelling the wizard leaves things as they are. Your "
+                 "old choices are kept in %s." % os.path.join(
+                     CONF_DIR, "backups", "reset-<time>"))
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("reset", "Reset")
+        dialog.set_response_appearance("reset",
+                                       Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
+        def answered(_d, response):
+            if response != "reset":
+                return
+            # --reset moves the memos aside before anything reads them, --force
+            # reinstalls what is already there (core.ini included), and
+            # --interactive opens the wizard despite the other flags. In a
+            # terminal, because the wizard's text fallback and sudo need one.
+            if self.run_in_terminal(
+                    self._install_cmd("--reset --force --gui --interactive"),
+                    "Reset to defaults"):
+                self._apply_status.remove_css_class("error")
+                self._apply_status.set_label(
+                    "Reset opened in a terminal — follow its progress there")
+
+        dialog.connect("response", answered)
+        open_over(dialog, self)
 
     # ---- actions ----------------------------------------------------------
 
