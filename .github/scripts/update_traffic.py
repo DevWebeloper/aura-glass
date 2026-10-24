@@ -13,7 +13,10 @@ import urllib.request
 REPO = "DevWebeloper/aura-glass"
 TRAFFIC_TOKEN = os.environ.get("TRAFFIC_TOKEN", "").strip()
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# The stats branch's checkout, which the workflow names. Without it, .github
+# beside this script, so a run by hand still has somewhere to write.
+BASE_DIR = os.environ.get("STATS_DIR") or \
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TRAFFIC_DIR = os.path.join(BASE_DIR, "traffic")
 BADGES_DIR = os.path.join(BASE_DIR, "badges")
 

@@ -34,7 +34,8 @@ gh release create v0.3.0 --title "v0.3.0 — Short Human Title" --notes "…"
 Publishing the release triggers `.github/workflows/release-assets.yml`, which
 attaches `aura-glass-vX.Y.Z.tar.gz` and `.zip` (`git archive` of the tag). The
 `traffic-tracker.yml` workflow updates the download badges in
-`.github/badges/` on its own schedule.
+`badges/` on the `stats` branch on its own schedule. They stay off main, where
+each daily commit would be offered to every install as a new version.
 
 ## Before tagging
 

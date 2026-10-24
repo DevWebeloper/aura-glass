@@ -15,6 +15,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # The numbers live on their own branch. Committed to main, every daily
+      # update was a new commit there, so every installed copy's update check
+      # offered it as a new version of the theme.
+      - name: Checkout stats branch
+        uses: actions/checkout@v4
+        with:
+          ref: stats
+          path: stats
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -23,14 +32,16 @@ jobs:
       - name: Sync traffic and release downloads
         env:
           TRAFFIC_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+          STATS_DIR: stats
         run: |
           python3 .github/scripts/update_traffic.py
 
       - name: Commit and push changes
+        working-directory: stats
         run: |
           git config user.name "DevWebeloper"
           git config user.email "57136857+DevWebeloper@users.noreply.github.com"
-          git add .github/traffic/ .github/badges/
+          git add traffic/ badges/
           if ! git diff --cached --quiet; then
             git commit -m "chore: update download and traffic stats [skip ci]"
             git push

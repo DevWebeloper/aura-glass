@@ -2299,11 +2299,14 @@ def history_lines(repo, ref=MAIN_REF, limit=150):
     A commit line has sha, short, date, refs (the release tags on it) and
     subject; a line that only continues the graph (the | and / lines) has just
     graph. Decorations are limited to release tags so a local branch name does
-    not end up in someone's history view.
+    not end up in someone's history view. Housekeeping commits are left out, as
+    shown_on_main says.
     """
     out = git_out(repo, "log", "--graph", "--max-count=%d" % limit,
                   "--decorate=full", "--decorate-refs=refs/tags",
                   "--format=%x00%H%x00%h%x00%cs%x00%D%x00%s", ref)
+    head = git_out(repo, "rev-parse", "HEAD")
+    tip = git_out(repo, "rev-parse", ref)
     lines = []
     for raw in (out or "").splitlines():
         graph, sep, rest = raw.partition("\0")
@@ -2313,9 +2316,13 @@ def history_lines(repo, ref=MAIN_REF, limit=150):
         sha, short, date, decor, subject = (rest.split("\0") + [""] * 5)[:5]
         tags = [d.strip()[len("tag: refs/tags/"):] for d in decor.split(",")
                 if d.strip().startswith("tag: refs/tags/")]
+        tags = [t for t in tags if RELEASE_TAG.match(t)]
+        # Dropping a commit's line leaves the graph's | lines above and below
+        # it meeting, so the drawing stays whole. A release is never dropped.
+        if not tags and not shown_on_main(sha, subject, head, tip):
+            continue
         lines.append({"graph": graph.rstrip(), "sha": sha, "short": short,
-                      "date": date, "subject": subject,
-                      "tags": [t for t in tags if RELEASE_TAG.match(t)]})
+                      "date": date, "subject": subject, "tags": tags})
     return lines
 
 
@@ -2433,6 +2440,18 @@ def changes_markup(subjects, empty="No changes recorded."):
     return "\n\n".join(parts)
 
 
+def shown_on_main(sha, subject, head, tip):
+    """Whether a commit on main gets a row of its own on the Updates page.
+
+    Housekeeping (the daily download-stats commit main used to carry, a ci
+    tweak) changes nothing anyone installing the theme would see, so it is not
+    listed as a version or a line of history. Two are kept whatever they say:
+    the installed one, which carries the Installed badge, and main's tip, which
+    is the only one Install goes to.
+    """
+    return humanize_change(subject) is not None or sha in (head, tip)
+
+
 def tag_changes(repo, sha):
     """What one tag (a commit on main's own line) brought in, as subjects.
 
@@ -2469,19 +2488,22 @@ def updates_snapshot(repo, fetch):
         out = git_out(repo, "log", "--first-parent", "--max-count=200",
                       "--format=%H%x00%h%x00%cs%x00%s%x00%ct", span)
         head = git_out(repo, "rev-parse", "HEAD")
+        tip = git_out(repo, "rev-parse", MAIN_REF)
         tags = []
-        for i, line in enumerate((out or "").splitlines()):
+        for line in (out or "").splitlines():
             fields = line.split("\0")
             if len(fields) != 5:
                 continue
             tag = dict(zip(("sha", "short", "date", "subject"), fields[:4]))
             tag["time"] = int(fields[4]) if fields[4].isdigit() else 0
+            if not shown_on_main(tag["sha"], tag["subject"], head, tip):
+                continue
             # Named only where it will be shown: one describe per row.
-            if i < SHOWN_VERSIONS or tag["sha"] == head:
+            if len(tags) < SHOWN_VERSIONS or tag["sha"] == head:
                 tag["name"] = version_name(repo, tag["sha"])
                 tag["changes"] = tag_changes(repo, tag["sha"])
             tags.append(tag)
-        main = {"tip": git_out(repo, "rev-parse", MAIN_REF), "tags": tags}
+        main = {"tip": tip, "tags": tags}
     branch = current_branch(repo)
     test = None
     if branch and branch not in RELEASE_BRANCHES:
