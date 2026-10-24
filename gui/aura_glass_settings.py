@@ -1103,6 +1103,12 @@ def monitor_count():
     return max(session, drm, 1)
 
 
+def has_builtin_panel():
+    """Whether this machine is a laptop — has_builtin_panel() in lib/common.sh."""
+    return any(glob.glob("/sys/class/drm/card*-%s-*" % kind)
+               for kind in ("eDP", "LVDS", "DSI"))
+
+
 def read_memo(name, default=""):
     """One value from one file, the way install.sh remembers things."""
     try:
@@ -2661,10 +2667,11 @@ class Settings:
         # any other, so it rides on Apply.
         # Its default is the machine's, not a literal: the rebuild is for
         # layouts that change, so install.sh turns it on for more than one
-        # monitor and leaves a single screen alone. Same rule here, or the
-        # switch would show a state nothing has agreed to.
+        # monitor or a laptop and leaves a single desktop screen alone. Same
+        # rule here, or the switch would show a state nothing has agreed to.
         self.panel_blur_fix = read_memo(
-            "panel-blur-fix", "1" if monitor_count() > 1 else "0") != "0"
+            "panel-blur-fix",
+            "1" if monitor_count() > 1 or has_builtin_panel() else "0") != "0"
 
         self.update_check = read_memo("update-check", "1") != "0"
         self.update_channel = read_memo("update-channel", "release")

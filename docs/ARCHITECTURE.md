@@ -348,7 +348,7 @@ Catalogued in `lib/steps.sh`:
 | Unit | Runs | Why |
 |---|---|---|
 | `aura-glass-icon-sync.service` | `aura-glass-icon-sync` | Icon packs ship `-Light`/`-Dark` variants and GNOME's key holds one name. This follows the light/dark preference. |
-| `aura-glass-panel-blur.service` | `aura-glass-panel-blur` → `aura_glass_panel_blur.py` | Rebuilds BMS panel blur after monitor layout changes. Default on only for multi-monitor setups. |
+| `aura-glass-panel-blur.service` | `aura-glass-panel-blur` → `aura_glass_panel_blur.py` | Rebuilds BMS panel blur after monitor layout changes. Default on for multi-monitor setups and laptops. |
 | `aura-glass-gdm-sync.service` | `aura-glass-gdm-sync` | Pushes the wallpaper and primary monitor to GDM, and warns at login when a package update has replaced the themed gresource (KI-30). Present only if GDM was themed or synced. |
 | `aura-glass-update-check.{service,timer}` | `aura-glass-update-check --notify` | Runs `git ls-remote` daily. Notifies once per release and never installs. |
 | `aura-glass-adaptive.service` | `aura-glass-adaptive` → `aura_glass_adaptive.py` | Adaptive performance (§4). Enabled in Frosted only. |

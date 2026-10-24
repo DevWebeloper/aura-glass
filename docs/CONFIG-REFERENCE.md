@@ -51,7 +51,7 @@ implementation view.
 | `--window-menu` / `--no-window-menu` | on | `window-menu` | "Blur This App" (the helper reads the memo live) |
 | `--update-check` / `--no-update-check` | on | `update-check` | daily timer |
 | `--update-channel release\|latest` | `release` | `update-channel` | what the check follows on `main`: tags, or commits (a new release is still announced) |
-| `--panel-blur-fix` / `--no-panel-blur-fix` | on if >1 monitor | `panel-blur-fix` | panel blur rebuild service |
+| `--panel-blur-fix` / `--no-panel-blur-fix` | on if >1 monitor or a laptop | `panel-blur-fix` | panel blur rebuild service |
 | `--gdm` / `--no-gdm`, `--gdm-background PATH` | off | `gdm-installed` | root |
 | `--gdm-monitors` (`--sync-monitors`) / `--no-gdm-monitors` | off | `gdm-monitors-synced` | root |
 

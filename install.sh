@@ -1291,8 +1291,10 @@ if [ -z "$PANEL_BLUR_FIX_EXPLICIT" ] && [ -r "$CONF_DIR/panel-blur-fix" ]; then
 fi
 # Neither a flag nor a memo: the agent exists for layouts that change, so a
 # machine with more than one screen gets it and a single screen is left alone.
+# A laptop gets it too: installed with nothing docked it counts one monitor,
+# then breaks its panel blur the first time an external screen comes or goes.
 if [ -z "$WANT_PANEL_BLUR_FIX" ]; then
-    if [ "$(monitor_count)" -gt 1 ]; then
+    if [ "$(monitor_count)" -gt 1 ] || has_builtin_panel; then
         WANT_PANEL_BLUR_FIX=1
     else
         WANT_PANEL_BLUR_FIX=0
