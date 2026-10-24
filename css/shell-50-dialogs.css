@@ -212,3 +212,81 @@ StEntry StIcon.peek-password:hover {
   color: #ffffff;
 }
 
+
+/* ---------- Login Options / session button (GNOME Shell 50+) ----------
+ * GNOME 50 folded the session list into js/gdm/authMenuButton.js: the cog at
+ * the bottom right of the login screen (session type: GNOME, Gamescope, …)
+ * and the lock screen's Login Options button are now
+ * .login-dialog-button.login-dialog-auth-menu-button. The pinned WhiteSur GDM
+ * theme and the Aura-Glass shell theme still style only the old
+ * .login-dialog-session-list-button, so nothing sized the new one and its
+ * StIcon fell back to St's 48px default, a cog three times the size of the
+ * accessibility button beside it. Display scaling scales both, so changing
+ * it did not help.
+ *
+ * Each copy takes the size of its neighbour in that theme: on the login
+ * screen WhiteSur's .a11y-button (1.091em padding and icon, round, 10% fill),
+ * on the lock screen the Aura-Glass .switch-user-button (32px round, 16px
+ * icon). The popup and indicator icon sizes are stock GNOME 51's, for the
+ * same 48px fallback.
+ */
+.login-dialog .login-dialog-button.login-dialog-auth-menu-button {
+  padding: 1.091em;
+  border-radius: 1000px;
+  border: none;
+  box-shadow: none;
+  color: #fafafb;
+  background-color: rgba(250, 250, 251, 0.1);
+}
+
+.login-dialog .login-dialog-button.login-dialog-auth-menu-button StIcon {
+  icon-size: 1.091em;
+  -st-icon-style: symbolic;
+}
+
+.login-dialog .login-dialog-button.login-dialog-auth-menu-button:hover,
+.login-dialog .login-dialog-button.login-dialog-auth-menu-button:focus {
+  background-color: rgba(250, 250, 251, 0.13);
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.login-dialog .login-dialog-button.login-dialog-auth-menu-button:active,
+.login-dialog .login-dialog-button.login-dialog-auth-menu-button:checked {
+  background-color: rgba(250, 250, 251, 0.16);
+}
+
+.unlock-dialog .login-dialog-button.login-dialog-auth-menu-button {
+  width: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  border-radius: 9999px;
+  border: none;
+  box-shadow: none;
+  color: white;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.unlock-dialog .login-dialog-button.login-dialog-auth-menu-button StIcon {
+  icon-size: 16px !important;
+  -st-icon-style: symbolic;
+}
+
+.unlock-dialog .login-dialog-button.login-dialog-auth-menu-button:hover,
+.unlock-dialog .login-dialog-button.login-dialog-auth-menu-button:focus {
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+.unlock-dialog .login-dialog-button.login-dialog-auth-menu-button:active,
+.unlock-dialog .login-dialog-button.login-dialog-auth-menu-button:checked {
+  background-color: rgba(255, 255, 255, 0.28);
+}
+
+.login-dialog-auth-menu-button-popup .login-dialog-auth-menu-item-icon {
+  icon-size: 1.091em;
+  margin-right: 8px;
+}
+
+.login-dialog-auth-menu-button-indicator .login-dialog-auth-menu-button-indicator-icon {
+  icon-size: 2em;
+}
