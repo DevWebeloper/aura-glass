@@ -83,7 +83,6 @@ Use a throwaway `HOME` as well. The checks don't need the real one.
 | `check-operation-recovery.py` | the writer lock: serialization, inheritance, timeout, signal forwarding |
 | `check-apply-publication.py` | `aura-glass-apply` publishes atomically and quietly (identical output isn't rewritten) |
 | `check-integration-reconcile.py` | installed helpers and units aren't recopied when unchanged |
-| `check-panel-blur-events.py` | bursts of monitor events collapse into one panel rebuild |
 | `check-incremental-apply.py` | `--plan-json` classification through the real parser |
 | `check-apply-feedback.py` | GUI recovery feedback comes from the backend protocol, not parsed log text |
 | `check-adaptive-worker.py` | the worker's reducer: hysteresis, debounce, immediate triggers, profiles |

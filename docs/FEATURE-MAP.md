@@ -17,7 +17,7 @@ a restart.
 |---|---|---|---|---|
 | Top panel | `shell-00-flat` | `[blur-my-shell/panel]` sigma, pipeline `panel` | `TOKEN_SIGMA_PANEL` | `install_css`, `load_dconf` |
 | Top bar shaded behind a maximized window | `shell-00-flat` (`#panel.aura-glass-maximized`, 60% black) | none | none | Aura Glass Helper `_syncPanelShade`: focused window on the primary monitor that is maximized, fullscreen or covers the work area (Tiling Assistant `maximize-with-gap`), outside the overview |
-| Panel blur after monitor changes | none | none | none | `patches/blur-my-shell-panel-refit.patch` (in place, one frame: `install_bms`); `aura-glass-panel-blur.service` → `tools/aura_glass_panel_blur.py` (false/true rebuild, flashes the bar) |
+| Panel blur after monitor changes | none | none | none | `patches/blur-my-shell-panel-refit.patch` (in place, one frame: `install_bms`). The old `aura-glass-panel-blur.service` is removed by `remove_panel_blur_unit` |
 | Panel icon size for this display | generated `shell-90-density` | none | `TUNED_PPI` (in `steps-css.sh`) | `measure_logical_ppi`, `density_css` |
 | Quick Settings panel | `shell-20-popup-menus`, `shell-popup-blur` | `[blur-my-shell/popup] quick-settings-corner-radius` | `TOKEN_RADIUS_QUICK_SETTINGS` | `install_css`, `apply_radius_*` |
 | Quick Settings sliders | `shell-10-quick-settings` | none | none | `install_css` |

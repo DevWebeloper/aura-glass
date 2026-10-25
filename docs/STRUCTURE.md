@@ -41,7 +41,7 @@ For "which file draws this button / owns this setting", use
 | `steps-modes.sh` | Glass modes: `resolve_glass_mode`, `apply_glass_mode`, the drawers (`seed_glass_mode`, `load_glass_mode_memos`, `save_glass_mode_memos`), `remember_glass_mode`. |
 | `steps-css.sh` | `install_css` and the rewriter wrappers (transparency, tints, popup transparency, notification opacity, radius), `install_window_control_style`, display density (`measure_logical_ppi`, `density_css`). |
 | `steps-dconf.sh` | `load_dconf` and every `apply_*` that writes a dconf/gsettings key: radii, pipelines, app blur and lists, popup/notification blur, grain, brightnesses, blur strength, `apply_adaptive_blur`, window buttons, cursor theme/size, accent, Moga variants, `apply_gsettings`, `apply_font`. |
-| `steps-integration.sh` | `install_icon_sync`, `flatpak_override`, `install_panel_blur_unit`, `install_adaptive_performance`. |
+| `steps-integration.sh` | `install_icon_sync`, `flatpak_override`, `remove_panel_blur_unit` (retired service), `install_adaptive_performance`. |
 | `steps-gdm.sh` | Login screen theme, wallpaper generation, monitor sync, and the GDM sync unit (all opt-in, root). |
 | `steps-gui.sh` | `install_gui` (settings window, launcher, preview, desktop entry, icon, the `repo-path` memo), `install_first_open_autostart`, `install_update_check`. |
 | `steps-wizard.sh` | `run_setup_wizard`, which runs the GTK wizard and reads its flags back. |
@@ -102,7 +102,6 @@ For "which file draws this button / owns this setting", use
 | `aura-glass-update-check` | Compare the checkout with the remote's tags or branch. `--notify` is used by the timer. | `install_update_check` |
 | `aura-glass-update` | Put the checkout on a release tag or a branch tip (stash edits, back up diverged commits), then run `install.sh --gui`. `--no-install` switches only. What the Updates page's Install runs. | `install_update_check` |
 | `aura-glass-icon-sync` | Follow light/dark with the icon variant (service). | `install_icon_sync` |
-| `aura-glass-panel-blur` | Launcher for `aura_glass_panel_blur.py` (service). | `install_panel_blur_unit` |
 | `aura-glass-gdm-sync` | Push wallpaper and monitors to GDM (service, `--once`). | `install_gdm_sync_unit` |
 | `aura-glass-adaptive` | Launcher for `aura_glass_adaptive.py`: no args runs the loop; also `profile auto\|full\|performance` and `refresh`. | `install_adaptive_performance` |
 
@@ -122,7 +121,7 @@ the D-Bus bridge and the adaptive profile menu. Shell versions 48–51.
 
 ### `systemd/`
 
-`aura-glass-icon-sync.service`, `aura-glass-panel-blur.service`,
+`aura-glass-icon-sync.service`,
 `aura-glass-gdm-sync.service`, `aura-glass-update-check.service` + `.timer`,
 `aura-glass-adaptive.service`.
 
@@ -142,12 +141,11 @@ install or retune. Don't move or rename one without updating its callers.
 | `token_manifest.py` | `apply-radius-preset.py`, `check-tokens.sh` (and the pattern `apply_pipeline_radius` mirrors) |
 | `moga_cursor.py` | `install_moga_cursors` (resolves official release metadata) |
 | `aura_glass_operation.py` | `bin/aura-glass-operation` (copied to `~/.local/share/aura-glass/`) |
-| `aura_glass_panel_blur.py` | `bin/aura-glass-panel-blur` (copied to `~/.local/share/aura-glass/`) |
 | `aura_glass_adaptive.py` | `bin/aura-glass-adaptive` (copied to `~/.local/share/aura-glass/`) |
 
 The rewriters run **from the checkout** (`$REPO_ROOT/tools/…`), so every retune
 needs the checkout recorded in `$CONF_DIR/repo-path` to still exist. Only the
-three workers and the apply command work without it.
+two workers and the apply command work without it.
 
 **B. Hermetic checks.** These use fixture `HOME`s, temp dirs, stubs and
 `--dry-run`, and are safe to run anywhere: `check-tokens.sh`, `check-cascade.sh`,
@@ -157,7 +155,7 @@ three workers and the apply command work without it.
 `check-gui-radius.py`, `check-terminal-spawn.py`, `check-update-channel.py`,
 `check-preview-queue.py`, `check-operation-recovery.py`,
 `check-apply-publication.py`, `check-integration-reconcile.py`,
-`check-panel-blur-events.py`, `check-incremental-apply.py`,
+`check-incremental-apply.py`,
 `check-apply-feedback.py`, `check-adaptive-worker.py`,
 `check-apply-lifecycle.py`. Plus the hook: `hooks/pre-commit` and
 `install-hooks.sh`.
@@ -196,9 +194,9 @@ the GPU. **Agents never run these.** Humans only: `preview.sh`,
   ├─ shell-*.css gtk4-*.css gtk3-*.css        installed, rewritten copies of css/
   └─ preview-active, preview-backup/          only while a live preview is open
 ~/.local/bin/                                 aura-glass-{apply,operation,preview,settings,open-once,update-check,
-                                              icon-sync,panel-blur,gdm-sync,adaptive}  (+ tahoe-glass-apply symlink)
+                                              icon-sync,gdm-sync,adaptive}  (+ tahoe-glass-apply symlink)
 ~/.local/share/aura-glass/                    gui/ (settings window + preview_queue.py),
-                                              aura_glass_{operation,panel_blur,adaptive}.py
+                                              aura_glass_{operation,adaptive}.py
 ~/.local/share/applications/io.github.DevWebeloper.AuraGlassSettings.desktop
 ~/.local/share/icons/hicolor/scalable/apps/io.github.DevWebeloper.AuraGlassSettings.svg
 ~/.local/share/gnome-shell/extensions/        user-theme, blur-my-shell, custom-osd, aura-glass-blur, extras
@@ -225,7 +223,7 @@ install.sh ──(not --help/--dry-run)──▶ aura-glass-operation run -- ins
   │              └▶ ~/.local/bin/aura-glass-apply ─▶ (lock already held) splice 4 targets
   ├─ load_dconf ─▶ dconf load; apply_* ─▶ tools/apply-popup-brightness.py
   ├─ install_cursors ─▶ tools/moga_cursor.py (Moga only)
-  └─ install_{gui,update_check,icon_sync,panel_blur_unit,adaptive_performance} ─▶ systemctl --user …
+  └─ install_{gui,update_check,icon_sync,adaptive_performance} ─▶ systemctl --user …
 
 aura_glass_settings.py
   ├─ Apply ─▶ PreviewQueue ─▶ [aura-glass-preview commit --session S --] install.sh --settings-only --incremental --yes FLAGS

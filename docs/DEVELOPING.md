@@ -55,7 +55,7 @@ Most bugs here are one front end disagreeing with another, so first find
 | Switched mode | full retune with `--glass-mode` | `lib/steps-modes.sh`, `load_dconf` |
 | Nothing (battery, GPU, game, top-bar menu) | adaptive worker → `--adaptive-blur` | `tools/aura_glass_adaptive.py`, `apply_adaptive_blur` |
 | Used "Blur This App" | `aura-glass-operation app-blur` | `extension.js` `_toggleBlur`, `aura-glass-preview app-blur`, `apply_app_blur` |
-| Changed monitors or logged in | services | `tools/aura_glass_panel_blur.py`, `bin/aura-glass-icon-sync`, `bin/aura-glass-gdm-sync` |
+| Changed monitors or logged in | services, Blur My Shell | `patches/blur-my-shell-panel-refit.patch`, `bin/aura-glass-icon-sync`, `bin/aura-glass-gdm-sync` |
 | Updated the theme or upstream | `aura-glass-apply` | `bin/aura-glass-apply` |
 
 ### 2. Find the owner
@@ -166,13 +166,12 @@ anything that needs root. Run `check-gui-flags.py`, `check-wizard-flags.py`,
 `check-gui-radius.py`, `check-terminal-spawn.py`, `check-preview-queue.py` and
 `check-apply-lifecycle.py`.
 
-### Touch the adaptive worker or the panel-blur worker
+### Touch the adaptive worker
 
-Their launchers prefer the **installed** copy in `~/.local/share/aura-glass/`.
-After editing `tools/aura_glass_{adaptive,panel_blur}.py`, a retune reinstalls
-them. Then `systemctl --user restart aura-glass-adaptive` (or `-panel-blur`).
-Checks: `check-adaptive-worker.py`, `check-adaptive-installer.sh`,
-`check-panel-blur-events.py`.
+Its launcher prefers the **installed** copy in `~/.local/share/aura-glass/`.
+After editing `tools/aura_glass_adaptive.py`, a retune reinstalls it. Then
+`systemctl --user restart aura-glass-adaptive`.
+Checks: `check-adaptive-worker.py`, `check-adaptive-installer.sh`.
 
 ---
 

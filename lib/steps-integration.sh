@@ -95,82 +95,33 @@ flatpak_override() {
     ok "read-only access granted to themes, icons and GTK config"
 }
 
-install_panel_blur_unit() {
-    step "Blur My Shell panel blur rebuild"
-
-    # This unit exists to toggle Blur My Shell's panel blur off and on once the
-    # session has settled, so the actor is rebuilt against correct geometry.
-    # With no Blur My Shell there is no actor and nothing to rebuild, so in
-    # performance it is a timer that waits twelve seconds after every login to
-    # do nothing. Checked here rather than in the flag parsing so that the flag
-    # order cannot defeat it: --no-blur --full would otherwise turn it back on.
-    local effective="${WANT_PANEL_BLUR_FIX:-1}"
-    if [ "${WANT_BLUR:-1}" != 1 ]; then
-        effective=0
-    fi
-
-    # Remembered like every other setting, so a later flagless run — and the
-    # settings window, which reads the memo to draw the switch — comes back to
-    # this answer rather than to the default. Written before the branch so it
-    # records the choice whichever way it went. The choice, not the forced 0
-    # above: that is the mode speaking, and remembering it lost the service
-    # for good on a frosted → performance → frosted round trip.
-    if [ "${DRY_RUN:-0}" != 1 ]; then
-        mkdir -p "$CONF_DIR"
-        printf '%s\n' "${WANT_PANEL_BLUR_FIX:-1}" > "$CONF_DIR/panel-blur-fix"
-    fi
-
-    if [ "$effective" != 1 ]; then
-        # Clean up any previously installed panel blur units
-        local found=0 u
-        for u in aura-glass-panel-blur.service tahoe-glass-panel-blur.service bms-panel-blur-rebuild.service; do
-            [ -f "$HOME/.config/systemd/user/$u" ] || continue
-            found=1
-            run systemctl --user disable --now "$u" >/dev/null 2>&1 || true
-            run rm -f "$HOME/.config/systemd/user/$u"
-            ok "removed $u"
-        done
-        [ "$found" = 1 ] && run systemctl --user daemon-reload || true
-        skip "not installed (--no-panel-blur-fix)"
-        return 0
-    fi
-
-    for u in tahoe-glass-panel-blur.service bms-panel-blur-rebuild.service; do
-        if [ -f "$HOME/.config/systemd/user/$u" ]; then
-            run systemctl --user disable --now "$u" >/dev/null 2>&1 || true
-            run rm -f "$HOME/.config/systemd/user/$u"
+# The panel blur rebuild service toggled Blur My Shell's panel/blur false then
+# true after every monitor change and once at login, to rebuild a panel blur
+# sized against a layout that had since changed. The toggle itself flashed the
+# bare top bar. patches/blur-my-shell-panel-refit.patch now refits that blur
+# in place inside Blur My Shell, in one frame, so the service only costs a
+# flash. Every run takes out whatever an earlier one installed, under all three
+# names it has had, with its command and the memo that drove it.
+remove_panel_blur_unit() {
+    local found=0 u
+    for u in aura-glass-panel-blur.service tahoe-glass-panel-blur.service bms-panel-blur-rebuild.service; do
+        [ -f "$HOME/.config/systemd/user/$u" ] || continue
+        [ "$found" = 1 ] || step "Removing the panel blur rebuild service (no longer needed)"
+        found=1
+        run systemctl --user disable --now "$u" >/dev/null 2>&1 || true
+        run rm -f "$HOME/.config/systemd/user/$u"
+        ok "removed $u"
+    done
+    [ "$found" = 1 ] && { run systemctl --user daemon-reload || true; }
+    local f
+    for f in "$HOME/.local/bin/aura-glass-panel-blur" \
+             "$HOME/.local/bin/tahoe-glass-panel-blur" \
+             "$HOME/.local/share/aura-glass/aura_glass_panel_blur.py" \
+             "$CONF_DIR/panel-blur-fix"; do
+        if [ -e "$f" ] || [ -L "$f" ]; then
+            run rm -f "$f"
         fi
     done
-
-    local panel_command_changed=0 panel_unit_changed=0
-    install_if_changed "$REPO_ROOT/bin/aura-glass-panel-blur" \
-        "$HOME/.local/bin/aura-glass-panel-blur" 755
-    panel_command_changed="$INSTALL_CHANGED"
-    install_if_changed "$REPO_ROOT/tools/aura_glass_panel_blur.py" \
-        "$HOME/.local/share/aura-glass/aura_glass_panel_blur.py" 755
-    [ "$INSTALL_CHANGED" = 1 ] && panel_command_changed=1
-    if [ "$(readlink "$HOME/.local/bin/tahoe-glass-panel-blur" 2>/dev/null || true)" != "$HOME/.local/bin/aura-glass-panel-blur" ]; then
-        run ln -sfn "$HOME/.local/bin/aura-glass-panel-blur" "$HOME/.local/bin/tahoe-glass-panel-blur"
-    fi
-    install_if_changed "$REPO_ROOT/systemd/aura-glass-panel-blur.service" \
-        "$HOME/.config/systemd/user/aura-glass-panel-blur.service" 644
-    panel_unit_changed="$INSTALL_CHANGED"
-    [ "$panel_unit_changed" = 1 ] && run systemctl --user daemon-reload || true
-    if ! systemctl --user is-enabled --quiet aura-glass-panel-blur.service 2>/dev/null; then
-        run systemctl --user enable aura-glass-panel-blur.service >/dev/null 2>&1 || true
-    fi
-
-    # enable only arms it for the next login, and the strip is on screen now.
-    if systemctl --user is-active --quiet graphical-session.target 2>/dev/null; then
-        if systemctl --user is-active --quiet aura-glass-panel-blur.service 2>/dev/null; then
-            if [ "$panel_command_changed" = 1 ] || [ "$panel_unit_changed" = 1 ]; then
-                run systemctl --user restart aura-glass-panel-blur.service 2>/dev/null || true
-            fi
-        else
-            run systemctl --user start aura-glass-panel-blur.service 2>/dev/null || true
-        fi
-    fi
-    ok "panel blur rebuilds on every monitor change, and once at login"
 }
 
 # Adaptive performance is a session observer, not a second settings resolver:

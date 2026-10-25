@@ -440,12 +440,3 @@ monitor_count() {
     [ "$drm" -gt 0 ] 2>/dev/null || drm=1
     printf '%s' "$drm"
 }
-
-# Whether this machine has a built-in panel, i.e. is a laptop. The connector
-# exists whether or not an external screen is plugged in, so a laptop counts
-# as one even when it is installed with nothing docked and monitor_count says 1.
-has_builtin_panel() {
-    compgen -G '/sys/class/drm/card*-eDP-*' >/dev/null \
-        || compgen -G '/sys/class/drm/card*-LVDS-*' >/dev/null \
-        || compgen -G '/sys/class/drm/card*-DSI-*' >/dev/null
-}

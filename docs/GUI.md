@@ -124,7 +124,7 @@ is decided by `select_apply_actions`. See
 | Per-app blur | Appearance | A switch per installed app, live "Open now" windows (D-Bus), a default for unchosen apps, **fullscreen performance games** (written straight to `adaptive-fullscreen-apps`), wildcard patterns |
 | Extensions | System | Every catalogued extension: switch, install/remove, settings button (when it has `prefs.js`), recommended and full packs, via `bin/aura-glass-ext` |
 | Packages | System | Disk cost per pack and removal (`$HOME` packs deleted in place, `/usr` packs handed to a terminal) |
-| System | System | Dependencies, rounded-blur, panel-blur fix, login screen, monitor sync |
+| System | System | Dependencies, rounded-blur, login screen, monitor sync |
 | Updates | System | Two tabs. **Updates**: version, check, install update; one list, newest first by date, of **Tags** (every commit on main, named `v0.3.5+N`) and **Releases** (`vX.Y.Z`, with notes): the 5 newest of each plus the installed one when older. One badge per row. Only the newest (main's tip, a release if tagged, else a tag) has Install; older rows are read-only. History graph of everything. **Maintenance**: daily update check; reapply settings; reset theme to defaults (`--reset --force --gui --interactive`). No channel row: the line follows what was installed from the list; `--update-channel` stays for the CLI |
 | Uninstall | none | Built into the stack (other code needs its widgets), opened from the primary menu, not the sidebar |
 

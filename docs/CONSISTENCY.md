@@ -62,7 +62,7 @@ and the drift found as of this rewrite.
 | Pack families | install/uninstall (`lib/steps-assets.sh`, `uninstall.sh`), GUI `ICON_PACK_FAMILIES` | none | ❌ Moga missing in the GUI |
 | Installed commands | `install_css`, `install_gui`, `install_*` units, `uninstall.sh` removal list | none | ❌ `aura-glass-operation`, `aura-glass-preview` not removed |
 | GUI runtime requirements | `gui_toolkit_present` + `GUI_TOOLKIT_PKGS_*` (`lib/distro.sh`), GUI imports | none | ❌ `import cairo` not probed (KI-03) |
-| Launcher resolution (checkout vs installed copy) | `aura-glass-operation` (checkout first), `aura-glass-adaptive` and `aura-glass-panel-blur` (installed first) | none | ⚠ inconsistent (KI-09) |
+| Launcher resolution (checkout vs installed copy) | `aura-glass-operation` (checkout first), `aura-glass-adaptive` (installed first) | none | ⚠ inconsistent (KI-09) |
 | Supported GNOME versions | `preflight` (48–51), `metadata.json`, README, PKGBUILD | none | ✅ |
 | Licence | `LICENSE` (MIT), README, CONTRIBUTING, PKGBUILD | none | ❌ PKGBUILD says GPL (KI-13) |
 

@@ -152,8 +152,6 @@ step "CSS publication (tools/check-apply-publication.py)" \
     python3 "$TMP/tools/check-apply-publication.py"
 step "integration reconciliation (tools/check-integration-reconcile.py)" \
     python3 "$TMP/tools/check-integration-reconcile.py"
-step "panel blur events (tools/check-panel-blur-events.py)" \
-    python3 "$TMP/tools/check-panel-blur-events.py"
 step "incremental apply (tools/check-incremental-apply.py)" \
     python3 "$TMP/tools/check-incremental-apply.py"
 step "apply feedback (tools/check-apply-feedback.py)" \

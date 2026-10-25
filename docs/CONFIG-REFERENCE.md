@@ -43,7 +43,7 @@ implementation view.
 | `--all-extras` | | `extension-pack` | all 8 (`EXT_EXTRA_ALL`) |
 | `--no-extras` / `--minimal` | | `extension-pack` (empty file) | foundation only |
 | `--extensions LIST` | | `extension-pack` | comma-separated UUIDs, each must be in `EXT_EXTRA_ALL`. Empty means minimal. A remembered UUID that is no longer in the catalogue is dropped, not fatal |
-| `--full` | | `extension-pack`, `osd` | all extras + icons + cursors + OSD + panel-blur fix |
+| `--full` | | `extension-pack`, `osd` | all extras + icons + cursors + OSD |
 | `--osd` / `--no-osd` | on | `osd` (`0\|1`) | Custom OSD pill. A remembered `0` is what a flagless `--gui` update or `--force` reinstall reads back |
 | `--bms-git` / `--no-bms-git` | git | `bms-ref`, `bms-source` | `--no-bms-git` (EGO build) also forces popup and notification blur off. A remembered `ego` keeps a flagless re-run on the EGO build; `--bms-git`, `--popup-blur` or `--notification-blur` typed override it |
 | `--rounded-blur` / `--no-rounded-blur` | on | `rounded-blur-choice` (`0\|1`), `rounded-blur` (stamp) | gnome-rounded-blur. Only the typed flags write the choice: `--no-blur` forces it off for a run without that being a decision, and a remembered `1` never overrides it |
@@ -51,7 +51,7 @@ implementation view.
 | `--window-menu` / `--no-window-menu` | on | `window-menu` | "Blur This App" (the helper reads the memo live) |
 | `--update-check` / `--no-update-check` | on | `update-check` | daily timer |
 | `--update-channel release\|latest` | `release` | `update-channel` | what the check follows on `main`: tags, or commits (a new release is still announced) |
-| `--panel-blur-fix` / `--no-panel-blur-fix` | on if >1 monitor or a laptop | `panel-blur-fix` | panel blur rebuild service |
+| `--panel-blur-fix` / `--no-panel-blur-fix` | | none | retired: accepted and ignored. The rebuild service is removed on every run (`remove_panel_blur_unit`), with its `panel-blur-fix` memo |
 | `--gdm` / `--no-gdm`, `--gdm-background PATH` | off | `gdm-installed` | root |
 | `--gdm-monitors` (`--sync-monitors`) / `--no-gdm-monitors` | off | `gdm-monitors-synced` | root |
 
@@ -188,7 +188,7 @@ by `save_glass_mode_memos`.
 |---|---|---|
 | `repo-path` | the checkout the GUI, preview, update check and worker run from. **Only written when the GUI is installed** | `install_gui` |
 | `apply-source-fingerprint` | sha256 of the apply sources | `--incremental` full fallback |
-| `panel-blur-fix`, `update-check` | `0\|1` | `install_panel_blur_unit`, `install_update_check` |
+| `update-check` | `0\|1` | `install_update_check` |
 | `update-channel` | `release\|latest`. Still written, **no longer read**: every commit on main is offered as a tag (`v0.3.5+N`) either way | `install_update_check` |
 | `update-available` | the version a check found: a release `vX.Y.Z`, a tag `vX.Y.Z+N`, or `branch@sha` on a test build | `aura-glass-update-check` |
 | `rounded-blur` | build stamp | `rounded_blur_stamp` |
@@ -256,7 +256,6 @@ cursor-size and font keys (what `original` / `system` restore).
 | `AURA_GLASS_THEME` (`TAHOE_GLASS_THEME`) | `aura-glass-apply`, preview harness | theme directory name |
 | `AURA_GLASS_GUI` | `aura-glass-settings` | run the window from a checkout's `gui/` |
 | `AURA_GLASS_ICONS` | `aura-glass-icon-sync` | icon base to follow |
-| `AURA_GLASS_BLUR_SETTLE` | `aura-glass-panel-blur` | settle seconds (default 3) |
 | `AURA_GLASS_OPERATION_TIMEOUT` | operation lock | seconds to wait (default 30) |
 | `AURA_GLASS_OPERATION_FD` | operation lock | the inherited lock descriptor (internal) |
 | `AURA_GLASS_OPERATION_PREVIEW` | operation lock | which `aura-glass-preview` handles `app-blur` (set for checkout runs) |

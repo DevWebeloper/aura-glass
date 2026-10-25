@@ -30,8 +30,8 @@ flag means. Every other program composes flags or calls those functions.
 
 | Run | Command | What it does | Needs |
 |---|---|---|---|
-| **Full install** | `./install.sh [flags]` | deps → base theme → extensions → rounded-blur → icons → cursors → fonts → dconf preset → CSS → gsettings → extensions on/off → integrations (icon sync, GUI, update timer, Flatpak override, panel-blur unit, adaptive worker) → enable extensions → GDM (opt-in) → `finish` (log out) | network; root only for deps, rounded-blur fallback, GDM |
-| **Retune** | `./install.sh --settings-only [flags]` | optional pack/font install if those flags were given → dconf preset → CSS → gsettings → icon sync → extensions on/off → remember mode → GUI, update timer, panel-blur unit, adaptive worker → GDM sync (if installed) | nothing. Offline, unprivileged, a few seconds |
+| **Full install** | `./install.sh [flags]` | deps → base theme → extensions → rounded-blur → icons → cursors → fonts → dconf preset → CSS → gsettings → extensions on/off → integrations (icon sync, GUI, update timer, Flatpak override, retired panel-blur unit removed, adaptive worker) → enable extensions → GDM (opt-in) → `finish` (log out) | network; root only for deps, rounded-blur fallback, GDM |
+| **Retune** | `./install.sh --settings-only [flags]` | optional pack/font install if those flags were given → dconf preset → CSS → gsettings → icon sync → extensions on/off → remember mode → GUI, update timer, retired panel-blur unit removed, adaptive worker → GDM sync (if installed) | nothing. Offline, unprivileged, a few seconds |
 
 `--settings-only` refuses to run unless `$CONF_DIR` and the theme directory
 exist.
@@ -350,7 +350,6 @@ Catalogued in `lib/steps.sh`:
 | Unit | Runs | Why |
 |---|---|---|
 | `aura-glass-icon-sync.service` | `aura-glass-icon-sync` | Icon packs ship `-Light`/`-Dark` variants and GNOME's key holds one name. This follows the light/dark preference. |
-| `aura-glass-panel-blur.service` | `aura-glass-panel-blur` → `aura_glass_panel_blur.py` | Rebuilds BMS panel blur after monitor layout changes. Default on for multi-monitor setups and laptops. |
 | `aura-glass-gdm-sync.service` | `aura-glass-gdm-sync` | Pushes the wallpaper and primary monitor to GDM, and warns at login when a package update has replaced the themed gresource (KI-30). Present only if GDM was themed or synced. |
 | `aura-glass-update-check.{service,timer}` | `aura-glass-update-check --notify` | Runs `git ls-remote` daily. Notifies once per release and never installs. |
 | `aura-glass-adaptive.service` | `aura-glass-adaptive` → `aura_glass_adaptive.py` | Adaptive performance (§4). Enabled in Frosted only. |

@@ -71,7 +71,7 @@ BMS_STATIC_PATCH="blur-my-shell-static-maximized.patch"
 # Applied after BMS_STATIC_PATCH: upstream's top-bar blur is a copy of the
 # monitor's wallpaper sized when it is built, and its only answer to a monitor
 # change is reset(), which drops the bar's style classes for a frame (the flash
-# the aura-glass-panel-blur rebuild also causes) and is skipped when no
+# the retired aura-glass-panel-blur rebuild caused too) and is skipped when no
 # work-area change follows. That left a strip of misaligned blur after login on
 # a laptop with a second monitor. This swaps a stale copy in place, in one
 # frame, after every layout change and once after startup. See the patch's own

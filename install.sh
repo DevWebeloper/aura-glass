@@ -82,8 +82,6 @@ OSD_EXPLICIT=""
 WINDOW_MENU_EXPLICIT=""
 # Empty = no answer yet: the remembered one, and then the monitor count,
 # decide it further down.
-WANT_PANEL_BLUR_FIX=""
-PANEL_BLUR_FIX_EXPLICIT=""
 WANT_GDM=0
 GDM_EXPLICIT=""
 WANT_GDM_MONITORS=0
@@ -187,7 +185,7 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --recommended     Core package: the foundation plus six curated optional
                       extensions (the default)
     --full            Complete Experience: every optional piece at once — all
-                      8 extra extensions, plus icons, cursors, OSD and panel-blur-fix
+                      8 extra extensions, plus icons, cursors and OSD
     --extras          alias for --recommended (Core)
     --all-extras      Complete Experience extension package: all 8 optionals
     --no-extras       Minimal package: the foundation only, with no optionals
@@ -245,9 +243,6 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       window,menu,quick-settings,notification,dialog,popup,osd,button
                       (e.g. 30,26,33,20,20,20,12,9999). Each is bounded by what
                       the presets already cover. Overrides --radius-preset
-    --panel-blur-fix  agent that rebuilds Blur My Shell's panel blur on layout change
-                      (default: on when this machine has more than one monitor)
-    --no-panel-blur-fix skip the panel blur rebuild agent
     --icons WHICH     colloid (default), reversal or hatter, either bare to
                       follow --accent or with a colour of its own: colloid-teal,
                       reversal-purple, hatter-slate. Colloid and Hatter take
@@ -369,7 +364,7 @@ parse_flags() {
         --extensions)    EXT_LIST="${2:-}"; EXT_LIST_EXPLICIT=1; EXT_PACK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --extensions=*)  EXT_LIST="${1#*=}"; EXT_LIST_EXPLICIT=1; EXT_PACK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --full)          WANT_EXTRAS=1; EXT_EXTRA=("${EXT_EXTRA_ALL[@]}"); EXT_PACK_EXPLICIT=1; WANT_ICONS=1; WANT_CURSORS=1
-                         WANT_OSD=1; OSD_EXPLICIT=1; WANT_PANEL_BLUR_FIX=1; EXPLICIT_FLAGS=1; shift ;;
+                         WANT_OSD=1; OSD_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --grain)         GRAIN="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --grain=*)       GRAIN="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --no-grain)      GRAIN=0; EXPLICIT_FLAGS=1; shift ;;
@@ -400,8 +395,10 @@ parse_flags() {
         --radius-preset) RADIUS_PRESET="${2:-}"; RADIUS_PRESET_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --radius-preset=*)
                          RADIUS_PRESET="${1#*=}"; RADIUS_PRESET_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --panel-blur-fix)    WANT_PANEL_BLUR_FIX=1; PANEL_BLUR_FIX_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-panel-blur-fix) WANT_PANEL_BLUR_FIX=0; PANEL_BLUR_FIX_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        # Retired with the rebuild service (see remove_panel_blur_unit). Still
+        # accepted, so a script or an older settings window that passes one
+        # does not stop the run; there is nothing left for either to choose.
+        --panel-blur-fix|--no-panel-blur-fix) shift ;;
         --cursors)       CURSORS="${2:-}"; CURSORS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --cursors=*)     CURSORS="${1#*=}"; CURSORS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --cursor-size)   CURSOR_SIZE="${2:-}"; CURSOR_SIZE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
@@ -1286,21 +1283,6 @@ fi
 # One flag decides both so they cannot be remembered disagreeing with each other.
 [ -n "$RADIUS_CUSTOM_EXPLICIT" ] && { RADIUS_PRESET="custom"; RADIUS_PRESET_EXPLICIT=1; }
 
-if [ -z "$PANEL_BLUR_FIX_EXPLICIT" ] && [ -r "$CONF_DIR/panel-blur-fix" ]; then
-    WANT_PANEL_BLUR_FIX="$(cat "$CONF_DIR/panel-blur-fix" 2>/dev/null || true)"
-fi
-# Neither a flag nor a memo: the agent exists for layouts that change, so a
-# machine with more than one screen gets it and a single screen is left alone.
-# A laptop gets it too: installed with nothing docked it counts one monitor,
-# then breaks its panel blur the first time an external screen comes or goes.
-if [ -z "$WANT_PANEL_BLUR_FIX" ]; then
-    if [ "$(monitor_count)" -gt 1 ] || has_builtin_panel; then
-        WANT_PANEL_BLUR_FIX=1
-    else
-        WANT_PANEL_BLUR_FIX=0
-    fi
-fi
-
 # Resolve remembered GDM choice on updates or runs without explicit GDM flags
 if [ -z "$GDM_EXPLICIT" ] && [ -r "$CONF_DIR/gdm-installed" ]; then
     WANT_GDM=1
@@ -1634,10 +1616,9 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     install_gui
     install_update_check
     install_wallpapers
-    # Local, quick, needs nothing and is a plain user systemd unit — the same
-    # grounds install_gui is here on. Without it the window's switch for it
-    # would write a memo that nothing acted on until the next full install.
-    install_panel_blur_unit
+    # Local and quick, so a retune clears the retired rebuild service too and an
+    # existing install does not wait for its next full run to lose the flash.
+    remove_panel_blur_unit
     install_adaptive_performance
     if [ -r "$CONF_DIR/gdm-installed" ] || [ -r "$CONF_DIR/gdm-monitors-synced" ]; then
         install_gdm_sync_unit
@@ -1691,7 +1672,7 @@ install_gui
 install_update_check
 install_wallpapers
 flatpak_override
-install_panel_blur_unit
+remove_panel_blur_unit
 install_adaptive_performance
 enable_extensions
 if [ "$WANT_GDM_MONITORS" = 1 ]; then

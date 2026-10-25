@@ -337,7 +337,7 @@ RESET_MEMOS=(
     popup-blur notification-blur
     adaptive-profile adaptive-fullscreen-apps
     icon-pack icons cursor-pack cursor-size font
-    panel-blur-fix update-check update-channel rounded-blur-choice
+    update-check update-channel rounded-blur-choice
     extension-pack extension-catalog osd bms-source
 )
 

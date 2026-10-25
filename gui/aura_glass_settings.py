@@ -75,7 +75,6 @@ the apply log and the confirmations have as much reason to be dragged off as
 the tint picker does.
 """
 import fnmatch
-import glob
 import json
 import math
 import os
@@ -621,7 +620,7 @@ SEARCH_INDEX = {
                   "vitals", "custom osd", "open bar"],
     "packages": ["icon pack", "cursor pack", "remove pack", "disk"],
     "system": ["dependencies", "rounded blur library", "gdm", "login screen",
-              "monitor", "panel blur", "password", "sudo"],
+              "monitor", "password", "sudo"],
     "updates": ["release", "version", "changelog", "history", "tag",
                 "downgrade", "maintenance", "update check", "notification",
                 "repair", "reapply", "reinstall", "reset", "defaults"],
@@ -654,8 +653,6 @@ FLAG_LABELS = {
     "--update-check": ("updates", "Daily update check"),
     "--no-update-check": ("updates", "Daily update check"),
     "--update-channel": ("updates", "Update channel"),
-    "--panel-blur-fix": ("system", "Panel blur fix"),
-    "--no-panel-blur-fix": ("system", "Panel blur fix"),
     "--radius-preset": ("radius", "Corner rounding"),
     "--radius-custom": ("radius", "Corner rounding"),
     "--glass-mode": ("glass", "Glass mode"),
@@ -1077,36 +1074,6 @@ def parse_radius_custom(raw):
         if not low <= value <= high:
             return None
     return tuple(values)
-
-
-def monitor_count():
-    """How many screens this machine has — monitor_count() in lib/common.sh.
-
-    The same two sources in the same order, so the switch below draws the state
-    a flagless install.sh would have chosen: what the session is driving, and
-    the connectors DRM sees, whichever is larger. A laptop with its lid shut
-    around an external screen has two monitors and only DRM says so.
-    """
-    session = 0
-    display = Gdk.Display.get_default()
-    if display is not None:
-        session = display.get_monitors().get_n_items()
-
-    drm = 0
-    for status in glob.glob("/sys/class/drm/card*-*/status"):
-        try:
-            with open(status, encoding="utf-8") as fh:
-                drm += fh.read().strip() == "connected"
-        except OSError:
-            pass
-
-    return max(session, drm, 1)
-
-
-def has_builtin_panel():
-    """Whether this machine is a laptop — has_builtin_panel() in lib/common.sh."""
-    return any(glob.glob("/sys/class/drm/card*-%s-*" % kind)
-               for kind in ("eDP", "LVDS", "DSI"))
 
 
 def read_memo(name, default=""):
@@ -2685,16 +2652,6 @@ class Settings:
         # Off unless asked, as apply_fullscreen_blur defaults it.
         self.fullscreen_blur = read_memo("fullscreen-blur", "0") == "1"
 
-        # A user systemd unit rather than a look, but a remembered setting like
-        # any other, so it rides on Apply.
-        # Its default is the machine's, not a literal: the rebuild is for
-        # layouts that change, so install.sh turns it on for more than one
-        # monitor or a laptop and leaves a single desktop screen alone. Same
-        # rule here, or the switch would show a state nothing has agreed to.
-        self.panel_blur_fix = read_memo(
-            "panel-blur-fix",
-            "1" if monitor_count() > 1 or has_builtin_panel() else "0") != "0"
-
         self.update_check = read_memo("update-check", "1") != "0"
         self.update_channel = read_memo("update-channel", "release")
         if self.update_channel not in [c[0] for c in UPDATE_CHANNELS]:
@@ -2843,9 +2800,6 @@ class Settings:
                         else "--no-update-check")
         if self.update_channel != other.update_channel:
             args += ["--update-channel", self.update_channel]
-        if self.panel_blur_fix != other.panel_blur_fix:
-            args.append("--panel-blur-fix" if self.panel_blur_fix
-                        else "--no-panel-blur-fix")
 
         # Only ever on the way to a layout, never back to none. There is no flag
         # for "stop having an opinion" because there is nothing to restore to:
@@ -5789,9 +5743,6 @@ class Window(Adw.ApplicationWindow):
         self._rounded_row.add_suffix(self._rounded_button)
         group.add(self._rounded_row)
 
-        # Two separate things, despite both being "multi-monitor". This one is
-        # a user systemd unit and rides on Apply with everything else; the sync
-        # below copies into /etc and GDM's own home, and cannot.
         self._gdm_monitors_row = Adw.ActionRow(
             title="Sync the monitor layout to the login screen",
             subtitle="Copies ~/.config/monitors.xml so GDM opens on the same "
@@ -5807,20 +5758,6 @@ class Window(Adw.ApplicationWindow):
         self._gdm_row.add_suffix(self._gdm_button)
         group.add(self._gdm_row)
         page.add(group)
-
-        local = Adw.PreferencesGroup(
-            title="Runs without a password",
-            description="A user systemd unit — rides on Apply like everything "
-                        "else here.")
-        self._panel_blur_row = Adw.SwitchRow(
-            title="Rebuild the panel blur after a monitor change",
-            subtitle="Fixes a strip of wrong panel blur left over from login, "
-                     "before anything nudges it right",
-            active=self._applied.panel_blur_fix)
-        self._panel_blur_row.connect("notify::active", self._on_changed,
-                                     "panel_blur_fix")
-        local.add(self._panel_blur_row)
-        page.add(local)
 
         self._sync_system()
         self._check_deps()
@@ -7397,7 +7334,6 @@ class Window(Adw.ApplicationWindow):
             self._glass_style_row.get_selected()]
         s.liquid_windows = self._liquid_windows_row.get_active()
         s.fullscreen_blur = self._fullscreen_blur_row.get_active()
-        s.panel_blur_fix = self._panel_blur_row.get_active()
         s.update_check = self._update_check_row.get_active()
         # Not settings, so they never differ and never produce a flag. Carried so
         # flags_against sees a complete object either way.
@@ -7673,7 +7609,6 @@ class Window(Adw.ApplicationWindow):
             self._applied.glass_style, "glass_style")
         self._liquid_windows_row.set_active(self._applied.liquid_windows)
         self._fullscreen_blur_row.set_active(self._applied.fullscreen_blur)
-        self._panel_blur_row.set_active(self._applied.panel_blur_fix)
         self._update_check_row.set_active(self._applied.update_check)
         self._loading = False
         self._rebuild_app_list()
