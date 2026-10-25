@@ -12,6 +12,29 @@ diff -ruN a/cursor.js b/cursor.js
      controlCursorVisibility(showCursor) {
          // Idempotent behavior: do nothing if state already matches
          if (showCursor && !this._hidden)
+@@ -55,15 +59,20 @@
+         this._hidden = !showCursor;
+     }
+ 
++    // The reverse of hide(): visible first, then unfocus allowed again.
++    // Released the other way round, Mutter re-picks the pointer focus while
++    // the pointer is still hidden, meta_wayland_pointer_set_focus refuses it
++    // (its assertion is in the journal), and no surface owns the pointer, so
++    // no cursor is drawn until the next motion event.
+     show() {
+         const seat = this._getDefaultSeat();
+ 
++        this.controlCursorVisibility(true);
++
+         if (this._unfocusInhibited) {
+             seat.uninhibit_unfocus();
+             this._unfocusInhibited = false;
+         }
+-
+-        this.controlCursorVisibility(true);
+     }
+ 
+     hide() {
 diff -ruN a/effect.js b/effect.js
 --- a/effect.js
 +++ b/effect.js
