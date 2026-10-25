@@ -91,7 +91,7 @@ a restart.
 | Feature | Files |
 |---|---|
 | Icon packs + accent mapping | `lib/steps-assets.sh` (`install_icons`, `icon_base`, `accent_to_*`), `bin/aura-glass-icon-sync` (light/dark) |
-| Pointer packs, size | `lib/steps-assets.sh` (`install_cursors`, `install_moga_cursors`), `tools/moga_cursor.py`, `apply_cursor_theme`, `apply_cursor_size` |
+| Pointer packs, size | `lib/steps-assets.sh` (`install_cursors`, `install_moga_cursors`), `tools/moga_cursor.py`, `apply_cursor_theme`, `apply_cursor_size`, `wiggly_cursor_svg` (Wiggly's magnified pointer) |
 | Fonts | `lib/steps-fonts.sh`, `apply_font` |
 | Extension catalogue | `lib/steps.sh` (arrays, `ext_description`), `bin/aura-glass-ext`, `lib/steps-extensions.sh` |
 | Blur This App (window menu) | `extensions/aura-glass-blur@aura-glass.local/extension.js` → `aura-glass-operation app-blur` |

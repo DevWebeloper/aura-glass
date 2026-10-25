@@ -1629,10 +1629,6 @@ sync_cursor_theme_files() {
     [ -n "$cursor" ] || return 0
     [ "${DRY_RUN:-0}" = 1 ] && return 0
 
-    if [ -d "$HOME/.local/share/icons/$cursor/cursors" ]; then
-        ensure_scalable_cursors "$HOME/.local/share/icons/$cursor"
-    fi
-
     mkdir -p "$HOME/.icons/default" "$HOME/.local/share/icons/default"
     printf '[Icon Theme]\nName=Default\nComment=Default Cursor Theme\nInherits=%s\n' "$cursor" > "$HOME/.icons/default/index.theme"
     printf '[Icon Theme]\nName=Default\nComment=Default Cursor Theme\nInherits=%s\n' "$cursor" > "$HOME/.local/share/icons/default/index.theme"
@@ -1641,6 +1637,15 @@ sync_cursor_theme_files() {
     for c in "$HOME/.local/share/icons"/Aura-Glass-Moga-* "$HOME/.local/share/icons"/MacTahoe* "$HOME/.local/share/icons"/aosp*; do
         [ -d "$c" ] || continue
         ln -sfn "$c" "$HOME/.icons/$(basename "$c")"
+    done
+    # Earlier runs wrapped every Xcursor in these packs as a PNG inside an SVG
+    # under cursors_scalable/. Neither Mutter 51 nor GTK 4 reads that directory
+    # (both draw the Xcursor files), so it was dead weight with a colour bug.
+    # Only our own wrappers go: an upstream vector set has no embedded PNG.
+    for c in "$HOME/.local/share/icons"/Aura-Glass-Moga-*; do
+        if grep -qs 'data:image/png;base64' "$c/cursors_scalable/default/default.svg"; then
+            run rm -rf "$c/cursors_scalable"
+        fi
     done
 
     if [ -f "$HOME/.config/gtk-3.0/settings.ini" ]; then
@@ -1686,11 +1691,6 @@ apply_cursor_theme() {
     fi
 
     if [ -n "$cursor" ]; then
-        if declare -f ensure_scalable_cursors >/dev/null 2>&1 \
-           && [ -d "$HOME/.local/share/icons/$cursor" ] \
-           && [ ! -d "$HOME/.local/share/icons/$cursor/cursors_scalable" ]; then
-            ensure_scalable_cursors "$HOME/.local/share/icons/$cursor"
-        fi
         run gsettings set org.gnome.desktop.interface cursor-theme "$cursor"
         sync_cursor_theme_files "$cursor"
         APPLIED_CURSOR="$cursor"
@@ -1709,13 +1709,116 @@ apply_cursor_theme() {
     fi
 }
 
-# Wiggly draws its magnified pointer from one SVG. Pointed at the default.svg
-# that ensure_scalable_cursors made for the active theme, the shaken cursor is
-# the same pointer at a larger size instead of Wiggly's own black arrow. A theme
-# with no SVG resets the key, so Wiggly falls back to its bundled icon rather
-# than a file from the previous theme. Its tuning keys come from extras.ini on
-# a fresh install; an update leaves dconf alone, so a key never set is filled
-# here with the same value.
+# Prints the SVG Wiggly should draw for cursor theme $1, or nothing. A theme
+# that ships a vector set (MacTahoe, AOSP) is used as it is, through the file
+# its cursors_scalable/default/metadata.json names: AOSP's is arrow.svg behind a
+# default -> arrow symlink, not default.svg. Any other theme has its Xcursor
+# default (or left_ptr) converted once, largest size, into
+# $CONF_DIR/wiggly-cursor/<theme>.svg. One file per theme so that switching
+# themes changes cursor-path, which is the only thing that makes Wiggly reload.
+# The theme directory itself is never written. Inherits is not followed: a
+# theme that has no default of its own gets Wiggly's bundled icon.
+wiggly_cursor_svg() {
+    python3 - "$1" "$CONF_DIR/wiggly-cursor" \
+              "$HOME/.local/share/icons" "$HOME/.icons" /usr/share/icons <<'PY'
+import base64, json, os, struct, sys, zlib
+
+theme, out_dir, roots = sys.argv[1], sys.argv[2], sys.argv[3:]
+if not theme or "/" in theme:
+    sys.exit(0)
+tdir = next((os.path.join(r, theme) for r in roots
+             if os.path.isdir(os.path.join(r, theme))), None)
+if tdir is None:
+    sys.exit(0)
+
+# The vector set, unless it is one of the PNG-in-SVG wrappers older runs made.
+meta = os.path.join(tdir, "cursors_scalable", "default", "metadata.json")
+try:
+    with open(meta, encoding="utf-8") as f:
+        svg = os.path.join(os.path.dirname(meta), json.load(f)[0]["filename"])
+    with open(svg, "rb") as f:
+        if b"data:image/png;base64" not in f.read():
+            print(svg)
+            sys.exit(0)
+except (OSError, ValueError, LookupError, TypeError):
+    pass
+
+def first_frame_of_largest(path):
+    with open(path, "rb") as f:
+        data = f.read()
+    if len(data) < 16:
+        return None
+    magic, _, _, ntoc = struct.unpack_from("<IIII", data)
+    if magic != 0x72756358:  # "Xcur"
+        return None
+    best = None
+    for i in range(ntoc):
+        if 16 + i * 12 + 12 > len(data):
+            break
+        kind, size, pos = struct.unpack_from("<III", data, 16 + i * 12)
+        if kind != 0xfffd0002 or pos + 36 > len(data):
+            continue
+        w, h = struct.unpack_from("<II", data, pos + 16)
+        if pos + 36 + w * h * 4 > len(data):
+            continue
+        if best is None or size > best[0]:
+            best = (size, w, h, data[pos + 36:pos + 36 + w * h * 4])
+    return best
+
+frame = None
+for name in ("default", "left_ptr"):
+    try:
+        frame = first_frame_of_largest(os.path.join(tdir, "cursors", name))
+    except OSError:
+        frame = None
+    if frame:
+        break
+if not frame:
+    sys.exit(0)
+
+# Xcursor pixels are premultiplied ARGB, little-endian; PNG wants straight RGBA.
+_, w, h, px = frame
+rows = bytearray()
+for y in range(h):
+    rows.append(0)
+    for x in range(w):
+        b, g, r, a = px[(y * w + x) * 4:(y * w + x) * 4 + 4]
+        if 0 < a < 255:
+            r, g, b = (min(255, c * 255 // a) for c in (r, g, b))
+        rows += bytes((r, g, b, a))
+def chunk(tag, body):
+    return (struct.pack(">I", len(body)) + tag + body
+            + struct.pack(">I", zlib.crc32(tag + body) & 0xffffffff))
+png = (b"\x89PNG\r\n\x1a\n"
+       + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
+       + chunk(b"IDAT", zlib.compress(bytes(rows), 9)) + chunk(b"IEND", b""))
+body = ('<svg xmlns="http://www.w3.org/2000/svg" '
+        'xmlns:xlink="http://www.w3.org/1999/xlink" width="%d" height="%d" '
+        'viewBox="0 0 %d %d">\n  <image width="%d" height="%d" '
+        'xlink:href="data:image/png;base64,%s"/>\n</svg>\n'
+        % (w, h, w, h, w, h, base64.b64encode(png).decode("ascii")))
+out = os.path.join(out_dir, theme + ".svg")
+try:
+    with open(out, encoding="utf-8") as f:
+        same = f.read() == body
+except OSError:
+    same = False
+if not same:
+    os.makedirs(out_dir, exist_ok=True)
+    with open(out + ".tmp", "w", encoding="utf-8") as f:
+        f.write(body)
+    os.replace(out + ".tmp", out)
+print(out)
+PY
+}
+
+# Wiggly draws its magnified pointer from one SVG. Pointed at the one
+# wiggly_cursor_svg finds for the active theme, the shaken cursor is the same
+# pointer at a larger size instead of Wiggly's own black arrow. A theme with no
+# SVG resets the key, so Wiggly falls back to its bundled icon rather than a
+# file from the previous theme. Its tuning keys come from extras.ini on a fresh
+# install; an update leaves dconf alone, so a key never set is filled here with
+# the same value.
 apply_wiggly_cursor() {
     [ "${DRY_RUN:-0}" = 1 ] && return 0
     case " ${EXT_EXTRA[*]:-} " in *" wiggly@mojarch "*) ;; *) return 0 ;; esac
@@ -1727,14 +1830,9 @@ apply_wiggly_cursor() {
             || dconf write "$base/$key" "$val" 2>/dev/null || true
     done < <(sed -n '/^\[wiggly\]/,/^\[/p' "$REPO_ROOT/dconf/extras.ini")
 
-    local theme svg="" d
+    local theme svg
     theme="$(gsettings get org.gnome.desktop.interface cursor-theme 2>/dev/null | tr -d "'")"
-    for d in "$HOME/.local/share/icons" "$HOME/.icons" /usr/share/icons; do
-        if [ -f "$d/$theme/cursors_scalable/default/default.svg" ]; then
-            svg="$d/$theme/cursors_scalable/default/default.svg"
-            break
-        fi
-    done
+    svg="$(wiggly_cursor_svg "$theme" 2>/dev/null || true)"
     if [ -n "$svg" ]; then
         # Only when it moved: an identical write still reaches Wiggly as a change.
         [ "$(dconf read "$base/cursor-path" 2>/dev/null || true)" = "'$svg'" ] \
