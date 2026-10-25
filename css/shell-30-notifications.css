@@ -28,6 +28,12 @@
 
 /* Stacked notifications: when multiple notifications arrive from the same app,
  * the lower cards peek out behind the top card with gentle translucent dark glass steps.
+ *
+ * Neither step carries a shadow. Whenever Blur My Shell's popup component is
+ * on (popup or notification blur), it clips each lower card to the sliver that
+ * shows (set_clip() in its message_stacks.js), and a clip cuts a shadow at the
+ * card's box: the soft shadow filled the space outside the rounded corners and
+ * ended in a hard rectangle, a square band under the second card's rounded one.
  */
 .popup-menu .message:second-in-stack,
 .message:second-in-stack {
@@ -35,7 +41,7 @@
   background-image: none !important;
   border: 1px solid rgba(255, 255, 255, 0.05) !important;
   border-radius: 20px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15) !important;
+  box-shadow: none !important;
 }
 
 .popup-menu .message:lower-in-stack,

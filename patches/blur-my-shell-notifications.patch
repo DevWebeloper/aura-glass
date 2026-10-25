@@ -205,7 +205,7 @@ index 4b68d7e..0eaa66c 100644
  
      _get_keyboard_actors() {
 diff --git a/src/components/popup/message_stacks.js b/src/components/popup/message_stacks.js
-index 52c796f..8c30948 100644
+index 52c796f..38ad6fe 100644
 --- a/src/components/popup/message_stacks.js
 +++ b/src/components/popup/message_stacks.js
 @@ -1,13 +1,27 @@
@@ -237,7 +237,30 @@ index 52c796f..8c30948 100644
          this.containers = new Set();
          this.groups = new Set();
          this.messages = new Set();
-@@ -88,6 +102,7 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
+@@ -24,6 +38,22 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
+ 
+     enable() {
+         this.enabled = true;
++
++        // A card's effect copies sigma and the corner radius when it is
++        // attached, and nothing else re-reads them: the banner and popover
++        // surfaces follow these keys through their own pipelines, the cards
++        // did not. A blur strength change, an adaptive downshift or a radius
++        // preset left every card already in the list at the old values, a
++        // blurrier pass or a square corner under the popover's new one, until
++        // the next reset. The shared connections are dropped by the popup
++        // component's disable(), after this class's own.
++        const popup_settings = this.settings?.popup?.settings;
++        if (popup_settings)
++            this.connect(
++                popup_settings,
++                ['changed::sigma', 'changed::notification-corner-radius'],
++                () => this.update_blur_all()
++            );
+     }
+ 
+     track_container(container) {
+@@ -88,6 +118,7 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
  
          this.messages.add(message);
          this.update_message(message);
@@ -245,7 +268,7 @@ index 52c796f..8c30948 100644
  
          this.connect(
              message,
-@@ -112,12 +127,102 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
+@@ -112,12 +143,102 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
              'destroy',
              () => {
                  this.cancel_update(message);
@@ -348,7 +371,7 @@ index 52c796f..8c30948 100644
      track_group(group) {
          if (!this.watch_actor(group) || this.groups.has(group))
              return;
-@@ -592,7 +697,10 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
+@@ -592,7 +713,10 @@ export const PopupBlurMessageStacks = class PopupBlurMessageStacks {
      disable() {
          this.update_ids.forEach(id => GLib.source_remove(id));
          this.update_ids.clear();

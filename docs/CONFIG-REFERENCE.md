@@ -31,6 +31,9 @@ implementation view.
 | `--plan-json` | With `--settings-only --incremental --dry-run`: print the action plan as JSON and exit. |
 | `--adaptive-blur active\|restore` | Private to the adaptive worker. Needs `--settings-only --incremental`. Never memoed. |
 | `--deps-only` | Install missing dependencies, then exit (needs root). |
+| `--progress-window` | Full install only: open the progress window (`gui/aura_glass_install_progress.py`) beside the terminal. On by itself after the GTK wizard. Not memoed. |
+| `--verify` | Check an existing install (`verify_install`) and exit, 1 if a check failed. Resolves like a flagless run. |
+| `--progress-dir DIR` | Private to the progress window's "Check again": `--verify` appends its check events to `DIR/events`. |
 | `--no-deps` | Never touch the package manager. |
 | `--force` | Reinstall what's present and **reload the dconf preset** over existing extension settings. |
 | `-h`, `--help` | Usage. |
@@ -39,8 +42,8 @@ implementation view.
 
 | Flag | Default | Memo | Notes |
 |---|---|---|---|
-| `--recommended` / `--extras` | ✓ | `extension-pack` | 6 optional extensions (`EXT_EXTRA_RECOMMENDED`). The pack memo is written only when a flag or a wizard picked the pack; a run with none reads it back |
-| `--all-extras` | | `extension-pack` | all 8 (`EXT_EXTRA_ALL`) |
+| `--recommended` / `--extras` | ✓ | `extension-pack` | 7 optional extensions (`EXT_EXTRA_RECOMMENDED`). The pack memo is written only when a flag or a wizard picked the pack; a run with none reads it back |
+| `--all-extras` | | `extension-pack` | all 9 (`EXT_EXTRA_ALL`) |
 | `--no-extras` / `--minimal` | | `extension-pack` (empty file) | foundation only |
 | `--extensions LIST` | | `extension-pack` | comma-separated UUIDs, each must be in `EXT_EXTRA_ALL`. Empty means minimal. A remembered UUID that is no longer in the catalogue is dropped, not fatal |
 | `--full` | | `extension-pack`, `osd` | all extras + icons + cursors + OSD |
@@ -195,6 +198,8 @@ by `save_glass_mode_memos`.
 | `rounded-blur-choice` | `0\|1`, only after a typed `--rounded-blur` / `--no-rounded-blur`. Only a `0` is read back | `install_rounded_blur`; read in `install.sh`'s resolution block |
 | `extension-pack` | comma-separated UUIDs of the optional extensions chosen. Empty file = Minimal. Absent = the Recommended seven | `install_extensions`; read in the resolution block |
 | `extension-catalog` | comma-separated UUIDs of `EXT_EXTRA_ALL` when the pack was chosen. A recommended extension missing from it joins a non-empty pack on an update. Absent = everything but `EXT_EXTRA_ADDED_LATER` | `install_extensions`; read in the resolution block |
+| `dconf-shipped` | `<ini>\t<section/key>\t<value>` lines: every value a preset has been loaded or merged at, appended, never rewritten. An update writes a preset key only when it is missing or still holds one of these, so a value the user set is kept. Seeded from the preset's git history on the first merge. Removed by uninstall | `merge_dconf_preset` (in `load_dconf`) |
+| `kept-extensions` | one UUID per line: retired extensions the user chose to keep when asked. Not asked again | `disable_retired_extensions` |
 | `osd` | `0\|1`. Only a `0` is read back | `install_custom_osd`; read in the resolution block |
 | `bms-ref`, `bms-source` | installed BMS commit and `git\|ego`. `ego` is read back as `--no-bms-git` | `install_bms`; read in the resolution block |
 | `bms-overview-patch`, `bms-subwindow-patch`, `bms-notification-patch`, `bms-static-patch`, `bms-panel-patch`, `custom-osd-patch` (legacy `openbar-patch`), `rounded-blur-patch` | patch stamps | `patch_stamp_write` |
@@ -203,6 +208,7 @@ by `save_glass_mode_memos`.
 | `accent-from-wallpaper` | opt-in marker for the (currently uncatalogued) auto-accent extension | `bin/aura-glass-ext` writes it; `lib/steps-extensions.sh` reads it |
 | `preview-active`, `preview-backup/` | live preview marker and journal (sheets, BMS dump, memos, session id) | `aura-glass-preview` |
 | `uninstalled` | written by `uninstall.sh`, removed by the next install | |
+| `last-install/` | `events` (JSON lines), `log` (the terminal's output), `window` (the progress window's pid) for the last full install that had a progress window. Replaced each such run; a dry run uses a temp dir instead. Removed by uninstall | `progress_begin` (`lib/progress.sh`); read by the progress window |
 | `shell-*.css`, `gtk4-*.css`, `gtk3-*.css` | installed, rewritten copies spliced by `aura-glass-apply` | `install_css` |
 
 ### `$C/backups/`

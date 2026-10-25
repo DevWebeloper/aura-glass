@@ -31,11 +31,11 @@ For "which file draws this button / owns this setting", use
 
 | File | Owns |
 |---|---|
-| `common.sh` | Output helpers (`step info ok warn skip die`), `run` (dry-run aware), `install_if_changed`, `remembering`, `confirm`/`confirm_always`, `backup_once`, `gsettings_backup_once`/`gsettings_original`, pinned fetchers (`clone_pinned`, `clone_pinned_sparse`, `fetch_tarball_pinned`, `fetch_zip_pinned`), `gnome_major`, `monitor_count`, `multi_monitor_detected`, `prompt_logout`, patch stamps. |
+| `common.sh` | Output helpers (`step info ok warn skip die`, which call the progress hooks), `add_exit_trap`, `run` (dry-run aware), `install_if_changed`, `remembering`, `confirm`/`confirm_always`, `backup_once`, `gsettings_backup_once`/`gsettings_original`, pinned fetchers (`clone_pinned`, `clone_pinned_sparse`, `fetch_tarball_pinned`, `fetch_zip_pinned`), `gnome_major`, `monitor_count`, `multi_monitor_detected`, `prompt_logout`, patch stamps. |
 | `distro.sh` | `detect_distro` (arch/fedora/debian/suse), `missing_cmds`, `install_deps`, the GUI toolkit probe and hints, `pkg_owner`/`pkg_remove_cmd`, `ensure_aur_helper`. |
 | `steps.sh` | Upstream pins, paths (`CONF_DIR`, `EXT_DIR`, `SRC_CACHE`, `BACKUP_DIR`), extension arrays and `ext_description`, `preflight`, `install_theme`, `finish`. **Sourced first**, because flag parsing reads `CONF_DIR`. |
 | `steps-migrate.sh` | Moving from `tahoe-glass` to `aura-glass`: `migrate_legacy_names`, `merge_backups`, `adopt_theme_dir`, `sweep_theme_orphans`. The one-time solid-era migration, `migrate_solid_era`. |
-| `steps-extensions.sh` | EGO installs, the pinned BMS and Custom OSD builds plus patches, the first-party extension (`install_aura_ext`), `install_rounded_blur`, enable/queue helpers, `refresh_bms_after_dconf`, `disable_retired_extensions`. |
+| `steps-extensions.sh` | EGO installs, the pinned BMS and Custom OSD builds plus patches, the first-party extension (`install_aura_ext`), `install_rounded_blur` and `require_rounded_blur` (its stop-and-ask wrapper), enable/queue helpers, `refresh_bms_after_dconf`, `disable_retired_extensions`. |
 | `steps-assets.sh` | Icon packs (Colloid, Reversal, Hatter, MacTahoe) and accent mapping (`icon_base`, `accent_to_*`); pointers (Adwaita, AOSP, MacTahoe, Moga, original); `install_wallpapers`. |
 | `steps-fonts.sh` | `--font` installs: Inter, MiSans (Latin + Arabic), SF Pro. |
 | `steps-modes.sh` | Glass modes: `resolve_glass_mode`, `apply_glass_mode`, the drawers (`seed_glass_mode`, `load_glass_mode_memos`, `save_glass_mode_memos`), `remember_glass_mode`. |
@@ -45,6 +45,7 @@ For "which file draws this button / owns this setting", use
 | `steps-gdm.sh` | Login screen theme, wallpaper generation, monitor sync, and the GDM sync unit (all opt-in, root). |
 | `steps-gui.sh` | `install_gui` (settings window, launcher, preview, desktop entry, icon, the `repo-path` memo), `install_first_open_autostart`, `install_update_check`. |
 | `steps-wizard.sh` | `run_setup_wizard`, which runs the GTK wizard and reads its flags back. |
+| `progress.sh` | The progress window's side of a full install: `progress_begin` (tee to the log, launch the window), `progress_plan`/`progress_start`/`progress_end`/`progress_skip`, `progress_finish`, the `progress_note`/`progress_wait`/`progress_resume` hooks `common.sh` calls as no-ops otherwise, and `verify_install` (the checklist, also `--verify`). Sourced last. |
 | `steps-apply-plan.sh` | The incremental classifier (`select_apply_actions`) and `apply_source_fingerprint`. |
 
 ### `tokens/`
@@ -111,6 +112,7 @@ For "which file draws this button / owns this setting", use
 | File | What |
 |---|---|
 | `aura_glass_setup_wizard.py` | First-run GTK wizard. Prints flags on stdout. |
+| `aura_glass_install_progress.py` | A full install's progress window: bar, step checklist, checks, "Why?" per step and check, "Check again" (`install.sh --verify`), log out. Reads `$CONF_DIR/last-install/`. |
 | `aura_glass_settings.py` | The settings app (~7,000 lines): `Settings` (state read from memos), `flags_against`, the `Window` pages, `ShellBridge` (D-Bus client), terminal spawning, update logic. |
 | `preview_queue.py` | `PreviewQueue`: one active preview operation plus one replaceable pending one. Apply, Revert and Close take priority. |
 | `icons/io.github.DevWebeloper.AuraGlassSettings.svg` | App icon (also the README logo). |
@@ -221,6 +223,7 @@ the GPU. **Agents never run these.** Humans only: `preview.sh`,
 ```
 install.sh ──(not --help/--dry-run)──▶ aura-glass-operation run -- install.sh …
   ├─ run_setup_wizard ─▶ python3 gui/aura_glass_setup_wizard.py --repo R [--gdm-present]  (stdout = flags)
+  ├─ progress_begin ─▶ setsid python3 gui/aura_glass_install_progress.py --dir $CONF_DIR/last-install  (reads events + log)
   ├─ install_css ─▶ tools/{rescale-transparency,apply-tint-color,apply-shell-tint,
   │                       apply-notification-opacity,apply-radius-preset}.py
   │              └▶ ~/.local/bin/aura-glass-apply ─▶ (lock already held) splice 4 targets

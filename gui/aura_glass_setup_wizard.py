@@ -825,8 +825,9 @@ class Window(Adw.ApplicationWindow):
         page = Adw.PreferencesPage()
         group = Adw.PreferencesGroup(
             title="Ready to install",
-            description="The window closes and the terminal takes over — "
-                        "give it a minute.")
+            description="The install runs in the terminal, which asks for "
+                        "your password there. A window follows its progress "
+                        "and ends with a checklist and a log out button.")
 
         if answers.blur:
             scope = {"gtk": "GTK and GNOME apps",

@@ -83,6 +83,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 
 from preview_queue import PreviewQueue
@@ -2430,6 +2431,65 @@ def tag_changes(repo, sha):
         return commit_subjects(repo, parents[1], sha, limit=40)
     subject = git_out(repo, "log", "-1", "--format=%s", sha)
     return [subject] if subject else []
+
+
+def update_changelog(repo, target, notes):
+    """Everything an update to target brings, for the update window.
+
+    One section per release between the installed commit and target, oldest
+    boundary the installed commit, newest first, then one for the commits after
+    the last of them (a tag like v0.3.7+5, or a branch's tip). Each section is
+    the release's GitHub notes when it has any, then every commit it brought in,
+    as changes_markup groups them. notes is the {tag: (title, body)} the Updates
+    page already fetched; offline it is {} and the commits stand alone.
+
+    Read from the refs the checkout already has: opening the Updates page
+    fetched them, and aura-glass-update fetches again before it moves anything,
+    so at worst a release published in the last minute is missing here and
+    still installed.
+    """
+    if RELEASE_TAG.match(target) and git_out(
+            repo, "rev-parse", "-q", "--verify", "refs/tags/%s^{commit}" % target):
+        ref = "refs/tags/%s" % target
+    else:
+        ref = "refs/remotes/origin/%s" % target
+    head = git_out(repo, "rev-parse", "HEAD")
+    tip = git_out(repo, "rev-parse", "%s^{commit}" % ref)
+    sections = []
+    if not head or not tip or head == tip:
+        return sections
+
+    def ancestor(a, b):
+        return git_out(repo, "merge-base", "--is-ancestor", a, b) is not None
+
+    between = [r for r in list_releases(repo)
+               if r["sha"] != head and ancestor(r["sha"], tip)
+               and not ancestor(r["sha"], head)]
+    between.sort(key=lambda r: r["time"])
+    bounds = [head] + [r["sha"] for r in between]
+    stops = between + [None]
+    for since, release in zip(bounds, stops):
+        until = release["sha"] if release else tip
+        if release is None and between and until == between[-1]["sha"]:
+            break
+        subjects = commit_subjects(repo, since, until, limit=200)
+        if release is None and not subjects:
+            break
+        body = notes.get(release["tag"], ("", ""))[1] if release else ""
+        markup = markdown_markup(body) if body else ""
+        changes = changes_markup(subjects, empty="")
+        if changes:
+            markup = (markup + "\n\n" if markup else "") + changes
+        if release:
+            title, date = release["tag"], release["date"]
+        else:
+            title = version_name(repo, tip)
+            date = git_out(repo, "log", "-1", "--format=%cs", tip) or ""
+        sections.append({"title": title, "date": date, "count": len(subjects),
+                         "markup": markup or GLib.markup_escape_text(
+                             "Housekeeping only — nothing you would see.")})
+    sections.reverse()
+    return sections
 
 
 def updates_snapshot(repo, fetch):
@@ -5854,7 +5914,7 @@ class Window(Adw.ApplicationWindow):
             "own home directory, so it needs your password. A terminal will "
             "open and ask for it.",
             "Sync",
-            self._install_cmd("--gdm-monitors --yes"),
+            self._install_cmd("--gdm-monitors --yes --progress-window"),
             "Syncing the monitor layout")
 
     def _on_gdm(self, _button):
@@ -5879,7 +5939,7 @@ class Window(Adw.ApplicationWindow):
             "theme's: it is compiled separately and does not read the desktop's "
             "stylesheets.",
             "Theme it",
-            self._install_cmd("--gdm --yes"),
+            self._install_cmd("--gdm --yes --progress-window"),
             "Theming the login screen")
 
     def _confirm_root(self, heading, body, verb, command, what):
@@ -5965,7 +6025,7 @@ class Window(Adw.ApplicationWindow):
         # even under --yes because it is a root package — and a real terminal is
         # exactly where that question can be answered, so it is left to ask
         # rather than pre-answered on the user's behalf.
-        self.run_in_terminal(self._install_cmd("--rounded-blur --force"),
+        self.run_in_terminal(self._install_cmd("--rounded-blur --force --progress-window"),
                              "Installing the rounded blur library")
 
     # The three scopes uninstall.sh already has, in the order it offers them.
@@ -8088,14 +8148,20 @@ class Window(Adw.ApplicationWindow):
         # A test build's offer is branch@sha, and its branch is what to install.
         # On the released line the offer is a release or a tag (v0.3.6,
         # v0.3.5+16), and either one is main's tip.
+        #
+        # Straight to the update window, without _confirm_install's question:
+        # pressing Install update is the answer. What that dialog explained
+        # (local edits stashed, local commits kept on a backup branch) is
+        # printed in the window's log as aura-glass-update does it. Picking a
+        # version from the Releases list still asks, because it may go back.
         pending = self._applied.update_available or ""
         branch = pending.rpartition("@")[0]
         if branch:
-            self._confirm_install(branch, False)
+            self._run_update(branch)
         else:
-            self._confirm_install("main", False, pending)
+            self._run_update("main", pending or None)
 
-    def _run_update(self, target):
+    def _run_update(self, target, name=None):
         """Hand target to bin/aura-glass-update in a terminal.
 
         The installed copy when there is one: it is outside the checkout the
@@ -8120,14 +8186,62 @@ class Window(Adw.ApplicationWindow):
                                "aura-glass-update")
         if not os.path.exists(updater):
             updater = os.path.join(self._repo, "bin", "aura-glass-update")
+
+        # The update window's run directory: the changelog this window reads
+        # now, and the events and log aura-glass-update and the installer
+        # write into (lib/progress.sh). In the runtime dir, not $CONF_DIR: it
+        # is this update's, and the session's end is the right time to lose it.
+        run_dir = None
+        try:
+            run_dir = tempfile.mkdtemp(prefix="aura-glass-update-",
+                                       dir=GLib.get_user_runtime_dir())
+            for name_ in ("events", "log"):
+                open(os.path.join(run_dir, name_), "w").close()
+            notes = (self._updates_data or {}).get("notes") or {}
+            with open(os.path.join(run_dir, "changelog.json"), "w") as handle:
+                json.dump({"from": installed_version(self._repo) or "",
+                           "to": name or target,
+                           "sections": update_changelog(self._repo, target,
+                                                        notes)}, handle)
+        except OSError as exc:
+            print("aura-glass: no update window: %s" % exc, file=sys.stderr)
+            run_dir = None
+
         script = "bash %s %s\n" % (GLib.shell_quote(updater),
                                    GLib.shell_quote(target))
+        if run_dir:
+            script = "AURA_GLASS_PROGRESS_DIR=%s %s" % (
+                GLib.shell_quote(run_dir), script)
         if self.run_in_terminal(script, "Theme update"):
+            if run_dir:
+                self._open_update_window(run_dir)
             self._update_button_row.set_subtitle(
-                "Theme update opened in a terminal — follow its progress there")
+                "Theme update running — follow it in the update window")
             self._apply_status.remove_css_class("error")
             self._apply_status.set_label(
-                "Theme update opened in a terminal — follow its progress there")
+                "Theme update running — follow it in the update window")
+
+    def _open_update_window(self, run_dir):
+        """gui/aura_glass_install_progress.py --update, detached.
+
+        Its own process, so it outlives this window and an installer that
+        replaces this window's files. The copy beside this file first — the
+        checkout's is about to be moved by the update.
+        """
+        here = os.path.dirname(os.path.abspath(__file__))
+        for folder in (here, os.path.join(self._repo or "", "gui")):
+            window = os.path.join(folder, "aura_glass_install_progress.py")
+            if os.path.exists(window):
+                break
+        else:
+            return
+        try:
+            subprocess.Popen(["python3", window, "--dir", run_dir, "--update"],
+                             stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL,
+                             start_new_session=True)
+        except OSError as exc:
+            print("aura-glass: update window: %s" % exc, file=sys.stderr)
 
     def _on_reapply_settings(self, _button):
         if self._running:

@@ -67,6 +67,137 @@ sync_mode_owned_keys() {
     fi
 }
 
+# merge_dconf_preset <ini> [skip-ini] — bring a preset's fixes to an install
+# that already has its own settings, without loading the preset over them.
+#
+# An update skips `dconf load` so the user's own extension settings survive,
+# which also meant a value this project fixed in a preset never reached anyone
+# who had installed before the fix (only --force did, by resetting everything).
+# Here a key is written only when the user cannot have chosen what it holds:
+# it is missing, or it holds a value some release of this preset shipped for
+# that key. A value no release ever shipped was set by the user and is kept.
+#
+# What has been shipped is kept in $CONF_DIR/dconf-shipped, every value each
+# key has been loaded or merged at. An install from before that file existed
+# has no record, so its first merge reads the preset's git history instead;
+# without git, only missing keys are filled that once.
+#
+# Keys in skip-ini (solid.ini for core.ini) are left to sync_mode_owned_keys:
+# a frosted user's per-component blur switch is a choice even when it matches
+# what performance once shipped. Values are compared parsed, so the 0.6 a
+# preset says and the 0.59999999999999998 dconf prints are the same value.
+#
+# Prints "section/key<TAB>value" for each key to write.
+merge_dconf_preset() {
+    local ini="$1" skip="${2:-}" record=0
+    remembering && record=1
+    python3 - "$REPO_ROOT" "$ini" "$skip" "$CONF_DIR/dconf-shipped" "$record" <<'PY'
+import configparser, os, subprocess, sys
+
+repo, ini, skip, shipped_path, record = sys.argv[1:6]
+try:
+    from gi.repository import GLib
+except Exception:
+    GLib = None
+
+
+def parse(text):
+    p = configparser.ConfigParser(interpolation=None, strict=False)
+    p.optionxform = str
+    try:
+        p.read_string(text)
+    except configparser.Error:
+        return {}
+    return {"%s/%s" % (s, k): v for s in p.sections() for k, v in p.items(s)}
+
+
+def norm(value):
+    value = value.strip()
+    if GLib is not None:
+        try:
+            return repr(GLib.Variant.parse(None, value, None, None).unpack())
+        except Exception:
+            pass
+    return value
+
+
+def read(path):
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return handle.read()
+    except OSError:
+        return ""
+
+
+preset = parse(read(os.path.join(repo, ini)))
+owned = set(parse(read(os.path.join(repo, skip)))) if skip else set()
+prefix = ini + "\t"
+shipped, raw = {}, {}
+
+
+def remember(key, value):
+    want = norm(value)
+    if want in shipped.setdefault(key, set()):
+        return False
+    shipped[key].add(want)
+    raw.setdefault(key, []).append(value)
+    return True
+
+
+for line in read(shipped_path).splitlines():
+    if line.startswith(prefix):
+        _, key, value = line.split("\t", 2)
+        remember(key, value)
+recorded = bool(shipped)
+
+if not recorded and os.path.isdir(os.path.join(repo, ".git")):
+    try:
+        revs = subprocess.run(["git", "-C", repo, "log", "--format=%H", "--", ini],
+                              capture_output=True, text=True, timeout=20).stdout.split()
+        for rev in revs:
+            old = subprocess.run(["git", "-C", repo, "show", "%s:%s" % (rev, ini)],
+                                 capture_output=True, text=True, timeout=20).stdout
+            for key, value in parse(old).items():
+                remember(key, value)
+    except (OSError, subprocess.SubprocessError):
+        pass
+if recorded:
+    raw.clear()
+
+dump = subprocess.run(["dconf", "dump", "/org/gnome/shell/extensions/"],
+                      capture_output=True, text=True).stdout
+current = parse(dump)
+
+for key, value in preset.items():
+    if key in owned:
+        continue
+    have = current.get(key)
+    if have is None or (norm(have) != norm(value) and norm(have) in shipped.get(key, ())):
+        print("%s\t%s" % (key, value))
+    remember(key, value)
+
+# Appended, so the record only grows: a value shipped once stays known as ours.
+# The first merge writes the git history it read as well, so it is read once.
+if record == "1" and raw:
+    os.makedirs(os.path.dirname(shipped_path), exist_ok=True)
+    with open(shipped_path, "a", encoding="utf-8") as handle:
+        for key, values in raw.items():
+            for value in values:
+                handle.write("%s%s\t%s\n" % (prefix, key, value))
+PY
+}
+
+# apply_dconf_merge <ini> [skip-ini] — write what merge_dconf_preset found.
+apply_dconf_merge() {
+    local key value n=0
+    while IFS="$(printf '\t')" read -r key value; do
+        [ -n "$key" ] || continue
+        run dconf write "/org/gnome/shell/extensions/$key" "$value"
+        n=$((n + 1))
+    done < <(merge_dconf_preset "$@")
+    [ "$n" = 0 ] || ok "$n preset value(s) from $1 brought up to date, your own settings kept"
+}
+
 load_dconf() {
     step "Loading the dconf preset"
 
@@ -86,6 +217,8 @@ load_dconf() {
 
     if [ "$is_update" = 1 ] && [ "$has_core_dconf" = 1 ] && [ "${FORCE:-0}" != 1 ]; then
         ok "existing extension settings preserved (theme update)"
+        apply_dconf_merge dconf/core.ini dconf/solid.ini
+        if [ "${WANT_EXTRAS:-0}" = 1 ]; then apply_dconf_merge dconf/extras.ini; fi
         sync_mode_owned_keys
     else
         if [ "${DRY_RUN:-0}" = 1 ]; then
@@ -95,6 +228,9 @@ load_dconf() {
                 || die "dconf load failed"
         fi
         ok "core look loaded"
+        # Nothing to write after a load; this records what was shipped, so the
+        # next update can tell these values from ones the user picks later.
+        merge_dconf_preset dconf/core.ini >/dev/null
 
         # Applied over the top rather than as a separate preset, so performance is
         # one overlay to read and to review rather than a second full copy of every
@@ -109,13 +245,12 @@ load_dconf() {
             ok "performance preset loaded — no blur, opaque surfaces"
         fi
 
+        # Merged, never loaded, even here: these are other people's extensions,
+        # which the user may have set up before this theme or before a --force,
+        # and none of their keys is one the look depends on.
         if [ "${WANT_EXTRAS:-0}" = 1 ]; then
-            if [ "${DRY_RUN:-0}" = 1 ]; then
-                info "dry-run: dconf load /org/gnome/shell/extensions/ < dconf/extras.ini"
-            else
-                dconf load /org/gnome/shell/extensions/ < "$REPO_ROOT/dconf/extras.ini" || true
-            fi
-            ok "optional extension settings loaded"
+            apply_dconf_merge dconf/extras.ini
+            ok "optional extension settings merged"
         fi
     fi
 

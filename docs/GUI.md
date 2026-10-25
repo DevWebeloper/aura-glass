@@ -1,7 +1,8 @@
 # The GUI layer
 
-Two GTK4 + libadwaita windows. Both are optional and both are **front ends for
-flags `install.sh` already has**. Neither writes a theme file. If the toolkit is
+Two GTK4 + libadwaita windows, plus a third that only watches an install (§2b).
+All are optional and the first two are **front ends for flags `install.sh`
+already has**. None writes a theme file. If the toolkit is
 missing, the installer skips them and everything else installs normally.
 Nothing is reachable only from the GUI.
 
@@ -55,6 +56,50 @@ its Complete Experience states the same blur, transparency and 20px pointer
 answers as `Answers.best()`. It's **stated in comments, not enforced**, and it
 had drifted on the recommended pointer (KI-05). `check-wizard-flags.py` checks only that every
 command line the window can produce is accepted.
+
+---
+
+## 2b. `gui/aura_glass_install_progress.py`: following a full install
+
+Opened detached by `progress_begin` (`lib/progress.sh`) after the GTK wizard
+answers, or for `--progress-window` (the settings window adds it to the GDM,
+monitor-sync and rounded-blur runs it opens in a terminal). The terminal stays
+the installer: sudo and every question are asked there, and the window shows a
+banner while the terminal waits (`progress_wait`, called from `confirm`,
+`confirm_always`, the rounded-blur retry and the sudo prompts).
+
+### Contract
+
+```
+argv     --dir <run dir>          events + log, written by lib/progress.sh
+reads    events (JSON lines, listed at the top of lib/progress.sh), log
+writes   <run dir>/window         its pid; prompt_logout leaves the logout to it while it is open
+runs     install.sh --verify --progress-dir <run dir>   ("Check again")
+         gnome-session-quit --logout --no-prompt         ("Log out now")
+```
+
+It shows a progress bar (always green, whatever the accent), the step running
+now and the last log line, then the checklist: one row per planned step
+(ok, warning, failed, skipped) and, under it, `verify_install`'s checks. A
+step with problems has **Why?**: what it reported (its `warn`/`die` lines) and
+its slice of the log, by the byte offsets in its `start`/`end` events. A failed
+check has **Why?** with the reason and a command that fixes it. If the
+installer's pid disappears without a `finish` event (terminal closed), the run
+is shown as stopped.
+
+### Update mode (`--update`)
+
+The settings window's **Install update** opens it at once, with no confirm
+dialog (a version picked from the Releases list still asks). The settings
+window makes a run directory under `$XDG_RUNTIME_DIR`, writes
+`changelog.json` there (`update_changelog`: one section per release between
+the installed commit and the target, newest first, each with its GitHub notes
+and every commit it brought in, then the commits after the last release), opens
+the terminal with `AURA_GLASS_PROGRESS_DIR=<dir> aura-glass-update <target>`
+and starts this window. The layout is changelog above, bar in the middle, the
+log live at the bottom. `aura-glass-update` reports its fetch and switch steps
+and owns `begin`; the `install.sh` it runs sees the variable, adds its own
+steps and the finish, and opens no second window.
 
 ---
 

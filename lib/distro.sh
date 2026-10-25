@@ -200,8 +200,8 @@ rounded_blur_build_ready() {
     [ -r "${girdir:-/usr/share/gir-1.0}/GObject-2.0.gir" ] || [ -r /usr/share/gir-1.0/GObject-2.0.gir ]
 }
 
-# Offered, never fatal, like ensure_gui_toolkit: without them the library is
-# not built and popup blur keeps its corner shader fallback.
+# Offered, like ensure_gui_toolkit. Declining fails the build, and
+# require_rounded_blur asks whether to retry, go on without it, or stop.
 ensure_rounded_blur_build_deps() {
     rounded_blur_build_ready && return 0
     local pkgs
@@ -396,8 +396,10 @@ ensure_aur_helper() {
     info "  [3] skip"
     local choice=''
     if [ -t 0 ]; then
+        progress_wait "Install an AUR helper?"
         printf '    Install one? [1/2/3, default 1] ' >&2
         read -r choice || choice=''
+        progress_resume
     fi
 
     local helper='' repo=''

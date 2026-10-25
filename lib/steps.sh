@@ -385,5 +385,8 @@ finish() {
       export PATH="\$HOME/.local/bin:\$PATH"   # bash / zsh
 
 EOF
+    # Before the logout question, so the progress window turns into its
+    # checklist and log out screen while this terminal waits.
+    progress_finish 0
     prompt_logout
 }

@@ -373,7 +373,9 @@ install_gdm() {
         sed -i 's/get_utc_epoch_time/true/g' "$src"/libs/*.sh 2>/dev/null || true
 
         info "Compiling and applying GDM theme..."
-        sudo -v || { warn "sudo authentication required for GDM installation"; return 1; }
+        progress_wait "sudo password for the login screen"
+        sudo -v || { progress_resume; warn "sudo authentication required for GDM installation"; return 1; }
+        progress_resume
 
         local gdm_log="/tmp/aura-gdm-install.log"
         if sudo bash "$src/tweaks.sh" -g -b "$target_wall" -nb --silent-mode >"$gdm_log" 2>&1; then

@@ -10,10 +10,35 @@ fi
 
 step()  { printf '\n%s==>%s %s%s%s\n' "$C_BLU" "$C_OFF" "$C_BLD" "$*" "$C_OFF"; }
 info()  { printf '    %s\n' "$*"; }
-ok()    { printf '    %s✓%s %s\n' "$C_GRN" "$C_OFF" "$*"; }
-warn()  { printf '    %s!%s %s\n' "$C_YEL" "$C_OFF" "$*" >&2; }
-skip()  { printf '    %s·%s %s%s%s\n' "$C_DIM" "$C_OFF" "$C_DIM" "$*" "$C_OFF"; }
-die()   { printf '\n%serror:%s %s\n\n' "$C_RED" "$C_OFF" "$*" >&2; exit 1; }
+ok()    { printf '    %s✓%s %s\n' "$C_GRN" "$C_OFF" "$*"; progress_note ok "$*"; }
+warn()  { printf '    %s!%s %s\n' "$C_YEL" "$C_OFF" "$*" >&2; progress_note warn "$*"; }
+skip()  { printf '    %s·%s %s%s%s\n' "$C_DIM" "$C_OFF" "$C_DIM" "$*" "$C_OFF"; progress_note skip "$*"; }
+die()   { printf '\n%serror:%s %s\n\n' "$C_RED" "$C_OFF" "$*" >&2; progress_note error "$*"; exit 1; }
+
+# The install's progress window (lib/progress.sh). No-ops here, so everything
+# that sources this file without that one — uninstall.sh, the preview, the
+# checks — prints exactly as before; install.sh sources lib/progress.sh after
+# this and replaces them.
+progress_note()   { :; }
+progress_wait()   { :; }
+progress_resume() { :; }
+
+# add_exit_trap CMD — run CMD on exit as well as whatever is already trapped.
+# A plain `trap … EXIT` replaces the previous one, and install.sh has three
+# (the dry-run modes drawer, the sudo keep-alive, the progress window) that
+# can all be live in one run.
+add_exit_trap() {
+    local cmd="$1" prev
+    prev="$(trap -p EXIT)"
+    if [ -n "$prev" ]; then
+        eval "set -- $prev"     # trap -- 'previous' EXIT
+        # shellcheck disable=SC2064
+        trap "$3; $cmd" EXIT
+    else
+        # shellcheck disable=SC2064
+        trap "$cmd" EXIT
+    fi
+}
 
 # run CMD... — echoes in --dry-run instead of executing.
 #
@@ -131,8 +156,10 @@ confirm() {
     if [ ! -t 0 ]; then
         [ "$def" = 1 ] && return 0 || return 1
     fi
+    progress_wait "$q"
     printf '    %s %s ' "$q" "$hint" >&2
     read -r ans || ans=''
+    progress_resume
     case "${ans,,}" in
         y|yes) return 0 ;;
         n|no)  return 1 ;;
@@ -151,8 +178,10 @@ confirm_always() {
         warn "not an interactive terminal — declining. Re-run in a terminal to accept."
         return 1
     fi
+    progress_wait "$q"
     printf '    %s [y/N] ' "$q" >&2
     read -r ans || ans=''
+    progress_resume
     case "${ans,,}" in
         y|yes) return 0 ;;
         *)     return 1 ;;
@@ -178,6 +207,11 @@ multi_monitor_detected() {
 # prompt_logout — asks whether to log out now (default No).
 # If confirmed, logs out of the current desktop session.
 prompt_logout() {
+    # progress_window_open is lib/progress.sh's; uninstall.sh has no window.
+    if declare -F progress_window_open >/dev/null && progress_window_open; then
+        info "Log out from the Aura Glass window when you are ready."
+        return 0
+    fi
     if [ "${FROM_GUI_WIZARD:-0}" = 1 ]; then
         info "Please log out and back in to complete setup."
         return 0

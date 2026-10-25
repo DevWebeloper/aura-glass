@@ -35,8 +35,9 @@ in `~/.config/aura-glass` spliced into `~/.themes` and `~/.config/gtk-*`.
 `--settings-only` refreshes them in seconds with no root and no network. The
 shell reloads itself, but GTK apps need a restart. Use a full `./install.sh`
 (or `--force`) when you've changed something a retune skips: a pin, an
-extension, a pack, or the `dconf/core.ini` preset itself, which isn't reloaded
-on an existing install without `--force`.
+extension, a pack. A `dconf/core.ini` or `extras.ini` change reaches an
+existing install through `merge_dconf_preset`, but only for keys the user
+hasn't changed; `--force` reloads `core.ini` over everything.
 
 ---
 

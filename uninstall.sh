@@ -473,6 +473,7 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/rounded-blur-choice" \
           "$CONF_DIR/extension-pack" \
           "$CONF_DIR/extension-catalog" \
+          "$CONF_DIR/dconf-shipped" \
           "$CONF_DIR/osd" \
           "$CONF_DIR/window-menu" \
           "$CONF_DIR/app-transparency" \
@@ -497,6 +498,8 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/adaptive-performance/reason" \
           "$CONF_DIR/openbar-patch" "$CONF_DIR/custom-osd-patch" \
           "$CONF_DIR/accent" "$CONF_DIR/glass-mode"
+# The last full install's progress record and log (lib/progress.sh).
+run rm -rf "$CONF_DIR/last-install"
 [ -d "$CONF_DIR" ] && run touch "$CONF_DIR/uninstalled"
 if confirm "Delete $CONF_DIR (this also deletes the backups above)?" 0; then
     run rm -rf "$CONF_DIR"

@@ -40,6 +40,10 @@ install_gui() {
     # sequencing contract as a checkout launch; it uses only the stdlib.
     install_if_changed "$REPO_ROOT/gui/preview_queue.py" \
         "$GUI_DIR/preview_queue.py" 644
+    # The update window the settings window opens, from its own directory
+    # rather than the checkout the update is about to move.
+    install_if_changed "$REPO_ROOT/gui/aura_glass_install_progress.py" \
+        "$GUI_DIR/aura_glass_install_progress.py" 644
     install_if_changed "$REPO_ROOT/bin/aura-glass-settings" \
         "$HOME/.local/bin/aura-glass-settings" 755
     # Backs the settings window's live preview: begin/set/revert reapply the

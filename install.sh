@@ -56,6 +56,9 @@ fi
 . "$REPO_ROOT/lib/steps-apply-plan.sh"
 # shellcheck source=lib/steps-wizard.sh
 . "$REPO_ROOT/lib/steps-wizard.sh"
+# After common.sh, whose no-op progress hooks it replaces.
+# shellcheck source=lib/progress.sh
+. "$REPO_ROOT/lib/progress.sh"
 # Values written down in more than one place live here, so that the copy in a
 # stylesheet and the copy in a dconf key cannot drift apart unnoticed.
 # tools/check-tokens.sh asserts they still agree.
@@ -67,6 +70,9 @@ ACCENT_EXPLICIT=""
 TYPED_FLAGS=()
 INCREMENTAL=0
 PLAN_JSON=0
+PROGRESS_WINDOW=0  # --progress-window; a wizard run turns it on too (lib/progress.sh)
+VERIFY_ONLY=0      # --verify
+VERIFY_DIR=""      # --progress-dir: where --verify writes its check events
 ACCENT_DEFAULT="purple"
 WANT_EXTRAS=1
 EXT_LIST=""        # comma-separated UUIDs, replacing the pack. Empty = a pack
@@ -182,12 +188,12 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --interactive     launch the interactive setup wizard explicitly
     --accent COLOR    accent to build around (default: $ACCENT_DEFAULT, and
                       remembered for later runs). One of: $VALID_ACCENTS
-    --recommended     Core package: the foundation plus six curated optional
+    --recommended     Core package: the foundation plus seven curated optional
                       extensions (the default)
     --full            Complete Experience: every optional piece at once — all
-                      8 extra extensions, plus icons, cursors and OSD
+                      9 extra extensions, plus icons, cursors and OSD
     --extras          alias for --recommended (Core)
-    --all-extras      Complete Experience extension package: all 8 optionals
+    --all-extras      Complete Experience extension package: all 9 optionals
     --no-extras       Minimal package: the foundation only, with no optionals
     --minimal         alias for --no-extras (Minimal)
     --extensions LIST comma-separated extension UUIDs to install instead of a
@@ -286,6 +292,14 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --deps-only       install the missing command-line dependencies and stop.
                       Needs root, so it is the one step the settings window
                       hands to a terminal rather than running itself
+    --progress-window show the install's progress, then a checklist of what
+                      landed and a log out button, in a window beside this
+                      terminal. Questions are still asked here. On by itself
+                      when the setup wizard started the run
+    --verify          check an existing install (stylesheets, theme, each
+                      extension, the rounded-blur library, icons, pointer,
+                      settings app, login screen) and stop. Exits 1 if any
+                      check fails
     --window-buttons WHICH
                       titlebar buttons: close (close alone) or all (minimize,
                       maximize and close). Left as the system has it unless given
@@ -305,7 +319,9 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --no-blur         no blur anywhere, opaque surfaces instead of translucent
                       ones, with the rest of the theme intact (best for low-end
                       GPUs or battery saver)
-    --no-rounded-blur skip gnome-rounded-blur library (popup blur falls back to static)
+    --no-rounded-blur skip gnome-rounded-blur library (popup blur rounds
+                      through a corner shader instead). Without it a failed
+                      build stops the install before anything is changed
     --gdm             theme the GDM login screen with blurred Aura Glass style (requires sudo)
     --gdm-background PATH
                       set custom background image for GDM (default: blurred wallpaper)
@@ -481,6 +497,11 @@ parse_flags() {
         --incremental)   INCREMENTAL=1; EXPLICIT_FLAGS=1; shift ;;
         --plan-json)     PLAN_JSON=1; EXPLICIT_FLAGS=1; shift ;;
         --deps-only)     DEPS_ONLY=1; EXPLICIT_FLAGS=1; shift ;;
+        --progress-window) PROGRESS_WINDOW=1; shift ;;
+        --verify)        VERIFY_ONLY=1; WANT_DEPS=0; EXPLICIT_FLAGS=1; shift ;;
+        # The progress window's "Check again", so the results land in the
+        # events file it is already reading. Not in --help: nothing else needs it.
+        --progress-dir)  VERIFY_DIR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --no-deps)       WANT_DEPS=0; EXPLICIT_FLAGS=1; shift ;;
         --force)         FORCE=1; EXPLICIT_FLAGS=1; shift ;;
         --reset)         RESET=1; EXPLICIT_FLAGS=1; shift ;;
@@ -1195,7 +1216,7 @@ if [ "$DRY_RUN" = 1 ] || [ -n "$ADAPTIVE_BLUR" ]; then
         MODES_ROOT="$AURA_GLASS_DRY_MODES"
     else
         MODES_ROOT="$(mktemp -d)"
-        trap 'rm -rf "$MODES_ROOT"' EXIT
+        add_exit_trap 'rm -rf "$MODES_ROOT"'
         if [ -d "$CONF_DIR/modes" ]; then
             cp -a "$CONF_DIR/modes/." "$MODES_ROOT/"
         fi
@@ -1483,10 +1504,47 @@ PY
     exit 0
 fi
 
+if [ "$VERIFY_ONLY" = 1 ]; then
+    # Resolved like a flagless run, so it checks for what the remembered
+    # choices install. Results go to the progress window's events file when it
+    # asked, and always to the terminal.
+    if [ -n "$VERIFY_DIR" ] && [ -d "$VERIFY_DIR" ]; then
+        PROGRESS_DIR="$VERIFY_DIR"
+    fi
+    verify_install
+    [ "$VERIFY_FAILS" = 0 ] || exit 1
+    exit 0
+fi
+
+# The progress window is for a full install, which is everything that gets
+# past the --settings-only and --deps-only exits below; those two never start
+# it. The checklist is planned here, from the choices just resolved, so the
+# window shows every step from the start and marks the ones this run skips.
+if [ "$SETTINGS_ONLY" = 0 ] && [ "$DEPS_ONLY" = 0 ] \
+   && { [ "${FROM_GUI_WIZARD:-0}" = 1 ] || [ "$PROGRESS_WINDOW" = 1 ] \
+        || [ -n "${AURA_GLASS_PROGRESS_DIR:-}" ]; }; then
+    progress_begin
+    progress_plan \
+        session "Checking your system" \
+        deps "Dependencies" \
+        rounded-blur "Rounded blur library" \
+        theme "Aura Glass theme" \
+        extensions "Shell extensions" \
+        icons "Icons" \
+        cursors "Pointer" \
+        fonts "Fonts" \
+        look "Glass look and settings" \
+        services "Settings app and background helpers" \
+        enable "Turning extensions on" \
+        gdm "Login screen" \
+        verify "Checking the result"
+fi
+
 printf '\n%s  aura-glass%s  %saccent %s%s\n' \
     "$C_BLD" "$C_OFF" "$C_DIM" "$ACCENT" "$C_OFF"
 [ "$DRY_RUN" = 1 ] && printf '%s  dry run — nothing will be changed%s\n' "$C_DIM" "$C_OFF"
 
+progress_start session
 preflight
 
 # Request sudo credentials upfront once if any system-wide component requires root
@@ -1497,10 +1555,14 @@ if [ "${SETTINGS_ONLY:-0}" = 0 ] && [ "${DRY_RUN:-0}" = 0 ] && [ "$EUID" -ne 0 ]
     rounded_blur_needs_root && need_root=1
     if [ "$need_root" = 1 ]; then
         info "Authenticating sudo upfront for system components..."
+        progress_wait "sudo password, for the parts installed outside your home folder"
         if sudo -v; then
+            progress_resume
             ( while true; do sudo -n true; sleep 50; kill -0 "$$" || exit; done ) 2>/dev/null &
             SUDO_KEEP_ALIVE_PID=$!
-            trap 'kill $SUDO_KEEP_ALIVE_PID 2>/dev/null || true' EXIT
+            add_exit_trap 'kill $SUDO_KEEP_ALIVE_PID 2>/dev/null || true'
+        else
+            progress_resume
         fi
     fi
 fi
@@ -1641,6 +1703,7 @@ EOF
     exit 0
 fi
 
+progress_start deps
 if [ "$WANT_DEPS" = 1 ]; then
     step "Checking dependencies"
     install_deps || die "dependencies are missing — re-run once they are installed, or pass --no-deps to try anyway"
@@ -1654,19 +1717,37 @@ else
     fi
 fi
 
+# First, before anything is installed: a failed build stops the run here with
+# nothing changed, rather than leaving a desktop installed without it that only
+# a re-run and a watched build could fix (require_rounded_blur).
+progress_start rounded-blur
+require_rounded_blur
+progress_start theme
 install_theme
+progress_start extensions
 install_extensions
-# Before load_dconf, so apply_popup_blur sees the result. On a first install it
-# will still pick static: Blur My Shell only writes rounded-blur-found once the
-# shell has loaded this build, which is the next login.
-install_rounded_blur
-if [ "$WANT_ICONS" = 1 ]; then install_icons; else step "Icons"; skip "left alone (--no-icons)"; fi
-if [ "$WANT_CURSORS" = 1 ]; then install_cursors; else step "Cursors"; skip "left alone (--no-cursors)"; fi
+if [ "$WANT_ICONS" = 1 ]; then
+    progress_start icons
+    install_icons
+else
+    progress_end; progress_skip icons "left alone (--no-icons)"
+    step "Icons"; skip "left alone (--no-icons)"
+fi
+if [ "$WANT_CURSORS" = 1 ]; then
+    progress_start cursors
+    install_cursors
+else
+    progress_end; progress_skip cursors "left alone (--no-cursors)"
+    step "Cursors"; skip "left alone (--no-cursors)"
+fi
+progress_start fonts
 install_fonts
+progress_start look
 load_dconf
 install_css
 apply_gsettings
 remember_glass_mode
+progress_start services
 install_icon_sync
 install_gui
 install_update_check
@@ -1674,12 +1755,21 @@ install_wallpapers
 flatpak_override
 remove_panel_blur_unit
 install_adaptive_performance
+progress_start enable
 enable_extensions
-if [ "$WANT_GDM_MONITORS" = 1 ]; then
-    sync_gdm_monitors
-    [ "$WANT_GDM" != 1 ] && install_gdm_sync_unit
+if [ "$WANT_GDM_MONITORS" = 1 ] || [ "$WANT_GDM" = 1 ]; then
+    progress_start gdm
+    if [ "$WANT_GDM_MONITORS" = 1 ]; then
+        sync_gdm_monitors
+        [ "$WANT_GDM" != 1 ] && install_gdm_sync_unit
+    fi
+    if [ "$WANT_GDM" = 1 ]; then
+        install_gdm
+    fi
+else
+    progress_end; progress_skip gdm "not asked for"
 fi
-if [ "$WANT_GDM" = 1 ]; then
-    install_gdm
-fi
+progress_start verify
+verify_install
+progress_end
 finish

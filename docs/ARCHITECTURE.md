@@ -30,7 +30,7 @@ flag means. Every other program composes flags or calls those functions.
 
 | Run | Command | What it does | Needs |
 |---|---|---|---|
-| **Full install** | `./install.sh [flags]` | deps → base theme → extensions → rounded-blur → icons → cursors → fonts → dconf preset → CSS → gsettings → extensions on/off → integrations (icon sync, GUI, update timer, Flatpak override, retired panel-blur unit removed, adaptive worker) → enable extensions → GDM (opt-in) → `finish` (log out) | network; root only for deps, rounded-blur fallback, GDM |
+| **Full install** | `./install.sh [flags]` | (progress window, after the GTK wizard or with `--progress-window`) → deps → rounded-blur (a failure stops here: retry, continue without, or abort) → base theme → extensions → icons → cursors → fonts → dconf preset → CSS → gsettings → extensions on/off → integrations (icon sync, GUI, update timer, Flatpak override, retired panel-blur unit removed, adaptive worker) → enable extensions → GDM (opt-in) → `verify_install` (the checklist) → `finish` (log out, from the window when it is open) | network; root only for deps, rounded-blur fallback, GDM |
 | **Retune** | `./install.sh --settings-only [flags]` | optional pack/font install if those flags were given → dconf preset → CSS → gsettings → icon sync → extensions on/off → remember mode → GUI, update timer, retired panel-blur unit removed, adaptive worker → GDM sync (if installed) | nothing. Offline, unprivileged, a few seconds |
 
 `--settings-only` refuses to run unless `$CONF_DIR` and the theme directory
@@ -276,13 +276,18 @@ bounded per surface by `radius_bounds`). `pill` is a retired name that
 `load_dconf` (`lib/steps-dconf.sh`):
 
 1. Loads `dconf/core.ini` into `/org/gnome/shell/extensions/`. Then
-   `dconf/solid.ini` on top when `WANT_BLUR=0`, and `dconf/extras.ini` when
-   extras are wanted.
+   `dconf/solid.ini` on top when `WANT_BLUR=0`. `dconf/extras.ini` (other
+   people's extensions) is never loaded, only merged (below), so settings the
+   user made in them survive a fresh install and `--force`.
    **On an existing install the preset is not reloaded.** If a `repo-path` or
    `accent` memo exists and Blur My Shell already has `pipelines`, it skips the
    load to preserve the user's extension settings, unless `--force` is given.
    That's why a mode switch on an existing install never reloads `solid.ini`
-   (KI-03).
+   (KI-03). Instead `merge_dconf_preset` brings the preset's fixes over:
+   a key is written when it is missing or still holds a value some release
+   shipped (recorded in the `dconf-shipped` memo, seeded from git history),
+   and kept when it holds anything else, since only the user can have put it
+   there. `solid.ini`'s keys are left to `sync_mode_owned_keys`.
 2. Then always overlays the resolved flags: `apply_grain`, `apply_blur_strength`,
    `apply_popup_brightness`, `apply_window_brightness`, `apply_popup_blur`,
    `apply_notification_blur`, `apply_app_blur`, `apply_app_opacity`,
@@ -423,6 +428,14 @@ development files; Debian's `libmutter-N-dev` by API number) are offered by
 rootless build. One in `~/.local` never loads, because the shell searches
 neither `~/.local/lib` nor `~/.local/share/girepository-1.0` (KI-12), so an old
 one is removed.
+
+It is built first in a full install, before the theme or any extension, by
+`require_rounded_blur`. A failed build (dependencies declined, patch, build or
+`sudo` install) stops there with nothing installed yet and asks: retry,
+continue without it (popup blur rounds through Blur My Shell's corner shader,
+and the next full install tries again), or abort. It asks even under `--yes`.
+Without a terminal it stops; `--no-rounded-blur` is how a script goes on
+without it (KI-39).
 
 ---
 

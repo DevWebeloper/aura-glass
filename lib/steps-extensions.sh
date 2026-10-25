@@ -342,13 +342,11 @@ install_custom_osd() {
 
 # Blur My Shell gets rounded corners on a *dynamic* blur from Blur.BlurEffect,
 # which comes from this small C library — a vendored copy of gnome-shell's own
-# shell-blur-effect.c with a corner mask. Without it the popup blur falls back
-# to static, which still rounds (see apply_popup_blur); this is the upgrade
-# from "blurred wallpaper" to "blurred whatever is actually behind the popup".
+# shell-blur-effect.c with a corner mask. Without it the popup blur stays
+# dynamic but rounds through Blur My Shell's corner shader instead.
 #
-# It is the only thing this project installs outside $HOME, so it is the only
-# step that asks first — and it asks even under --yes, because agreeing to a
-# theme installer is not the same as agreeing to a system package.
+# It is the only thing this project installs outside $HOME. Returns 1 on any
+# failure and leaves the choice of what to do about it to require_rounded_blur.
 #
 # It hard-pins libmutter-18, so every mutter update breaks it until it is
 # rebuilt. That failure is silent by design upstream: Blur My Shell just falls
@@ -410,8 +408,7 @@ install_rounded_blur() {
 
     if ! ensure_rounded_blur_build_deps; then
         warn "gnome-rounded-blur cannot be built without its build dependencies."
-        warn "Popup blur remains dynamic with corner shader fallback."
-        return 0
+        return 1
     fi
 
     local src="$SRC_CACHE/gnome-rounded-blur"
@@ -420,7 +417,7 @@ install_rounded_blur() {
     fi
     clone_pinned "$ROUNDEDBLUR_REPO" "$ROUNDEDBLUR_REF" "$src"
     git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$ROUNDEDBLUR_PATCH" \
-        || { warn "the gnome-rounded-blur patch did not apply — upstream may have moved"; return 0; }
+        || { warn "the gnome-rounded-blur patch did not apply — upstream may have moved"; return 1; }
 
     if [ "$arch_pkg" = 1 ]; then
         info "building gnome-rounded-blur $ROUNDEDBLUR_PKGVER + patches/$ROUNDEDBLUR_PATCH (makepkg, then sudo pacman -U)"
@@ -454,23 +451,53 @@ package() {
 PKG
         # PKGDEST: makepkg.conf may send the package somewhere else.
         ( cd "$pkgdir" && PKGDEST="$pkgdir" makepkg -f -d --noconfirm >/dev/null ) \
-            || { warn "the gnome-rounded-blur build failed — popup blur uses corner shader fallback"; return 0; }
+            || { warn "the gnome-rounded-blur build failed"; return 1; }
         local pkg
         pkg="$(ls "$pkgdir"/gnome-rounded-blur-"$ROUNDEDBLUR_PKGVER"-1.1-*.pkg.tar.* 2>/dev/null | head -1)"
         [ -n "$pkg" ] && sudo pacman -U --noconfirm "$pkg" \
-            || { warn "installing the gnome-rounded-blur package failed — popup blur uses corner shader fallback"; return 0; }
+            || { warn "installing the gnome-rounded-blur package failed"; return 1; }
     else
         info "building gnome-rounded-blur $ROUNDEDBLUR_REF + patches/$ROUNDEDBLUR_PATCH (meson, then sudo meson install)"
         ( cd "$src" && rm -rf build \
             && meson setup --prefix=/usr build \
             && meson compile -C build \
             && sudo meson install -C build ) \
-            || { warn "the meson build failed — popup blur uses corner shader fallback"; return 0; }
+            || { warn "the gnome-rounded-blur meson build failed"; return 1; }
     fi
 
     patch_stamp_write rounded-blur-patch "$REPO_ROOT/patches/$ROUNDEDBLUR_PATCH"
     rounded_blur_stamp
     ok "gnome-rounded-blur installed (with patches/$ROUNDEDBLUR_PATCH)"
+}
+
+# A failed build used to warn and carry on, and the rest of the install went
+# ahead around it: the desktop came up without the library and nothing said so
+# again, so the only way out was to re-run the installer and watch the build.
+# install.sh now runs this before anything else is installed, and a failure
+# stops there with nothing changed yet: retry (once whatever the output above
+# says is fixed), go on without it, or stop. Asked even under --yes, which
+# answers the theme's questions, not whether to give up a part of the look.
+# Without a terminal there is no one to ask, so it stops; --no-rounded-blur is
+# how a script says to go on without it.
+require_rounded_blur() {
+    local ans
+    until install_rounded_blur; do
+        if [ ! -t 0 ]; then
+            die "gnome-rounded-blur did not build or install, so nothing has been installed. Fix the error above and re-run, or pass --no-rounded-blur to install without it"
+        fi
+        progress_wait "gnome-rounded-blur failed: retry, continue without it, or abort?"
+        printf '    Retry, continue without it, or abort? [R/c/a] ' >&2
+        read -r ans || ans=a
+        progress_resume
+        case "${ans,,}" in
+            c|continue)
+                warn "continuing without gnome-rounded-blur: popup blur rounds through the corner shader fallback."
+                warn "The next full install tries the build again."
+                return 0 ;;
+            a|abort)
+                die "stopped before anything was installed" ;;
+        esac
+    done
 }
 
 # Whether the shell can load Blur.BlurEffect at all. The library links
@@ -955,7 +982,12 @@ sys.exit(0 if uuid in items else 1)
 PY
 }
 
-# Automatically disable extensions that have been retired from the theme
+# Offer to disable and remove extensions an older release installed and the
+# theme no longer needs. Asked, not done: the user may have installed one
+# themselves or come to rely on it. Asked even under --yes, which answers the
+# theme's questions and not whether to take away something the user has, and a
+# non-interactive run (the settings app's Apply, the adaptive worker, a pipe)
+# keeps them. A "no" is remembered in kept-extensions so it is asked once.
 disable_retired_extensions() {
     local retired=(
         compiz-alike-magic-lamp-effect@hermes83.github.com
@@ -969,9 +1001,28 @@ disable_retired_extensions() {
         xwayland-indicator@swsnr.de
         add-to-steam@pupper.space
     )
-    local u
+    [ "${DRY_RUN:-0}" = 1 ] && return 0
+    [ -t 0 ] || return 0
+    local kept="$CONF_DIR/kept-extensions" u name meta found=()
     for u in "${retired[@]}"; do
-        if [ "${DRY_RUN:-0}" = 1 ]; then
+        [ -f "$kept" ] && grep -qxF "$u" "$kept" && continue
+        if [ -d "$EXT_DIR/$u" ] || is_extension_enabled "$u"; then found+=("$u"); fi
+    done
+    [ "${#found[@]}" -gt 0 ] || return 0
+    info "These extensions are no longer needed by the Aura Glass theme."
+    for u in "${found[@]}"; do
+        name="$u"
+        for meta in "$EXT_DIR/$u/metadata.json" "/usr/share/gnome-shell/extensions/$u/metadata.json"; do
+            [ -f "$meta" ] || continue
+            name="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("name") or sys.argv[2])' "$meta" "$u" 2>/dev/null || echo "$u")"
+            break
+        done
+        if ! confirm_always "Remove $name ($u)?"; then
+            if remembering; then
+                mkdir -p "$CONF_DIR"
+                printf '%s\n' "$u" >> "$kept"
+            fi
+            skip "keeping $u"
             continue
         fi
         if is_extension_enabled "$u"; then

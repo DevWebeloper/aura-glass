@@ -97,8 +97,9 @@ After editing `css/`, `dconf/` or `tokens/`, the change has to reach the
 desktop: `./install.sh --settings-only -y` (offline, rootless, seconds). On the
 user's own machine you may run exactly that retune. **Don't** run a full
 install, `--force`, `uninstall.sh`, anything that needs `sudo`, or GDM steps
-unless the user asks. Remember that `core.ini` changes don't reach an existing
-install without `--force` (ARCHITECTURE §7).
+unless the user asks. Remember that `core.ini` changes reach an existing
+install only for keys the user hasn't changed, and `--force` reloads it over
+everything (ARCHITECTURE §7).
 
 ### 6. `tools/` holds three kinds of file, treated differently
 
@@ -158,6 +159,6 @@ commits, tags or releases. Commit subjects follow
 - **`pill` accepted as a radius preset.** A retired name, mapped to `rounded` for old memos.
 - **The settings app sends only changed flags.** The installer resolves the rest. That's the point.
 - **Sheets copied to `$CONF_DIR` even when unused.** Cheap, and it makes switching back one run.
-- **`load_dconf` skips `core.ini` on an existing install.** It preserves the user's extension settings. Use `--force` to reload. But see KI-03 for what that does to mode switches.
+- **`load_dconf` skips `core.ini` on an existing install.** It preserves the user's extension settings and merges instead (`merge_dconf_preset`): only keys still on a shipped value move. Use `--force` to reload. But see KI-03 for what that does to mode switches.
 - **`refresh_bms_after_dconf` does nothing on GNOME ≥ 51.** Disabling Blur My Shell live segfaults Mutter there. The adaptive path turns pipelines off instead of disabling the extension, for the same reason.
 - **Every full apply writes `color-scheme=prefer-dark`.** The theme is dark-only, so a retune deliberately puts dark back over a light choice (KI-16, by design).

@@ -49,6 +49,10 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 | [KI-33](#ki-33) | Medium | **Fixed** (`feat/efficient-blur-qol`) | The helper threw `ReferenceError: mode is not defined` on every enable, so Performance never got its window opacity |
 | [KI-34](#ki-34) | Medium | **Fixed** (`feat/efficient-blur-qol`) | Every retune rewrote ~37 dconf/gsettings keys to the values already there, waking Blur My Shell, User Themes and GTK |
 | [KI-35](#ki-35) | Info | By design (decided 2026-10-22) | Frosted repaints the whole stage every frame (`hacks-level=2`). Lower levels left visible patches and saved nothing once windows redraw; window blur is the real cost |
+| [KI-36](#ki-36) | Low | **Fixed** (needs a live check) | History cards in the date menu keep the old blur radius and corner after a blur-strength, adaptive or radius-preset change |
+| [KI-37](#ki-37) | Low | **Fixed** (needs a live check) | A square dark band under the second card of a notification stack, around its rounded corners |
+| [KI-38](#ki-38) | Medium | **Fixed** (needs a live check) | Updates removed retired extensions without asking, and either kept user extension settings and missed preset fixes, or reset them (`--force`, `extras.ini`) |
+| [KI-39](#ki-39) | Medium | **Fixed** (needs a live check) | A failed gnome-rounded-blur build only warned, and the install carried on around it; the only fix was to re-run and watch the build |
 
 ---
 
@@ -910,6 +914,124 @@ window that redraws has its whole blur recomputed whatever the level.
 value on every frosted run, which also brings back an install that the
 short-lived flag left at 0, and drops its `blur-refresh` memo. The flag is
 gone; `uninstall.sh` still removes the memo.
+
+---
+
+## KI-36
+
+**History cards keep the old blur after a retune.**
+
+**Symptom.** After a blur-strength change (settings app or CLI), an adaptive
+downshift or restore, or a radius preset, the notification cards already in
+the date menu keep the blur they were created with: a different sigma from the
+popover behind them, and a blur corner that no longer matches the painted
+`border-radius`. Banners, the popover and cards that arrive later are right.
+It lasts until something resets the popup component (the notification switch,
+a popup pipeline change, a shell restart).
+
+**Repro** (changes the live desktop). Have a few notifications in the list,
+then `dconf write /org/gnome/shell/extensions/blur-my-shell/popup/sigma 10`,
+open the date menu, and compare the cards with a fresh `notify-send`. Write
+the old value back afterwards.
+
+**Cause.** `attach_blur()` in the patched `message_stacks.js` copies
+`popup.SIGMA` and `popup.NOTIFICATION_CORNER_RADIUS` into each card's effect
+once. The surfaces follow those keys through `DummyPipeline` and
+`surface_signals.js`; the cards had no listener, and `update_blur_all()` ran
+only on a `pipeline` change.
+
+**Fix** (`patches/blur-my-shell-notifications.patch`).
+`PopupBlurMessageStacks.enable()` connects `changed::sigma` and
+`changed::notification-corner-radius` on the popup settings to
+`update_blur_all()`, through the shared connections the popup component
+already drops on disable. Retunes write only changed keys (KI-34), so this
+rebuilds the cards only when a value moved. `tools/check-bms-patches.sh` and
+`tests/check-bms-patches.py` pass. Needs a live check after the rebuilt
+extension loads (next login).
+
+---
+
+## KI-37
+
+**A square band under the second card of a notification stack.**
+
+**Symptom.** In the date menu, a stack of notifications from one app shows
+the second card's sliver as a hard-edged dark rectangle around its rounded
+bottom corners. The third sliver is clean.
+
+**Cause.** `css/shell-30-notifications.css` gave `:second-in-stack` a
+`0 2px 10px` shadow with `!important`, one class more specific than the
+`box-shadow: none !important` in `shell-notification-blur.css`, so it
+survived. Whenever Blur My Shell's popup component is on, `apply_stack_mask()`
+in its `message_stacks.js` clips each lower card to its visible sliver, and the
+clip cut the shadow at the card's box: shadow filled the space outside the
+rounded corners and stopped in straight edges. `:lower-in-stack` already had
+no shadow, which is why the third sliver looked right.
+
+**Fix.** `box-shadow: none !important` on `:second-in-stack` in
+`shell-30-notifications.css`, which also covers flat notifications with popup
+blur on. `shell-80-solid.css` already had it. Needs a look at a live stack.
+
+---
+
+## KI-38
+
+**Updates removed extensions without asking, and either lost the user's
+extension settings or never got the preset's fixes.**
+
+**Symptom.** Every install and retune disabled and uninstalled ten retired
+extensions (Just Perfection, Clipboard Indicator, ddterm, Space Bar, …) with
+no question, including ones the user had installed or kept using. An update
+kept the user's Blur My Shell and Custom OSD settings but never received a
+value fixed in `core.ini`; `--force` and "Reset theme to defaults" received it
+by reloading everything. `extras.ini` was loaded over Vitals, AppIndicator,
+Hot Edge and Wiggly settings the user had made before installing or before a
+`--force`.
+
+**Cause.** `disable_retired_extensions` acted on its list unconditionally.
+`load_dconf` had two answers, load the whole preset or skip it, and could not
+tell a value the user chose from one an old release shipped.
+
+**Fix.** `disable_retired_extensions` asks per extension (`confirm_always`:
+asked even under `--yes`, declined without a terminal, so the settings app's
+Apply and the adaptive worker keep them). A "no" goes in `kept-extensions`
+and is not asked again. `merge_dconf_preset` writes a preset key on an update
+only when it is missing or still holds a value some release shipped, recorded
+in `dconf-shipped` (seeded once from the preset's git history; without git,
+only missing keys fill that first time). Mode-owned keys stay with
+`sync_mode_owned_keys`. `extras.ini` is merged on every path, never loaded.
+Verified with a file-backed `dconf` stub: a user-set sigma and panel switch
+kept, an untouched brightness moved to the new default (`0.59999999999999998`
+matched as `0.6`), a new key added, a second run wrote nothing, a dry run
+wrote nothing; the hermetic suite passes. Needs a look at a real update.
+
+---
+
+## KI-39
+
+**A failed gnome-rounded-blur build only warned, and the install went on.**
+
+**Symptom.** When the library failed to build or install (missing build
+dependencies declined, the patch not applying, `makepkg`/`meson` failing, or
+the `sudo` install failing), the installer printed one warning in the middle of
+a long run and installed the rest of the theme. The desktop came up without
+the library and nothing said so again. Installs from before `7520f6d` also
+wrote `popup/static-blur=true` on such a machine, so menus blurred the
+wallpaper instead of what was behind them. The only way out was to re-run the
+installer and make sure the build passed.
+
+**Cause.** `install_rounded_blur` returned 0 on every failure path and ran
+after the theme and extensions were already installed, so it could neither
+stop the run nor stop it cleanly.
+
+**Fix.** `install_rounded_blur` returns 1 on failure. `require_rounded_blur`
+(`lib/steps-extensions.sh`) runs it first in a full install, before
+`install_theme`, and on failure asks: retry (default), continue without it, or
+abort, with nothing installed yet. Asked even under `--yes`. Without a terminal
+it stops with a message naming `--no-rounded-blur`. The loop was exercised with
+a stubbed build (no terminal stops; retry then success, continue and abort in a
+pseudo-terminal); the hermetic suite passes. Needs a run on a machine where the
+build fails.
 
 ---
 

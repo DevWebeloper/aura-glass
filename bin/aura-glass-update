@@ -30,6 +30,62 @@
 # it is run from the repository rather than from ~/.local/bin.
 set -euo pipefail
 
+# The update window. The settings window opens gui/aura_glass_install_progress.py
+# in update mode the moment Install is pressed, with the changelog it read, and
+# names its run directory in AURA_GLASS_PROGRESS_DIR. This script then sends
+# its output to the window's log and its two steps, fetching and switching, to
+# its events, in the format lib/progress.sh documents; the install.sh it runs
+# inherits the variable and adds its own steps and the finish. Repeated here
+# rather than sourced, because the copy in ~/.local/bin has no lib/ beside it.
+PROGRESS_DIR=""
+PROGRESS_STEP=""
+
+pjson() {
+    local s="$2"
+    s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/\\n}"; s="${s//$'\t'/\\t}"
+    printf -v "$1" '"%s"' "$s"
+}
+
+pevent() {
+    [ -n "$PROGRESS_DIR" ] || return 0
+    local line field
+    pjson field "$1"; line="{\"t\":$field"; shift
+    while [ "$#" -ge 2 ]; do
+        pjson field "$1"; line+=",$field:"
+        pjson field "$2"; line+="$field"
+        shift 2
+    done
+    printf '%s}\n' "$line" >> "$PROGRESS_DIR/events" 2>/dev/null || true
+}
+
+poffset() { stat -c %s "$PROGRESS_DIR/log" 2>/dev/null || echo 0; }
+
+pstart() {
+    [ -n "$PROGRESS_DIR" ] || return 0
+    [ -z "$PROGRESS_STEP" ] || pevent end id "$PROGRESS_STEP" status ok offset "$(poffset)"
+    PROGRESS_STEP="$1"
+    [ -z "$1" ] || pevent start id "$1" offset "$(poffset)"
+}
+
+# fail MESSAGE — say why on stderr and in the window, and stop.
+fail() {
+    echo "aura-glass-update: $*" >&2
+    pevent note id "$PROGRESS_STEP" level error text "$*"
+    exit 1
+}
+
+# On exit: close the running step, and finish the window unless the install.sh
+# below already did (it does, before its logout question).
+pexit() {
+    local rc="$1"
+    [ -n "$PROGRESS_DIR" ] || return 0
+    if [ -n "$PROGRESS_STEP" ]; then
+        pevent end id "$PROGRESS_STEP" status "$([ "$rc" = 0 ] && echo ok || echo fail)" offset "$(poffset)"
+    fi
+    grep -q '"t":"finish"' "$PROGRESS_DIR/events" 2>/dev/null && return 0
+    pevent finish status "$([ "$rc" = 0 ] && echo ok || echo fail)" rc "$rc"
+}
+
 main() {
     local install=1
     if [ "${1:-}" = "--no-install" ]; then
@@ -45,19 +101,30 @@ main() {
     local conf="${AURA_GLASS_CONF:-$HOME/.config/aura-glass}"
     local repo
     repo="$(cat "$conf/repo-path" 2>/dev/null || true)"
+
+    # Before anything can fail, so the window has a pid to watch and a reason
+    # to show for whatever stops the update.
+    if [ -n "${AURA_GLASS_PROGRESS_DIR:-}" ] && [ -d "$AURA_GLASS_PROGRESS_DIR" ]; then
+        PROGRESS_DIR="$AURA_GLASS_PROGRESS_DIR"
+        exec > >(tee -a "$PROGRESS_DIR/log") 2>&1
+        pevent begin pid "$$" log "$PROGRESS_DIR/log" repo "$repo" dry 0 kind update
+        pevent plan id fetch title "Fetching releases"
+        pevent plan id switch title "Switching to $target"
+        trap 'pexit "$?"' EXIT
+        pstart fetch
+    fi
+
     if [ -z "$repo" ] || [ ! -d "$repo/.git" ]; then
         if [ -n "$repo" ] && [ -r "$repo/.packaged" ]; then
-            echo "aura-glass-update: installed from a package — update it with your package manager" >&2
+            fail "installed from a package — update it with your package manager"
         else
-            echo "aura-glass-update: no git checkout recorded in $conf/repo-path" >&2
+            fail "no git checkout recorded in $conf/repo-path"
         fi
-        exit 1
     fi
     local g=(git -C "$repo")
 
     if ! "${g[@]}" remote get-url origin >/dev/null 2>&1; then
-        echo "aura-glass-update: $repo has no origin remote to update from" >&2
-        exit 1
+        fail "$repo has no origin remote to update from"
     fi
 
     # --force so a tag that was moved on the remote replaces the local one rather
@@ -75,9 +142,9 @@ main() {
         kind=branch
         ref="refs/remotes/origin/$target"
     else
-        echo "aura-glass-update: origin has no release or branch called $target" >&2
-        exit 1
+        fail "origin has no release or branch called $target"
     fi
+    pstart switch
 
     local stamp
     stamp="$(date +%Y%m%d-%H%M%S)"
@@ -116,6 +183,8 @@ main() {
         return 0
     fi
 
+    # The installer's own steps follow in the window; this script has none left.
+    pstart ""
     echo "==> Running the installer"
     bash "$repo/install.sh" --gui
     # The installer finished, so whatever the update check found is now what is
