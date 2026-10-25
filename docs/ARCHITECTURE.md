@@ -317,7 +317,9 @@ Catalogued in `lib/steps.sh`:
 - Blur My Shell patches, applied in order: `blur-my-shell-overview.patch`,
   `blur-my-shell-subwindows.patch`, `blur-my-shell-notifications.patch` (adds the
   separate `popup/notification` key), `blur-my-shell-static-maximized.patch`
-  (static blur for full-screen windows, dynamic for smaller ones). Custom OSD gets
+  (static blur for full-screen windows, dynamic for smaller ones),
+  `blur-my-shell-panel-refit.patch` (top-bar blur refitted in place after a
+  monitor change, no flash). Custom OSD gets
   `custom-osd-gnome50.patch`. Copyous gets `copyous-gnome51.patch`.
 - `bin/aura-glass-ext` exposes the catalogue one UUID at a time
   (`list | install | remove | enable | disable | recommended | full`). The

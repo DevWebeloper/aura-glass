@@ -197,7 +197,7 @@ by `save_glass_mode_memos`.
 | `extension-catalog` | comma-separated UUIDs of `EXT_EXTRA_ALL` when the pack was chosen. A recommended extension missing from it joins a non-empty pack on an update. Absent = everything but `EXT_EXTRA_ADDED_LATER` | `install_extensions`; read in the resolution block |
 | `osd` | `0\|1`. Only a `0` is read back | `install_custom_osd`; read in the resolution block |
 | `bms-ref`, `bms-source` | installed BMS commit and `git\|ego`. `ego` is read back as `--no-bms-git` | `install_bms`; read in the resolution block |
-| `custom-osd-patch` (legacy `openbar-patch`), `rounded-blur-patch` | patch stamps | `patch_stamp_write` |
+| `bms-overview-patch`, `bms-subwindow-patch`, `bms-notification-patch`, `bms-static-patch`, `bms-panel-patch`, `custom-osd-patch` (legacy `openbar-patch`), `rounded-blur-patch` | patch stamps | `patch_stamp_write` |
 | `gdm-installed`, `gdm-monitors-synced` | login-screen state | `lib/steps-gdm.sh` |
 | `gdm-gresource` | `sha256sum` line for the gresource `install_gdm` wrote. A mismatch makes `aura-glass-gdm-sync` warn that a package update reverted the login theme (KI-30) | `record_gdm_gresource`; read by `aura-glass-gdm-sync` |
 | `accent-from-wallpaper` | opt-in marker for the (currently uncatalogued) auto-accent extension | `bin/aura-glass-ext` writes it; `lib/steps-extensions.sh` reads it |
