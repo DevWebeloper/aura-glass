@@ -19,11 +19,11 @@ diff -ruN a/effect.js b/effect.js
  import * as Main from 'resource:///org/gnome/shell/ui/main.js';
  
  import Cursor from './cursor.js';
-+import { cursorIconForTheme } from './theme.js';
++import { cursorForTheme } from './theme.js';
  
  const extensionDir = () => GLib.path_get_dirname(import.meta.url.slice(7));
  
-@@ -26,16 +27,38 @@
+@@ -26,16 +27,59 @@
          this.isWiggling = false;
          this._isInTransition = false;
          this.cursor = new Cursor();
@@ -31,6 +31,8 @@ diff -ruN a/effect.js b/effect.js
 -        this._spriteSize = this.cursor.sprite ? this.cursor.sprite.get_width() : 24;
 +        this._userPath = '';
 +        this._themeName = '';
++        this._pointerSize = 24;
++        this._canvas = null;
 +        this._spriteSize = 24;
 +        this._hotX = 0;
 +        this._hotY = 0;
@@ -42,32 +44,50 @@ diff -ruN a/effect.js b/effect.js
 +        this._unmagnifyDelayId = null;
 +    }
 +
-+    // The pointer as it is drawn now. The sprite and its hotspot are in
-+    // texture pixels and get_scale() turns them into the logical size on
-+    // screen: on a 1.67 monitor a 32px pointer is a 64px texture at 0.5.
-+    // Measured again before every magnify, because the theme, the size and
-+    // the monitor under the pointer all change the sprite.
++    // The pointer as it is drawn now, in logical pixels, which is what the
++    // shrink has to end on. Mutter draws it cursor-size x the theme's canvas
++    // ratio wide on every monitor, while the sprite is a texture loaded at
++    // ceil(monitor scale): on 1.33 and 1.67 alike a 32px pointer is a 64px
++    // texture, and get_scale() still says 1. Measuring the texture left the
++    // shrink twice the pointer's size, sticking out to the bottom right of
++    // the tip before it snapped. The hotspot is taken as a fraction of the
++    // texture, so it holds at any scale. Without a canvas (a picture typed
++    // into the preferences, a theme with no Xcursor) the texture is divided
++    // by the scale Mutter loads it at. Measured again before every magnify,
++    // because the theme, the size and the monitor under the pointer all
++    // change the sprite.
 +    _measure() {
 +        const sprite = this.cursor.sprite;
 +        if (!sprite)
 +            return;
-+        const scale = this.cursor.scale || 1;
++        const texture = sprite.get_width();
++        if (!texture)
++            return;
 +        const [hotX, hotY] = this.cursor.hot;
-+        this._spriteSize = sprite.get_width() * scale;
-+        this._hotX = hotX * scale;
-+        this._hotY = hotY * scale;
++        this._spriteSize = this._canvas
++            ? this._pointerSize * this._canvas
++            : texture * this._textureScale();
++        this._hotX = hotX / texture * this._spriteSize;
++        this._hotY = hotY / sprite.get_height() * this._spriteSize;
 +        this._ratio = this.icon_size / this._spriteSize;
          this._pivot = new Graphene.Point({
              x: this._hotX / this._spriteSize,
              y: this._hotY / this._spriteSize,
          });
--
++    }
+ 
 -        // Timeout ID for removing delays
 -        this._unmagnifyDelayId = null;
++    _textureScale() {
++        const scale = this.cursor.scale;
++        if (scale && scale !== 1)
++            return scale;
++        const display = global.display;
++        return 1 / Math.ceil(display.get_monitor_scale(display.get_current_monitor()));
      }
  
      set cursorSize(size) {
-@@ -43,16 +66,39 @@
+@@ -43,16 +87,45 @@
          this._ratio = size / this._spriteSize;
      }
  
@@ -84,12 +104,18 @@ diff -ruN a/effect.js b/effect.js
 +        this._updateIcon();
 +    }
 +
++    set pointerSize(size) {
++        this._pointerSize = size;
++    }
++
 +    _updateIcon() {
++        const found = cursorForTheme(this._themeName);
++        this._canvas = found?.canvas ?? null;
 +        if (this._userPath) {
 +            this.gicon = Gio.Icon.new_for_string(this._userPath);
 +            return;
 +        }
-+        this.gicon = cursorIconForTheme(this._themeName) ??
++        this.gicon = found?.icon ??
 +            Gio.Icon.new_for_string(GLib.build_filenamev([extensionDir(), 'icons', 'cursor.svg']));
      }
  
@@ -118,16 +144,20 @@ diff -ruN a/extension.js b/extension.js
  import GLib from 'gi://GLib';
  import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
  
-@@ -114,9 +115,21 @@
+@@ -114,9 +115,29 @@
              [Field.CHCK, 'i', (r) => this._onCheckIntervalChange(r)],
              [Field.DRAW, 'i', (r) => this._onDrawIntervalChange(r)],
          ]);
 +
-+        // Follows the pointer theme however it is changed (Settings, Tweaks,
-+        // gsettings), so the magnified cursor is the one on screen.
++        // Follows the pointer theme and size however they are changed
++        // (Settings, Tweaks, gsettings), so the magnified cursor is the one on
++        // screen and shrinks back to its size.
 +        this._interface = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
 +        const followTheme = () => {this._effect.themeName = this._interface.get_string('cursor-theme')};
++        const followSize = () => {this._effect.pointerSize = this._interface.get_int('cursor-size')};
 +        this._themeChangedId = this._interface.connect('changed::cursor-theme', followTheme);
++        this._sizeChangedId = this._interface.connect('changed::cursor-size', followSize);
++        followSize();
 +        followTheme();
      }
  
@@ -136,6 +166,10 @@ diff -ruN a/extension.js b/extension.js
 +            this._interface.disconnect(this._themeChangedId);
 +            this._themeChangedId = null;
 +        }
++        if (this._sizeChangedId) {
++            this._interface.disconnect(this._sizeChangedId);
++            this._sizeChangedId = null;
++        }
 +        this._interface = null;
          if (this._checkTimeoutId) {
              GLib.Source.remove(this._checkTimeoutId);
@@ -143,7 +177,7 @@ diff -ruN a/extension.js b/extension.js
 diff -ruN a/theme.js b/theme.js
 --- a/theme.js
 +++ b/theme.js
-@@ -0,0 +1,133 @@
+@@ -0,0 +1,144 @@
 +'use strict';
 +
 +import GdkPixbuf from 'gi://GdkPixbuf';
@@ -212,9 +246,8 @@ diff -ruN a/theme.js b/theme.js
 +    }
 +};
 +
-+// The first frame at the largest nominal size, as a pixbuf. Xcursor pixels
-+// are premultiplied ARGB words, little endian; a pixbuf wants straight RGBA.
-+const xcursorIcon = dir => {
++// The largest nominal size of the theme's default pointer, first frame.
++const largestXcursor = dir => {
 +    for (const name of ['default', 'left_ptr']) {
 +        const data = readBytes(GLib.build_filenamev([dir, 'cursors', name]));
 +        if (!data || data.length < 16)
@@ -232,47 +265,59 @@ diff -ruN a/theme.js b/theme.js
 +                continue;
 +            const w = view.getUint32(pos + 16, true);
 +            const h = view.getUint32(pos + 20, true);
-+            if (pos + 36 + w * h * 4 > data.length)
++            if (size === 0 || pos + 36 + w * h * 4 > data.length)
 +                continue;
 +            if (!best || size > best.size)
-+                best = {size, w, h, pos: pos + 36};
++                best = {data, size, w, h, pos: pos + 36};
 +        }
-+        if (!best)
-+            continue;
-+        const {w, h, pos} = best;
-+        const rgba = new Uint8Array(w * h * 4);
-+        for (let p = 0; p < w * h; p++) {
-+            const s = pos + p * 4;
-+            const a = data[s + 3];
-+            let r = data[s + 2], g = data[s + 1], b = data[s];
-+            if (a > 0 && a < 255) {
-+                r = Math.min(255, Math.floor(r * 255 / a));
-+                g = Math.min(255, Math.floor(g * 255 / a));
-+                b = Math.min(255, Math.floor(b * 255 / a));
-+            }
-+            rgba.set([r, g, b, a], p * 4);
-+        }
-+        return GdkPixbuf.Pixbuf.new_from_bytes(new GLib.Bytes(rgba),
-+            GdkPixbuf.Colorspace.RGB, true, 8, w, h, w * 4);
++        if (best)
++            return best;
 +    }
 +    return null;
 +};
 +
-+export const cursorIconForTheme = (name, seen = new Set()) => {
++// As a pixbuf. Xcursor pixels are premultiplied ARGB words, little endian;
++// a pixbuf wants straight RGBA.
++const xcursorPixbuf = ({data, w, h, pos}) => {
++    const rgba = new Uint8Array(w * h * 4);
++    for (let p = 0; p < w * h; p++) {
++        const s = pos + p * 4;
++        const a = data[s + 3];
++        let r = data[s + 2], g = data[s + 1], b = data[s];
++        if (a > 0 && a < 255) {
++            r = Math.min(255, Math.floor(r * 255 / a));
++            g = Math.min(255, Math.floor(g * 255 / a));
++            b = Math.min(255, Math.floor(b * 255 / a));
++        }
++        rgba.set([r, g, b, a], p * 4);
++    }
++    return GdkPixbuf.Pixbuf.new_from_bytes(new GLib.Bytes(rgba),
++        GdkPixbuf.Colorspace.RGB, true, 8, w, h, w * 4);
++};
++
++// {icon, canvas}: the picture, and the pointer's canvas width over its
++// nominal size (AOSP draws a 24px canvas for size 18, so 1.33). Mutter draws
++// the pointer cursor-size x canvas logical pixels wide whatever the monitor
++// scale, which is the size the magnified copy has to shrink back to. The
++// canvas comes from the Xcursor file even for a vector picture, because that
++// file is what is on screen; null when the theme has none.
++export const cursorForTheme = (name, seen = new Set()) => {
 +    if (!name || name.includes('/') || seen.has(name) || seen.size > 8)
 +        return null;
 +    seen.add(name);
 +    const dirs = themeDirs(name);
 +    for (const dir of dirs) {
-+        const icon = vectorIcon(dir) ?? xcursorIcon(dir);
++        const xcursor = largestXcursor(dir);
++        const canvas = xcursor ? xcursor.w / xcursor.size : null;
++        const icon = vectorIcon(dir) ?? (xcursor ? xcursorPixbuf(xcursor) : null);
 +        if (icon)
-+            return icon;
++            return {icon, canvas};
 +    }
 +    for (const dir of dirs) {
 +        for (const parent of inherits(dir)) {
-+            const icon = cursorIconForTheme(parent, seen);
-+            if (icon)
-+                return icon;
++            const found = cursorForTheme(parent, seen);
++            if (found)
++                return found;
 +        }
 +    }
 +    return null;

@@ -592,6 +592,21 @@ patch_wiggly_extension() {
     if _wiggly_git_apply --reverse --check; then
         return 0
     fi
+    # theme.js is this patch's own file, so an install that has it and takes
+    # neither direction carries an earlier version of the patch (the first one
+    # measured the texture and shrank to twice the pointer on fractional
+    # scales). Fetched again from EGO and patched fresh; the old copy is put
+    # back if the download fails, so Wiggly is never left missing.
+    if [ -f "$target/theme.js" ] && ! _wiggly_git_apply --check \
+       && [ "${DRY_RUN:-0}" != 1 ]; then
+        mv "$target" "$target.aura-glass-old"
+        if install_ext_ego wiggly@mojarch && [ -d "$target" ]; then
+            rm -rf "$target.aura-glass-old"
+        else
+            rm -rf "$target"
+            mv "$target.aura-glass-old" "$target"
+        fi
+    fi
     if ! _wiggly_git_apply --check; then
         warn "Wiggly changed upstream; its magnified cursor will not follow the cursor theme"
         return 0
