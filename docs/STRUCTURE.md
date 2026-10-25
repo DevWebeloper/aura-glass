@@ -192,6 +192,8 @@ the GPU. **Agents never run these.** Humans only: `preview.sh`,
   ├─ adaptive-performance/                    active, reason, saved-mode-keys
   ├─ backups/                                 <name>.orig | <name>.absent
   ├─ shell-*.css gtk4-*.css gtk3-*.css        installed, rewritten copies of css/
+  ├─ extension-overrides.css                  aura-glass-apply's copy of the rules that style other
+  │                                           extensions' surfaces; the Helper loads it as an extension sheet
   └─ preview-active, preview-backup/          only while a live preview is open
 ~/.local/bin/                                 aura-glass-{apply,operation,preview,settings,open-once,update-check,
                                               icon-sync,gdm-sync,adaptive}  (+ tahoe-glass-apply symlink)
@@ -261,3 +263,4 @@ the subject of [CONSISTENCY.md](CONSISTENCY.md).
 | `apply-source-fingerprint` | the `--settings-only --incremental` full fallback | the incremental classifier |
 | BMS dconf subtree | `load_dconf` + `apply_*`, `apply_adaptive_blur`, preview `revert` | Blur My Shell |
 | The 4 CSS targets | `aura-glass-apply` only | GNOME Shell (User Themes), GTK |
+| `$CONF_DIR/extension-overrides.css` | `aura-glass-apply` only | Aura Glass Helper (loads it as an extension sheet, reloads on rename) |

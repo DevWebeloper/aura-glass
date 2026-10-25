@@ -78,7 +78,8 @@
 .workspace-switcher-container,
 .workspace-switcher,
 .resize-popup,
-.app-folder-dialog {
+.app-folder-dialog,
+.modal-dialog.clipboard-dialog {
   background-color: rgba(0, 0, 0, 0.26);
 }
 

@@ -82,6 +82,11 @@ const PROFILES = ['auto', 'full', 'performance'];
 const OPACITY_STATE_FILES = new Set([
     'app-opacity', 'app-transparency', 'glass-mode', 'adaptive-performance', 'active',
 ]);
+// Written by bin/aura-glass-apply: shell rules for surfaces another extension
+// paints from its own stylesheet (Copyous's Super+V dialog). St ranks every
+// extension-loaded sheet above the shell theme, so these only win when they
+// are loaded as one too, which is what this extension does with it.
+const OVERRIDE_SHEET = 'extension-overrides.css';
 const PROFILE_ICONS = {
     auto: 'view-refresh-symbolic',
     full: 'weather-clear-symbolic',
@@ -246,6 +251,30 @@ export default class AuraGlassBlurExtension extends Extension {
 
         this._buildPanelMenu();
         this._initOpacityMonitor();
+        this._loadOverrideSheet();
+    }
+
+    // Main.loadTheme() carries extension sheets over to each new theme and
+    // re-reads them, so the shell-theme reload after an apply picks up the new
+    // file too. This covers a rewrite without one, and the first load.
+    _loadOverrideSheet() {
+        this._unloadOverrideSheet();
+        const file = Gio.File.new_for_path(configPath(OVERRIDE_SHEET));
+        if (!file.query_exists(null))
+            return;
+        try {
+            St.ThemeContext.get_for_stage(global.stage).get_theme().load_stylesheet(file);
+            this._overrideSheet = file;
+        } catch (e) {
+            // A sheet St cannot parse leaves Copyous on its own look
+        }
+    }
+
+    _unloadOverrideSheet() {
+        if (!this._overrideSheet)
+            return;
+        St.ThemeContext.get_for_stage(global.stage).get_theme().unload_stylesheet(this._overrideSheet);
+        this._overrideSheet = null;
     }
 
     // --no-window-menu writes window-menu=0, and the conf monitor brings any
@@ -302,6 +331,7 @@ export default class AuraGlassBlurExtension extends Extension {
             monitor.cancel();
         }
         this._confMonitors = null;
+        this._unloadOverrideSheet();
 
         if (!this._isBmsApplicationsActive()) {
             this.setWindowOpacityAll(255);
@@ -801,6 +831,8 @@ export default class AuraGlassBlurExtension extends Extension {
                         this._updateOpacityFromConfig();
                     else if (name === 'window-menu')
                         this._syncWindowMenu();
+                    else if (name === OVERRIDE_SHEET)
+                        this._loadOverrideSheet();
                 });
                 this._confMonitors.push([monitor, id]);
             } catch (e) {

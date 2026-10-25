@@ -4,6 +4,19 @@
  * because nothing here styled .modal-dialog and stock GNOME's opaque fill
  * therefore sat on top of the blur. The fill is the same material as
  * .popup-menu-content so a dialog reads as the same glass as every menu.
+ *
+ * .modal-dialog.clipboard-dialog is Copyous's Super+V history. It is a
+ * .modal-dialog, so Blur My Shell already blurs behind it at
+ * dialog-corner-radius, but Copyous paints .clipboard-dialog an opaque
+ * #36363a with an 18px corner from a stylesheet it loads itself. St ranks
+ * every extension-loaded sheet above the whole shell theme, !important
+ * included (get_origin in st-theme.c), so in gnome-shell.css this selector
+ * can never win. bin/aura-glass-apply copies each rule that names
+ * .clipboard-dialog, values already tinted and radius-rewritten, into
+ * extension-overrides.css, which Aura Glass Helper loads as an extension
+ * sheet of its own. There the second class outranks Copyous's one. The pair
+ * is restated in shell-popup-blur.css and shell-80-solid.css so the dialog
+ * follows the same ground ladder as every other dialog.
  */
 .modal-dialog,
 .end-session-dialog,
@@ -11,7 +24,8 @@
 .workspace-switcher-container,
 .workspace-switcher,
 .resize-popup,
-.app-folder-dialog {
+.app-folder-dialog,
+.modal-dialog.clipboard-dialog {
   background-color: rgba(0, 0, 0, 0.42);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 20px;
