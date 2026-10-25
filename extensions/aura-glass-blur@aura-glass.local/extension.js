@@ -16,9 +16,13 @@
  * It also shades the top bar while the focused window fills the panel's
  * monitor (PANEL_SHADE_CLASS, painted by css/shell-00-flat.css).
  *
+ * And it lets the scroll wheel or touchpad switch workspaces while a window
+ * or app icon is held in the overview (_attachDragScroll).
+ *
  * It stays installed and enabled in every mode, Performance included.
  */
 
+import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -76,6 +80,11 @@ const DBUS_IFACE = `
 // Added to Main.panel while the focused window fills the panel's monitor.
 // css/shell-00-flat.css paints it; the name is duplicated there.
 const PANEL_SHADE_CLASS = 'aura-glass-maximized';
+
+// Touchpad scroll deltas summed before one workspace step while dragging in
+// the overview. A starting value, not yet tuned on hardware: lower steps on
+// a lighter swipe, higher needs a longer one.
+const DRAG_SCROLL_SMOOTH_STEP = 1.5;
 
 const PROFILES = ['auto', 'full', 'performance'];
 // State files whose change can move the window opacity this extension owns.
@@ -249,9 +258,79 @@ export default class AuraGlassBlurExtension extends Extension {
             'focus-window', (_display, window) => this._watchFocusedWindow(window));
         this._watchFocusedWindow(global.display.focusWindow ?? global.display.focus_window);
 
+        // GNOME's DnD pushes a modal grab onto a private 0x0 actor for the
+        // whole drag, so scroll never reaches the overview's workspace
+        // switcher. The grab is taken before 'drag-begin' fires, so these
+        // signals can read it off the stage.
+        this._dragScrollActor = null;
+        this._dragScrollId = 0;
+        this._dragScrollAccum = 0;
+        const dragBegin = () => this._attachDragScroll();
+        const dragEnd = () => this._detachDragScroll();
+        this._dragIds = [
+            Main.overview.connect('window-drag-begin', dragBegin),
+            Main.overview.connect('item-drag-begin', dragBegin),
+            Main.overview.connect('window-drag-end', dragEnd),
+            Main.overview.connect('window-drag-cancelled', dragEnd),
+            Main.overview.connect('item-drag-end', dragEnd),
+            Main.overview.connect('item-drag-cancelled', dragEnd),
+        ];
+
         this._buildPanelMenu();
         this._initOpacityMonitor();
         this._loadOverrideSheet();
+    }
+
+    _attachDragScroll() {
+        this._detachDragScroll();
+        const actor = global.stage.get_grab_actor();
+        if (!actor)
+            return;
+        this._dragScrollActor = actor;
+        this._dragScrollAccum = 0;
+        this._dragScrollId = actor.connect('scroll-event',
+            (_actor, event) => this._onDragScroll(event));
+    }
+
+    _detachDragScroll() {
+        if (this._dragScrollActor && this._dragScrollId)
+            this._dragScrollActor.disconnect(this._dragScrollId);
+        this._dragScrollActor = null;
+        this._dragScrollId = 0;
+    }
+
+    _onDragScroll(event) {
+        if (!Main.overview.visible)
+            return Clutter.EVENT_PROPAGATE;
+
+        if (event.get_scroll_direction() !== Clutter.ScrollDirection.SMOOTH)
+            return Main.wm.handleWorkspaceScroll(event);
+
+        // A wheel also sends emulated smooth events next to its discrete
+        // ones; only finger and continuous sources step from deltas.
+        if (event.get_scroll_source() === Clutter.ScrollSource.WHEEL)
+            return Clutter.EVENT_PROPAGATE;
+
+        const [dx, dy] = event.get_scroll_delta();
+        const workspaceManager = global.workspace_manager;
+        const vertical = workspaceManager.layout_rows === -1;
+        this._dragScrollAccum += vertical || Math.abs(dy) > Math.abs(dx) ? dy : dx;
+        if (Math.abs(this._dragScrollAccum) < DRAG_SCROLL_SMOOTH_STEP)
+            return Clutter.EVENT_STOP;
+
+        const forward = this._dragScrollAccum > 0;
+        this._dragScrollAccum = 0;
+        const rtl = Clutter.get_default_text_direction() === Clutter.TextDirection.RTL;
+        let direction;
+        if (vertical)
+            direction = forward ? Meta.MotionDirection.DOWN : Meta.MotionDirection.UP;
+        else
+            direction = forward !== rtl ? Meta.MotionDirection.RIGHT : Meta.MotionDirection.LEFT;
+
+        const workspace = workspaceManager.get_active_workspace().get_neighbor(direction);
+        if (workspace)
+            Main.wm.actionMoveWorkspace(workspace);
+        return Clutter.EVENT_STOP;
     }
 
     // Main.loadTheme() carries extension sheets over to each new theme and
@@ -349,6 +428,10 @@ export default class AuraGlassBlurExtension extends Extension {
         for (const id of this._overviewIds ?? [])
             Main.overview.disconnect(id);
         this._overviewIds = null;
+        for (const id of this._dragIds ?? [])
+            Main.overview.disconnect(id);
+        this._dragIds = null;
+        this._detachDragScroll();
         if (this._monitorsChangedId) {
             Main.layoutManager.disconnect(this._monitorsChangedId);
             this._monitorsChangedId = 0;

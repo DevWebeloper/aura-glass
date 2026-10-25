@@ -1,7 +1,7 @@
 {
   "uuid": "aura-glass-blur@aura-glass.local",
   "name": "Aura Glass Helper",
-  "description": "Adaptive performance profile controls on the top bar, focused window and fullscreen D-Bus bridge, and window-menu blur toggle for Aura Glass.",
+  "description": "Adaptive performance profile controls on the top bar, focused window and fullscreen D-Bus bridge, window-menu blur toggle, and scroll to switch workspaces while dragging in the overview for Aura Glass.",
   "shell-version": ["48", "49", "50", "51"],
   "session-modes": ["user"]
 }

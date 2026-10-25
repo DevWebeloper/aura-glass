@@ -96,6 +96,7 @@ a restart.
 | Fonts | `lib/steps-fonts.sh`, `apply_font` |
 | Extension catalogue | `lib/steps.sh` (arrays, `ext_description`), `bin/aura-glass-ext`, `lib/steps-extensions.sh` |
 | Blur This App (window menu) | `extensions/aura-glass-blur@aura-glass.local/extension.js` → `aura-glass-operation app-blur` |
+| Scroll to switch workspaces while dragging in the overview | `extensions/aura-glass-blur@aura-glass.local/extension.js` (`_attachDragScroll`, `_onDragScroll`, `DRAG_SCROLL_SMOOTH_STEP`) |
 
 ## 7. Installer / system behaviour
 
