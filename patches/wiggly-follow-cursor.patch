@@ -1,0 +1,279 @@
+diff -ruN a/cursor.js b/cursor.js
+--- a/cursor.js
++++ b/cursor.js
+@@ -36,6 +36,10 @@
+         return this._tracker.get_sprite();
+     }
+ 
++    get scale() {
++        return this._tracker.get_scale();
++    }
++
+     controlCursorVisibility(showCursor) {
+         // Idempotent behavior: do nothing if state already matches
+         if (showCursor && !this._hidden)
+diff -ruN a/effect.js b/effect.js
+--- a/effect.js
++++ b/effect.js
+@@ -9,6 +9,7 @@
+ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+ 
+ import Cursor from './cursor.js';
++import { cursorIconForTheme } from './theme.js';
+ 
+ const extensionDir = () => GLib.path_get_dirname(import.meta.url.slice(7));
+ 
+@@ -26,16 +27,38 @@
+         this.isWiggling = false;
+         this._isInTransition = false;
+         this.cursor = new Cursor();
+-        [this._hotX, this._hotY] = this.cursor.hot;
+-        this._spriteSize = this.cursor.sprite ? this.cursor.sprite.get_width() : 24;
++        this._userPath = '';
++        this._themeName = '';
++        this._spriteSize = 24;
++        this._hotX = 0;
++        this._hotY = 0;
++        this._ratio = 1;
++        this._pivot = new Graphene.Point({x: 0, y: 0});
++        this._measure();
+ 
++        // Timeout ID for removing delays
++        this._unmagnifyDelayId = null;
++    }
++
++    // The pointer as it is drawn now. The sprite and its hotspot are in
++    // texture pixels and get_scale() turns them into the logical size on
++    // screen: on a 1.67 monitor a 32px pointer is a 64px texture at 0.5.
++    // Measured again before every magnify, because the theme, the size and
++    // the monitor under the pointer all change the sprite.
++    _measure() {
++        const sprite = this.cursor.sprite;
++        if (!sprite)
++            return;
++        const scale = this.cursor.scale || 1;
++        const [hotX, hotY] = this.cursor.hot;
++        this._spriteSize = sprite.get_width() * scale;
++        this._hotX = hotX * scale;
++        this._hotY = hotY * scale;
++        this._ratio = this.icon_size / this._spriteSize;
+         this._pivot = new Graphene.Point({
+             x: this._hotX / this._spriteSize,
+             y: this._hotY / this._spriteSize,
+         });
+-
+-        // Timeout ID for removing delays
+-        this._unmagnifyDelayId = null;
+     }
+ 
+     set cursorSize(size) {
+@@ -43,16 +66,39 @@
+         this._ratio = size / this._spriteSize;
+     }
+ 
++    // A path typed in the preferences wins. Left empty, the icon follows
++    // the cursor theme; a theme with nothing usable gets the bundled one.
+     set cursorPath(path) {
+-        this.gicon = Gio.Icon.new_for_string(path || GLib.build_filenamev([extensionDir(), 'icons', 'cursor.svg']));
++        this._userPath = path;
++        this._updateIcon();
++    }
++
++    set themeName(name) {
++        this._themeName = name;
++        this._updateIcon();
++    }
++
++    _updateIcon() {
++        if (this._userPath) {
++            this.gicon = Gio.Icon.new_for_string(this._userPath);
++            return;
++        }
++        this.gicon = cursorIconForTheme(this._themeName) ??
++            Gio.Icon.new_for_string(GLib.build_filenamev([extensionDir(), 'icons', 'cursor.svg']));
+     }
+ 
+     move(x, y) {
++        if (!this.isWiggling)
++            this._measure();
+         this.set_position(x - this._hotX * this._ratio, y - this._hotY * this._ratio);
+     }
+ 
+     magnify() {
+         this.isWiggling = true;
++        // Start from the pointer's own size, so it grows out of the cursor
++        // instead of appearing at full size on the first shake.
++        this.pivot_point = this._pivot;
++        this.set_scale(1.0 / this._ratio, 1.0 / this._ratio);
+         Main.uiGroup.add_child(this);
+         if (this.isHidden) {
+             this.cursor.hide();
+diff -ruN a/extension.js b/extension.js
+--- a/extension.js
++++ b/extension.js
+@@ -1,5 +1,6 @@
+ 'use strict';
+ 
++import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
+ 
+@@ -114,9 +115,21 @@
+             [Field.CHCK, 'i', (r) => this._onCheckIntervalChange(r)],
+             [Field.DRAW, 'i', (r) => this._onDrawIntervalChange(r)],
+         ]);
++
++        // Follows the pointer theme however it is changed (Settings, Tweaks,
++        // gsettings), so the magnified cursor is the one on screen.
++        this._interface = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
++        const followTheme = () => {this._effect.themeName = this._interface.get_string('cursor-theme')};
++        this._themeChangedId = this._interface.connect('changed::cursor-theme', followTheme);
++        followTheme();
+     }
+ 
+     disable() {
++        if (this._themeChangedId) {
++            this._interface.disconnect(this._themeChangedId);
++            this._themeChangedId = null;
++        }
++        this._interface = null;
+         if (this._checkTimeoutId) {
+             GLib.Source.remove(this._checkTimeoutId);
+             this._checkTimeoutId = null;
+diff -ruN a/theme.js b/theme.js
+--- a/theme.js
++++ b/theme.js
+@@ -0,0 +1,133 @@
++'use strict';
++
++import GdkPixbuf from 'gi://GdkPixbuf';
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++
++// Finds the picture of a cursor theme's default pointer, so the magnified
++// cursor is the one on screen whatever set org.gnome.desktop.interface
++// cursor-theme. Searched like libXcursor, which is what Mutter draws the real
++// pointer with: the user's icon dirs first, then the system ones, then the
++// themes named by index.theme's Inherits.
++
++const XCURSOR_MAGIC = 0x72756358; // "Xcur"
++const XCURSOR_IMAGE = 0xfffd0002;
++
++const iconRoots = () => [
++    GLib.build_filenamev([GLib.get_user_data_dir(), 'icons']),
++    GLib.build_filenamev([GLib.get_home_dir(), '.icons']),
++    ...GLib.get_system_data_dirs().map(d => GLib.build_filenamev([d, 'icons'])),
++    '/usr/share/pixmaps',
++];
++
++const readBytes = path => {
++    try {
++        const [ok, data] = GLib.file_get_contents(path);
++        return ok ? data : null;
++    } catch {
++        return null;
++    }
++};
++
++// Every directory of that name, in search order: a theme can be split, as an
++// icon theme in ~/.local/share/icons with its cursors in /usr/share/icons.
++const themeDirs = name => iconRoots()
++    .map(root => GLib.build_filenamev([root, name]))
++    .filter(dir => GLib.file_test(dir, GLib.FileTest.IS_DIR));
++
++const inherits = dir => {
++    const data = readBytes(GLib.build_filenamev([dir, 'index.theme']));
++    if (!data)
++        return [];
++    const line = new TextDecoder().decode(data).split('\n')
++        .find(l => l.trim().startsWith('Inherits'));
++    if (!line)
++        return [];
++    return line.slice(line.indexOf('=') + 1).split(/[,;]/)
++        .map(s => s.trim().replace(/^"|"$/g, '')).filter(Boolean);
++};
++
++// A vector set in the KDE layout, used as it is. Its metadata names the file:
++// AOSP's default entry is arrow.svg, not default.svg. An SVG that only wraps
++// a PNG is skipped, because the Xcursor file underneath is the same picture.
++const vectorIcon = dir => {
++    const base = GLib.build_filenamev([dir, 'cursors_scalable', 'default']);
++    const meta = readBytes(GLib.build_filenamev([base, 'metadata.json']));
++    if (!meta)
++        return null;
++    try {
++        const svg = GLib.build_filenamev([base, JSON.parse(new TextDecoder().decode(meta))[0].filename]);
++        const body = readBytes(svg);
++        if (!body || new TextDecoder().decode(body).includes('data:image/png;base64'))
++            return null;
++        return Gio.FileIcon.new(Gio.File.new_for_path(svg));
++    } catch {
++        return null;
++    }
++};
++
++// The first frame at the largest nominal size, as a pixbuf. Xcursor pixels
++// are premultiplied ARGB words, little endian; a pixbuf wants straight RGBA.
++const xcursorIcon = dir => {
++    for (const name of ['default', 'left_ptr']) {
++        const data = readBytes(GLib.build_filenamev([dir, 'cursors', name]));
++        if (!data || data.length < 16)
++            continue;
++        const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
++        if (view.getUint32(0, true) !== XCURSOR_MAGIC)
++            continue;
++        let best = null;
++        const ntoc = view.getUint32(12, true);
++        for (let i = 0; i < ntoc && 16 + i * 12 + 12 <= data.length; i++) {
++            const at = 16 + i * 12;
++            const size = view.getUint32(at + 4, true);
++            const pos = view.getUint32(at + 8, true);
++            if (view.getUint32(at, true) !== XCURSOR_IMAGE || pos + 36 > data.length)
++                continue;
++            const w = view.getUint32(pos + 16, true);
++            const h = view.getUint32(pos + 20, true);
++            if (pos + 36 + w * h * 4 > data.length)
++                continue;
++            if (!best || size > best.size)
++                best = {size, w, h, pos: pos + 36};
++        }
++        if (!best)
++            continue;
++        const {w, h, pos} = best;
++        const rgba = new Uint8Array(w * h * 4);
++        for (let p = 0; p < w * h; p++) {
++            const s = pos + p * 4;
++            const a = data[s + 3];
++            let r = data[s + 2], g = data[s + 1], b = data[s];
++            if (a > 0 && a < 255) {
++                r = Math.min(255, Math.floor(r * 255 / a));
++                g = Math.min(255, Math.floor(g * 255 / a));
++                b = Math.min(255, Math.floor(b * 255 / a));
++            }
++            rgba.set([r, g, b, a], p * 4);
++        }
++        return GdkPixbuf.Pixbuf.new_from_bytes(new GLib.Bytes(rgba),
++            GdkPixbuf.Colorspace.RGB, true, 8, w, h, w * 4);
++    }
++    return null;
++};
++
++export const cursorIconForTheme = (name, seen = new Set()) => {
++    if (!name || name.includes('/') || seen.has(name) || seen.size > 8)
++        return null;
++    seen.add(name);
++    const dirs = themeDirs(name);
++    for (const dir of dirs) {
++        const icon = vectorIcon(dir) ?? xcursorIcon(dir);
++        if (icon)
++            return icon;
++    }
++    for (const dir of dirs) {
++        for (const parent of inherits(dir)) {
++            const icon = cursorIconForTheme(parent, seen);
++            if (icon)
++                return icon;
++        }
++    }
++    return null;
++};

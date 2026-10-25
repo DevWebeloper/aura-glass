@@ -190,6 +190,8 @@ cmd_install() {
         "$AURA_EXT_UUID")       install_aura_ext ;;
         "$BMS_UUID")            install_bms ;;
         custom-osd@neuromorph)  install_custom_osd ;;
+        # Downloaded like the rest, then patched as install_extensions does.
+        wiggly@mojarch)         install_ext_ego "$1" && patch_wiggly_extension ;;
         *)                      install_ext_ego "$1" ;;
     esac
     cmd_enable "$1"
@@ -200,6 +202,7 @@ cmd_pack() {
     for uuid in "$@"; do
         ext_installed "$uuid" || install_ext_ego "$uuid" || true
         ext_installed "$uuid" || continue
+        [ "$uuid" = wiggly@mojarch ] && patch_wiggly_extension
         # A pack installs these and stops there, the same way install.sh's does.
         # Wanting the wallpaper to pick the accent is a choice about one
         # extension, not something to arrive at by pressing "All".

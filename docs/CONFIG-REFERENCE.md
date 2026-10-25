@@ -180,7 +180,6 @@ by `save_glass_mode_memos`.
 | `icons` | the resolved icon theme base name | `lib/steps-assets.sh` |
 | `cursor-pack` | `adwaita\|aosp\|mactahoe\|moga\|original\|<theme>` or `keep` | `apply_cursor_theme` |
 | `cursor-size` | px. Only when given | `apply_cursor_size` |
-| `wiggly-cursor/<theme>.svg` | Wiggly's magnified pointer, converted from a theme's Xcursor `default`. Only for a theme with no vector `cursors_scalable` of its own | `wiggly_cursor_svg` |
 | `font` | `system\|misans\|inter\|sf-pro` | `apply_font` |
 
 ### Machinery

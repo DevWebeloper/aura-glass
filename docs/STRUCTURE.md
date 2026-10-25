@@ -87,6 +87,7 @@ For "which file draws this button / owns this setting", use
 | `blur-my-shell-panel-refit.patch` | BMS: after a monitor change or startup, swap a stale top-bar blur in place in one frame, instead of `reset()` (style flash, skipped without a work-area change) |
 | `custom-osd-gnome50.patch` | Custom OSD on GNOME 50/51 |
 | `copyous-gnome51.patch` | Copyous on GNOME 51 |
+| `wiggly-follow-cursor.patch` | Wiggly: measure the pointer in logical pixels before every shake, grow and shrink about its hotspot, and follow the cursor theme itself (`theme.js`) |
 | `gnome-rounded-blur-offstage.patch` | gnome-rounded-blur: place the background blur right in screenshots (off-stage paints) |
 
 ### `bin/`: commands (most installed into `~/.local/bin`)

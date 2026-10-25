@@ -567,6 +567,44 @@ install_extensions() {
         for u in "${EXT_EXTRA[@]}"; do install_ext_ego "$u" || true; done
     fi
     patch_copyous_extension
+    patch_wiggly_extension
+}
+
+# Wiggly 10 measures the pointer once, at enable, in texture pixels, and eases
+# its pivot in from the top-left corner. On a scaled monitor the shrink ended
+# larger than the pointer and snapped down; a theme or size change was never
+# seen; the growth drifted off the tip. It also only draws a picture someone
+# wrote into cursor-path. patches/wiggly-follow-cursor.patch measures in logical
+# pixels before every shake, pins the pivot on the hotspot, and adds theme.js,
+# which finds the active cursor theme's pointer itself (its vector default, or
+# the Xcursor file Mutter draws) on every cursor-theme change, from any tool.
+# Applied to the EGO download, so a Wiggly update that moves the code skips
+# the patch with a warning rather than half-applying it.
+patch_wiggly_extension() {
+    local target="$EXT_DIR/wiggly@mojarch"
+    local patch="$REPO_ROOT/patches/wiggly-follow-cursor.patch"
+    [ -d "$target" ] || return 0
+    # The ceiling keeps git from treating a dotfiles repo above the extension
+    # as the tree to patch: with no repository found it applies to the cwd.
+    _wiggly_git_apply() {
+        ( cd "$target" && GIT_CEILING_DIRECTORIES="$EXT_DIR" git apply "$@" "$patch" ) 2>/dev/null
+    }
+    if _wiggly_git_apply --reverse --check; then
+        return 0
+    fi
+    if ! _wiggly_git_apply --check; then
+        warn "Wiggly changed upstream; its magnified cursor will not follow the cursor theme"
+        return 0
+    fi
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: apply $(basename "$patch") to wiggly@mojarch"
+        return 0
+    fi
+    if _wiggly_git_apply; then
+        ok "Wiggly follows the cursor theme"
+    else
+        warn "could not patch Wiggly; its magnified cursor will not follow the cursor theme"
+    fi
 }
 
 patch_copyous_extension() {

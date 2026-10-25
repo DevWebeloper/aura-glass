@@ -320,7 +320,8 @@ Catalogued in `lib/steps.sh`:
   (static blur for full-screen windows, dynamic for smaller ones),
   `blur-my-shell-panel-refit.patch` (top-bar blur refitted in place after a
   monitor change, no flash). Custom OSD gets
-  `custom-osd-gnome50.patch`. Copyous gets `copyous-gnome51.patch`.
+  `custom-osd-gnome50.patch`. Copyous gets `copyous-gnome51.patch`. Wiggly gets
+  `wiggly-follow-cursor.patch` on its EGO download (`patch_wiggly_extension`).
 - `bin/aura-glass-ext` exposes the catalogue one UUID at a time
   (`list | install | remove | enable | disable | recommended | full`). The
   settings window's Extensions page is built from `aura-glass-ext list`.
