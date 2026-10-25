@@ -55,8 +55,11 @@ sync_wallpaper() {
     local wall; wall="$(get_wallpaper)"
     [ -n "$wall" ] && [ -f "$wall" ] || return 0
 
-    local tmp="/tmp/aura-gdm-sync-$$.png"
-    python3 - "$wall" "$tmp" <<'PY' || return 0
+    # Three watchers below can each call this, and subshells share $$, so a
+    # fixed /tmp/aura-gdm-sync-$$.png let two renders write one file.
+    local tmp
+    tmp="$(mktemp --suffix=.png /tmp/aura-gdm-sync-XXXXXX)" || return 0
+    python3 - "$wall" "$tmp" <<'PY' || { rm -f "$tmp"; return 0; }
 import os, sys, urllib.parse, subprocess
 from PIL import Image, ImageFilter, ImageEnhance, ImageOps
 
@@ -231,6 +234,20 @@ trap 'kill $(jobs -p) 2>/dev/null || true' EXIT INT TERM
                     ;;
             esac
         done
+) &
+
+# Mutter emits MonitorsChanged as soon as a new layout is applied, but writes
+# monitors.xml only when it is kept: meta_monitor_manager_confirm_configuration
+# saves it on "Keep Changes", up to 20 s later. So the sync above copies the
+# layout being replaced, and a scale change left GDM on the old scale under a
+# wallpaper laid out for the new one, misplaced on the login screen. Sync again
+# when the file is written (an atomic rename, which gio monitor reports).
+(
+    gio monitor "$USER_MONITORS" 2>/dev/null | while read -r _; do
+        while read -t 1 -r _; do :; done
+        sync_monitors || true
+        sync_wallpaper || true
+    done
 ) &
 
 wait || true
