@@ -188,18 +188,12 @@ sync_gdm_monitors() {
                 sudo cp -f "$user_monitors" "$gdm_dir/.config/monitors.xml"
                 sudo chmod 755 "$gdm_dir/.config"
                 sudo chmod 666 "$gdm_dir/.config/monitors.xml" || sudo chmod 644 "$gdm_dir/.config/monitors.xml"
-
-                # If seat0 exists (GNOME 46+ dynamic seat sessions), also populate seat config dirs
-                if [ -d "$gdm_dir/seat0" ]; then
-                    sudo mkdir -p "$gdm_dir/seat0/config" "$gdm_dir/seat0/.config" 2>/dev/null || true
-                    sudo cp -f "$user_monitors" "$gdm_dir/seat0/config/monitors.xml" 2>/dev/null || true
-                    sudo cp -f "$user_monitors" "$gdm_dir/seat0/.config/monitors.xml" 2>/dev/null || true
-                    sudo chmod 666 "$gdm_dir/seat0/config/monitors.xml" "$gdm_dir/seat0/.config/monitors.xml" 2>/dev/null || true
-                fi
                 synced=1
             fi
         fi
     done
+
+    drop_gdm_seat_monitors
 
     if [ "$synced" = 1 ]; then
         if [ "${DRY_RUN:-0}" != 1 ]; then
@@ -208,6 +202,30 @@ sync_gdm_monitors() {
         fi
         ok "primary monitor synced to GDM login screen (good for multi-monitor setups)"
     fi
+}
+
+# GDM with dynamic greeter users (the .migrated-dyn-users marker in
+# /var/lib/gdm; GDM 51.1 on the dev machine) runs the login screen with its
+# config home in $gdm_dir/seat0/config, a 0700 directory owned by that user. Earlier installs
+# copied monitors.xml in there (and into seat0/.config). Mutter reads
+# /etc/xdg/monitors.xml first and the config home's file over it, key by key, so
+# that copy pinned the login screen to the layout and scale of install day:
+# aura-glass-gdm-sync runs as the desktop user and cannot reach it, only
+# /etc/xdg. After a scale change the greeter kept the old scale under a
+# wallpaper laid out for the new one. With the copies gone, the greeter falls
+# back to /etc/xdg/monitors.xml, which the sync service keeps current.
+drop_gdm_seat_monitors() {
+    local gdm_dir target
+    for gdm_dir in /var/lib/gdm /var/lib/gdm3; do
+        [ -d "$gdm_dir/seat0" ] || continue
+        for target in "$gdm_dir/seat0/config/monitors.xml" "$gdm_dir/seat0/.config/monitors.xml"; do
+            if [ "${DRY_RUN:-0}" = 1 ]; then
+                info "dry-run: sudo rm -f $target"
+            else
+                sudo rm -f "$target" 2>/dev/null || true
+            fi
+        done
+    done
 }
 
 unsync_gdm_monitors() {
