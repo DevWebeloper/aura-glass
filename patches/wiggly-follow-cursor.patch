@@ -200,7 +200,7 @@ diff -ruN a/extension.js b/extension.js
 diff -ruN a/theme.js b/theme.js
 --- a/theme.js
 +++ b/theme.js
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,180 @@
 +'use strict';
 +
 +import GdkPixbuf from 'gi://GdkPixbuf';
@@ -209,9 +209,13 @@ diff -ruN a/theme.js b/theme.js
 +
 +// Finds the picture of a cursor theme's default pointer, so the magnified
 +// cursor is the one on screen whatever set org.gnome.desktop.interface
-+// cursor-theme. Searched like libXcursor, which is what Mutter draws the real
-+// pointer with: the user's icon dirs first, then the system ones, then the
-+// themes named by index.theme's Inherits.
++// cursor-theme. Searched the way GNOME Shell 51 draws it. St's svg-cursor
++// (src/st/st-cursor.c, ahead of Mutter's Xcursor loader) takes
++// icons/<theme>/cursors_scalable/default/metadata.json from the user data dir,
++// then each system data dir, then its own resource, which carries Adwaita.
++// No ~/.icons, no Inherits there. Only a theme it does not find falls through
++// to Xcursor, searched like libXcursor: the user's icon dirs, the system
++// ones, then the themes named by index.theme's Inherits.
 +
 +const XCURSOR_MAGIC = 0x72756358; // "Xcur"
 +const XCURSOR_IMAGE = 0xfffd0002;
@@ -250,23 +254,53 @@ diff -ruN a/theme.js b/theme.js
 +        .map(s => s.trim().replace(/^"|"$/g, '')).filter(Boolean);
 +};
 +
-+// A vector set in the KDE layout, used as it is. Its metadata names the file:
-+// AOSP's default entry is arrow.svg, not default.svg. An SVG that only wraps
-+// a PNG is skipped, because the Xcursor file underneath is the same picture.
-+const vectorIcon = dir => {
-+    const base = GLib.build_filenamev([dir, 'cursors_scalable', 'default']);
-+    const meta = readBytes(GLib.build_filenamev([base, 'metadata.json']));
-+    if (!meta)
-+        return null;
++const ST_CURSOR_RESOURCE = 'resource:///org/gnome/shell/cursor-theme/';
++
++const loadText = file => {
 +    try {
-+        const svg = GLib.build_filenamev([base, JSON.parse(new TextDecoder().decode(meta))[0].filename]);
-+        const body = readBytes(svg);
-+        if (!body || new TextDecoder().decode(body).includes('data:image/png;base64'))
-+            return null;
-+        return Gio.FileIcon.new(Gio.File.new_for_path(svg));
++        const [ok, data] = file.load_contents(null);
++        return ok ? new TextDecoder().decode(data) : null;
 +    } catch {
 +        return null;
 +    }
++};
++
++// The SVG's own size in pixels, as librsvg reports it to St: the root's
++// width attribute, else its viewBox width.
++const svgWidth = text => {
++    const root = text.match(/<svg\b[^>]*>/)?.[0] ?? '';
++    const width = root.match(/\swidth="\s*([\d.]+)\s*(px)?\s*"/);
++    if (width)
++        return parseFloat(width[1]);
++    const box = root.match(/\sviewBox="\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)/);
++    return box ? parseFloat(box[1]) : null;
++};
++
++// {icon, canvas} for the SVG St would draw, or null. canvas is the SVG width
++// over its nominal size: St draws it cursor-size x that wide. Its metadata
++// names the file: AOSP's default entry is arrow.svg, Adwaita's (built in)
++// is a 32px canvas for size 24 with the tip at 8,7, unlike its Xcursor file.
++const svgCursor = name => {
++    const roots = [GLib.get_user_data_dir(), ...GLib.get_system_data_dirs()]
++        .map(d => Gio.File.new_for_path(d))
++        .concat([Gio.File.new_for_uri(ST_CURSOR_RESOURCE)]);
++    for (const root of roots) {
++        const meta = root.get_child(`icons/${name}/cursors_scalable/default/metadata.json`);
++        const desc = loadText(meta);
++        if (desc === null)
++            continue;
++        try {
++            const frame = JSON.parse(desc)[0];
++            const svg = meta.get_parent().get_child(frame.filename);
++            const width = svgWidth(loadText(svg) ?? '');
++            if (!width || !frame.nominal_size)
++                return null;
++            return {icon: Gio.FileIcon.new(svg), canvas: width / frame.nominal_size};
++        } catch {
++            return null;
++        }
++    }
++    return null;
 +};
 +
 +// The largest nominal size of the theme's default pointer, first frame.
@@ -319,26 +353,28 @@ diff -ruN a/theme.js b/theme.js
 +};
 +
 +// {icon, canvas}: the picture, and the pointer's canvas width over its
-+// nominal size (AOSP draws a 24px canvas for size 18, so 1.33). Mutter draws
-+// the pointer cursor-size x canvas logical pixels wide whatever the monitor
-+// scale, which is the size the magnified copy has to shrink back to. The
-+// canvas comes from the Xcursor file even for a vector picture, because that
-+// file is what is on screen; null when the theme has none.
-+export const cursorForTheme = (name, seen = new Set()) => {
-+    if (!name || name.includes('/') || seen.has(name) || seen.size > 8)
++// nominal size (AOSP draws a 24px canvas for size 18, so 1.33). The pointer is
++// drawn cursor-size x canvas logical pixels wide whatever the monitor scale,
++// which is the size the magnified copy has to shrink back to.
++export const cursorForTheme = name => {
++    if (!name || name.includes('/'))
++        return null;
++    return svgCursor(name) ?? xcursorForTheme(name);
++};
++
++const xcursorForTheme = (name, seen = new Set()) => {
++    if (seen.has(name) || seen.size > 8)
 +        return null;
 +    seen.add(name);
 +    const dirs = themeDirs(name);
 +    for (const dir of dirs) {
 +        const xcursor = largestXcursor(dir);
-+        const canvas = xcursor ? xcursor.w / xcursor.size : null;
-+        const icon = vectorIcon(dir) ?? (xcursor ? xcursorPixbuf(xcursor) : null);
-+        if (icon)
-+            return {icon, canvas};
++        if (xcursor)
++            return {icon: xcursorPixbuf(xcursor), canvas: xcursor.w / xcursor.size};
 +    }
 +    for (const dir of dirs) {
 +        for (const parent of inherits(dir)) {
-+            const found = cursorForTheme(parent, seen);
++            const found = xcursorForTheme(parent, seen);
 +            if (found)
 +                return found;
 +        }

@@ -1639,9 +1639,11 @@ sync_cursor_theme_files() {
         ln -sfn "$c" "$HOME/.icons/$(basename "$c")"
     done
     # Earlier runs wrapped every Xcursor in these packs as a PNG inside an SVG
-    # under cursors_scalable/. Neither Mutter 51 nor GTK 4 reads that directory
-    # (both draw the Xcursor files), so it was dead weight with a colour bug.
-    # Only our own wrappers go: an upstream vector set has no embedded PNG.
+    # under cursors_scalable/. GNOME Shell 51 does draw that directory (St's
+    # svg-cursor comes ahead of Mutter's Xcursor loader), but the wrapper was
+    # only the same bitmap, with its blue channel taken from green, so the
+    # Xcursor files underneath are the better copy. Only our own wrappers go:
+    # an upstream vector set has no embedded PNG.
     for c in "$HOME/.local/share/icons"/Aura-Glass-Moga-*; do
         if grep -qs 'data:image/png;base64' "$c/cursors_scalable/default/default.svg"; then
             run rm -rf "$c/cursors_scalable"

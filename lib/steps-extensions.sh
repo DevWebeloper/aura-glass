@@ -576,8 +576,9 @@ install_extensions() {
 # seen; the growth drifted off the tip. It also only draws a picture someone
 # wrote into cursor-path. patches/wiggly-follow-cursor.patch measures in logical
 # pixels before every shake, pins the pivot on the hotspot, and adds theme.js,
-# which finds the active cursor theme's pointer itself (its vector default, or
-# the Xcursor file Mutter draws) on every cursor-theme change, from any tool.
+# which finds the active cursor theme's pointer itself, in the order GNOME
+# Shell draws it (St's SVG set, built-in Adwaita included, else the Xcursor
+# file), on every cursor-theme change, from any tool.
 # Applied to the EGO download, so a Wiggly update that moves the code skips
 # the patch with a warning rather than half-applying it.
 patch_wiggly_extension() {
