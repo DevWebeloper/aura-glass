@@ -94,6 +94,85 @@
   box-shadow: inset 0 0 0 99px rgba(255, 255, 255, 0.12) !important;
 }
 
+/* Copyous's Super+V contents: the clipboard cards, the header, footer and
+ * per-card buttons, and the search bar. Copyous fills them with a neutral
+ * grey (rgb(71, 71, 76) at 25%, or lightened from #36363a), which read as a
+ * flat grey slab on the frosted, tinted dialog. They take this sheet's white
+ * lift ladder instead, so the glass and its tint show through them the way
+ * they do through a menu item: cards one step below a button (0.06, the
+ * submenu lift), buttons at the dialog-button steps above (0.10 / 0.16 /
+ * 0.22), the search bar between the two.
+ *
+ * These reach Copyous only through extension-overrides.css (see
+ * .modal-dialog.clipboard-dialog above), where they share a rank with
+ * Copyous's own sheet. Its state rules stack pseudo-classes for weight
+ * (:checked:checked:active:focus), so out-counting each one is fragile.
+ * !important lifts these above every non-important Copyous rule instead,
+ * and among these rules specificity orders the states as usual. That
+ * includes the accent on a checked icon button and pin, restated here
+ * because the plain button rule would otherwise paint over it. Copyous's
+ * focus ring is a box-shadow and stays its own.
+ */
+.modal-dialog.clipboard-dialog .clipboard-item {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.modal-dialog.clipboard-dialog .clipboard-item:hover,
+.modal-dialog.clipboard-dialog .clipboard-item:focus {
+  background-color: rgba(255, 255, 255, 0.10) !important;
+}
+
+.modal-dialog.clipboard-dialog .clipboard-item:active {
+  background-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+.modal-dialog.clipboard-dialog .clipboard-item.status-item {
+  background-color: transparent !important;
+}
+
+.modal-dialog.clipboard-dialog .clipboard-search-entry {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.modal-dialog.clipboard-dialog .clipboard-search-entry:hover,
+.modal-dialog.clipboard-dialog .clipboard-search-entry:focus {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.modal-dialog.clipboard-dialog .dialog-header .dialog-header-button,
+.modal-dialog.clipboard-dialog .dialog-header .dialog-header-icon-button,
+.modal-dialog.clipboard-dialog .dialog-footer .dialog-footer-button,
+.modal-dialog.clipboard-dialog .dialog-footer .dialog-footer-icon-button,
+.modal-dialog.clipboard-dialog .clipboard-item .clipboard-item-header-button {
+  background-color: rgba(255, 255, 255, 0.10) !important;
+}
+
+.modal-dialog.clipboard-dialog .dialog-header .dialog-header-button:hover,
+.modal-dialog.clipboard-dialog .dialog-header .dialog-header-icon-button:hover,
+.modal-dialog.clipboard-dialog .dialog-footer .dialog-footer-button:hover,
+.modal-dialog.clipboard-dialog .dialog-footer .dialog-footer-icon-button:hover,
+.modal-dialog.clipboard-dialog .clipboard-item .clipboard-item-header-button:hover {
+  background-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+.modal-dialog.clipboard-dialog .dialog-header .dialog-header-button:active,
+.modal-dialog.clipboard-dialog .dialog-header .dialog-header-icon-button:active,
+.modal-dialog.clipboard-dialog .dialog-footer .dialog-footer-button:active,
+.modal-dialog.clipboard-dialog .dialog-footer .dialog-footer-icon-button:active,
+.modal-dialog.clipboard-dialog .clipboard-item .clipboard-item-header-button:active,
+.modal-dialog.clipboard-dialog .dialog-header .dialog-header-button:checked,
+.modal-dialog.clipboard-dialog .dialog-footer .dialog-footer-button:checked,
+.modal-dialog.clipboard-dialog .clipboard-item .clipboard-item-header-button:checked {
+  background-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+.modal-dialog.clipboard-dialog .dialog-header .dialog-header-icon-button:checked,
+.modal-dialog.clipboard-dialog .dialog-footer .dialog-footer-icon-button:checked,
+.modal-dialog.clipboard-dialog .clipboard-search-entry .pin-button:checked {
+  background-color: -st-accent-color !important;
+  color: -st-accent-fg-color;
+}
+
 /* ---------- Login and Unlock screen authentication prompt ----------
  * GNOME Shell 46+ (through 51+) in js/gdm/authPrompt.js wraps the password
  * entry and submit action inside a Clutter.BinLayout (.login-dialog-prompt-entry-area).
