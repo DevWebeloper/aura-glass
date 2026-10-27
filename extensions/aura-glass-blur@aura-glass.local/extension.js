@@ -16,8 +16,10 @@
  * It also shades the top bar while the focused window fills the panel's
  * monitor (PANEL_SHADE_CLASS, painted by css/shell-00-flat.css).
  *
- * And it lets the scroll wheel or touchpad switch workspaces while a window
- * or app icon is held in the overview (_attachDragScroll).
+ * And it switches workspaces while a window or app icon is held in the
+ * overview: by mouse wheel, by a three-finger touchpad swipe with the item
+ * still held, or by resting the held item against the left or right screen
+ * edge (_attachDragScroll, _onDragEvent).
  *
  * It stays installed and enabled in every mode, Performance included.
  */
@@ -29,6 +31,7 @@ import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
+import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
@@ -81,10 +84,37 @@ const DBUS_IFACE = `
 // css/shell-00-flat.css paints it; the name is duplicated there.
 const PANEL_SHADE_CLASS = 'aura-glass-maximized';
 
-// Touchpad scroll deltas summed before one workspace step while dragging in
-// the overview. A starting value, not yet tuned on hardware: lower steps on
-// a lighter swipe, higher needs a longer one.
-const DRAG_SCROLL_SMOOTH_STEP = 1.5;
+// Holding the item against the screen edge also switches. Starting values,
+// not yet tuned on hardware: the dwell is long enough that sweeping past an
+// edge doesn't switch, the repeat leaves the 250 ms switch animation time to
+// land.
+const DRAG_EDGE_ZONE_PX = 2;
+const DRAG_EDGE_DWELL_MS = 450;
+const DRAG_EDGE_REPEAT_MS = 750;
+
+// libinput ends a tap-and-drag the moment a third finger lands, so the
+// release that reaches the drag is not the user letting go. Telling the two
+// apart needs the finger count, which only the touchpad's evdev node has
+// (readable when the user is in the input group; without it the release
+// drops as before). Mutter reads evdev on its input thread and this reads
+// it on the main loop, so either may see the third finger first: the
+// release waits a few touchpad frames (7-12 ms each) before it is judged.
+const DRAG_HOLD_GRACE_MS = 40;
+// struct input_event on 64-bit: timeval (16), type u16, code u16, value s32.
+const EVDEV_EVENT_SIZE = 24;
+const EV_KEY = 1;
+const BTN_TOUCH = 330;
+const BTN_TOOL_FINGERS = new Map([
+    [325, 1], // BTN_TOOL_FINGER
+    [333, 2], // BTN_TOOL_DOUBLETAP
+    [334, 3], // BTN_TOOL_TRIPLETAP
+    [335, 4], // BTN_TOOL_QUADTAP
+    [328, 5], // BTN_TOOL_QUINTTAP
+]);
+// js/ui/swipeTracker.js: a touchpad swipe of this many unaccelerated units
+// is one whole workspace, and its snap commits past half of it.
+const TOUCHPAD_BASE_WIDTH = 400;
+const TOUCHPAD_BASE_HEIGHT = 300;
 
 const PROFILES = ['auto', 'full', 'performance'];
 // State files whose change can move the window opacity this extension owns.
@@ -263,8 +293,17 @@ export default class AuraGlassBlurExtension extends Extension {
         // switcher. The grab is taken before 'drag-begin' fires, so these
         // signals can read it off the stage.
         this._dragScrollActor = null;
-        this._dragScrollId = 0;
-        this._dragScrollAccum = 0;
+        this._dragScrollIds = [];
+        this._dragEdgeTimer = 0;
+        this._dragEdgeDirection = null;
+        this._touchReaders = [];
+        this._pendingRelease = null;
+        this._pendingReleaseTimer = 0;
+        this._touchHold = null;
+        this._touchpadSettings = new Gio.Settings({
+            schema_id: 'org.gnome.desktop.peripherals.touchpad',
+        });
+        this._patchDraggable();
         const dragBegin = () => this._attachDragScroll();
         const dragEnd = () => this._detachDragScroll();
         this._dragIds = [
@@ -287,50 +326,261 @@ export default class AuraGlassBlurExtension extends Extension {
         if (!actor)
             return;
         this._dragScrollActor = actor;
-        this._dragScrollAccum = 0;
-        this._dragScrollId = actor.connect('scroll-event',
-            (_actor, event) => this._onDragScroll(event));
+        this._dragScrollIds = [
+            actor.connect('scroll-event', (_actor, event) => this._onDragScroll(event)),
+            actor.connect('motion-event', (_actor, event) => {
+                this._syncDragEdge(...event.get_coords());
+                return Clutter.EVENT_PROPAGATE;
+            }),
+        ];
+        this._openTouchReaders();
     }
 
     _detachDragScroll() {
-        if (this._dragScrollActor && this._dragScrollId)
-            this._dragScrollActor.disconnect(this._dragScrollId);
+        for (const id of this._dragScrollIds ?? [])
+            this._dragScrollActor?.disconnect(id);
         this._dragScrollActor = null;
-        this._dragScrollId = 0;
+        this._dragScrollIds = [];
+        this._cancelDragEdge();
+        if (this._pendingReleaseTimer) {
+            GLib.source_remove(this._pendingReleaseTimer);
+            this._pendingReleaseTimer = 0;
+        }
+        this._pendingRelease = null;
+        this._touchHold = null;
+        this._closeTouchReaders();
+    }
+
+    // _Draggable is not exported, and its release handler is the only place
+    // a drop can be held back, so its prototype is reached through a probe.
+    _patchDraggable() {
+        const probe = new Clutter.Actor();
+        this._draggableProto = Object.getPrototypeOf(DND.makeDraggable(probe));
+        probe.destroy();
+        this._origDragOnEvent = this._draggableProto._onEvent;
+        const self = this;
+        this._draggableProto._onEvent = function (actor, event) {
+            if (self._onDragEvent(this, event))
+                return Clutter.EVENT_PROPAGATE;
+            return self._origDragOnEvent.call(this, actor, event);
+        };
+    }
+
+    _unpatchDraggable() {
+        if (this._draggableProto && this._origDragOnEvent)
+            this._draggableProto._onEvent = this._origDragOnEvent;
+        this._draggableProto = null;
+        this._origDragOnEvent = null;
+    }
+
+    // True when the event is taken here and the drag must not see it.
+    _onDragEvent(draggable, event) {
+        const type = event.type();
+        if (this._touchHold) {
+            if (type === Clutter.EventType.TOUCHPAD_SWIPE) {
+                this._onHoldSwipe(event);
+                return true;
+            }
+            // A tap or click while held drops where the pointer is.
+            return false;
+        }
+        if (this._pendingRelease || type !== Clutter.EventType.BUTTON_RELEASE)
+            return false;
+        if (!Main.overview.visible || this._touchReaders.length === 0)
+            return false;
+        const device = event.get_source_device();
+        if (device?.get_device_type() !== Clutter.InputDeviceType.TOUCHPAD_DEVICE)
+            return false;
+        this._pendingRelease = {
+            draggable,
+            node: device.get_device_node(),
+            coords: event.get_coords(),
+        };
+        this._pendingReleaseTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT,
+            DRAG_HOLD_GRACE_MS, () => this._resolvePendingRelease());
+        return true;
+    }
+
+    _resolvePendingRelease() {
+        this._pendingReleaseTimer = 0;
+        const pending = this._pendingRelease;
+        this._pendingRelease = null;
+        const reader = this._touchReaders.find(r => r.node === pending.node);
+        if (reader && reader.fingers >= 2)
+            this._touchHold = {draggable: pending.draggable, accum: 0};
+        else
+            this._dropDraggable(pending.draggable, pending.coords);
+        return GLib.SOURCE_REMOVE;
+    }
+
+    // _dragActorDropped reads only the coordinates and time of its event.
+    _dropDraggable(draggable, [x, y]) {
+        if (!draggable._dragActor || !draggable._grab)
+            return;
+        const time = global.get_current_time();
+        draggable._dragActorDropped({
+            get_coords: () => [x, y],
+            get_time: () => time,
+            type: () => Clutter.EventType.BUTTON_RELEASE,
+        });
+    }
+
+    // Same distance, direction and natural-scroll handling as the shell's
+    // own workspace swipe, stepping once per half workspace.
+    _onHoldSwipe(event) {
+        if (event.get_gesture_phase() === Clutter.TouchpadGesturePhase.BEGIN)
+            this._touchHold.accum = 0;
+        if (event.get_touchpad_gesture_finger_count() < 3)
+            return;
+        const workspaceManager = global.workspace_manager;
+        const vertical = workspaceManager.layout_rows === -1;
+        const [dx, dy] = event.get_gesture_motion_delta_unaccelerated();
+        let delta = vertical ? dy : dx;
+        if (this._touchpadSettings.get_boolean('natural-scroll'))
+            delta = -delta;
+        const step = (vertical ? TOUCHPAD_BASE_HEIGHT : TOUCHPAD_BASE_WIDTH) / 2;
+        this._touchHold.accum += delta;
+        const rtl = Clutter.get_default_text_direction() === Clutter.TextDirection.RTL;
+        while (Math.abs(this._touchHold.accum) >= step) {
+            const forward = this._touchHold.accum > 0;
+            this._touchHold.accum -= forward ? step : -step;
+            let direction;
+            if (vertical)
+                direction = forward ? Meta.MotionDirection.DOWN : Meta.MotionDirection.UP;
+            else
+                direction = forward !== rtl ? Meta.MotionDirection.RIGHT : Meta.MotionDirection.LEFT;
+            const workspace = workspaceManager.get_active_workspace().get_neighbor(direction);
+            if (workspace)
+                Main.wm.actionMoveWorkspace(workspace);
+        }
+    }
+
+    _openTouchReaders() {
+        const seat = global.stage.get_context().get_backend().get_default_seat();
+        for (const device of seat.list_devices()) {
+            if (device.get_device_type() !== Clutter.InputDeviceType.TOUCHPAD_DEVICE)
+                continue;
+            const node = device.get_device_node();
+            if (!node)
+                continue;
+            let stream;
+            try {
+                stream = Gio.File.new_for_path(node).read(null);
+            } catch {
+                continue;
+            }
+            // The drag started with a finger down, before this opened.
+            const reader = {node, stream, cancellable: new Gio.Cancellable(), fingers: 1};
+            this._touchReaders.push(reader);
+            this._readTouch(reader);
+        }
+    }
+
+    // A blocking read on a device node cannot be interrupted, so a cancelled
+    // read lingers until the next touch and its stream closes after it.
+    _closeTouchReaders() {
+        for (const reader of this._touchReaders)
+            reader.cancellable.cancel();
+        this._touchReaders = [];
+    }
+
+    _readTouch(reader) {
+        reader.stream.read_bytes_async(EVDEV_EVENT_SIZE * 64, GLib.PRIORITY_DEFAULT,
+            reader.cancellable, (stream, result) => {
+                let bytes;
+                try {
+                    bytes = stream.read_bytes_finish(result);
+                } catch {
+                    stream.close(null);
+                    return;
+                }
+                if (reader.cancellable.is_cancelled() || bytes.get_size() === 0) {
+                    stream.close(null);
+                    return;
+                }
+                const data = bytes.toArray();
+                const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+                for (let off = 0; off + EVDEV_EVENT_SIZE <= data.length; off += EVDEV_EVENT_SIZE) {
+                    if (view.getUint16(off + 16, true) !== EV_KEY)
+                        continue;
+                    const code = view.getUint16(off + 18, true);
+                    const value = view.getInt32(off + 20, true);
+                    if (code === BTN_TOUCH && value === 0)
+                        reader.fingers = 0;
+                    else if (value === 1 && BTN_TOOL_FINGERS.has(code))
+                        reader.fingers = BTN_TOOL_FINGERS.get(code);
+                }
+                if (reader.fingers === 0 && this._touchHold) {
+                    const {draggable} = this._touchHold;
+                    this._touchHold = null;
+                    const [x, y] = global.get_pointer();
+                    this._dropDraggable(draggable, [x, y]);
+                }
+                this._readTouch(reader);
+            });
     }
 
     _onDragScroll(event) {
         if (!Main.overview.visible)
             return Clutter.EVENT_PROPAGATE;
+        return Main.wm.handleWorkspaceScroll(event);
+    }
 
-        if (event.get_scroll_direction() !== Clutter.ScrollDirection.SMOOTH)
-            return Main.wm.handleWorkspaceScroll(event);
+    // The outer edges of the whole stage, so on several monitors only the
+    // sides with no monitor beyond them count. Vertical workspace layouts
+    // use the top and bottom edges.
+    _dragEdgeAt(x, y) {
+        const vertical = global.workspace_manager.layout_rows === -1;
+        if (vertical) {
+            if (y < DRAG_EDGE_ZONE_PX)
+                return Meta.MotionDirection.UP;
+            if (y >= global.stage.height - DRAG_EDGE_ZONE_PX)
+                return Meta.MotionDirection.DOWN;
+        } else {
+            if (x < DRAG_EDGE_ZONE_PX)
+                return Meta.MotionDirection.LEFT;
+            if (x >= global.stage.width - DRAG_EDGE_ZONE_PX)
+                return Meta.MotionDirection.RIGHT;
+        }
+        return null;
+    }
 
-        // A wheel also sends emulated smooth events next to its discrete
-        // ones; only finger and continuous sources step from deltas.
-        if (event.get_scroll_source() === Clutter.ScrollSource.WHEEL)
-            return Clutter.EVENT_PROPAGATE;
+    _syncDragEdge(x, y) {
+        const direction = Main.overview.visible ? this._dragEdgeAt(x, y) : null;
+        if (direction === this._dragEdgeDirection)
+            return;
+        this._cancelDragEdge();
+        if (direction === null)
+            return;
+        this._dragEdgeDirection = direction;
+        this._dragEdgeTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT,
+            DRAG_EDGE_DWELL_MS, () => this._onDragEdgeTimeout());
+    }
 
-        const [dx, dy] = event.get_scroll_delta();
-        const workspaceManager = global.workspace_manager;
-        const vertical = workspaceManager.layout_rows === -1;
-        this._dragScrollAccum += vertical || Math.abs(dy) > Math.abs(dx) ? dy : dx;
-        if (Math.abs(this._dragScrollAccum) < DRAG_SCROLL_SMOOTH_STEP)
-            return Clutter.EVENT_STOP;
-
-        const forward = this._dragScrollAccum > 0;
-        this._dragScrollAccum = 0;
-        const rtl = Clutter.get_default_text_direction() === Clutter.TextDirection.RTL;
-        let direction;
-        if (vertical)
-            direction = forward ? Meta.MotionDirection.DOWN : Meta.MotionDirection.UP;
-        else
-            direction = forward !== rtl ? Meta.MotionDirection.RIGHT : Meta.MotionDirection.LEFT;
-
-        const workspace = workspaceManager.get_active_workspace().get_neighbor(direction);
+    // Motion stops while the pointer rests on the edge, so the timer
+    // re-reads the pointer itself and keeps stepping until it moves away.
+    _onDragEdgeTimeout() {
+        const [x, y] = global.get_pointer();
+        const direction = Main.overview.visible ? this._dragEdgeAt(x, y) : null;
+        if (direction === null || direction !== this._dragEdgeDirection) {
+            this._dragEdgeTimer = 0;
+            this._dragEdgeDirection = null;
+            return GLib.SOURCE_REMOVE;
+        }
+        const workspace = global.workspace_manager.get_active_workspace().get_neighbor(direction);
         if (workspace)
             Main.wm.actionMoveWorkspace(workspace);
-        return Clutter.EVENT_STOP;
+        this._dragEdgeTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT,
+            DRAG_EDGE_REPEAT_MS, () => this._onDragEdgeTimeout());
+        return GLib.SOURCE_REMOVE;
+    }
+
+    _cancelDragEdge() {
+        if (this._dragEdgeTimer) {
+            GLib.source_remove(this._dragEdgeTimer);
+            this._dragEdgeTimer = 0;
+        }
+        this._dragEdgeDirection = null;
     }
 
     // Main.loadTheme() carries extension sheets over to each new theme and
@@ -432,6 +682,8 @@ export default class AuraGlassBlurExtension extends Extension {
             Main.overview.disconnect(id);
         this._dragIds = null;
         this._detachDragScroll();
+        this._unpatchDraggable();
+        this._touchpadSettings = null;
         if (this._monitorsChangedId) {
             Main.layoutManager.disconnect(this._monitorsChangedId);
             this._monitorsChangedId = 0;
