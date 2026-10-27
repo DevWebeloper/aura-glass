@@ -48,11 +48,12 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 | [KI-32](#ki-32) | Medium | **Fixed** | Updating from the settings app greys out Install or stops at a git error (detached HEAD, local edits, diverged history, re-cut tag) |
 | [KI-33](#ki-33) | Medium | **Fixed** (`feat/efficient-blur-qol`) | The helper threw `ReferenceError: mode is not defined` on every enable, so Performance never got its window opacity |
 | [KI-34](#ki-34) | Medium | **Fixed** (`feat/efficient-blur-qol`) | Every retune rewrote ~37 dconf/gsettings keys to the values already there, waking Blur My Shell, User Themes and GTK |
-| [KI-35](#ki-35) | Info | By design (decided 2026-10-22) | Frosted repaints the whole stage every frame (`hacks-level=2`). Lower levels left visible patches and saved nothing once windows redraw; window blur is the real cost |
+| [KI-35](#ki-35) | Info | Superseded (Blur My Shell v76 has no `hacks-level`) | Frosted repaints the whole stage every frame (`hacks-level=2`). Lower levels left visible patches and saved nothing once windows redraw; window blur is the real cost |
 | [KI-36](#ki-36) | Low | **Fixed** (needs a live check) | History cards in the date menu keep the old blur radius and corner after a blur-strength, adaptive or radius-preset change |
 | [KI-37](#ki-37) | Low | **Fixed** (needs a live check) | A square dark band under the second card of a notification stack, around its rounded corners |
 | [KI-38](#ki-38) | Medium | **Fixed** (needs a live check) | Updates removed retired extensions without asking, and either kept user extension settings and missed preset fixes, or reset them (`--force`, `extras.ini`) |
 | [KI-39](#ki-39) | Medium | **Fixed** (needs a live check) | A failed gnome-rounded-blur build only warned, and the install carried on around it; the only fix was to re-run and watch the build |
+| [KI-40](#ki-40) | Medium | **Fixed** (`fix/bms-v76`, resume needs a live check) | Blur My Shell's blur renders wrong after resume from suspend or hibernate until the extension is toggled |
 
 ---
 
@@ -893,6 +894,10 @@ byte-identical; a brightness change makes exactly its 2 writes.
 
 **Frosted repaints the whole screen every frame. Kept on purpose.**
 
+**Superseded (2026-10-27).** Blur My Shell v76 removed `hacks-level` and tracks
+what is behind each blur itself, so nothing here is written any more. Kept
+for the measurements.
+
 **What it costs.** Blur My Shell's `hacks-level=2` turns clipped redraws off,
 so any damage repaints the whole monitor and every blur actor on it.
 
@@ -1035,6 +1040,36 @@ build fails.
 
 ---
 
+## KI-40
+
+**Blur renders wrong after resume from suspend or hibernate.** Reported by a
+user on GNOME Shell 51.1 (CachyOS, Wayland).
+
+**Symptom.** After a resume the blur looks wrong with unchanged settings.
+`gnome-extensions disable` then `enable` on `blur-my-shell@aunetx` fixes it
+until the next resume.
+
+**Root cause.** Upstream aunetx/blur-my-shell#700 and #850: v73's native
+Gaussian blur effects (`native_static_gaussian_blur`,
+`native_dynamic_gaussian_blur`) kept two radius values and reused the wrong
+one after resume. v76 (2026-10-18) replaced them with `dual_kawase_blur`.
+
+**Fix.** `BMS_REF` moves to v76 (`19ce844b8ca3`). `dconf/core.ini` ships v76's
+settings (`settings-version=7`, one Dual Kawase pipeline per surface, no
+`corner` effects), `upgrade_bms_settings` moves existing installs onto it, and
+the radius tokens became `TOKEN_BLUR_RADIUS_*` (`radius = 2 × sigma`,
+upstream's own mapping). Of the five v73 patches only the subwindow one was
+still needed; it was re-cut. gnome-rounded-blur and `hacks-level` were retired,
+since v76 uses neither. A live toggle is not an option on GNOME ≥ 51 (it
+crashes Mutter), so the reporter's resume-hook workaround was not adopted.
+
+**Verify.** Suspend and resume twice, hibernate once where supported: the blur
+stays right without touching the extension. Checked live on 2026-10-27 so far:
+v76 loads, settings migrate, overview previews, notifications, the top bar on
+two monitors and a blurred app's Save As dialog. The resume itself is pending.
+
+---
+
 ## Phase 3 fixes (2026-10-20, `07689ba`)
 
 - **KI-09** — `bin/aura-glass-adaptive` and `bin/aura-glass-panel-blur` now prefer the checkout's `tools/` worker when run from a checkout's `bin/`, like `aura-glass-operation`. The copies in `~/.local/bin` have no `tools/` beside them, so the services keep the installed worker. `AURA_GLASS_ADAPTIVE_WORKER` still wins.
@@ -1064,3 +1099,4 @@ build fails.
 - **Login wallpaper misplaced after a display scale change** — `aura-glass-gdm-sync` copied `monitors.xml` to GDM and re-laid-out the GDM wallpaper on `MonitorsChanged`. Mutter emits that as soon as a new layout is applied but writes `monitors.xml` only when it is kept (`meta_monitor_manager_confirm_configuration` calls `meta_monitor_config_manager_save_current` on "Keep Changes", up to 20 s later), so the copy took the layout being replaced while the wallpaper was cut for the new one: the greeter came up at the old scale under per-monitor tiles placed for the new scale. The service now also runs `gio monitor` on `~/.config/monitors.xml` and syncs both when the file is written (mutter's atomic rename shows up as an event). The three watchers each render through `mktemp` instead of a shared `/tmp/aura-gdm-sync-$$.png`, since subshells share `$$`. Verified live (2026-10-25): an atomic rewrite of `monitors.xml` rebuilt `aura-gdm.png` two seconds later with no temp file left. That alone did not fix the login screen: the lock screen (Super+L) was right and a full logout still came up at the old scale. GDM runs the greeter as a dynamic user (`/var/lib/gdm/.migrated-dyn-users`) with its config home in `/var/lib/gdm/seat0/config`, a 0700 directory it owns, and `sync_gdm_monitors` had copied `monitors.xml` in there (and into `seat0/.config`) with sudo at install time. Mutter loads `/etc/xdg/monitors.xml` and then the config home's file over it, key by key (`meta_monitor_config_store_reset`), so that copy pinned the greeter to the install-day layout. The sync service runs as the desktop user and can reach only `/etc/xdg` and `/var/lib/gdm/.config`. `sync_gdm_monitors` now removes the two `seat0` copies (`drop_gdm_seat_monitors`) instead of writing them, so the greeter falls back to `/etc/xdg/monitors.xml`. Existing installs get that on the next full run with the `gdm-monitors-synced` memo; a retune has no sudo and does not. A side effect, reported on the dev machine (2026-10-25): the screen no longer blanks when it switches between the login screen and the session. With the greeter on the install-day configuration, each switch was a modeset; with both on the same layout there is nothing to reprogram. The rest of the scale audit: Blur My Shell's static dock blur has the same frozen-size pattern the panel had (rebuilt only on a monitor index change), covered in practice because Dash to Dock recreates its docks on a monitor change; `shell-90-density.css` is measured from the primary monitor's scale at install time only, so a later scale or primary change leaves it stale until the next retune.
 - **Cursor packs on GNOME 51** — `ensure_scalable_cursors` turned every Xcursor in a pack into a PNG wrapped in an SVG under `cursors_scalable/`. That was meant as the Moga fix for GNOME 51. GNOME Shell 51 does draw that directory: St's `svg-cursor` (`src/st/st-cursor.c`, registered ahead of Mutter's Xcursor loader) takes `icons/<theme>/cursors_scalable/<name>/metadata.json` from the user data dir, then the system data dirs, then its own resource, which carries Adwaita. Only a theme it does not find goes to Mutter's Xcursor loader (`meta-cursor-xcursor.c`, libXcursor lookup with `index.theme` Inherits). GTK 4.24 hands the pointer to the shell through `wp_cursor_shape_v1`. But the wrapper was only the Xcursor bitmap again, with its blue channel taken from green, so removing it puts the true Xcursor picture back on screen. Removed. `sync_cursor_theme_files` deletes the old wrappers from the `Aura-Glass-Moga-*` packs. The `~/.icons/default`, `~/.icons` symlinks and GTK `settings.ini` sync that came with the GNOME 51 work stays, for XWayland and legacy clients. AOSP installed and applied live with `--settings-only` (2026-10-25); the pointer on screen needs a look from the user.
 - **Wiggly: shrink snapped at the end, growth off the tip, wrong or default picture** — Wiggly 10 measured the pointer once, at enable, from the sprite texture, so on a scaled monitor (1.33 and 1.67 here) the shrink ended larger than the pointer and snapped down, and a theme or size change was never seen. Its ease also animated `pivot_point` in from the top-left corner, so the growth drifted off the tip (upstream issue Arch-Lover/wiggly#2). It draws only the SVG in `cursor-path`, so a theme without one, or set outside this project, showed its bundled black arrow (Arch-Lover/wiggly#3). AOSP hit that even here: its vector default is `arrow.svg`, not `default.svg`. No other GNOME 51 extension does shake-to-find (searched EGO; Jiggle was last pushed in 2023), and no Wiggly fork fixes these. `patches/wiggly-follow-cursor.patch`, applied by `patch_wiggly_extension` after the extensions install: before every shake it measures the pointer in logical pixels, sets the pivot on the hotspot before scaling, and grows from the pointer's own size. The logical size is `cursor-size` × the theme's Xcursor canvas/nominal ratio, which is how Mutter sizes it. On fractional scales the sprite is a texture loaded at ceil(scale) and `get_scale()` still returns 1: the first version of the patch trusted it and ended the shrink at twice the pointer, sticking out to the bottom right of the tip. A new `theme.js` resolves the active theme's pointer on every `cursor-theme` change (and `cursor-size` is followed too), in the order GNOME Shell draws it: St's `svg-cursor` lookup first (the user data dir, the system data dirs, then `resource:///org/gnome/shell/cursor-theme/`, no `~/.icons`, no Inherits), else the largest Xcursor `default`/`left_ptr` frame as a pixbuf (no file written), following Inherits like libXcursor. The canvas ratio comes from the picture actually drawn: an SVG's width over its `nominal_size`, an Xcursor frame's width over its size. Adwaita is the case that needs it. The shell draws its built-in SVG, a 32px canvas for size 24 with the tip at 8,7. Its Xcursor file is a 1:1 canvas with the tip at 12,4 of 96. A version that measured the Xcursor file shrank Adwaita to the wrong size and tip, while Moga, which has no SVG, was right. `apply_wiggly_cursor` clears a `cursor-path` that an earlier run wrote, so a typed path still wins. Wiggly's `show()` also allowed unfocus again before making the pointer visible. Mutter then re-picked the pointer focus while the pointer was hidden, `meta_wayland_pointer_set_focus` refused it (its assertion was in the journal after each shake), and the cursor stayed gone until the next motion. The patch reverses the order. The resolver was checked in gjs against aosp-cursors, MacTahoe-dark (vector) and Adwaita, Aura-Glass-Moga-Red, steam and `default` (pixbuf); the patch applies to and reverses on the EGO v10 zip. The animation needs a look after re-login (GNOME Shell does not reload changed extension modules).
+- **1px seam between the top bar and a maximized window** — the theme's top bar is `height: 40px` and mutter's work area starts at that logical 40, so a maximized window's top edge meets the bar's bottom edge there. At a thirds scale both land mid-pixel: on DP-1 at 1.33 that is 53.33 device px, and device row 53 was under neither the bar's 60% shade nor the window, so the blur behind them showed through as a light line (measured from a PrtSc, 2026-10-27: the row read (102,38,55) between a bar of (95,21,39) and the window). Not padding, margin or border: none of those is set on `#panel` or on a maximized GTK window, and Tiling Assistant's gaps are 0. `install_css` now appends a `#panel { height }` to the generated `shell-90-density.css` from the primary monitor's scale (`measure_primary_scale`, `panel_height_css`): the nearest height to 40 that is whole device pixels, ties to the shorter, so 39px (52 and 65 px) at 1.33 and 1.67, and no rule at 1, 1.25, 1.5, 1.75 or 2. Like the density rules it is measured once per run, so a later scale or primary change needs a retune. The same snapping applies to any height `--panel-height` (the settings app's Top bar slider) asks for: 32 becomes 33 at 1.33. Applied with `--settings-only` on the dev machine; needs a look on a maximized window.

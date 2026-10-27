@@ -24,15 +24,15 @@ Each entry is (token name, kind, *args).
        a group must wrap the number and nothing else.
 
   ini: (file, section, key) — the key's value in that section must equal the
-       token. Section-scoped because corner-radius and sigma both appear under
-       several Blur My Shell components with different values.
+       token. Section-scoped because corner-radius appears under several Blur
+       My Shell components with different values.
 
   raw: (file, regex) — checked exactly like css, and deliberately not returned
        by css_entries(). It is for a value buried inside one dconf key rather
        than standing on its own as a key of its own: Blur My Shell keeps every
-       pipeline in a single GVariant blob under `pipelines`, and a corner effect
-       inside it is a radius the section/key form cannot reach. The writer for
-       these is apply_radius_dconf, which reads the live key rather than a file
+       pipeline in a single GVariant blob under `pipelines`, and a blur radius
+       inside it is a number the section/key form cannot reach. The writer for
+       these is apply_blur_pipelines, which reads the live key rather than a file
        in $CONF_DIR — which is why apply-radius-preset.py must not see them.
 
 The `[^}]*?` in the CSS patterns cannot cross a closing brace, so each one stays
@@ -125,18 +125,6 @@ MANIFEST = [
     ("TOKEN_RADIUS_OSD", "ini", "dconf/core.ini",
      "blur-my-shell/popup", "osd-corner-radius"),
 
-    # The blur behind an app window is rounded twice over: once by
-    # [applications] corner-radius above, and once by the corner effect in the
-    # `windows` pipeline that same component names. Only the first was ever
-    # moved by a preset, so a soft desktop had its blur rounded at 16 by one and
-    # at 30 by the other — the exact "two stacked surfaces at different radii"
-    # fault this file exists to prevent, in one component. Matched by pipeline
-    # name rather than by its generated id, which is a machine's own and not a
-    # thing to hard-code.
-    ("TOKEN_RADIUS_WINDOW", "raw", "dconf/core.ini",
-     r"'name': <'windows'>, 'effects': <\[.*?'type': <'corner'>, "
-     r"'id': <'[^']*'>, 'params': <\{'radius': <(\d+)>"),
-
     # No ini entry: buttons have no Blur My Shell component to disagree with,
     # the same way TOKEN_RADIUS_OSD has no css/ site — one direction each.
     ("TOKEN_RADIUS_BUTTON", "css", "css/gtk4-20-buttons.css",
@@ -144,18 +132,27 @@ MANIFEST = [
      r"button\.suggested-action,\nbutton\.destructive-action \{"
      r"[^}]*?border-radius: (\d+)px"),
 
-    ("TOKEN_SIGMA_PANEL", "ini", "dconf/core.ini",
-     "blur-my-shell/panel", "sigma"),
-    ("TOKEN_SIGMA_APPFOLDER", "ini", "dconf/core.ini",
-     "blur-my-shell/appfolder", "sigma"),
-    ("TOKEN_SIGMA_POPUP", "ini", "dconf/core.ini",
-     "blur-my-shell/popup", "sigma"),
-    ("TOKEN_SIGMA_WINDOW_LIST", "ini", "dconf/core.ini",
-     "blur-my-shell/window-list", "sigma"),
-    ("TOKEN_SIGMA_APPLICATIONS", "ini", "dconf/core.ini",
-     "blur-my-shell/applications", "sigma"),
-    ("TOKEN_SIGMA_DASH_TO_DOCK", "ini", "dconf/core.ini",
-     "blur-my-shell/dash-to-dock", "sigma"),
+    # The blur radius of each surface, inside the pipeline that surface names
+    # in dconf/core.ini. Matched by pipeline name, not the id beside it; the
+    # captured number is the whole part of a radius written as N.0.
+    ("TOKEN_BLUR_RADIUS_PANEL", "raw", "dconf/core.ini",
+     r"'name': <'panel'>, 'effects': <\[<\{'type': <'dual_kawase_blur'>, "
+     r"'id': <'[^']*'>, 'params': <\{'unscaled_radius': <(\d+)\.0>"),
+    ("TOKEN_BLUR_RADIUS_APPFOLDER", "raw", "dconf/core.ini",
+     r"'name': <'app folders'>, 'effects': <\[<\{'type': <'dual_kawase_blur'>, "
+     r"'id': <'[^']*'>, 'params': <\{'unscaled_radius': <(\d+)\.0>"),
+    ("TOKEN_BLUR_RADIUS_POPUP", "raw", "dconf/core.ini",
+     r"'name': <'popups'>, 'effects': <\[<\{'type': <'dual_kawase_blur'>, "
+     r"'id': <'[^']*'>, 'params': <\{'unscaled_radius': <(\d+)\.0>"),
+    ("TOKEN_BLUR_RADIUS_WINDOW_LIST", "raw", "dconf/core.ini",
+     r"'name': <'window list'>, 'effects': <\[<\{'type': <'dual_kawase_blur'>, "
+     r"'id': <'[^']*'>, 'params': <\{'unscaled_radius': <(\d+)\.0>"),
+    ("TOKEN_BLUR_RADIUS_APPLICATIONS", "raw", "dconf/core.ini",
+     r"'name': <'windows'>, 'effects': <\[<\{'type': <'dual_kawase_blur'>, "
+     r"'id': <'[^']*'>, 'params': <\{'unscaled_radius': <(\d+)\.0>"),
+    ("TOKEN_BLUR_RADIUS_DASH_TO_DOCK", "raw", "dconf/core.ini",
+     r"'name': <'dock'>, 'effects': <\[<\{'type': <'dual_kawase_blur'>, "
+     r"'id': <'[^']*'>, 'params': <\{'unscaled_radius': <(\d+)\.0>"),
 
     ("TOKEN_APP_TRANSPARENCY_SHIPPED", "css", "css/gtk4-transparency.css",
      r"alpha\(@tg_tint_window, ([0-9.]+)\)"),

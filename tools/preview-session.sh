@@ -220,8 +220,8 @@ shot 04-text-editor
 # clone it along with the window — and with `blur-on-overview: false` it has no
 # business painting there. Upstream let it, and what it painted was the pixels
 # it last sampled on the desktop, changing whenever a preview was hovered.
-# patches/blur-my-shell-overview.patch is what stops it; this is the shot that
-# would show it coming back.
+# v76 keeps it out (v73 needed patches/blur-my-shell-overview.patch); this is
+# the shot that would show it coming back.
 overview true
 shot 04b-overview-windows
 overview false

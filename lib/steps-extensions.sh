@@ -2,12 +2,9 @@
 # aura-glass — installing and enabling the shell extensions.
 #
 # Three of them cannot come from extensions.gnome.org as they are. Blur My Shell
-# is built from a pinned commit with overview, subwindow and notification
-# patches of this project's own; Open Bar and Custom OSD are built from
-# their last upstream commit plus a patch in patches/, because neither has a
-# GNOME 50 release. gnome-rounded-blur is not
-# an extension at all but the C library that lets the popup blur be dynamic, and
-# it is the only thing this project installs outside $HOME.
+# is built from a pinned commit with a subwindow patch of this project's own;
+# Open Bar and Custom OSD are built from their last upstream commit plus a
+# patch in patches/, because neither has a GNOME 50 release.
 #
 # Sourced by install.sh. See lib/steps.sh for the pins these use.
 
@@ -104,11 +101,12 @@ install_ext_ego() {
     return "$rc"
 }
 
-# Blur My Shell v73 carries the popup component upstream: menus, quick
-# settings, notifications, dialogs and the OSD get blur directly. We build from
-# pinned release v73 with our overview, subwindow and notification patches
-# applied on top. gnome-extensions pack and gnome-extensions install both write
-# under $HOME, so this needs no root.
+# Blur My Shell carries the popup component upstream: menus, quick settings,
+# notifications, dialogs and the OSD get blur directly. We build from pinned
+# release v76 with the subwindow patch applied on top (see BMS_SUBWIN_PATCH in
+# lib/steps.sh).
+# gnome-extensions pack and gnome-extensions install both write under $HOME, so
+# this needs no root.
 install_bms() {
     if [ "${WANT_BMS_GIT:-1}" != 1 ]; then
         install_ext_ego "$BMS_UUID" || true
@@ -127,45 +125,28 @@ install_bms() {
     if [ "${FORCE:-0}" != 1 ] \
        && [ -f "$EXT_DIR/$BMS_UUID/components/popup/index.js" ] \
        && [ "$(cat "$CONF_DIR/bms-ref" 2>/dev/null || true)" = "$BMS_REF" ] \
-       && patch_stamp_current bms-overview-patch "$REPO_ROOT/patches/$BMS_PATCH" \
        && patch_stamp_current bms-subwindow-patch "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH" \
-       && patch_stamp_current bms-notification-patch "$REPO_ROOT/patches/$BMS_NOTIF_PATCH" \
-       && patch_stamp_current bms-static-patch "$REPO_ROOT/patches/$BMS_STATIC_PATCH" \
-       && patch_stamp_current bms-panel-patch "$REPO_ROOT/patches/$BMS_PANEL_PATCH" \
        && ext_supports_shell "$EXT_DIR/$BMS_UUID" "$GNOME_MAJOR"; then
         skip "$BMS_UUID already built from $BMS_REF"
         return 0
     fi
 
-    info "building Blur My Shell from $BMS_REF + patches/$BMS_PATCH + patches/$BMS_SUBWIN_PATCH + patches/$BMS_NOTIF_PATCH + patches/$BMS_STATIC_PATCH + patches/$BMS_PANEL_PATCH"
+    info "building Blur My Shell from $BMS_REF + patches/$BMS_SUBWIN_PATCH"
     local src="$SRC_CACHE/blur-my-shell"
     if [ -d "$src/.git" ]; then
         run git -C "$src" checkout --quiet -- . 2>/dev/null || true
     fi
     clone_pinned "$BMS_REPO" "$BMS_REF" "$src"
 
-    # Upstream's `blur-on-overview: false` leaves the blur actor in the window,
-    # and the overview clones it into every window preview, where it shows a
-    # frozen picture of the desktop that changes when the preview is hovered.
-    # The overview patch makes the setting mean what it says. The subwindow
-    # patch makes check_blur match a window's whole transient-for chain and
-    # its GTK application id, not just its own wm_class, and adds ATTACHED and
-    # UTILITY to the frame types it accepts — without it a blurred app's own
-    # dialogs and tool palettes stay unblurred. Order matters: the second
-    # patch's hunks are offset against the first's output. The checkout above
-    # is reset by the `git checkout -- .` that precedes it, so this always
-    # applies to a clean tree.
+    # The subwindow patch makes the window rules match a window's whole
+    # transient-for chain and its GTK application id, not just its own
+    # wm_class, and adds ATTACHED and UTILITY to the frame types they accept.
+    # Without it a blurred app's own dialogs and tool palettes stay unblurred.
+    # The checkout above is reset by the `git checkout -- .` that precedes it,
+    # so this always applies to a clean tree.
     if [ "${DRY_RUN:-0}" != 1 ]; then
-        git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_PATCH" \
-            || die "the Blur My Shell overview patch did not apply — upstream may have moved"
         git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH" \
             || die "the Blur My Shell subwindow patch did not apply — upstream may have moved"
-        git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_NOTIF_PATCH" \
-            || die "the Blur My Shell notification patch did not apply — upstream may have moved"
-        git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_STATIC_PATCH" \
-            || die "the Blur My Shell static-maximized patch did not apply — upstream may have moved"
-        git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_PANEL_PATCH" \
-            || die "the Blur My Shell panel refit patch did not apply — upstream may have moved"
     fi
 
     local podir=(--podir=../po)
@@ -175,7 +156,7 @@ install_bms() {
     fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: apply patches/$BMS_PATCH, patches/$BMS_SUBWIN_PATCH, patches/$BMS_NOTIF_PATCH, patches/$BMS_STATIC_PATCH and patches/$BMS_PANEL_PATCH, gnome-extensions pack in $src/src, then install the zip"
+        info "dry-run: apply patches/$BMS_SUBWIN_PATCH, bundle the stylesheets, gnome-extensions pack in $src/src, then install the zip"
         return 0
     fi
 
@@ -186,17 +167,29 @@ install_bms() {
     # gnome-extensions pack segfaults (139) instead of reporting an error.
     rm -rf "$src/build"
     mkdir -p "$src/build"
+    # v76 ships one stylesheet bundled from its component sheets, in this
+    # order (its Makefile's STYLESHEETS), because St does not give a sheet's
+    # @imports the extension stylesheet's priority. Every source directory but
+    # styles/ goes in the zip, read off the tree so a directory upstream adds
+    # is not silently left out.
+    local sheet sources=()
+    for sheet in panel dash popup/base popup/transparent popup/light \
+                 popup/dark popup/menu-items overview appfolders panel-light-text; do
+        cat "$src/src/styles/$sheet.css" \
+            || die "Blur My Shell has no styles/$sheet.css — upstream's layout may have moved"
+    done > "$src/build/stylesheet.css"
+    local dir
+    for dir in "$src"/src/*/; do
+        dir="$(basename "$dir")"
+        [ "$dir" = styles ] || sources+=("--extra-source=./$dir")
+    done
     ( cd "$src/src" && gnome-extensions pack -f \
+        --extra-source=../build/stylesheet.css \
         --extra-source=../metadata.json \
         --extra-source=../LICENSE \
         --extra-source=../resources/icons \
         --extra-source=../resources/ui \
-        --extra-source=./components \
-        --extra-source=./conveniences \
-        --extra-source=./effects \
-        --extra-source=./preferences \
-        --extra-source=./dbus \
-        --extra-source=./styles \
+        "${sources[@]}" \
         "${podir[@]}" \
         --schema=../schemas/org.gnome.shell.extensions.blur-my-shell.gschema.xml \
         -o ../build ) >/dev/null \
@@ -208,7 +201,7 @@ install_bms() {
         || die "the pinned Blur My Shell does not support GNOME $GNOME_MAJOR"
 
     # Upstream's Makefile removes the directory before installing, and it is
-    # right to: v72 keeps its components as flat files where master keeps
+    # right to: v73 keeps applications and panel as flat files where v76 keeps
     # directories, so an overlay would leave both and load the wrong one.
     # Settings live in dconf, not here, so nothing is lost. This runs only
     # after the zip exists and has been checked.
@@ -228,12 +221,8 @@ install_bms() {
     mkdir -p "$CONF_DIR"
     printf '%s\n' "$BMS_REF" > "$CONF_DIR/bms-ref"
     printf 'git\n' > "$CONF_DIR/bms-source"
-    patch_stamp_write bms-overview-patch "$REPO_ROOT/patches/$BMS_PATCH"
     patch_stamp_write bms-subwindow-patch "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH"
-    patch_stamp_write bms-notification-patch "$REPO_ROOT/patches/$BMS_NOTIF_PATCH"
-    patch_stamp_write bms-static-patch "$REPO_ROOT/patches/$BMS_STATIC_PATCH"
-    patch_stamp_write bms-panel-patch "$REPO_ROOT/patches/$BMS_PANEL_PATCH"
-    ok "$BMS_UUID (built from $BMS_REF, with the popup component, the overview patch, the subwindow patch, the notification patch, the static-maximized patch, and the panel refit patch)"
+    ok "$BMS_UUID (built from $BMS_REF, with the subwindow patch)"
 }
 
 # aura-glass-blur@aura-glass.local — "Blur This App" in the window right-click
@@ -338,219 +327,6 @@ install_custom_osd() {
         || die "failed to compile Custom OSD's gsettings schemas"
     patch_stamp_write custom-osd-patch "$REPO_ROOT/patches/custom-osd-gnome50.patch"
     ok "$uuid (patched for GNOME $GNOME_MAJOR)"
-}
-
-# Blur My Shell gets rounded corners on a *dynamic* blur from Blur.BlurEffect,
-# which comes from this small C library — a vendored copy of gnome-shell's own
-# shell-blur-effect.c with a corner mask. Without it the popup blur stays
-# dynamic but rounds through Blur My Shell's corner shader instead.
-#
-# It is the only thing this project installs outside $HOME. Returns 1 on any
-# failure and leaves the choice of what to do about it to require_rounded_blur.
-#
-# It hard-pins libmutter-18, so every mutter update breaks it until it is
-# rebuilt. That failure is silent by design upstream: Blur My Shell just falls
-# back to Shell.BlurEffect. rounded_blur_staleness_check is what makes it loud.
-install_rounded_blur() {
-    step "Rounded corners for dynamic blur"
-
-    # Only a typed --rounded-blur / --no-rounded-blur is a choice. --no-blur
-    # forces the variable to 0 for a Performance run, and recording that would
-    # keep the library off after switching back to Frosted. Not "rounded-blur":
-    # that file is the mutter-version stamp, and its presence means installed.
-    if remembering && [ -n "${ROUNDED_BLUR_EXPLICIT:-}" ]; then
-        mkdir -p "$CONF_DIR"
-        printf '%s\n' "${WANT_ROUNDED_BLUR:-1}" > "$CONF_DIR/rounded-blur-choice"
-    fi
-
-    if [ "${WANT_ROUNDED_BLUR:-1}" != 1 ]; then
-        skip "not installed (--no-rounded-blur)"
-        return 0
-    fi
-
-    # Loadable is not enough: a build without patches/$ROUNDEDBLUR_PATCH (the
-    # AUR package, or an install from before the patch) loads fine and still
-    # puts the blur in the wrong place in screenshots. The stamp makes such a
-    # machine rebuild once.
-    if rounded_blur_loadable && [ "${FORCE:-0}" != 1 ] \
-       && patch_stamp_current rounded-blur-patch "$REPO_ROOT/patches/$ROUNDEDBLUR_PATCH"; then
-        skip "gnome-rounded-blur already installed and functional"
-        rounded_blur_stamp
-        return 0
-    fi
-
-    # A build in ~/.local, from releases that compiled one there, never loads:
-    # the shell searches neither ~/.local/lib nor ~/.local/share/girepository-1.0
-    # (KI-12). It goes, so nothing is left that looks like it might.
-    if [ -e "$HOME/.local/lib/libblur-effect-1.0.so.1" ] \
-        || [ -e "$HOME/.local/share/girepository-1.0/Blur-1.0.typelib" ]; then
-        run rm -f "$HOME/.local/lib/libblur-effect-1.0.so" \
-                  "$HOME/.local/lib/libblur-effect-1.0.so.1" \
-                  "$HOME/.local/share/girepository-1.0/Blur-1.0.typelib"
-        [ "${DRY_RUN:-0}" = 1 ] || info "removed the old ~/.local build, which the shell could not load"
-    fi
-
-    # Arch gets a pacman package rather than files under /usr that pacman
-    # does not know about, so it replaces an AUR install of the same name
-    # cleanly and `pacman -Rs` still removes it. Not through an AUR helper:
-    # none of them takes a patch.
-    local arch_pkg=0
-    [ "${DISTRO_FAMILY:-}" = arch ] && have makepkg && arch_pkg=1
-
-    if [ "${DRY_RUN:-0}" = 1 ]; then
-        if [ "$arch_pkg" = 1 ]; then
-            info "dry-run: build gnome-rounded-blur $ROUNDEDBLUR_REF + patches/$ROUNDEDBLUR_PATCH with makepkg, then sudo pacman -U"
-        else
-            info "dry-run: build gnome-rounded-blur $ROUNDEDBLUR_REF + patches/$ROUNDEDBLUR_PATCH with meson, then sudo meson install"
-        fi
-        return 0
-    fi
-
-    if ! ensure_rounded_blur_build_deps; then
-        warn "gnome-rounded-blur cannot be built without its build dependencies."
-        return 1
-    fi
-
-    local src="$SRC_CACHE/gnome-rounded-blur"
-    if [ -d "$src/.git" ]; then
-        run git -C "$src" checkout --quiet -- . 2>/dev/null || true
-    fi
-    clone_pinned "$ROUNDEDBLUR_REPO" "$ROUNDEDBLUR_REF" "$src"
-    git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$ROUNDEDBLUR_PATCH" \
-        || { warn "the gnome-rounded-blur patch did not apply — upstream may have moved"; return 1; }
-
-    if [ "$arch_pkg" = 1 ]; then
-        info "building gnome-rounded-blur $ROUNDEDBLUR_PKGVER + patches/$ROUNDEDBLUR_PATCH (makepkg, then sudo pacman -U)"
-        local pkgdir="$src/pkgbuild"
-        rm -rf "$pkgdir" "$src/build"
-        mkdir -p "$pkgdir"
-        # pkgrel 1.1, one step above the AUR's 1, so an AUR helper's upgrade
-        # does not swap this build back for the unpatched one of the same
-        # release. -d: makepkg would otherwise want to install makedepends
-        # itself; ensure_rounded_blur_build_deps has seen to them above.
-        cat > "$pkgdir/PKGBUILD" <<PKG
-pkgname=gnome-rounded-blur
-pkgver=$ROUNDEDBLUR_PKGVER
-pkgrel=1.1
-pkgdesc="GNOME Shell BlurEffect with rounded corners (aura-glass build, patched)"
-arch=('x86_64' 'aarch64')
-url="https://github.com/kancko/gnome-rounded-blur"
-license=('GPL-3.0-or-later')
-depends=('glib2' 'graphene' 'mutter')
-makedepends=('meson' 'gobject-introspection')
-options=('!debug')
-
-build() {
-  arch-meson "$src" build
-  meson compile -C build
-}
-
-package() {
-  meson install -C build --destdir "\$pkgdir"
-}
-PKG
-        # PKGDEST: makepkg.conf may send the package somewhere else.
-        ( cd "$pkgdir" && PKGDEST="$pkgdir" makepkg -f -d --noconfirm >/dev/null ) \
-            || { warn "the gnome-rounded-blur build failed"; return 1; }
-        local pkg
-        pkg="$(ls "$pkgdir"/gnome-rounded-blur-"$ROUNDEDBLUR_PKGVER"-1.1-*.pkg.tar.* 2>/dev/null | head -1)"
-        [ -n "$pkg" ] && sudo pacman -U --noconfirm "$pkg" \
-            || { warn "installing the gnome-rounded-blur package failed"; return 1; }
-    else
-        info "building gnome-rounded-blur $ROUNDEDBLUR_REF + patches/$ROUNDEDBLUR_PATCH (meson, then sudo meson install)"
-        ( cd "$src" && rm -rf build \
-            && meson setup --prefix=/usr build \
-            && meson compile -C build \
-            && sudo meson install -C build ) \
-            || { warn "the gnome-rounded-blur meson build failed"; return 1; }
-    fi
-
-    patch_stamp_write rounded-blur-patch "$REPO_ROOT/patches/$ROUNDEDBLUR_PATCH"
-    rounded_blur_stamp
-    ok "gnome-rounded-blur installed (with patches/$ROUNDEDBLUR_PATCH)"
-}
-
-# A failed build used to warn and carry on, and the rest of the install went
-# ahead around it: the desktop came up without the library and nothing said so
-# again, so the only way out was to re-run the installer and watch the build.
-# install.sh now runs this before anything else is installed, and a failure
-# stops there with nothing changed yet: retry (once whatever the output above
-# says is fixed), go on without it, or stop. Asked even under --yes, which
-# answers the theme's questions, not whether to give up a part of the look.
-# Without a terminal there is no one to ask, so it stops; --no-rounded-blur is
-# how a script says to go on without it.
-require_rounded_blur() {
-    local ans
-    until install_rounded_blur; do
-        if [ ! -t 0 ]; then
-            die "gnome-rounded-blur did not build or install, so nothing has been installed. Fix the error above and re-run, or pass --no-rounded-blur to install without it"
-        fi
-        progress_wait "gnome-rounded-blur failed: retry, continue without it, or abort?"
-        printf '    Retry, continue without it, or abort? [R/c/a] ' >&2
-        read -r ans || ans=a
-        progress_resume
-        case "${ans,,}" in
-            c|continue)
-                warn "continuing without gnome-rounded-blur: popup blur rounds through the corner shader fallback."
-                warn "The next full install tries the build again."
-                return 0 ;;
-            a|abort)
-                die "stopped before anything was installed" ;;
-        esac
-    done
-}
-
-# Whether the shell can load Blur.BlurEffect at all. The library links
-# libmutter, which lives in a private directory the shell finds by rpath and
-# gjs does not: /usr/lib/mutter-N on Arch, /usr/lib64/mutter-N on Fedora and
-# openSUSE, /usr/lib/<triplet>/mutter-N on Debian, with N the ABI (16/17/18)
-# up to GNOME 50 and the release from 51. Every one of them goes on the path,
-# or the probe fails on a working install and every run rebuilds.
-rounded_blur_loadable() {
-    local dirs='' d
-    for d in /usr/lib/mutter-* /usr/lib64/mutter-* /usr/lib/*-linux-gnu*/mutter-*; do
-        [ -d "$d" ] && dirs="$dirs$d:"
-    done
-    LD_LIBRARY_PATH="$dirs${LD_LIBRARY_PATH:-}" \
-        gjs -c 'const Blur = imports.gi.Blur; void Blur.BlurEffect;' >/dev/null 2>&1
-}
-
-# Whether install_rounded_blur may reach for sudo, so install.sh only asks for
-# a password up front when it will be used (KI-11): only when it will build,
-# and a build ends in sudo (pacman -U, or meson install), as does installing
-# its build dependencies. On an unknown distro without them nothing will run.
-# There is no rootless build: one in ~/.local is never found by the shell
-# (KI-12).
-rounded_blur_needs_root() {
-    [ "${WANT_ROUNDED_BLUR:-1}" = 1 ] || return 1
-    if rounded_blur_loadable && [ "${FORCE:-0}" != 1 ] \
-       && patch_stamp_current rounded-blur-patch "$REPO_ROOT/patches/$ROUNDEDBLUR_PATCH"; then
-        return 1
-    fi
-    rounded_blur_build_ready || rounded_blur_build_pkgs >/dev/null
-}
-
-# Records the mutter it was built against, which is what makes staleness
-# detectable later.
-rounded_blur_stamp() {
-    [ "${DRY_RUN:-0}" = 1 ] && return 0
-    mkdir -p "$CONF_DIR"
-    printf '%s\n' "$(pkg-config --modversion "libmutter-$GNOME_MAJOR" 2>/dev/null || pkg-config --modversion libmutter-18 2>/dev/null || gnome_major)" \
-        > "$CONF_DIR/rounded-blur"
-}
-
-# Blur My Shell publishes the answer itself: it writes rounded-blur-found at
-# every enable. If this machine installed the library but the shell is no
-# longer finding it, mutter has moved and the library needs rebuilding.
-rounded_blur_staleness_check() {
-    [ -f "$CONF_DIR/rounded-blur" ] || return 0
-    local found
-    found="$(dconf read /org/gnome/shell/extensions/blur-my-shell/rounded-blur-found 2>/dev/null || true)"
-    [ "$found" = false ] || return 0
-    warn "gnome-rounded-blur is installed here, but the shell is not finding it."
-    warn "Mutter has probably been updated — it can be rebuilt against it:"
-    warn "    ./install.sh --rounded-blur --force"
-    warn "Popup blur remains dynamic with corner shader fallback."
 }
 
 install_extensions() {

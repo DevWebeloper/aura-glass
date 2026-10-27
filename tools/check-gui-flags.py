@@ -41,6 +41,11 @@ except ImportError:
 from aura_glass_settings import Settings, plan_summary  # noqa: E402
 
 
+# Every surface following the main sliders, which is what a fresh drawer holds.
+MAIN = {"window": "main", "popup": "main", "panel": "main",
+        "lockscreen": "main"}
+
+
 def state(**kw):
     """A Settings without touching the disk."""
     s = Settings.__new__(Settings)
@@ -52,13 +57,13 @@ def state(**kw):
     s.transparency = kw.get("transparency", "0.90")
     s.scope = kw.get("scope", "gtk")
     s.popup_blur = kw.get("popup_blur", True)
-    s.notification_blur = kw.get("notification_blur", True)
     s.app_tint = kw.get("app_tint", "#000000")
     s.shell_tint = kw.get("shell_tint", "#000000")
     s.blur_strength = kw.get("blur_strength", 100)
-    s.popup_brightness = kw.get("popup_brightness", 115)
-    s.window_brightness = kw.get("window_brightness", 100)
-    s.notification_opacity = kw.get("notification_opacity", 40)
+    s.blur_brightness = kw.get("blur_brightness", 100)
+    s.surface_strength = dict(MAIN, **kw.get("surface_strength", {}))
+    s.surface_brightness = dict(MAIN, **kw.get("surface_brightness", {}))
+    s.popup_opacity = kw.get("popup_opacity", "main")
     s.allow = list(kw.get("allow", ["org.gnome.Nautilus", "org.gnome.Console"]))
     s.block = list(kw.get("block", ["*chrome*", "*electron*"]))
     s.icons = kw.get("icons", "colloid")
@@ -70,6 +75,7 @@ def state(**kw):
     s.glass_style = kw.get("glass_style", "frosted")
     s.liquid_windows = kw.get("liquid_windows", False)
     s.fullscreen_blur = kw.get("fullscreen_blur", False)
+    s.panel_height = kw.get("panel_height", 40)
     s.update_check = kw.get("update_check", True)
     s.update_channel = kw.get("update_channel", "release")
     s.update_available = kw.get("update_available", None)
@@ -85,15 +91,19 @@ def state(**kw):
     s.modes = {
         "frosted": {"transparency": "0", "app_tint": "#000000",
                     "shell_tint": "#000000", "blur_strength": 100,
-                    "popup_brightness": 115, "window_brightness": 100,
-                    "notification_opacity": 40,
-                    "popup_blur": True, "notification_blur": True,
+                    "blur_brightness": 100,
+                    "surface_strength": dict(MAIN),
+                    "surface_brightness": dict(MAIN),
+                    "popup_opacity": "main",
+                    "popup_blur": True,
                     "scope": "gtk"},
         "performance": {"transparency": "1.00", "app_tint": "#000000",
                         "shell_tint": "#000000", "blur_strength": 100,
-                        "popup_brightness": 115, "window_brightness": 100,
-                        "notification_opacity": 40,
-                        "popup_blur": False, "notification_blur": False,
+                        "blur_brightness": 100,
+                        "surface_strength": dict(MAIN),
+                        "surface_brightness": dict(MAIN),
+                        "popup_opacity": "main",
+                        "popup_blur": False,
                         "scope": "none"},
     }
     for mode, overrides in kw.get("modes", {}).items():
@@ -104,7 +114,7 @@ def state(**kw):
 
 FROSTED = state()
 PERFORMANCE = state(glass_mode="performance", blur=False, transparency="1.00",
-                    scope="none", popup_blur=False, notification_blur=False)
+                    scope="none", popup_blur=False)
 
 # (description, state on disk, state the widgets are asking for, expected argv)
 CASES = [
@@ -149,12 +159,12 @@ CASES = [
 
     ("frosted -> performance", FROSTED,
      state(glass_mode="performance", blur=False, transparency="1.00",
-           scope="none", popup_blur=False, notification_blur=False),
+           scope="none", popup_blur=False),
      ["--glass-mode", "performance"]),
 
     ("performance -> frosted",
      state(glass_mode="performance", blur=False, transparency="1.00",
-           scope="none", popup_blur=False, notification_blur=False,
+           scope="none", popup_blur=False,
            modes={"frosted": {"transparency": "0.90"}}),
      state(), ["--glass-mode", "frosted"]),
 
@@ -174,21 +184,21 @@ CASES = [
 
     ("opacity edited inside performance",
      state(glass_mode="performance", blur=False, transparency="1.00",
-           scope="none", popup_blur=False, notification_blur=False),
+           scope="none", popup_blur=False),
      state(glass_mode="performance", blur=False, transparency="0.95",
-           scope="none", popup_blur=False, notification_blur=False),
+           scope="none", popup_blur=False),
      ["--app-transparency", "0.95"]),
 
     ("frosted -> performance with a radius change", FROSTED,
      state(glass_mode="performance", blur=False, transparency="1.00",
-           popup_blur=False, scope="none", notification_blur=False, radius="sharp"),
+           popup_blur=False, scope="none", radius="sharp"),
      ["--radius-preset", "sharp", "--glass-mode", "performance"]),
 
     ("shell tint edited inside performance",
      state(glass_mode="performance", blur=False, transparency="1.00",
-           scope="none", popup_blur=False, notification_blur=False),
+           scope="none", popup_blur=False),
      state(glass_mode="performance", blur=False, transparency="1.00",
-           scope="none", popup_blur=False, notification_blur=False,
+           scope="none", popup_blur=False,
            shell_tint="#101820"),
      ["--shell-tint-color", "#101820"]),
 
@@ -208,18 +218,6 @@ CASES = [
 
     ("popup blur off", FROSTED, state(popup_blur=False), ["--no-popup-blur"]),
 
-    ("notification blur off", FROSTED, state(notification_blur=False),
-     ["--no-notification-blur"]),
-
-    # The two switches are independent: turning one off must not touch the
-    # other, in either direction.
-    ("notification blur off, popup blur stays on", FROSTED,
-     state(popup_blur=True, notification_blur=False),
-     ["--no-notification-blur"]),
-
-    ("popup blur off, notification blur stays on", FROSTED,
-     state(popup_blur=False, notification_blur=True),
-     ["--no-popup-blur"]),
 
     # The two tints and the blur strength. Values rather than on/off: black and
     # 100 are the state the sheets ship in, so asking for them again is how one
@@ -254,23 +252,58 @@ CASES = [
     ("blur strength back to the tuned radii",
      state(blur_strength=60), state(), ["--blur-strength", "100"]),
 
-    ("popup blur brightness moved", FROSTED, state(popup_brightness=90),
+    ("main brightness moved", FROSTED, state(blur_brightness=80),
+     ["--blur-brightness", "80"]),
+
+    ("main brightness back to the tuned 100",
+     state(blur_brightness=80), state(), ["--blur-brightness", "100"]),
+
+    ("popup blur brightness set apart", FROSTED,
+     state(surface_brightness={"popup": 90}),
      ["--popup-brightness", "90"]),
 
-    ("popup blur brightness back to the preset",
-     state(popup_brightness=90), state(), ["--popup-brightness", "115"]),
+    # Reset hands a surface back to the main slider, which install.sh is told
+    # as "main" rather than as the main slider's current number.
+    ("popup blur brightness handed back to the main slider",
+     state(surface_brightness={"popup": 90}), state(),
+     ["--popup-brightness", "main"]),
 
-    ("window blur brightness moved", FROSTED, state(window_brightness=90),
+    ("top bar blur amount set apart", FROSTED,
+     state(surface_strength={"panel": 150}),
+     ["--panel-blur-strength", "150"]),
+
+    ("lock screen brightness set apart", FROSTED,
+     state(surface_brightness={"lockscreen": 70}),
+     ["--lockscreen-brightness", "70"]),
+
+    # A surface that keeps its own value is not restated when the main
+    # slider moves: that it keeps it is install.sh's memo, not a flag.
+    ("main brightness moved past a surface set apart",
+     state(surface_brightness={"window": 90}),
+     state(blur_brightness=70, surface_brightness={"window": 90}),
+     ["--blur-brightness", "70"]),
+
+    ("top bar back to GNOME's own height", FROSTED, state(panel_height=32),
+     ["--panel-height", "32"]),
+
+    ("top bar height in Performance too", PERFORMANCE,
+     state(glass_mode="performance", blur=False, transparency="1.00",
+           scope="none", popup_blur=False, panel_height=44),
+     ["--panel-height", "44"]),
+
+    ("popups and notifications opacity set apart", FROSTED,
+     state(popup_opacity=80), ["--popup-opacity", "80"]),
+
+    ("popups and notifications opacity handed back",
+     state(popup_opacity=80), state(), ["--popup-opacity", "main"]),
+
+    ("window blur brightness set apart", FROSTED,
+     state(surface_brightness={"window": 90}),
      ["--window-brightness", "90"]),
 
-    ("window blur brightness back to the preset",
-     state(window_brightness=90), state(), ["--window-brightness", "100"]),
-
-    ("notification ground moved", FROSTED, state(notification_opacity=25),
-     ["--notification-opacity", "25"]),
-
-    ("notification ground back to the sheet's own",
-     state(notification_opacity=25), state(), ["--notification-opacity", "40"]),
+    ("window blur brightness handed back",
+     state(surface_brightness={"window": 90}), state(),
+     ["--window-brightness", "main"]),
 
     # The per-app lists. Whichever one changed goes out, whether or not the mode
     # in force consults it. The window edits both at all times — they are two
@@ -444,10 +477,9 @@ CASES = [
 
     ("everything at once", FROSTED,
      state(accent="slate", radius="rounded", transparency="0.82", scope="all",
-           popup_blur=False, notification_blur=False),
+           popup_blur=False),
      ["--accent", "slate", "--radius-preset", "rounded", "--all-apps-blur",
-      "--app-transparency", "0.82", "--no-popup-blur",
-      "--no-notification-blur"]),
+      "--app-transparency", "0.82", "--no-popup-blur"]),
 ]
 
 failures = []
@@ -655,7 +687,7 @@ PLAN_CASES = [
     ({"actions": ["css", "app-opacity"], "fallback_reason": None},
      ("Quick apply", "Updates only the stylesheets and the window opacity, in a second or two")),
     ({"actions": ["full"], "fallback_reason": "unclassified flag: --blur-strength"},
-     ("Full reapply", "Reapplies the preset, the CSS and the gsettings: Blur strength needs one")),
+     ("Full reapply", "Reapplies the preset, the CSS and the gsettings: Blur amount needs one")),
     ({"actions": ["full"], "fallback_reason": "installed source fingerprint is absent or changed"},
      ("Full reapply", "Reapplies the preset, the CSS and the gsettings: Aura Glass changed since the last one")),
     ({"actions": ["full"], "fallback_reason": "no narrow setting was typed"},
@@ -681,6 +713,32 @@ for flags, first in ((["--accent", "teal"], "accent"),
     except (ValueError, IndexError):
         failures.append("plan-json %s: not one JSON document: %r"
                         % (flags, res.stdout[-200:]))
+
+# The bars' bounds and the surface list are written twice, once in the window
+# so a bar can be drawn before install.sh has run and once beside the resolver
+# that enforces them (CLAUDE.md rule 1). A bar that went past a bound would
+# compose a flag install.sh dies on, so they are held together here.
+import aura_glass_settings as gui  # noqa: E402
+
+shell = ""
+for name in ("steps-dconf.sh", "steps-css.sh"):
+    with open(os.path.join(ROOT, "lib", name), encoding="utf-8") as fh:
+        shell += fh.read()
+for const in ("BLUR_STRENGTH_MIN", "BLUR_STRENGTH_MAX", "BLUR_BRIGHTNESS_MIN",
+              "BLUR_BRIGHTNESS_MAX", "POPUP_OPACITY_MIN", "POPUP_OPACITY_MAX",
+              "PANEL_HEIGHT_MIN", "PANEL_HEIGHT_MAX", "PANEL_HEIGHT_THEME",
+              "PANEL_HEIGHT_GNOME"):
+    m = re.search(r"^%s=(\d+)$" % const, shell, re.M)
+    if not m:
+        failures.append("bounds: %s is not in lib/steps-{dconf,css}.sh" % const)
+    elif int(m.group(1)) != getattr(gui, const):
+        failures.append("bounds: %s is %s in lib/ but %s in the window"
+                        % (const, m.group(1), getattr(gui, const)))
+m = re.search(r'^BLUR_SURFACES="([^"]*)"$', shell, re.M)
+lib_surfaces = [e.split(":")[0] for e in m.group(1).split()] if m else []
+if lib_surfaces != [sid for sid, _t, _s in gui.BLUR_SURFACES]:
+    failures.append("surfaces: lib/steps-dconf.sh has %r, the window %r"
+                    % (lib_surfaces, [sid for sid, _t, _s in gui.BLUR_SURFACES]))
 
 if failures:
     print("gui flag check FAILED\n")

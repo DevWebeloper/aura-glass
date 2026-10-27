@@ -30,7 +30,7 @@ flag means. Every other program composes flags or calls those functions.
 
 | Run | Command | What it does | Needs |
 |---|---|---|---|
-| **Full install** | `./install.sh [flags]` | (progress window, after the GTK wizard or with `--progress-window`) → deps → rounded-blur (a failure stops here: retry, continue without, or abort) → base theme → extensions → icons → cursors → fonts → dconf preset → CSS → gsettings → extensions on/off → integrations (icon sync, GUI, update timer, Flatpak override, retired panel-blur unit removed, adaptive worker) → enable extensions → GDM (opt-in) → `verify_install` (the checklist) → `finish` (log out, from the window when it is open) | network; root only for deps, rounded-blur fallback, GDM |
+| **Full install** | `./install.sh [flags]` | (progress window, after the GTK wizard or with `--progress-window`) → deps → base theme → extensions → icons → cursors → fonts → dconf preset → CSS → gsettings → extensions on/off → integrations (icon sync, GUI, update timer, Flatpak override, retired panel-blur unit removed, adaptive worker) → enable extensions → GDM (opt-in) → `verify_install` (the checklist) → `finish` (log out, from the window when it is open) | network; root only for deps, rounded-blur fallback, GDM |
 | **Retune** | `./install.sh --settings-only [flags]` | optional pack/font install if those flags were given → dconf preset → CSS → gsettings → icon sync → extensions on/off → remember mode → GUI, update timer, retired panel-blur unit removed, adaptive worker → GDM sync (if installed) | nothing. Offline, unprivileged, a few seconds |
 
 `--settings-only` refuses to run unless `$CONF_DIR` and the theme directory
@@ -41,7 +41,7 @@ by the GUI and the adaptive worker:
 
 | Modifier | Contract |
 |---|---|
-| `--incremental` | Classify the typed flags (`lib/steps-apply-plan.sh`) and run **only** the matching steps: `accent`, `cursor-theme`, `cursor-size`, `window-buttons`, `window-brightness`, `app-blur`, `css`, `adaptive-blur`. Any other flag, a missing or changed source fingerprint, or no narrow flag at all falls back to the full retune. |
+| `--incremental` | Classify the typed flags (`lib/steps-apply-plan.sh`) and run **only** the matching steps: `accent`, `cursor-theme`, `cursor-size`, `window-buttons`, `blur-pipelines`, `app-blur`, `css`, `adaptive-blur`. Any other flag, a missing or changed source fingerprint, or no narrow flag at all falls back to the full retune. |
 | `--plan-json` | With `--settings-only --incremental --dry-run`, print `{"schema_version":1,"actions":[…],"fallback_reason":…}` on stdout and exit. The settings window asks it for the pending flags (debounced, as a dry run) and shows the answer as the first row of the "N changes" popover: a quick apply and its steps, or a full reapply and why (`plan_summary`). `tools/check-incremental-apply.py` and `check-gui-flags.py` cover it. |
 | `--adaptive-blur active\|restore` | Private to the adaptive worker. Requires `--settings-only --incremental`. Applies or removes a **transient** no-blur state without writing any memo (`remembering()` is false while it's set). |
 
@@ -104,10 +104,10 @@ A mode is **not a new kind of setting**. It names a combination of flags
 `install.sh` already has, and it owns a drawer that keeps that combination's own
 tuning. `lib/steps-modes.sh` resolves a mode into flags and steps aside.
 
-| Mode | `WANT_BLUR` | window / popup / notification blur | transparency seed | sheets |
+| Mode | `WANT_BLUR` | window / popup (and notification) blur | transparency seed | sheets |
 |---|---|---|---|---|
-| `frosted` (default) | 1 | on / on / on (each overridable) | the top-level memo, else **0**, so windows come out opaque (KI-18). The flagless resolver default is 0.90 | `shell-popup-blur`, `shell-notification-blur`, `gtk4-transparency` |
-| `performance` | 0 | off / off / off | `1.00` (opaque) | `shell-80-solid` (opaque ladder); `gtk4-transparency` only if the level is below 1.00 |
+| `frosted` (default) | 1 | on / on (each overridable) | the top-level memo, else **0**, so windows come out opaque (KI-18). The flagless resolver default is 0.90 | `shell-popup-blur`, `shell-notification-blur`, `gtk4-transparency` |
+| `performance` | 0 | off / off | `1.00` (opaque) | `shell-80-solid` (opaque ladder); `gtk4-transparency` only if the level is below 1.00 |
 
 - `VALID_GLASS_MODES="frosted performance"`. `resolve_glass_mode` takes
   `--glass-mode`, then infers it from typed flags (`--blur`/`--window-blur` →
@@ -115,9 +115,11 @@ tuning. `lib/steps-modes.sh` resolves a mode into flags and steps aside.
   Anything else, including the legacy names `solid` and `transparent`, leaves
   `GLASS_MODE` empty, and `remember_glass_mode` then records `frosted`.
 - **Drawers** (`$CONF_DIR/modes/<mode>/`) hold `app-transparency`,
-  `app-tint-color`, `shell-tint-color`, `app-blur-scope`, `popup-blur`,
-  `notification-blur`, `blur-strength`, `popup-brightness`, `window-brightness`
-  and `notification-opacity`.
+  `app-tint-color`, `shell-tint-color`, `app-blur-scope` and `popup-blur`, and
+  under frosted `blur-strength`, `blur-brightness`, `popup-opacity` and each
+  surface's `<surface>-blur-strength` and `<surface>-blur-brightness`
+  (`surface_memo_read`, which also reads an older drawer's
+  `window-brightness`/`popup-brightness`).
   - `seed_glass_mode` creates a drawer on first entry. Frosted seeds from the
     top-level memos; performance seeds opaque black.
   - `load_glass_mode_memos` copies the drawer into this run's variables where no
@@ -162,7 +164,7 @@ top-bar menu (Aura Glass Helper)          aura-glass-adaptive.service (user)
 - **active.** `install.sh` resolves the run as a retune to Performance (same
   `WANT_*`, the performance drawer's tints and level), so it leaves the same
   sheets and keys as the Glass mode switch: it saves the keys a mode owns
-  (`dconf/solid.ini`'s set, including `hacks-level` and the OSD alpha) to
+  (`dconf/solid.ini`'s set: every component's blur switch and the OSD alpha) to
   `adaptive-performance/saved-mode-keys`, then runs `load_dconf` and
   `install_css`. It turns pipelines off *without* disabling the extension,
   because disabling BMS on GNOME 51 segfaults Mutter. `install_css` re-splices
@@ -218,14 +220,15 @@ stays at the shipped `default` state so `check-tokens.sh` has one baseline.
 | `install_transparency_css` | `tools/rescale-transparency.py` | every alpha in `gtk4-transparency.css`, rescaled from `TOKEN_APP_TRANSPARENCY_SHIPPED` (0.92) |
 | `apply_app_tint_color` | `tools/apply-tint-color.py` | the colour translucent GTK grounds mix toward |
 | `apply_shell_tint_color` | `tools/apply-shell-tint.py` | the hue of shell surfaces (lightness kept) |
-| `apply_popup_transparency` | inline Python | popup and solid-sheet alphas scaled by the window level |
-| `apply_notification_opacity` | `tools/apply-notification-opacity.py` | the alpha of the notification ground ladder |
+| `apply_popup_transparency` | inline Python | popup alphas scaled by `--popup-opacity` (else the window level), solid-sheet alphas by the window level |
+| `apply_notification_opacity` | `tools/apply-notification-opacity.py` | the alpha of the notification ground ladder, following the popup opacity |
 | `apply_radius_css` | `tools/apply-radius-preset.py` (+ `tools/token_manifest.py`) | the eight radii across every installed sheet |
-| `apply_popup_brightness` (`lib/steps-dconf.sh`) | `tools/apply-popup-brightness.py` | both places Blur My Shell keeps a popup brightness |
+| `apply_blur_pipelines` (`lib/steps-dconf.sh`) | inline Python | every pipeline's blur radius and brightness, from `core.ini`'s values, per surface |
 
 The tint rewriters own a literal's colour channels and the opacity rewriters own
 its alpha, so they're order-independent. `shell-90-density.css` is generated per
-display by `measure_logical_ppi` and `density_css`.
+display by `measure_logical_ppi` and `density_css`, plus the top bar height (`--panel-height`, default the theme's 40) snapped to
+whole device pixels at the primary scale (`measure_primary_scale`, `panel_height_css`).
 
 ### Splicing: `bin/aura-glass-apply`
 
@@ -266,8 +269,9 @@ bounded per surface by `radius_bounds`). `pill` is a retired name that
 `radius_preset_canonical` maps to `rounded`.
 
 **Project rule:** a painted radius must equal the blur radius behind it, so
-`apply_radius_css` (paint) and `apply_radius_dconf` + `apply_pipeline_radius`
-(blur) always move together.
+`apply_radius_css` (paint) and `apply_radius_dconf` (blur) always move
+together. Since Blur My Shell v76 a blur's corner comes only from its
+component's corner-radius key; no pipeline carries a `corner` effect.
 
 ---
 
@@ -287,11 +291,16 @@ bounded per surface by `radius_bounds`). `pill` is a retired name that
    a key is written when it is missing or still holds a value some release
    shipped (recorded in the `dconf-shipped` memo, seeded from git history),
    and kept when it holds anything else, since only the user can have put it
-   there. `solid.ini`'s keys are left to `sync_mode_owned_keys`.
-2. Then always overlays the resolved flags: `apply_grain`, `apply_blur_strength`,
-   `apply_popup_brightness`, `apply_window_brightness`, `apply_popup_blur`,
-   `apply_notification_blur`, `apply_app_blur`, `apply_app_opacity`,
-   `apply_radius_dconf` (+ `apply_pipeline_radius`), `sync_osd_profile` and
+   there. `solid.ini`'s keys are left to `sync_mode_owned_keys`. Before the
+   merge, `upgrade_bms_settings` moves an install still below Blur My Shell
+   v76's `settings-version` (7), or one v76 has migrated itself, onto
+   `core.ini`'s pipelines, version and component `pipeline` keys, and resets
+   the legacy `sigma`/`brightness`/`customize` keys. Otherwise v76's own
+   migration would turn each legacy sigma into a "Migrated dynamic blur"
+   pipeline the writers below cannot reach.
+2. Then always overlays the resolved flags: `apply_grain`, `apply_blur_pipelines`,
+   `apply_popup_blur`, `apply_app_blur`, `apply_app_opacity`,
+   `apply_radius_dconf`, `apply_glass_style`, `sync_osd_profile` and
    `refresh_bms_after_dconf`. The last one is skipped on GNOME ≥ 51, where
    toggling BMS crashes Mutter.
 
@@ -319,12 +328,11 @@ Catalogued in `lib/steps.sh`:
 
 - Upstreams are **pinned by commit** (table in §12). A theme that changes under
   the CSS gives a half-applied look with no error.
-- Blur My Shell patches, applied in order: `blur-my-shell-overview.patch`,
-  `blur-my-shell-subwindows.patch`, `blur-my-shell-notifications.patch` (adds the
-  separate `popup/notification` key), `blur-my-shell-static-maximized.patch`
-  (static blur for full-screen windows, dynamic for smaller ones),
-  `blur-my-shell-panel-refit.patch` (top-bar blur refitted in place after a
-  monitor change, no flash). Custom OSD gets
+- Blur My Shell gets one patch, `blur-my-shell-subwindows.patch` (a blurred
+  app's dialogs and tool palettes match through their transient-for app and
+  GTK application id; ATTACHED and UTILITY frame types). v73's overview,
+  notification, static-maximized and panel-refit patches were dropped with v76,
+  which was checked live without them. Custom OSD gets
   `custom-osd-gnome50.patch`. Copyous gets `copyous-gnome51.patch`. Wiggly gets
   `wiggly-follow-cursor.patch` on its EGO download (`patch_wiggly_extension`).
 - `bin/aura-glass-ext` exposes the catalogue one UUID at a time
@@ -407,35 +415,20 @@ after 30 s instead of interleaving.
 | What | Repo | Pin |
 |---|---|---|
 | Base theme | kayozxo/GNOME-macOS-Tahoe | `6dfcd9d941e5` (installed as `Tahoe-Dark`, adopted as `Aura-Glass`) |
-| Blur My Shell | aunetx/blur-my-shell | `425761d55049` (v73) + 3 patches |
+| Blur My Shell | aunetx/blur-my-shell | `19ce844b8ca3` (v76) + 1 patch |
 | Custom OSD | neuromorph/custom-osd | `334ac17e9348` + GNOME 50/51 patch |
-| gnome-rounded-blur | kancko/gnome-rounded-blur | `a4db9e5947b1` (v1.0.2) + `patches/gnome-rounded-blur-offstage.patch` |
 | Colloid / Reversal / MacTahoe icons | vinceliuice, yeyushengfan258, vinceliuice | `c9e702beb96f` / `2c8122287e3b` / `b85923bb87f5` |
 | Hatter icons | Mibea/Hatter | full SHA, shallow sparse fetch |
 | AOSP cursors | Tech-Tac/aosp-cursors | release 1.3.1 + sha256 |
 | Moga cursors | gnome-look.org/p/2302110 | release metadata resolved by `tools/moga_cursor.py` |
 | Fonts | Inter 4.1 (sha256), MiSans (sha256 as notice; URLs unversioned), SF Pro mirror `8bfea09aa6f1` | |
 
-`gnome-rounded-blur` is built from the pin plus its patch and installed
-system-wide, where the shell finds it: on Arch as a `makepkg` package
-(`1.0.2-1.1`, one pkgrel above the AUR's) through `sudo pacman -U`, elsewhere
-with `meson … && sudo meson install`. Not through an AUR helper, which cannot
-apply a patch. The `rounded-blur-patch` stamp makes an unpatched install (the
-AUR package, or one from before the patch) rebuild once. Its build
-dependencies (compiler, meson, pkg-config, gobject-introspection, mutter's
-development files; Debian's `libmutter-N-dev` by API number) are offered by
-`ensure_rounded_blur_build_deps` in `lib/distro.sh`. There is no
-rootless build. One in `~/.local` never loads, because the shell searches
-neither `~/.local/lib` nor `~/.local/share/girepository-1.0` (KI-12), so an old
-one is removed.
-
-It is built first in a full install, before the theme or any extension, by
-`require_rounded_blur`. A failed build (dependencies declined, patch, build or
-`sudo` install) stops there with nothing installed yet and asks: retry,
-continue without it (popup blur rounds through Blur My Shell's corner shader,
-and the next full install tries again), or abort. It asks even under `--yes`.
-Without a terminal it stops; `--no-rounded-blur` is how a script goes on
-without it (KI-39).
+Blur My Shell v76 is built the way its Makefile does: the component
+stylesheets bundled into one `stylesheet.css` in its order, and every `src/`
+directory but `styles/` packed. gnome-rounded-blur is no longer installed
+(v76 rounds its blur in the Dual Kawase output pass); `--rounded-blur` and
+`--no-rounded-blur` are accepted and ignored, and `uninstall.sh` still says
+how to remove a library an older release put in `/usr`.
 
 ---
 

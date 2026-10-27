@@ -215,8 +215,7 @@ migrate_legacy_names() {
     migrate_dir "$LEGACY_CONF"  "$HOME/.config/aura-glass" "settings"
     # The whole cache, not just src/ — preview profiles and the GPU log sit
     # beside it. The build directories go: meson bakes absolute paths into
-    # build.ninja, so a moved one is broken anyway, and install_rounded_blur
-    # sets its own up fresh on every run.
+    # build.ninja, so a moved one is broken anyway.
     migrate_dir "$LEGACY_CACHE" "$HOME/.cache/aura-glass"  "cache"
     if [ "${DRY_RUN:-0}" != 1 ]; then
         rm -rf "$HOME/.cache/aura-glass"/src/*/build 2>/dev/null || true

@@ -63,10 +63,10 @@ command line the window can produce is accepted.
 
 Opened detached by `progress_begin` (`lib/progress.sh`) after the GTK wizard
 answers, or for `--progress-window` (the settings window adds it to the GDM,
-monitor-sync and rounded-blur runs it opens in a terminal). The terminal stays
+and monitor-sync runs it opens in a terminal). The terminal stays
 the installer: sudo and every question are asked there, and the window shows a
 banner while the terminal waits (`progress_wait`, called from `confirm`,
-`confirm_always`, the rounded-blur retry and the sudo prompts).
+`confirm_always` and the sudo prompts).
 
 ### Contract
 
@@ -117,7 +117,7 @@ page.
 
 `Settings.__init__` reads what is **installed**, not what the window last sent:
 
-- the top-level memos (accent, radius, scope, popup and notification blur, packs, font, buttons, style, panel fix, update check),
+- the top-level memos (accent, radius, scope, popup blur, the main blur amount and brightness, each surface's own values and the popup opacity, packs, font, buttons, style, panel fix, update check). The per-surface memos are read the way `surface_memo_read` reads them, legacy `window-brightness`/`popup-brightness` included (`read_surface_memo`),
 - the mode: `glass-mode`, else derived from whether `shell-80-solid.css` is installed,
 - per mode, `self.modes[mode]` read from the drawers, so switching tabs shows a mode's own tuning without applying anything.
 
@@ -150,12 +150,12 @@ every Apply assert settings the user never touched. Details that matter:
 - A mode change sends `--glass-mode` first. The baseline for the other fields is then the **target mode's drawer**, not the old state.
 - `--radius-custom` stands in for `--radius-preset custom`.
 - The scope flag goes before `--app-transparency`, because `--no-window-blur` sets 0.95 unless a level is given.
-- The app tint is sent only while transparency is on (its sheet doesn't exist otherwise).
-- Blur strength and brightnesses are compared against `other`, not the drawer, and aren't sent in Performance.
+- The app tint is sent only while transparency is on (its sheet doesn't exist otherwise). An install at level `0` shows the opacity bar at 100%; a tint edit there sends `--app-transparency 1.00` with it.
+- The main blur amount and brightness, each surface's own values and the popup opacity are compared against `other`, not the drawer, and aren't sent in Performance. A surface handed back to its main slider is sent as `main`.
 - Both app-blur lists are sent whenever either changed.
 
 Which Applies stay narrow (`accent`, `cursor-*`, `window-buttons`,
-`window-brightness`, `app-blur`, `css`) and which fall back to the full retune
+`blur-pipelines`, `app-blur`, `css`) and which fall back to the full retune
 is decided by `select_apply_actions`. See
 [CONFIG-REFERENCE.md](CONFIG-REFERENCE.md) §1.4.
 
@@ -163,13 +163,13 @@ is decided by `select_apply_actions`. See
 
 | Page | Group | Holds |
 |---|---|---|
-| Glass | Appearance | A status group on top: the mode in force plus any adaptive overlay and its reason, a "Switch to X" button (the ordinary Apply), and an "Adaptive performance" combo running `aura-glass-adaptive profile` like the panel menu. It's watched live (`$C`, `$C/adaptive-performance`), and the header subtitle repeats it on every page. Then two mode tabs (Frosted, Performance) in an `Adw.ViewStack`, with a "Switch now" banner when the tab differs from the installed mode. **Frosted**: tints, transparency (an off switch plus a 70–100 % scale), blur strength, window and popup blur brightness, notification ground, popup and notification blur switches, and the scope as two switches ("Blur behind app windows", then "all application windows", which defaults on). **Performance**: tints and one opacity scale. |
-| Appearance | Appearance | Accent (nine names plus a link to GNOME Settings; there's no hex picker, by design), icon pack and colour, pointer and size, font, titlebar buttons and style |
+| Glass | Appearance | A status group on top: the mode in force plus any adaptive overlay and its reason, a "Switch to X" button (the ordinary Apply), and an "Adaptive performance" combo running `aura-glass-adaptive profile` like the panel menu. It's watched live (`$C`, `$C/adaptive-performance`), and the header subtitle repeats it on every page. Then two mode tabs (Frosted, Performance) in an `Adw.ViewStack`, with a "Switch now" banner when the tab differs from the installed mode. **Frosted**: tints; a Glass group of three main sliders (Blur amount, Brightness, Opacity 70–100 %, where 100 % also stands for an opaque `0` install); "Blur behind windows" (All apps / GTK apps only / Off) and the popup blur switch, which covers notifications; the glass style; and a collapsed Advanced group with one expander per surface (Windows, Popups & notifications, Top bar, Lock screen) holding that surface's own blur amount and brightness (plus opacity for popups & notifications), and a More expander for glass style behind app windows and fullscreen blur. A surface bar follows its main slider until moved; then it keeps its value, and a reset button hands it back (`main`). **Performance**: tints and one opacity scale. |
+| Appearance | Appearance | Accent (nine names plus a link to GNOME Settings; there's no hex picker, by design), icon pack and colour, pointer and size, font, titlebar buttons and style, and the top bar height (24–48 px, with a reset to GNOME's 32) |
 | Corner rounding | Appearance | Seven preset cards drawn with their own corners, reset, or eight per-surface spin rows with a live drawing |
 | Per-app blur | Appearance | A switch per installed app, live "Open now" windows (D-Bus), a default for unchosen apps, **fullscreen performance games** (written straight to `adaptive-fullscreen-apps`), wildcard patterns |
 | Extensions | System | Every catalogued extension: switch, install/remove, settings button (when it has `prefs.js`), recommended and full packs, via `bin/aura-glass-ext` |
 | Packages | System | Disk cost per pack and removal (`$HOME` packs deleted in place, `/usr` packs handed to a terminal) |
-| System | System | Dependencies, rounded-blur, login screen, monitor sync |
+| System | System | Dependencies, login screen, monitor sync |
 | Updates | System | Two tabs. **Updates**: version, check, install update; one list, newest first by date, of **Tags** (every commit on main, named `v0.3.5+N`) and **Releases** (`vX.Y.Z`, with notes): the 5 newest of each plus the installed one when older. One badge per row. Only the newest (main's tip, a release if tagged, else a tag) has Install; older rows are read-only. History graph of everything. **Maintenance**: daily update check; reapply settings; reset theme to defaults (`--reset --force --gui --interactive`). No channel row: the line follows what was installed from the list; `--update-channel` stays for the CLI |
 | Uninstall | none | Built into the stack (other code needs its widgets), opened from the primary menu, not the sidebar |
 
@@ -186,7 +186,7 @@ as a quick apply and its steps or a full reapply and why. Under the list, **Disc
 
 - **Extension switches** apply immediately through `aura-glass-ext`, streamed into the same log.
 - **Packages**: a filesystem delete under `$HOME`, or the package manager in a terminal for `/usr`.
-- **Anything needing root** (deps `--deps-only`, rounded-blur, GDM, monitor sync, uninstall scopes) and the long operations (reapply settings, reset to defaults, update) **open a real terminal** from `TERMINALS` (ptyxis, kgx, gnome-terminal, konsole, alacritty, kitty, foot, wezterm, x-terminal-emulator, xterm). `sudo` down a pipe would block forever. If no terminal is found, the command is shown to copy. Terminals aren't waited on, so those rows show the last state read.
+- **Anything needing root** (deps `--deps-only`, GDM, monitor sync, uninstall scopes) and the long operations (reapply settings, reset to defaults, update) **open a real terminal** from `TERMINALS` (ptyxis, kgx, gnome-terminal, konsole, alacritty, kitty, foot, wezterm, x-terminal-emulator, xterm). `sudo` down a pipe would block forever. If no terminal is found, the command is shown to copy. Terminals aren't waited on, so those rows show the last state read.
 - **Reapply CSS** runs `aura-glass-apply --force-reload` in a terminal.
 - **Games list** writes `$CONF_DIR/adaptive-fullscreen-apps`, then `aura-glass-adaptive refresh`.
 
@@ -199,8 +199,9 @@ take precedence):
 ```
 aura-glass-preview begin                       snapshot sheets + BMS dconf dump + memos into $CONF_DIR/preview-backup, mark preview-active
 aura-glass-preview set [--app-tint HEX] [--shell-tint HEX] [--transparency L] [--radius-preset P]
-                       [--radius-custom …] [--blur-strength P] [--popup-blur 0|1] [--popup-brightness P] [--window-brightness P]
-                       [--notification-opacity P] [--window-blur 0|1] [--scope gtk|all, default all]
+                       [--radius-custom …] [--blur-strength P] [--blur-brightness P]
+                       [--SURFACE-blur-strength P|main] [--SURFACE-brightness P|main] [--popup-opacity P|main]
+                       [--popup-blur 0|1] [--window-blur 0|1] [--scope gtk|all, default all]
                        [--app-blur-allow L] [--app-blur-block L]
 aura-glass-preview apps --allow L --block L [--window-blur 0|1] [--scope …]   per-app only (dconf, no CSS rebuild)
 aura-glass-preview revert [--session S]       restore sheets + BMS subtree byte-for-byte, re-splice

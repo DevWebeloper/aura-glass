@@ -4,9 +4,8 @@
 #
 #   https://github.com/DevWebeloper/aura-glass
 #
-# Nothing here needs root except the optional dependency install, the
-# optional rounded-blur library, and the optional GDM login screen theme:
-# every other asset lands under $HOME.
+# Nothing here needs root except the optional dependency install and the
+# optional GDM login screen theme: every other asset lands under $HOME.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -104,22 +103,16 @@ WANT_WINDOW_BLUR=1
 WINDOW_BLUR_EXPLICIT=""
 APP_BLUR_SCOPE="all"     # all (default, all application windows) | gtk (whitelisted GTK/GNOME apps)
 APP_BLUR_SCOPE_EXPLICIT=""
-WINDOW_BRIGHTNESS=""     # empty = remembered choice, then 100
-WINDOW_BRIGHTNESS_EXPLICIT=""
 APP_BLUR_ALLOW=""        # comma-separated wm_class patterns
 APP_BLUR_ALLOW_EXPLICIT=""
 APP_BLUR_BLOCK=""
 APP_BLUR_BLOCK_EXPLICIT=""
 WANT_POPUP_BLUR=1
 POPUP_BLUR_EXPLICIT=""
-WANT_NOTIFICATION_BLUR=1
-NOTIFICATION_BLUR_EXPLICIT=""
 WINDOW_BUTTONS=""        # empty = leave the titlebar as the system has it
 WINDOW_BUTTONS_EXPLICIT=""
 TITLEBUTTON_STYLE=""     # empty = remembered choice, then minimal
 TITLEBUTTON_STYLE_EXPLICIT=""
-WANT_ROUNDED_BLUR=1
-ROUNDED_BLUR_EXPLICIT=""   # only --rounded-blur / --no-rounded-blur: --no-blur's forced 0 is not a choice
 APP_TRANSPARENCY=""   # empty = remembered choice, then off (e.g. 0.90 / 90%)
 APP_TRANSPARENCY_EXPLICIT=""
 APP_OPACITY=""        # empty = remembered choice, then 255 (e.g. 230)
@@ -140,9 +133,14 @@ LIQUID_WINDOWS_EXPLICIT=""
 FULLSCREEN_BLUR=""  # empty = remembered choice, then 0
 FULLSCREEN_BLUR_EXPLICIT=""
 BLUR_STRENGTH=""    # empty = remembered choice, then the tuned radii (100)
+BLUR_BRIGHTNESS=""  # empty = remembered choice, then the tuned brightness (100)
+# Each surface's own blur amount and brightness, empty = remembered choice,
+# then main (follow the two above). See BLUR_SURFACES in lib/steps-dconf.sh.
+WINDOW_BLUR_STRENGTH="" POPUP_BLUR_STRENGTH="" PANEL_BLUR_STRENGTH="" LOCKSCREEN_BLUR_STRENGTH=""
+WINDOW_BRIGHTNESS=""    POPUP_BRIGHTNESS=""    PANEL_BRIGHTNESS=""    LOCKSCREEN_BRIGHTNESS=""
+POPUP_OPACITY=""    # empty = remembered choice, then main (follow the windows)
+PANEL_HEIGHT=""     # empty = remembered choice, then the theme's 40px
 ADAPTIVE_BLUR=""     # private transient writer: active | restore, never memoed
-POPUP_BRIGHTNESS=""      # empty = remembered choice, then the preset (115)
-NOTIFICATION_OPACITY=""  # empty = remembered choice, then the sheet (40)
 APP_TINT_COLOR=""   # empty = remembered choice, then black (#000000)
 SHELL_TINT_COLOR="" # empty = remembered choice, then black (#000000)
 RADIUS_PRESET=""       # empty = remembered choice, then default
@@ -224,17 +222,25 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       and goes opaque until it leaves fullscreen (the default)
     --blur-strength P how far every blur reaches, as a percentage of the tuned
                       radii: 25-200, 100 is the tuned look (remembered)
-    --popup-brightness P
-                      how bright the blur behind menus, Quick Settings and
-                      notification banners comes out, as a percentage of the
-                      backdrop: 50-150, 100 leaves it alone (remembered)
-    --window-brightness P
-                      how bright the blur behind application windows comes out,
-                      as a percentage of the backdrop: 50-150, 100 leaves it alone
-                      (remembered)
-    --notification-opacity P
-                      how much ground an arriving banner paints over that blur:
-                      10-85 (remembered)
+    --blur-brightness P
+                      how bright every blur comes out, as a percentage of the
+                      tuned brightness: 50-100, 100 is the tuned look (remembered)
+    --window-blur-strength P, --popup-blur-strength P,
+    --panel-blur-strength P, --lockscreen-blur-strength P
+                      one surface's own blur amount, in --blur-strength's unit,
+                      or main to follow it again. popup is menus, Quick
+                      Settings and notifications; panel the top bar;
+                      lockscreen the lock screen and the overview (remembered)
+    --window-brightness P, --popup-brightness P,
+    --panel-brightness P, --lockscreen-brightness P
+                      one surface's own brightness, in --blur-brightness's
+                      unit, or main to follow it again (remembered)
+    --panel-height PX the top bar's height in logical pixels: 24-48, 40 is the
+                      theme's, 32 GNOME's own. Snapped to whole device pixels
+                      at a fractional scale (remembered)
+    --popup-opacity P how opaque popups, menus and notifications are, in
+                      --app-transparency's unit: 70-100, or main (the default)
+                      to follow the app windows (remembered)
     --app-tint-color HEX
                       the colour a translucent app window is darkened toward,
                       e.g. #101820. Default #000000 (remembered)
@@ -270,12 +276,9 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       here. Remembered for later runs
     --osd             minimal pill OSD for volume & brightness (default: on)
     --no-osd          keep stock volume and brightness popup
-    --no-popup-blur   keep flat translucent popups and skip blur behind menus
-    --no-notification-blur
-                      keep flat notification banners and history cards, independently
-                      of --popup-blur
-    --no-bms-git      use Blur My Shell published build (implies --no-popup-blur
-                      and --no-notification-blur)
+    --no-popup-blur   keep flat translucent popups, menus and notifications, and
+                      skip the blur behind them
+    --no-bms-git      use Blur My Shell published build (implies --no-popup-blur)
     --app-transparency LEVEL
                       window transparency with blur: 90% (230, default), 82% (210),
                       94% (240), or custom 70%-100% (e.g. --app-transparency 90%)
@@ -297,7 +300,7 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       terminal. Questions are still asked here. On by itself
                       when the setup wizard started the run
     --verify          check an existing install (stylesheets, theme, each
-                      extension, the rounded-blur library, icons, pointer,
+                      extension, icons, pointer,
                       settings app, login screen) and stop. Exits 1 if any
                       check fails
     --window-buttons WHICH
@@ -319,9 +322,6 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --no-blur         no blur anywhere, opaque surfaces instead of translucent
                       ones, with the rest of the theme intact (best for low-end
                       GPUs or battery saver)
-    --no-rounded-blur skip gnome-rounded-blur library (popup blur rounds
-                      through a corner shader instead). Without it a failed
-                      build stops the install before anything is changed
     --gdm             theme the GDM login screen with blurred Aura Glass style (requires sudo)
     --gdm-background PATH
                       set custom background image for GDM (default: blurred wallpaper)
@@ -394,14 +394,40 @@ parse_flags() {
         --blur-strength=*) BLUR_STRENGTH="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --adaptive-blur) ADAPTIVE_BLUR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --adaptive-blur=*) ADAPTIVE_BLUR="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
-        --popup-brightness) POPUP_BRIGHTNESS="${2:-100}"; EXPLICIT_FLAGS=1; shift 2 ;;
-        --popup-brightness=*) POPUP_BRIGHTNESS="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --blur-brightness) BLUR_BRIGHTNESS="${2:-100}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --blur-brightness=*) BLUR_BRIGHTNESS="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --window-blur-strength|--popup-blur-strength|--panel-blur-strength|--lockscreen-blur-strength)
+            _surface="${1#--}"; _surface="${_surface%-blur-strength}"
+            printf -v "$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BLUR_STRENGTH" '%s' "${2:-main}"
+            EXPLICIT_FLAGS=1; shift 2 ;;
+        --window-blur-strength=*|--popup-blur-strength=*|--panel-blur-strength=*|--lockscreen-blur-strength=*)
+            _surface="${1%%=*}"; _surface="${_surface#--}"; _surface="${_surface%-blur-strength}"
+            printf -v "$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BLUR_STRENGTH" '%s' "${1#*=}"
+            EXPLICIT_FLAGS=1; shift ;;
+        --popup-brightness|--panel-brightness|--lockscreen-brightness)
+            _surface="${1#--}"; _surface="${_surface%-brightness}"
+            printf -v "$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS" '%s' "${2:-main}"
+            EXPLICIT_FLAGS=1; shift 2 ;;
+        --popup-brightness=*|--panel-brightness=*|--lockscreen-brightness=*)
+            _surface="${1%%=*}"; _surface="${_surface#--}"; _surface="${_surface%-brightness}"
+            printf -v "$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS" '%s' "${1#*=}"
+            EXPLICIT_FLAGS=1; shift ;;
         --window-brightness|--app-brightness|--window-blur-brightness)
-            WINDOW_BRIGHTNESS="${2:-100}"; WINDOW_BRIGHTNESS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+            WINDOW_BRIGHTNESS="${2:-main}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --window-brightness=*|--app-brightness=*|--window-blur-brightness=*)
-            WINDOW_BRIGHTNESS="${1#*=}"; WINDOW_BRIGHTNESS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --notification-opacity) NOTIFICATION_OPACITY="${2:-40}"; EXPLICIT_FLAGS=1; shift 2 ;;
-        --notification-opacity=*) NOTIFICATION_OPACITY="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+            WINDOW_BRIGHTNESS="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --panel-height) PANEL_HEIGHT="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --panel-height=*) PANEL_HEIGHT="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --popup-opacity) POPUP_OPACITY="${2:-main}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --popup-opacity=*) POPUP_OPACITY="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        # Retired with Blur My Shell v76, which blurs a notification banner
+        # through the popup component: the banners follow --popup-blur, and
+        # their ground follows --popup-opacity. Still accepted, so a script or
+        # an older settings window that passes one does not stop the run.
+        --notification-opacity) warn "--notification-opacity is retired — banners follow --popup-opacity"; shift 2 ;;
+        --notification-opacity=*) warn "--notification-opacity is retired — banners follow --popup-opacity"; shift ;;
+        --notification-blur|--no-notification-blur)
+                         warn "$1 is retired — notifications follow --popup-blur"; shift ;;
         --app-tint-color) APP_TINT_COLOR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --app-tint-color=*) APP_TINT_COLOR="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --shell-tint-color) SHELL_TINT_COLOR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
@@ -426,16 +452,11 @@ parse_flags() {
         --osd)           WANT_OSD=1; OSD_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-osd)        WANT_OSD=0; OSD_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --bms-git)       WANT_BMS_GIT=1; BMS_GIT_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-bms-git)    WANT_BMS_GIT=0; BMS_GIT_EXPLICIT=1; WANT_POPUP_BLUR=0; WANT_NOTIFICATION_BLUR=0
-                         POPUP_BLUR_EXPLICIT=1; NOTIFICATION_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-bms-git)    WANT_BMS_GIT=0; BMS_GIT_EXPLICIT=1; WANT_POPUP_BLUR=0
+                         POPUP_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --popup-blur)    WANT_POPUP_BLUR=1; WANT_BMS_GIT=1; BMS_GIT_EXPLICIT=1
                          POPUP_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-popup-blur) WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --notification-blur)
-                         WANT_NOTIFICATION_BLUR=1; WANT_BMS_GIT=1; BMS_GIT_EXPLICIT=1
-                         NOTIFICATION_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-notification-blur)
-                         WANT_NOTIFICATION_BLUR=0; NOTIFICATION_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --glass-mode)    GLASS_MODE="${2:-}"; GLASS_MODE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --glass-mode=*)  GLASS_MODE="${1#*=}"; GLASS_MODE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --blur)          WANT_BLUR=1; BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
@@ -454,11 +475,12 @@ parse_flags() {
         --window-blur)   WANT_WINDOW_BLUR=1; WINDOW_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-window-blur) WANT_WINDOW_BLUR=0; WINDOW_BLUR_EXPLICIT=1; APP_BLUR_SCOPE="none"; APP_BLUR_SCOPE_EXPLICIT=1; [ -z "$APP_TRANSPARENCY_EXPLICIT" ] && APP_TRANSPARENCY=0.95; EXPLICIT_FLAGS=1; shift ;;
         --no-blur)       WANT_BLUR=0; BLUR_EXPLICIT=1; WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1
-                         WANT_NOTIFICATION_BLUR=0; NOTIFICATION_BLUR_EXPLICIT=1
                          WANT_WINDOW_BLUR=0; WINDOW_BLUR_EXPLICIT=1
-                         WANT_ROUNDED_BLUR=0; EXPLICIT_FLAGS=1; shift ;;
-        --rounded-blur)      WANT_ROUNDED_BLUR=1; ROUNDED_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-rounded-blur)   WANT_ROUNDED_BLUR=0; ROUNDED_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+                         EXPLICIT_FLAGS=1; shift ;;
+        # Retired with gnome-rounded-blur, which Blur My Shell v76 no longer
+        # loads: it rounds its blur itself. Still accepted, so a script or an
+        # older settings window that passes one does not stop the run.
+        --rounded-blur|--no-rounded-blur) shift ;;
         --app-transparency|--window-opacity|--window-transparency)
                          APP_TRANSPARENCY="${2:-$TOKEN_APP_TRANSPARENCY_SHIPPED}"; APP_TRANSPARENCY_EXPLICIT=1; EXPLICIT_FLAGS=1; APP_OPACITY_EXPLICIT=1; shift 2 ;;
         --app-transparency=*|--window-opacity=*|--window-transparency=*)
@@ -701,7 +723,7 @@ EOF
     if [ "$WANT_BLUR" = 1 ]; then
 
     # Question 1: Popup & Menu blur (default: Yes)
-    printf '  Enable blur behind popups, menus & top bar? %s[Y/n, default: Y]%s: ' "$C_DIM" "$C_OFF"
+    printf '  Enable blur behind popups, menus, notifications & top bar? %s[Y/n, default: Y]%s: ' "$C_DIM" "$C_OFF"
     read -r ans_popup || ans_popup="y"
     case "${ans_popup,,}" in
         n|no)
@@ -976,8 +998,6 @@ EOF
     [ "$WANT_BLUR" = 0 ] && blur_desc="Performance (No blur)"
     popup_desc="Enabled"
     [ "$WANT_POPUP_BLUR" = 0 ] && popup_desc="Disabled (Flat)"
-    notification_desc="Enabled"
-    [ "$WANT_NOTIFICATION_BLUR" = 0 ] && notification_desc="Disabled (Flat)"
     win_desc="GTK / GNOME Applications only (Low CPU)"
     [ "$APP_BLUR_SCOPE" = "all" ] && win_desc="All Applications (Heavy)"
     [ "$WANT_WINDOW_BLUR" = 0 ] && win_desc="Disabled (Opaque)"
@@ -1013,7 +1033,6 @@ ${C_BLD}================ Configuration Summary ================${C_OFF}
   ${C_BLD}Accent Color:${C_OFF}        $ACCENT
   ${C_BLD}Blur Mode:${C_OFF}           $blur_desc
   ${C_BLD}Popup Blur:${C_OFF}          $popup_desc
-  ${C_BLD}Notification Blur:${C_OFF}   $notification_desc
   ${C_BLD}Window Blur:${C_OFF}         $win_desc
   ${C_BLD}App Translucency:${C_OFF}    $trans_desc
   ${C_BLD}Icon Theme:${C_OFF}          $icon_desc
@@ -1045,10 +1064,7 @@ fi
 # Choices that no wizard re-asks on an update or a full reinstall (--gui,
 # --force --gui --yes): a typed flag has already filled the variable and its
 # *_EXPLICIT marker, so the memo is only read when the run was given neither.
-#
-# The three opt-outs only ever move a value down. A remembered 1 leaves the
-# variable alone, because --no-blur forces WANT_ROUNDED_BLUR to 0 for a run
-# without that being a choice, and reading a 1 back over it would undo the mode.
+
 if [ -z "$EXT_PACK_EXPLICIT" ] && [ -r "$CONF_DIR/extension-pack" ]; then
     # Unknown UUIDs are dropped, not fatal: a pack remembered by an older
     # release may name an extension the catalogue has since retired.
@@ -1088,9 +1104,6 @@ fi
 # bms-source is written by install_bms: "ego" is --no-bms-git having been used.
 if [ -z "$BMS_GIT_EXPLICIT" ] && [ "$(cat "$CONF_DIR/bms-source" 2>/dev/null || true)" = ego ]; then
     WANT_BMS_GIT=0
-fi
-if [ -z "$ROUNDED_BLUR_EXPLICIT" ] && [ "$(cat "$CONF_DIR/rounded-blur-choice" 2>/dev/null || true)" = 0 ]; then
-    WANT_ROUNDED_BLUR=0
 fi
 
 # --extensions replaces the pack with a list of your own, which is what the setup
@@ -1267,10 +1280,35 @@ if [ -z "$APP_BLUR_SCOPE_EXPLICIT" ] && [ -r "$CONF_DIR/app-blur-scope" ]; then
 fi
 APP_BLUR_SCOPE="${APP_BLUR_SCOPE:-all}"
 
-if [ -z "$WINDOW_BRIGHTNESS_EXPLICIT" ] && [ -r "$CONF_DIR/window-brightness" ]; then
-    WINDOW_BRIGHTNESS="$(cat "$CONF_DIR/window-brightness" 2>/dev/null || true)"
-fi
-WINDOW_BRIGHTNESS="${WINDOW_BRIGHTNESS:-100}"
+# A typed blur, brightness, popup opacity or top bar height outside its bounds fails here,
+# before anything is written, like --radius-preset below. A remembered one is
+# only warned about where it is read (resolve_blur_pipelines).
+_typed_percent() {  # FLAG VALUE LOW HIGH [main]
+    case "$2" in
+        main) [ "${5:-}" = main ] && return 0 ;;
+        ''|*[!0-9]*) ;;
+        *) [ "$2" -ge "$3" ] && [ "$2" -le "$4" ] && return 0 ;;
+    esac
+    die "$1 wants ${3}-${4}${5:+ or main}, got '$2'"
+}
+for _flag in "${TYPED_FLAGS[@]}"; do
+    case "${_flag%%=*}" in
+        --blur-strength) _typed_percent "$_flag" "$BLUR_STRENGTH" "$BLUR_STRENGTH_MIN" "$BLUR_STRENGTH_MAX" ;;
+        --blur-brightness) _typed_percent "$_flag" "$BLUR_BRIGHTNESS" "$BLUR_BRIGHTNESS_MIN" "$BLUR_BRIGHTNESS_MAX" ;;
+        --popup-opacity) _typed_percent "$_flag" "$POPUP_OPACITY" "$POPUP_OPACITY_MIN" "$POPUP_OPACITY_MAX" main ;;
+        --panel-height) _typed_percent "$_flag" "$PANEL_HEIGHT" "$PANEL_HEIGHT_MIN" "$PANEL_HEIGHT_MAX" ;;
+        --*-blur-strength)
+            _surface="${_flag%%=*}"; _surface="${_surface#--}"; _surface="${_surface%-blur-strength}"
+            _var="$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BLUR_STRENGTH"
+            _typed_percent "$_flag" "${!_var}" "$BLUR_STRENGTH_MIN" "$BLUR_STRENGTH_MAX" main ;;
+        --window-brightness|--app-brightness|--window-blur-brightness)
+            _typed_percent "$_flag" "$WINDOW_BRIGHTNESS" "$BLUR_BRIGHTNESS_MIN" "$BLUR_BRIGHTNESS_MAX" main ;;
+        --popup-brightness|--panel-brightness|--lockscreen-brightness)
+            _surface="${_flag%%=*}"; _surface="${_surface#--}"; _surface="${_surface%-brightness}"
+            _var="$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS"
+            _typed_percent "$_flag" "${!_var}" "$BLUR_BRIGHTNESS_MIN" "$BLUR_BRIGHTNESS_MAX" main ;;
+    esac
+done
 
 # No default: empty means the key is not ours to write. apply_window_buttons
 # reads the memo itself, so this only has to validate what a flag asked for —
@@ -1527,7 +1565,6 @@ if [ "$SETTINGS_ONLY" = 0 ] && [ "$DEPS_ONLY" = 0 ] \
     progress_plan \
         session "Checking your system" \
         deps "Dependencies" \
-        rounded-blur "Rounded blur library" \
         theme "Aura Glass theme" \
         extensions "Shell extensions" \
         icons "Icons" \
@@ -1552,7 +1589,6 @@ if [ "${SETTINGS_ONLY:-0}" = 0 ] && [ "${DRY_RUN:-0}" = 0 ] && [ "$EUID" -ne 0 ]
     need_root=0
     [ "${WANT_GDM:-0}" = 1 ] && need_root=1
     [ "${WANT_GDM_MONITORS:-0}" = 1 ] && need_root=1
-    rounded_blur_needs_root && need_root=1
     if [ "$need_root" = 1 ]; then
         info "Authenticating sudo upfront for system components..."
         progress_wait "sudo password, for the parts installed outside your home folder"
@@ -1571,8 +1607,7 @@ fi
 
 # Retuning an existing install is the three steps that read a flag and write a
 # setting. Everything skipped here either fetches something (the theme, the
-# extensions, the icon and cursor packs) or wants root (the rounded-blur library,
-# GDM), which is what makes this path fast, offline and unprivileged — and
+# extensions, the icon and cursor packs) or wants root (GDM), which is what makes this path fast, offline and unprivileged — and
 # therefore the one a GUI can drive without a terminal to answer prompts in.
 #
 # The three steps are the same functions a full install runs, in the same order,
@@ -1618,7 +1653,7 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
                     cursor-theme) apply_cursor_theme ;;
                     cursor-size) apply_cursor_size ;;
                     window-buttons) apply_window_buttons ;;
-                    window-brightness) apply_window_brightness ;;
+                    blur-pipelines) apply_blur_pipelines ;;
                     app-blur) apply_app_blur ;;
                     css) install_css ;;
                     app-opacity) apply_app_opacity ;;
@@ -1717,11 +1752,6 @@ else
     fi
 fi
 
-# First, before anything is installed: a failed build stops the run here with
-# nothing changed, rather than leaving a desktop installed without it that only
-# a re-run and a watched build could fix (require_rounded_blur).
-progress_start rounded-blur
-require_rounded_blur
 progress_start theme
 install_theme
 progress_start extensions

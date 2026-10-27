@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Assert the Blur My Shell patches apply to the pinned ref and leave valid JS.
+# Assert the Blur My Shell patch applies to the pinned ref and leaves valid JS.
 #
-# install_bms applies patches/blur-my-shell-{overview,subwindows,notifications,static-maximized,panel-refit}
-# to BMS_REF in that order and dies if one does not apply, which is a user's
-# desktop finding out. And a patch that applies can still reference a name it
-# never declares: KI-27's MESSAGE_CORNER_EFFECT_NAME threw inside a try and
-# was swallowed, so nothing ever reported it. This applies the five patches to
-# a throwaway clone of the cached checkout, parses every JS file they touch,
+# install_bms applies patches/blur-my-shell-subwindows.patch to BMS_REF and
+# dies if it does not apply, which is a user's desktop finding out. And a patch
+# that applies can still reference a name it never declares: KI-27's
+# MESSAGE_CORNER_EFFECT_NAME threw inside a try and was swallowed, so nothing
+# ever reported it. This applies the patch to a throwaway clone of the cached
+# checkout, parses every JS file it touches,
 # and flags UPPER_SNAKE names a touched file uses but neither declares nor
 # imports -- the shape of constant that bug was.
 #
@@ -39,10 +39,8 @@ git -C "$TMP/bms" -c advice.detachedHead=false checkout --quiet "$BMS_REF"
 problems=0
 note() { printf '  %s\n' "$1"; problems=$((problems + 1)); }
 
-for patch in "$BMS_PATCH" "$BMS_SUBWIN_PATCH" "$BMS_NOTIF_PATCH" "$BMS_STATIC_PATCH" "$BMS_PANEL_PATCH"; do
-    git -C "$TMP/bms" apply --whitespace=nowarn "$ROOT/patches/$patch" \
-        || note "patches/$patch does not apply to $BMS_REF (after the ones before it)"
-done
+git -C "$TMP/bms" apply --whitespace=nowarn "$ROOT/patches/$BMS_SUBWIN_PATCH" \
+    || note "patches/$BMS_SUBWIN_PATCH does not apply to $BMS_REF"
 [ "$problems" = 0 ] || { echo "check-bms-patches: $problems problem(s)"; exit 1; }
 
 mapfile -t touched < <(git -C "$TMP/bms" diff --name-only -- '*.js')

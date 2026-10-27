@@ -21,8 +21,17 @@ TUNED_PPI=109
 
 # Logical PPI of the primary output, or nothing if it cannot be measured.
 measure_logical_ppi() {
-    python3 - <<'PY' 2>/dev/null
-import glob, math, os, re, subprocess
+    measure_primary_display ppi
+}
+
+# Scale of the primary logical monitor, or nothing if mutter cannot be asked.
+measure_primary_scale() {
+    measure_primary_display scale
+}
+
+measure_primary_display() {
+    python3 - "$1" <<'PY' 2>/dev/null
+import glob, math, os, re, subprocess, sys
 
 def primary_and_scale():
     """Connector name and scale of the primary logical monitor, per mutter."""
@@ -48,6 +57,11 @@ def primary_and_scale():
     return None, 1.0
 
 conn, scale = primary_and_scale()
+
+if sys.argv[1] == "scale":
+    if conn:
+        print(scale)
+    sys.exit(0)
 
 def ppi_of(path):
     try:
@@ -118,6 +132,76 @@ print(f"""
 #panel .panel-button {{
   -natural-hpadding: {hpad}px;
   -minimum-hpadding: {max(hpad - 2, 3)}px;
+}}""")
+PY
+}
+
+# How tall the top bar is, in logical pixels. The theme draws it at 40
+# (`height: 40px` in the upstream sheet); --panel-height moves it anywhere from
+# 24, about the shortest that still fits the panel's icons and clock, to 48.
+# GNOME's own bar is `height: 2.2em` of the interface font, 32 px at its default
+# Cantarell 11 (2.2 × 14.67 px), which is the height the settings window's
+# reset button goes back to — a number rather than the em rule, so the seam
+# snapping below applies to it as to any other.
+#
+# Remembered like the tints beside it: install_css rebuilds the generated sheet
+# on every run, so an unremembered choice would last until the next install.
+PANEL_HEIGHT_MIN=24
+PANEL_HEIGHT_MAX=48
+PANEL_HEIGHT_THEME=40
+PANEL_HEIGHT_GNOME=32
+
+# The height this run asks for: the flag, then the memo, then the theme's 40.
+resolve_panel_height() {
+    local want="${PANEL_HEIGHT:-}"
+    [ -n "$want" ] || want="$(cat "$CONF_DIR/panel-height" 2>/dev/null || true)"
+    case "$want" in
+        '') want="$PANEL_HEIGHT_THEME" ;;
+        *[!0-9]*) warn "--panel-height '$want' is not a whole number of pixels — using ${PANEL_HEIGHT_THEME}" >&2
+                  want="$PANEL_HEIGHT_THEME" ;;
+        *) if [ "$want" -lt "$PANEL_HEIGHT_MIN" ] || [ "$want" -gt "$PANEL_HEIGHT_MAX" ]; then
+               warn "--panel-height $want is outside ${PANEL_HEIGHT_MIN}-${PANEL_HEIGHT_MAX} — using ${PANEL_HEIGHT_THEME}" >&2
+               want="$PANEL_HEIGHT_THEME"
+           fi ;;
+    esac
+    printf '%s
+' "$want"
+}
+
+# Mutter's work area starts where the bar ends, so a maximized window's top
+# edge lands exactly on the bar's height. At a scale where that height is not
+# whole device pixels, both edges fall mid-pixel: the theme's 40 at 1.33 is
+# 53.33 device px down, and device row 53 is under neither the bar's fill nor
+# the window. It shows the blur behind them, unshaded, as a 1px light line
+# between the bar and the window (seen on DP-1 at 1.33, 2026-10-27). Thirds
+# scales (1.33, 1.67) are the ones 40 misses; 1.25, 1.5, 1.75 and 2 land whole.
+#
+# So the asked-for height is snapped to the nearest one that is whole device
+# pixels at the primary scale (39 for 40 at thirds: 52 and 65 px), and the bar's
+# fill and the window meet on a pixel edge. Ties go to the shorter bar. Nothing
+# is written when that comes out at the theme's own 40. Like the density block
+# it is measured once per run, so a later scale or primary change needs a
+# retune. SCALE is 1 when mutter could not be asked, which snaps nothing.
+panel_height_css() {   # SCALE HEIGHT
+    python3 - "$1" "$2" "$PANEL_HEIGHT_THEME" <<'PY'
+import sys
+scale, want, theme = float(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3])
+for h in sorted(range(want - 4, want + 5), key=lambda h: (abs(h - want), h)):
+    if abs(h * scale - round(h * scale)) < 1e-3:
+        break
+else:
+    h = want
+if h == theme:
+    sys.exit(0)
+why = ("asked for at %dpx" % want) if want != theme else ("the theme's %dpx" % theme)
+print(f"""
+/* ---------- Top bar height for this scale -----------------------------
+ * The top bar, {why}, is {h}px: {round(h * scale)} whole device pixels at
+ * scale {scale:.2f}, so a maximized window meets it on a pixel edge rather than
+ * mid-pixel over a 1px seam of unshaded blur. Generated at install time by
+ * install.sh. */
+#panel {{
+  height: {h}px !important;
 }}""")
 PY
 }
@@ -213,70 +297,97 @@ apply_shell_tint_color() {
     ok "shell surfaces tinted toward $want (remembered for later runs)"
 }
 
-# How much ground an arriving notification paints over its own blur.
+# How opaque popups, menus and notification banners are.
 #
-# Its own number rather than a share of the app windows' opacity, because the
-# two are not the same question. A window's level says how much of the desktop
-# shows through a surface you are working in; this says how readable a banner
-# that arrived unasked has to be over whatever happened to be behind it, and a
-# desktop tuned for one is regularly wrong for the other.
+# One number for all of them, and by default the app windows' own: a desktop
+# whose windows are made more see-through wants its menus to go with them, so
+# without an answer of their own they follow --app-transparency. --popup-opacity
+# is that answer, in the same unit ("as if the windows were at P"), and `main`
+# hands them back to the windows. Opaque windows (level 0) count as 100.
 #
-# Bounds rather than the full range. Under 10% there is no ground left to read
-# white text against, and over 85% the blur it sits on stops being visible at
-# all — at which point the notification blur switch is the control being asked
-# for, not this one.
+# Both sheets were tuned with the windows at 90%, so every literal is scaled by
+# P/90 rather than set: the popup ladder keeps its proportions and the banner's
+# hover and pressed steps keep theirs (tools/apply-notification-opacity.py).
 #
-# Remembered like the tints beside it: install_css copies the sheet back from
+# Performance has no override: its solid sheet follows the level alone, as it
+# always has, and a frosted choice in the memo does not reach it.
+#
+# Remembered like the tints beside it: install_css copies the sheets back from
 # css/ on every run, so an unremembered choice would last until the next
 # install and no longer.
-NOTIFICATION_OPACITY_MIN=10
-NOTIFICATION_OPACITY_MAX=85
+POPUP_OPACITY_MIN=70
+POPUP_OPACITY_MAX=100
+POPUP_OPACITY_TUNED=90
+# css/shell-notification-blur.css paints an arriving banner at 0.40.
+NOTIFICATION_GROUND_TUNED=40
+# Under 10% there is no ground left to read white text against, and over 85%
+# the blur it sits on stops being visible at all.
+NOTIFICATION_GROUND_MIN=10
+NOTIFICATION_GROUND_MAX=85
+
+# The override as remembered: a percentage inside the bounds, or `main`.
+resolve_popup_opacity_choice() {
+    local want="${POPUP_OPACITY:-}"
+    if [ -z "$want" ]; then
+        want="$(cat "$CONF_DIR/popup-opacity" 2>/dev/null || true)"
+    fi
+    surface_value_checked --popup-opacity "${want:-main}" \
+        "$POPUP_OPACITY_MIN" "$POPUP_OPACITY_MAX"
+}
+
+# The percentage the popup sheets are painted at this run.
+resolve_popup_opacity() {
+    local choice level="${APP_TRANSPARENCY:-0}"
+    choice="$(resolve_popup_opacity_choice)"
+    if [ "${WANT_BLUR:-1}" = 1 ] && [ "$choice" != main ]; then
+        printf '%s\n' "$choice"
+        return 0
+    fi
+    case "$level" in
+        0|0.0|0.00) printf '100\n' ;;
+        *) python3 -c "print(round(float('$level') * 100))" 2>/dev/null || printf '%s\n' "$POPUP_OPACITY_TUNED" ;;
+    esac
+}
 
 apply_notification_opacity() {
-    local want="${NOTIFICATION_OPACITY:-}" memo="$CONF_DIR/notification-opacity"
-    if [ -z "$want" ] && [ -r "$memo" ]; then
-        want="$(cat "$memo" 2>/dev/null || true)"
-    fi
-    [ -n "$want" ] || return 0
-
-    case "$want" in
-        ''|*[!0-9]*) warn "--notification-opacity wants a whole percentage, got '$want'"
-                     return 0 ;;
-    esac
-    if [ "$want" -lt "$NOTIFICATION_OPACITY_MIN" ] || [ "$want" -gt "$NOTIFICATION_OPACITY_MAX" ]; then
-        warn "--notification-opacity $want is outside ${NOTIFICATION_OPACITY_MIN}-${NOTIFICATION_OPACITY_MAX} — leaving the banner ground alone"
-        return 0
-    fi
+    local percent ground
+    percent="$(resolve_popup_opacity)"
+    ground=$(( (NOTIFICATION_GROUND_TUNED * percent + POPUP_OPACITY_TUNED / 2) / POPUP_OPACITY_TUNED ))
+    [ "$ground" -lt "$NOTIFICATION_GROUND_MIN" ] && ground="$NOTIFICATION_GROUND_MIN"
+    [ "$ground" -gt "$NOTIFICATION_GROUND_MAX" ] && ground="$NOTIFICATION_GROUND_MAX"
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: paint the arriving banner at ${want}%"
+        info "dry-run: paint the arriving banner at ${ground}%"
         return 0
     fi
 
-    python3 "$REPO_ROOT/tools/apply-notification-opacity.py" "$CONF_DIR" "$want" \
+    python3 "$REPO_ROOT/tools/apply-notification-opacity.py" "$CONF_DIR" "$ground" \
         | sed 's/^/    /' \
         || { warn "could not set the notification ground"; return 0; }
-    if remembering; then
-        mkdir -p "$CONF_DIR"
-        printf '%s\n' "$want" > "$memo"
-    fi
-    ok "arriving banners at ${want}% ground (remembered for later runs)"
+    ok "arriving banners at ${ground}% ground"
 }
 
 apply_popup_transparency() {
-    local level="${APP_TRANSPARENCY:-0}"
+    local level="${APP_TRANSPARENCY:-0}" percent choice
     local sheet="$CONF_DIR/shell-popup-blur.css"
     local solid_sheet="$CONF_DIR/shell-80-solid.css"
+    choice="$(resolve_popup_opacity_choice)"
+    # Written whether or not a sheet is here to rewrite: it is the user's
+    # answer, and the next frosted run reads it back.
+    if [ "${WANT_BLUR:-1}" = 1 ] && remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$choice" > "$CONF_DIR/popup-opacity"
+    fi
     [ -f "$sheet" ] || [ -f "$solid_sheet" ] || return 0
-    [ "$level" = 0 ] || [ "$level" = "0.0" ] || [ "$level" = "0.00" ] && return 0
+    percent="$(resolve_popup_opacity)"
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: scale popup background alpha proportionally with $level"
+        info "dry-run: scale popup background alpha to ${percent}% of the windows' tuned 90%"
         return 0
     fi
 
     if [ -f "$sheet" ]; then
-        python3 - "$sheet" "$level" 0.90 0.85 <<'PY' || true
+        python3 - "$sheet" "$(python3 -c "print('%.2f' % ($percent / 100))")" 0.90 0.85 <<'PY' || true
 import sys, re
 sheet, level_s, base_s, max_s = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 try:
@@ -545,7 +656,9 @@ install_css() {
     else
         run rm -f "$CONF_DIR/shell-popup-blur.css"
     fi
-    if [ "${WANT_NOTIFICATION_BLUR:-1}" = 1 ]; then
+    # The banners' sheet goes with the popups' since Blur My Shell v76, which
+    # blurs a banner through the popup component's own pipeline and switch.
+    if [ "${WANT_POPUP_BLUR:-1}" = 1 ]; then
         run install -Dm644 "$REPO_ROOT/css/shell-notification-blur.css" "$CONF_DIR/shell-notification-blur.css"
     else
         run rm -f "$CONF_DIR/shell-notification-blur.css"
@@ -589,6 +702,25 @@ install_css() {
             printf '%s\n' "$extra" > "$CONF_DIR/shell-90-density.css"
             ok "scaled panel icons for ${ppi} logical PPI (tuned at ${TUNED_PPI})"
         fi
+    fi
+
+    # Same sheet, appended after the density rules: both are per-screen and
+    # both go when the sheet is removed above.
+    local scale height
+    height="$(resolve_panel_height)"
+    if remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$height" > "$CONF_DIR/panel-height"
+    fi
+    scale="$(measure_primary_scale || true)"
+    extra="$(panel_height_css "${scale:-1}" "$height")"
+    if [ -z "$extra" ]; then
+        :
+    elif [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: top bar at ${height}px, snapped to whole pixels at scale ${scale:-1}"
+    else
+        printf '%s\n' "$extra" >> "$CONF_DIR/shell-90-density.css"
+        ok "top bar at $(printf '%s' "$extra" | sed -n 's/^  height: \([0-9]*\)px.*/\1/p')px for ${height}px at scale ${scale:-1} (remembered for later runs)"
     fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then

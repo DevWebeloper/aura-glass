@@ -56,7 +56,7 @@ Most bugs here are one front end disagreeing with another, so first find
 | Switched mode | full retune with `--glass-mode` | `lib/steps-modes.sh`, `load_dconf` |
 | Nothing (battery, GPU, game, top-bar menu) | adaptive worker → `--adaptive-blur` | `tools/aura_glass_adaptive.py`, `apply_adaptive_blur` |
 | Used "Blur This App" | `aura-glass-operation app-blur` | `extension.js` `_toggleBlur`, `aura-glass-preview app-blur`, `apply_app_blur` |
-| Changed monitors or logged in | services, Blur My Shell | `patches/blur-my-shell-panel-refit.patch`, `bin/aura-glass-icon-sync`, `bin/aura-glass-gdm-sync` |
+| Changed monitors or logged in | services, Blur My Shell | Blur My Shell's own panel code, `bin/aura-glass-icon-sync`, `bin/aura-glass-gdm-sync` |
 | Updated the theme or upstream | `aura-glass-apply` | `bin/aura-glass-apply` |
 
 ### 2. Find the owner

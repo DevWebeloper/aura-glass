@@ -128,7 +128,7 @@ printf '#000000\n'  > "$scratch/.config/aura-glass/shell-tint-color"
 # value — so the line itself prints the same popup=0 whether or not the
 # re-read after it was skipped. What actually moves is the dconf write those
 # functions make, echoed here because this is a dry run. blur-strength and
-# shell-tint-color have no such second reader — apply_blur_strength and
+# shell-tint-color have no such second reader — apply_blur_pipelines and
 # apply_shell_tint_color only fall back to the shared memo when the value
 # itself is still empty, which load_glass_mode_memos never leaves it — so
 # their own dry-run lines are asserted on for the same reason: it is where
@@ -148,7 +148,7 @@ case "$raw" in
     *) failures+=("switching back to frosted should keep app-blur-scope all (no 'enable-all true' dry-run write seen)") ;;
 esac
 case "$raw" in
-    *"dry-run: scale every blur radius to 150%"*) ;;
+    *"dry-run: blur at 150%,"*) ;;
     *) failures+=("switching back to frosted should restore blur-strength 150 (line not seen)") ;;
 esac
 case "$raw" in
@@ -156,18 +156,14 @@ case "$raw" in
     *) failures+=("switching back to frosted should restore shell-tint-color #224488 (line not seen)") ;;
 esac
 
-# Frosted always repaints the whole stage: hacks-level is written at core.ini's
-# 2 on every frosted run (pin_frosted_hacks_level), so an install a short-lived
-# --blur-refresh left at 0 comes back. Performance keeps solid.ini's 0 and
-# writes nothing for it, and the retired flag is refused.
+# Blur My Shell v76 has no hacks-level, so no mode writes one, and the
+# retired --blur-refresh that used to set it is refused.
 HACKS="dry-run: dconf write /org/gnome/shell/extensions/blur-my-shell/hacks-level"
-case "$(in_scratch --glass-mode frosted 2>&1)" in
-    *"$HACKS 2"*) ;;
-    *) failures+=("frosted should write hacks-level 2") ;;
-esac
-case "$(in_scratch --glass-mode performance 2>&1)" in
-    *"$HACKS 2"*) failures+=("performance must not write the frosted hacks-level") ;;
-esac
+for mode in frosted performance; do
+    case "$(in_scratch --glass-mode "$mode" 2>&1)" in
+        *"$HACKS"*) failures+=("$mode wrote the removed hacks-level") ;;
+    esac
+done
 if in_scratch --blur-refresh efficient >/dev/null 2>&1; then
     failures+=("the retired --blur-refresh was accepted")
 fi
