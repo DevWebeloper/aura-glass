@@ -19,8 +19,20 @@ select_apply_actions() {
             --cursor-size|--cursor-size=*) _apply_add cursor-size ;;
             --cursors|--cursors=*|--no-cursors) _apply_add cursor-theme ;;
             --window-buttons|--window-buttons=*) _apply_add window-buttons ;;
+            # Every blur amount and brightness is one rewrite of the pipelines
+            # blob from dconf/core.ini's values (apply_blur_pipelines), so any
+            # of them, alone or together, is that one step.
+            --blur-strength|--blur-strength=*|--blur-brightness|--blur-brightness=*|--*-blur-strength|--*-blur-strength=*|--window-brightness|--window-brightness=*|--app-brightness|--app-brightness=*|--window-blur-brightness|--window-blur-brightness=*|--popup-brightness|--popup-brightness=*|--panel-brightness|--panel-brightness=*|--lockscreen-brightness|--lockscreen-brightness=*) _apply_add blur-pipelines ;;
+            --fullscreen-blur|--no-fullscreen-blur) _apply_add fullscreen-blur ;;
+            --panel-maximized-black|--no-panel-maximized-black) _apply_add panel-maximized-black ;;
             --app-blur-allow|--app-blur-allow=*|--app-blur-block|--app-blur-block=*) _apply_add app-blur ;;
-            --app-tint-color|--app-tint-color=*|--shell-tint-color|--shell-tint-color=*|--app-transparency|--app-transparency=*|--no-app-transparency|--notification-opacity|--notification-opacity=*|--titlebar-button-style|--titlebar-button-style=*) _apply_add css ;;
+            # The level is written twice: the GTK stylesheet's alpha (css) and
+            # Blur My Shell's window actor opacity, which is all a browser or
+            # Electron window has. Classed as css alone, a slider move rewrote
+            # the sheet and left the actor at its old value, so Chrome stopped
+            # showing the blur while GTK apps still did.
+            --app-transparency|--app-transparency=*|--no-app-transparency) _apply_add css; _apply_add app-opacity ;;
+            --app-tint-color|--app-tint-color=*|--shell-tint-color|--shell-tint-color=*|--popup-opacity|--popup-opacity=*|--panel-height|--panel-height=*|--titlebar-button-style|--titlebar-button-style=*) _apply_add css ;;
             *) APPLY_FALLBACK_REASON="unclassified flag: $flag"; APPLY_ACTIONS=(full); return ;;
         esac
     done
@@ -34,6 +46,11 @@ select_apply_actions() {
     # incremental path must update the cursor key beside the accent key.
     if [ "${CURSORS:-}" = moga ] && [ -n "${ACCENT_EXPLICIT:-}" ]; then
         _apply_add cursor-theme
+    fi
+    # The tinted glass style is coloured with the accent (accent_hex in
+    # steps-dconf.sh), so an accent edit has to re-tint the shell too.
+    if [ -n "${ACCENT_EXPLICIT:-}" ] && [ "$(cat "$CONF_DIR/glass-style" 2>/dev/null || true)" = tinted ]; then
+        _apply_add glass-style
     fi
 }
 

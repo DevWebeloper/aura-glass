@@ -13,12 +13,16 @@
  * It answers ListWindows (for the settings app's "Open now" list), GetFocusState,
  * and emits WindowsChanged and FocusChanged signals.
  *
- * It stays installed and enabled as the explicit exception to global Solid
- * mode: in Solid mode, its window-menu blur toggle stands down because blur is
- * off, but its panel menu remains available so selecting Auto or Full Glass can
- * restore the themed desktop.
+ * It also shades the top bar while the focused window fills the panel's
+ * monitor (PANEL_SHADE_CLASS, painted by css/shell-00-flat.css).
+ *
+ * And it lets the mouse wheel switch workspaces while a window or app icon
+ * is held in the overview (_attachDragScroll).
+ *
+ * It stays installed and enabled in every mode, Performance included.
  */
 
+import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -73,7 +77,20 @@ const DBUS_IFACE = `
   </interface>
 </node>`;
 
+// Added to Main.panel while the focused window fills the panel's monitor.
+// css/shell-00-flat.css paints it; the name is duplicated there.
+const PANEL_SHADE_CLASS = 'aura-glass-maximized';
+
 const PROFILES = ['auto', 'full', 'performance'];
+// State files whose change can move the window opacity this extension owns.
+const OPACITY_STATE_FILES = new Set([
+    'app-opacity', 'app-transparency', 'glass-mode', 'adaptive-performance', 'active',
+]);
+// Written by bin/aura-glass-apply: shell rules for surfaces another extension
+// paints from its own stylesheet (Copyous's Super+V dialog). St ranks every
+// extension-loaded sheet above the shell theme, so these only win when they
+// are loaded as one too, which is what this extension does with it.
+const OVERRIDE_SHEET = 'extension-overrides.css';
 const PROFILE_ICONS = {
     auto: 'view-refresh-symbolic',
     full: 'weather-clear-symbolic',
@@ -93,7 +110,7 @@ function readState(...parts) {
     }
 }
 
-// Mirrors Blur My Shell's own components/applications.js wildcardToRegex:
+// Mirrors Blur My Shell's own components/applications/window_rules.js wildcard_to_regex:
 // escape every regex metacharacter except * and ?, anchor at both ends,
 // * -> .*, ? -> ., case-insensitive. Brackets are escaped rather than left to
 // form a character class, so [abc] matches the three literal characters —
@@ -152,9 +169,28 @@ function rootWindowClass(window) {
     return classes.length ? classes[classes.length - 1] : null;
 }
 
-// The same frame-type gate check_blur applies in Blur My Shell's
-// components/applications.js (patched by patches/blur-my-shell-subwindows.patch
-// to include ATTACHED and UTILITY too) — a window neither this nor Blur My
+// A window that fills the screen, for the top-bar shade: maximized both ways,
+// fullscreen, or sized over the whole work area without either flag. (The same
+// test once chose static blur behind such a window, in a Blur My Shell patch
+// dropped with v76.) The last is Tiling Assistant's drag-to-top or maximize
+// with maximize-with-gap on: it resizes to the work area instead of
+// maximizing, so GTK never sees the window as maximized either.
+function coversMonitor(window) {
+    if (window.fullscreen ||
+        (window.maximized_horizontally && window.maximized_vertically) ||
+        Boolean(window.is_maximized?.()) ||
+        (window.get_maximized?.() === Meta.MaximizeFlags?.BOTH))
+        return true;
+    const area = window.get_work_area_current_monitor();
+    const frame = window.get_frame_rect();
+    return frame.x <= area.x && frame.y <= area.y &&
+        frame.x + frame.width >= area.x + area.width &&
+        frame.y + frame.height >= area.y + area.height;
+}
+
+// The same frame-type gate Blur My Shell's components/applications/window_rules.js
+// applies (patched by patches/blur-my-shell-subwindows.patch to include
+// ATTACHED and UTILITY too) — a window neither this nor Blur My
 // Shell would ever blur is not offered up as something to blur.
 function isBlurrable(frameType) {
     return frameType === Meta.FrameType.NORMAL ||
@@ -175,19 +211,17 @@ export default class AuraGlassBlurExtension extends Extension {
         this._focusedWmClass = '';
         this._focusedWindow = null;
         this._focusedWindowFullscreenId = 0;
+        this._focusedWindowGeometryIds = [];
 
         this._settings = this._openBmsApplicationsSettings();
-        if (this._settings) {
-            this._hookWindowMenu();
-        }
+        this._syncWindowMenu();
 
         this._extStateChangedId = Main.extensionManager?.connect?.(
             'extension-state-changed', (_mgr, ext) => {
                 if (ext.uuid === BMS_UUID) {
                     if (ext.state === 1) {
                         this._settings = this._openBmsApplicationsSettings();
-                        if (this._settings)
-                            this._hookWindowMenu();
+                        this._syncWindowMenu();
                     } else {
                         this._settings = null;
                     }
@@ -208,12 +242,103 @@ export default class AuraGlassBlurExtension extends Extension {
         for (const actor of global.get_window_actors())
             this._trackWindow(actor.get_meta_window());
 
+        // The overview gives the top bar its own look, so the shade lifts
+        // while it is open and comes back with the window when it closes.
+        this._overviewIds = [
+            Main.overview.connect('showing', () => this._syncPanelShade(true)),
+            Main.overview.connect('hidden', () => this._syncPanelShade(false)),
+        ];
+        this._monitorsChangedId = Main.layoutManager.connect(
+            'monitors-changed', () => this._syncPanelShade());
+
         this._focusWindowId = global.display.connect(
             'focus-window', (_display, window) => this._watchFocusedWindow(window));
         this._watchFocusedWindow(global.display.focusWindow ?? global.display.focus_window);
 
+        // GNOME's DnD pushes a modal grab onto a private 0x0 actor for the
+        // whole drag, so scroll never reaches the overview's workspace
+        // switcher. The grab is taken before 'drag-begin' fires, so these
+        // signals can read it off the stage.
+        this._dragScrollActor = null;
+        this._dragScrollId = 0;
+        const dragBegin = () => this._attachDragScroll();
+        const dragEnd = () => this._detachDragScroll();
+        this._dragIds = [
+            Main.overview.connect('window-drag-begin', dragBegin),
+            Main.overview.connect('item-drag-begin', dragBegin),
+            Main.overview.connect('window-drag-end', dragEnd),
+            Main.overview.connect('window-drag-cancelled', dragEnd),
+            Main.overview.connect('item-drag-end', dragEnd),
+            Main.overview.connect('item-drag-cancelled', dragEnd),
+        ];
+
         this._buildPanelMenu();
         this._initOpacityMonitor();
+        this._loadOverrideSheet();
+    }
+
+    _attachDragScroll() {
+        this._detachDragScroll();
+        const actor = global.stage.get_grab_actor();
+        if (!actor)
+            return;
+        this._dragScrollActor = actor;
+        this._dragScrollId = actor.connect('scroll-event',
+            (_actor, event) => this._onDragScroll(event));
+    }
+
+    _detachDragScroll() {
+        if (this._dragScrollActor && this._dragScrollId)
+            this._dragScrollActor.disconnect(this._dragScrollId);
+        this._dragScrollActor = null;
+        this._dragScrollId = 0;
+    }
+
+    // Mouse wheel only: handleWorkspaceScroll passes smooth (touchpad) scroll
+    // through, so a touchpad scroll still reaches the drag as before.
+    _onDragScroll(event) {
+        if (!Main.overview.visible)
+            return Clutter.EVENT_PROPAGATE;
+        return Main.wm.handleWorkspaceScroll(event);
+    }
+
+    // Main.loadTheme() carries extension sheets over to each new theme and
+    // re-reads them, so the shell-theme reload after an apply picks up the new
+    // file too. This covers a rewrite without one, and the first load.
+    _loadOverrideSheet() {
+        this._unloadOverrideSheet();
+        const file = Gio.File.new_for_path(configPath(OVERRIDE_SHEET));
+        if (!file.query_exists(null))
+            return;
+        try {
+            St.ThemeContext.get_for_stage(global.stage).get_theme().load_stylesheet(file);
+            this._overrideSheet = file;
+        } catch (e) {
+            // A sheet St cannot parse leaves Copyous on its own look
+        }
+    }
+
+    _unloadOverrideSheet() {
+        if (!this._overrideSheet)
+            return;
+        St.ThemeContext.get_for_stage(global.stage).get_theme().unload_stylesheet(this._overrideSheet);
+        this._overrideSheet = null;
+    }
+
+    // --no-window-menu writes window-menu=0, and the conf monitor brings any
+    // change here, so the item comes and goes without a reload.
+    _syncWindowMenu() {
+        if (this._settings && readState('window-menu') !== '0')
+            this._hookWindowMenu();
+        else
+            this._unhookWindowMenu();
+    }
+
+    _unhookWindowMenu() {
+        if (!this._origBuildMenu)
+            return;
+        WindowMenu.prototype._buildMenu = this._origBuildMenu;
+        this._origBuildMenu = null;
     }
 
     _hookWindowMenu() {
@@ -249,23 +374,18 @@ export default class AuraGlassBlurExtension extends Extension {
             this._extStateChangedId = 0;
         }
 
-        if (this._confMonitorId) {
-            this._confMonitor.disconnect(this._confMonitorId);
-            this._confMonitorId = 0;
+        for (const [monitor, id] of this._confMonitors ?? []) {
+            monitor.disconnect(id);
+            monitor.cancel();
         }
-        if (this._confMonitor) {
-            this._confMonitor.cancel();
-            this._confMonitor = null;
-        }
+        this._confMonitors = null;
+        this._unloadOverrideSheet();
 
         if (!this._isBmsApplicationsActive()) {
             this.setWindowOpacityAll(255);
         }
 
-        if (this._origBuildMenu) {
-            WindowMenu.prototype._buildMenu = this._origBuildMenu;
-            this._origBuildMenu = null;
-        }
+        this._unhookWindowMenu();
         this._settings = null;
 
         if (this._focusWindowId) {
@@ -273,6 +393,18 @@ export default class AuraGlassBlurExtension extends Extension {
             this._focusWindowId = 0;
         }
         this._watchFocusedWindow(null);
+
+        for (const id of this._overviewIds ?? [])
+            Main.overview.disconnect(id);
+        this._overviewIds = null;
+        for (const id of this._dragIds ?? [])
+            Main.overview.disconnect(id);
+        this._dragIds = null;
+        this._detachDragScroll();
+        if (this._monitorsChangedId) {
+            Main.layoutManager.disconnect(this._monitorsChangedId);
+            this._monitorsChangedId = 0;
+        }
 
         if (this._windowsChangedTimer) {
             GLib.source_remove(this._windowsChangedTimer);
@@ -312,14 +444,58 @@ export default class AuraGlassBlurExtension extends Extension {
             this._focusedWindow.disconnect(this._focusedWindowFullscreenId);
             this._focusedWindowFullscreenId = 0;
         }
+        for (const id of this._focusedWindowGeometryIds)
+            this._focusedWindow.disconnect(id);
+        this._focusedWindowGeometryIds = [];
         this._focusedWindow = window ?? null;
         if (this._focusedWindow) {
             this._focusedWindowFullscreenId = this._focusedWindow.connect(
                 'notify::fullscreen', () => {
                     this._updateFocusState();
+                    this._syncPanelShade();
                 });
+            // size-changed and position-changed catch a tiler's resize to the
+            // work area and a move to another monitor, which set no flag.
+            this._focusedWindowGeometryIds = [
+                'notify::maximized-horizontally',
+                'notify::maximized-vertically',
+                'size-changed',
+                'position-changed',
+            ].map(signal => this._focusedWindow.connect(
+                signal, () => this._syncPanelShade()));
         }
         this._updateFocusState();
+        this._syncPanelShade();
+    }
+
+    _syncPanelShade(overviewVisible = Main.overview.visible) {
+        const enabled = readState('panel-maximized-black') !== '0';
+        if (!enabled || overviewVisible) {
+            Main.panel.remove_style_class_name(PANEL_SHADE_CLASS);
+            return;
+        }
+
+        const panelMonitor = Main.layoutManager.findMonitorForActor?.(Main.panel) ?? Main.layoutManager.primaryMonitor;
+        const panelIndex = panelMonitor ? panelMonitor.index : Main.layoutManager.primaryIndex;
+
+        const window = this._focusedWindow;
+        let shade = Boolean(window) && window.get_monitor() === panelIndex && coversMonitor(window);
+
+        if (!shade && global.workspace_manager) {
+            const workspace = global.workspace_manager.get_active_workspace();
+            const windows = workspace?.list_windows() ?? [];
+            for (const win of windows) {
+                if (win.get_monitor() === panelIndex && !win.minimized && !win.is_skip_taskbar() && coversMonitor(win)) {
+                    shade = true;
+                    break;
+                }
+            }
+        }
+
+        if (shade)
+            Main.panel.add_style_class_name(PANEL_SHADE_CLASS);
+        else
+            Main.panel.remove_style_class_name(PANEL_SHADE_CLASS);
     }
 
     _updateFocusState() {
@@ -521,24 +697,38 @@ export default class AuraGlassBlurExtension extends Extension {
             // whole chain, so a dialog shows checked when the app it belongs
             // to is blurred, matching what check_blur itself now does in
             // Blur My Shell.
-            const scope = this._settings.get_boolean('enable-all') ? 'all' : 'gtk';
-            const key = scope === 'all' ? 'blacklist' : 'whitelist';
-            const covered = matchesAnyClass(this._settings.get_strv(key), classes);
-            const checked = scope === 'all' ? !covered : covered;
+            const enableAll = this._settings.get_boolean('enable-all');
+            const inWhitelist = matchesAnyClass(this._settings.get_strv('whitelist'), classes);
+            const inBlacklist = matchesAnyClass(this._settings.get_strv('blacklist'), classes);
+            const checked = inWhitelist || (enableAll && !inBlacklist);
 
             item.setOrnament(checked ? PopupMenu.Ornament.CHECK
                                       : PopupMenu.Ornament.NONE);
             item.connect('activate', () => {
-                this._toggleBlur(wmClass, !checked, item);
+                this._toggleBlur(wmClass, classes, !checked, item);
             });
         }
     }
 
-    _toggleBlur(wmClass, wantBlurred, item) {
+    _toggleBlur(wmClass, classes, wantBlurred, item) {
         // A lock wait must never run on GNOME Shell's main loop. The backend
         // reads the current memo after it owns that lock, changes both lists
         // through apply_app_blur, and reports any wildcard it had to remove.
         // Until that succeeds the checkmark stays truthful about live state.
+        //
+        // The window menu is destroyed when it closes, which is usually long
+        // before the backend answers. Touching the item after that logs a
+        // "has been already disposed" stack trace into the journal, so every
+        // write to it below goes through this guard. The notifications still
+        // go out: they are the only feedback once the menu is gone.
+        let destroyed = false;
+        item.connect('destroy', () => {
+            destroyed = true;
+        });
+        const setSensitive = sensitive => {
+            if (!destroyed)
+                item.setSensitive(sensitive);
+        };
         item.setSensitive(false);
         const local = GLib.build_filenamev([
             GLib.get_home_dir(), '.local', 'bin', 'aura-glass-operation']);
@@ -551,7 +741,7 @@ export default class AuraGlassBlurExtension extends Extension {
                     wantBlurred ? '1' : '0'],
                 Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
         } catch (error) {
-            item.setSensitive(true);
+            setSensitive(true);
             Main.notify('aura-glass', `${_('Could not change app blur')}: ${error.message}`);
             return;
         }
@@ -560,24 +750,28 @@ export default class AuraGlassBlurExtension extends Extension {
             try {
                 [ok, _stdout, stderr] = source.communicate_utf8_finish(result);
             } catch (error) {
-                item.setSensitive(true);
+                setSensitive(true);
                 Main.notify('aura-glass', `${_('Could not change app blur')}: ${error.message}`);
                 return;
             }
             if (!ok || !source.get_successful()) {
-                item.setSensitive(true);
+                setSensitive(true);
                 Main.notify('aura-glass', `${_('Could not change app blur')}: ${stderr?.trim() || _('operation failed')}`);
                 return;
             }
             // The backend, rather than the menu's old pre-lock list, is now
             // authoritative. Read it only after success so a failed command
-            // can never leave a false checkmark behind.
-            const scope = this._settings.get_boolean('enable-all') ? 'all' : 'gtk';
-            const key = scope === 'all' ? 'blacklist' : 'whitelist';
-            const covered = matchesAny(this._settings.get_strv(key), wmClass);
-            item.setOrnament((scope === 'all' ? !covered : covered)
-                ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
-            item.setSensitive(true);
+            // can never leave a false checkmark behind. Same rule and same
+            // class chain as the menu builds its checkmark from above, so a
+            // reopened menu never disagrees with this one.
+            if (!destroyed) {
+                const enableAll = this._settings.get_boolean('enable-all');
+                const inWhitelist = matchesAnyClass(this._settings.get_strv('whitelist'), classes);
+                const inBlacklist = matchesAnyClass(this._settings.get_strv('blacklist'), classes);
+                item.setOrnament(inWhitelist || (enableAll && !inBlacklist)
+                    ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
+                item.setSensitive(true);
+            }
             for (const line of (stderr || '').split('\n')) {
                 const match = /^aura-glass-app-blur-wildcard: (always-blur|never-blur): (.+)$/.exec(line);
                 if (match) {
@@ -681,33 +875,44 @@ export default class AuraGlassBlurExtension extends Extension {
 
     _initOpacityMonitor() {
         this._currentActorOpacity = 255;
+        this._confMonitors = [];
         this._updateOpacityFromConfig();
-        try {
-            const confDir = Gio.File.new_for_path(configPath());
-            this._confMonitor = confDir.monitor_directory(Gio.FileMonitorFlags.NONE, null);
-            this._confMonitorId = this._confMonitor.connect('changed', (_mon, file, _other, eventType) => {
-                if (eventType === Gio.FileMonitorEvent.CHANGES_DONE_HINT ||
-                    eventType === Gio.FileMonitorEvent.CREATED ||
-                    eventType === Gio.FileMonitorEvent.CHANGED) {
-                    const name = file?.get_basename();
-                    if (name === 'app-opacity' || name === 'app-transparency' || name === 'glass-mode' ||
-                        name === 'adaptive-performance' || name === 'active') {
+        // A directory monitor only reports its direct children, and the
+        // adaptive worker's `active` lives one level down in
+        // adaptive-performance/, so that directory gets a monitor of its own.
+        // With only the top one, a transition never reached this.
+        for (const parts of [[], ['adaptive-performance']]) {
+            try {
+                const dir = Gio.File.new_for_path(configPath(...parts));
+                const monitor = dir.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, null);
+                const id = monitor.connect('changed', (_mon, file, other, eventType) => {
+                    if (eventType !== Gio.FileMonitorEvent.CHANGES_DONE_HINT &&
+                        eventType !== Gio.FileMonitorEvent.CREATED &&
+                        eventType !== Gio.FileMonitorEvent.CHANGED &&
+                        eventType !== Gio.FileMonitorEvent.MOVED_IN &&
+                        eventType !== Gio.FileMonitorEvent.RENAMED)
+                        return;
+                    // The worker and the installer write through a temporary
+                    // file and rename it over the real one, which arrives as
+                    // RENAMED with the real name on the other file.
+                    const name = (eventType === Gio.FileMonitorEvent.RENAMED ? other : file)?.get_basename();
+                    if (OPACITY_STATE_FILES.has(name))
                         this._updateOpacityFromConfig();
-                    }
-                }
-            });
-        } catch (e) {
-            // Monitor directory failed or unsupported
+                    else if (name === 'panel-maximized-black')
+                        this._syncPanelShade();
+                    else if (name === 'window-menu')
+                        this._syncWindowMenu();
+                    else if (name === OVERRIDE_SHEET)
+                        this._loadOverrideSheet();
+                });
+                this._confMonitors.push([monitor, id]);
+            } catch (e) {
+                // Directory missing (no adaptive run yet) or monitoring unsupported
+            }
         }
     }
 
     _updateOpacityFromConfig() {
-        const mode = readState('glass-mode') || 'frosted';
-        if (mode === 'solid') {
-            this.setWindowOpacityAll(255);
-            return;
-        }
-
         const adaptiveActive = readState('adaptive-performance', 'active') === '1';
         if (adaptiveActive) {
             this.setWindowOpacityAll(255);
@@ -722,6 +927,7 @@ export default class AuraGlassBlurExtension extends Extension {
             return;
         }
 
+        const mode = readState('glass-mode');
         if (mode === 'performance') {
             const opStr = readState('app-opacity');
             let opacity = 252;

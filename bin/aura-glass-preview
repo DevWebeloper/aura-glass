@@ -7,9 +7,11 @@
 #     aura-glass-preview set [--app-tint HEX] [--shell-tint HEX]
 #                            [--transparency LEVEL] [--radius-preset NAME]
 #                            [--radius-custom W,M,Q,N,D,P,O]
-#                            [--blur-strength PCT] [--popup-blur 0|1]
-#                            [--popup-brightness PCT]
-#                            [--notification-opacity PCT]
+#                            [--blur-strength PCT] [--blur-brightness PCT]
+#                            [--SURFACE-blur-strength PCT|main]
+#                            [--SURFACE-brightness PCT|main]
+#                            [--popup-opacity PCT|main] [--popup-blur 0|1]
+#                            [--panel-height PX]
 #                            [--window-blur 0|1] [--scope gtk|all]
 #                            [--app-blur-allow LIST] [--app-blur-block LIST]
 #     aura-glass-preview apps --allow LIST --block LIST
@@ -98,7 +100,7 @@ BMS=/org/gnome/shell/extensions/blur-my-shell
 # stop it. set no longer touches any of them, but begin still snapshots them and
 # revert still restores them: that is what repairs a $CONF_DIR left mid-preview
 # by an older build of this script.
-PREVIEW_MEMOS="app-tint-color shell-tint-color app-transparency radius-preset radius-custom blur-strength popup-brightness notification-opacity popup-blur notification-blur window-blur app-blur-scope app-blur-allow app-blur-block"
+PREVIEW_MEMOS="app-tint-color shell-tint-color app-transparency radius-preset radius-custom blur-strength blur-brightness window-blur-strength popup-blur-strength panel-blur-strength lockscreen-blur-strength window-blur-brightness popup-blur-brightness panel-blur-brightness lockscreen-blur-brightness popup-opacity panel-height panel-maximized-black popup-blur window-blur app-blur-scope app-blur-allow app-blur-block"
 
 usage() {
     printf 'usage: aura-glass-preview begin|set [options]|apps [options]|app-blur --wm-class CLASS --enabled 0|1|commit --session ID -- INSTALLER [ARG...]|revert [--session ID]|status [--json]\n' >&2
@@ -110,18 +112,6 @@ require_begun() {
         printf 'aura-glass-preview: no preview is active — run "begin" first.\n' >&2
         exit 1
     fi
-}
-
-# The literal `pipelines=` value dconf/core.ini ships, so a blur-strength
-# preview can always scale from the tuned 100% baseline rather than from
-# whatever a previous tick left in dconf — apply_blur_strength's own comment
-# spells out why compounding is the failure mode this avoids.
-shipped_pipelines() {
-    awk -F'=' '
-        /^\[extensions\/blur-my-shell\]/ { in_section = 1; next }
-        /^\[/ { in_section = 0 }
-        in_section && $1 == "pipelines" { sub(/^pipelines=/, ""); print; exit }
-    ' "$REPO_ROOT/dconf/core.ini"
 }
 
 cmd_begin() {
@@ -171,8 +161,8 @@ cmd_set() {
     require_begun
 
     local session="" app_tint="" shell_tint="" transparency="" radius_preset="" \
-        radius_custom="" blur_strength="" popup_brightness="" notification_opacity="" \
-        popup_blur="" notification_blur="" window_blur="" scope="" glass_mode="" \
+        radius_custom="" blur_strength="" blur_brightness="" popup_opacity="" panel_height="" \
+        popup_blur="" window_blur="" scope="" glass_mode="" surface_var="" \
         app_blur_allow="" app_blur_allow_given=0 \
         app_blur_block="" app_blur_block_given=0
     while [ $# -gt 0 ]; do
@@ -185,10 +175,20 @@ cmd_set() {
             --radius-preset) radius_preset="$2"; shift 2 ;;
             --radius-custom) radius_custom="$2"; shift 2 ;;
             --blur-strength) blur_strength="$2"; shift 2 ;;
-            --popup-brightness) popup_brightness="$2"; shift 2 ;;
-            --notification-opacity) notification_opacity="$2"; shift 2 ;;
+            --blur-brightness) blur_brightness="$2"; shift 2 ;;
+            # Straight into the variables apply_blur_pipelines reads, which
+            # take precedence over the memos it would otherwise fall back to.
+            --window-blur-strength|--popup-blur-strength|--panel-blur-strength|--lockscreen-blur-strength)
+                surface_var="${1#--}"; surface_var="${surface_var%-blur-strength}"
+                export "$(printf '%s' "$surface_var" | tr '[:lower:]' '[:upper:]')_BLUR_STRENGTH=$2"
+                shift 2 ;;
+            --window-brightness|--popup-brightness|--panel-brightness|--lockscreen-brightness)
+                surface_var="${1#--}"; surface_var="${surface_var%-brightness}"
+                export "$(printf '%s' "$surface_var" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS=$2"
+                shift 2 ;;
+            --popup-opacity) popup_opacity="$2"; shift 2 ;;
+            --panel-height) panel_height="$2"; shift 2 ;;
             --popup-blur) popup_blur="$2"; shift 2 ;;
-            --notification-blur) notification_blur="$2"; shift 2 ;;
             --window-blur) window_blur="$2"; shift 2 ;;
             --scope) scope="$2"; shift 2 ;;
             --app-blur-allow) app_blur_allow="$2"; app_blur_allow_given=1; shift 2 ;;
@@ -203,25 +203,25 @@ cmd_set() {
     # header for why not writing beats writing and restoring.
     export PREVIEW_MODE=1
 
-    if [ "${glass_mode:-}" = performance ] || { [ "${window_blur:-1}" = 0 ] && [ "${popup_blur:-1}" = 0 ] && [ "${notification_blur:-1}" = 0 ]; }; then
+    if [ "${glass_mode:-}" = performance ] || { [ "${window_blur:-1}" = 0 ] && [ "${popup_blur:-1}" = 0 ]; }; then
         export WANT_BLUR=0
         export WANT_POPUP_BLUR=0
-        export WANT_NOTIFICATION_BLUR=0
         export WANT_WINDOW_BLUR=0
         export APP_BLUR_SCOPE="none"
         export GLASS_MODE="performance"
     else
         export WANT_BLUR=1
         export WANT_POPUP_BLUR="${popup_blur:-1}"
-        export WANT_NOTIFICATION_BLUR="${notification_blur:-1}"
     fi
     export APP_TRANSPARENCY="${transparency:-0}"
     [ -n "$app_tint" ] && export APP_TINT_COLOR="$app_tint"
     [ -n "$shell_tint" ] && export SHELL_TINT_COLOR="$shell_tint"
-    # Read by apply_notification_opacity, inside the install_css below — the
-    # sheet it rewrites is one install_css has just laid down, so it cannot be
-    # set after that call the way the dconf knobs below are.
-    [ -n "$notification_opacity" ] && export NOTIFICATION_OPACITY="$notification_opacity"
+    # Read by apply_popup_transparency and apply_notification_opacity, inside
+    # the install_css below — the sheets they rewrite are ones install_css has
+    # just laid down, so it cannot be set after that call the way the dconf
+    # knobs below are.
+    [ -n "$popup_opacity" ] && export POPUP_OPACITY="$popup_opacity"
+    [ -n "$panel_height" ] && export PANEL_HEIGHT="$panel_height"
 
     if [ -n "$radius_custom" ]; then
         IFS=',' read -r TOKEN_RADIUS_WINDOW TOKEN_RADIUS_MENU \
@@ -244,7 +244,7 @@ cmd_set() {
     export WINDOW_BLUR_EXPLICIT=1
     export WANT_WINDOW_BLUR="${window_blur:-1}"
     export APP_BLUR_SCOPE_EXPLICIT=1
-    export APP_BLUR_SCOPE="${scope:-gtk}"
+    export APP_BLUR_SCOPE="${scope:-all}"
     if [ "$app_blur_allow_given" = 1 ]; then
         export APP_BLUR_ALLOW_EXPLICIT=1
         export APP_BLUR_ALLOW="$app_blur_allow"
@@ -259,41 +259,23 @@ cmd_set() {
     export WANT_POPUP_BLUR="${popup_blur:-1}"
     apply_popup_blur >/dev/null
 
-    export NOTIFICATION_BLUR_EXPLICIT=1
-    export WANT_NOTIFICATION_BLUR="${notification_blur:-1}"
-    apply_notification_blur >/dev/null
+    [ -n "$blur_strength" ] && export BLUR_STRENGTH="$blur_strength"
+    [ -n "$blur_brightness" ] && export BLUR_BRIGHTNESS="$blur_brightness"
+    apply_blur_pipelines >/dev/null
 
-    if [ -n "$blur_strength" ] && [ "$blur_strength" != 100 ]; then
-        local shipped
-        shipped="$(shipped_pipelines)"
-        if [ -n "$shipped" ]; then
-            dconf write "$BMS/pipelines" "$shipped"
-        fi
-        export BLUR_STRENGTH="$blur_strength"
-        apply_blur_strength >/dev/null
-    fi
-
-    # Beside the strength, and after it for the reason apply_popup_brightness's
-    # own comment gives: the block above resets the whole `pipelines` blob from
-    # the shipped literal, and the brightness this writes lives inside it.
-    if [ -n "$popup_brightness" ]; then
-        export POPUP_BRIGHTNESS="$popup_brightness"
-        apply_popup_brightness >/dev/null
-    fi
-
-    # Last, and after the blur-strength block above rather than before it. That
-    # block resets the whole `pipelines` blob from the shipped literal, and
-    # apply_radius_dconf's corner effect lives inside that same blob — run the
-    # other way round, a preview at any strength but 100% put the windows blur
-    # corner back to the shipped 30 behind a window painted at the candidate.
-    # load_dconf in lib/steps-dconf.sh keeps the same order for the same reason.
+    # In load_dconf's order. apply_blur_pipelines rewrites only each blur's
+    # radius and brightness, from dconf/core.ini's values, so nothing a previous
+    # tick left compounds; the corner and the remembered style's effects live in
+    # the same blob and are rewritten after it, the style last because it takes
+    # its corner radius from the one apply_radius_dconf writes.
     apply_radius_dconf >/dev/null
+    apply_glass_style >/dev/null
 }
 
 cmd_apps() {
     require_begun
 
-    local session="" allow="" block="" window_blur="1" scope="gtk"
+    local session="" allow="" block="" window_blur="1" scope="all"
     while [ $# -gt 0 ]; do
         case "$1" in
             --session) session="$2"; shift 2 ;;
@@ -412,8 +394,37 @@ cmd_revert() {
         [ -f "$sheet" ] && cp -a "$sheet" "$CONF_DIR/$(basename "$sheet")"
     done
 
-    dconf reset -f "$BMS/"
+    # One atomic load, then a reset of only the keys begin did not find. Not
+    # `dconf reset -f` and a load: between those two the `pipelines` blob is
+    # Blur My Shell's own default, which has none of our pipelines. Every
+    # surface on one of them gets `pipeline-destroyed` and moves itself to
+    # pipeline_default, and when the load brings the pipeline back Blur My
+    # Shell only emits `pipeline-created`, which no surface listens for. The
+    # overview (pipeline `lock screen`) then kept the default blur, or the
+    # one from before the preview, until something rebuilt it: the overview
+    # "sometimes" not showing what the settings window had just applied.
     dconf load "$BMS/" < "$BACKUP/blur-my-shell.dconf"
+    local key
+    while IFS= read -r key; do
+        dconf reset "$BMS/$key"
+    done < <(dconf dump "$BMS/" | python3 -c '
+import sys
+
+def keys(lines):
+    section, out = "", set()
+    for line in lines:
+        line = line.rstrip("\n")
+        if line.startswith("[") and line.endswith("]"):
+            section = "" if line == "[/]" else line[1:-1] + "/"
+        elif "=" in line:
+            out.add(section + line.split("=", 1)[0])
+    return out
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    kept = keys(fh)
+for key in sorted(keys(sys.stdin) - kept):
+    print(key)
+' "$BACKUP/blur-my-shell.dconf")
 
     restore_memos
 

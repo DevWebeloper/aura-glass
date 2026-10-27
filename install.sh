@@ -4,9 +4,8 @@
 #
 #   https://github.com/DevWebeloper/aura-glass
 #
-# Nothing here needs root except the optional dependency install, the
-# optional rounded-blur library, and the optional GDM login screen theme:
-# every other asset lands under $HOME.
+# Nothing here needs root except the optional dependency install and the
+# optional GDM login screen theme: every other asset lands under $HOME.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -56,6 +55,9 @@ fi
 . "$REPO_ROOT/lib/steps-apply-plan.sh"
 # shellcheck source=lib/steps-wizard.sh
 . "$REPO_ROOT/lib/steps-wizard.sh"
+# After common.sh, whose no-op progress hooks it replaces.
+# shellcheck source=lib/progress.sh
+. "$REPO_ROOT/lib/progress.sh"
 # Values written down in more than one place live here, so that the copy in a
 # stylesheet and the copy in a dconf key cannot drift apart unnoticed.
 # tools/check-tokens.sh asserts they still agree.
@@ -67,33 +69,39 @@ ACCENT_EXPLICIT=""
 TYPED_FLAGS=()
 INCREMENTAL=0
 PLAN_JSON=0
+PROGRESS_WINDOW=0  # --progress-window; a wizard run turns it on too (lib/progress.sh)
+VERIFY_ONLY=0      # --verify
+VERIFY_DIR=""      # --progress-dir: where --verify writes its check events
 ACCENT_DEFAULT="purple"
 WANT_EXTRAS=1
 EXT_LIST=""        # comma-separated UUIDs, replacing the pack. Empty = a pack
 EXT_LIST_EXPLICIT=""
+# Set by any flag, or any wizard answer, that picks the pack. Unset, the pack
+# is the remembered one ($CONF_DIR/extension-pack), and then the Recommended seven.
+EXT_PACK_EXPLICIT=""
 WANT_ICONS=1
 WANT_CURSORS=1
 WANT_DEPS=1
 WANT_OSD=1
+OSD_EXPLICIT=""
+WINDOW_MENU_EXPLICIT=""
 # Empty = no answer yet: the remembered one, and then the monitor count,
 # decide it further down.
-WANT_PANEL_BLUR_FIX=""
-PANEL_BLUR_FIX_EXPLICIT=""
 WANT_GDM=0
 GDM_EXPLICIT=""
 WANT_GDM_MONITORS=0
 GDM_MONITORS_EXPLICIT=""
 GDM_BG="default"
 WANT_BMS_GIT=1
+BMS_GIT_EXPLICIT=""
 WANT_BLUR=1
 GLASS_MODE=""            # empty = the memo, then derived from the flags
 GLASS_MODE_EXPLICIT=""
 BLUR_EXPLICIT=""         # --blur / --no-blur were typed, so a mode must not move them
-WANT_STYLING=1           # 0 = the theme stands down (solid mode)
 VALID_GLASS_MODES="frosted performance"
 WANT_WINDOW_BLUR=1
 WINDOW_BLUR_EXPLICIT=""
-APP_BLUR_SCOPE="gtk"     # gtk (default, whitelisted GTK/GNOME apps) | all
+APP_BLUR_SCOPE="all"     # all (default, all application windows) | gtk (whitelisted GTK/GNOME apps)
 APP_BLUR_SCOPE_EXPLICIT=""
 APP_BLUR_ALLOW=""        # comma-separated wm_class patterns
 APP_BLUR_ALLOW_EXPLICIT=""
@@ -101,13 +109,10 @@ APP_BLUR_BLOCK=""
 APP_BLUR_BLOCK_EXPLICIT=""
 WANT_POPUP_BLUR=1
 POPUP_BLUR_EXPLICIT=""
-WANT_NOTIFICATION_BLUR=1
-NOTIFICATION_BLUR_EXPLICIT=""
 WINDOW_BUTTONS=""        # empty = leave the titlebar as the system has it
 WINDOW_BUTTONS_EXPLICIT=""
 TITLEBUTTON_STYLE=""     # empty = remembered choice, then minimal
 TITLEBUTTON_STYLE_EXPLICIT=""
-WANT_ROUNDED_BLUR=1
 APP_TRANSPARENCY=""   # empty = remembered choice, then off (e.g. 0.90 / 90%)
 APP_TRANSPARENCY_EXPLICIT=""
 APP_OPACITY=""        # empty = remembered choice, then 255 (e.g. 230)
@@ -121,10 +126,23 @@ FONT_EXPLICIT=""
 ICONS=""            # empty = remembered choice, then colloid
 ICONS_EXPLICIT=""
 GRAIN=""          # empty keeps the preset's value, or the remembered choice
+GLASS_STYLE=""      # empty = remembered choice, then frosted
+GLASS_STYLE_EXPLICIT=""
+LIQUID_WINDOWS=""   # empty = remembered choice, then 0
+LIQUID_WINDOWS_EXPLICIT=""
+FULLSCREEN_BLUR=""  # empty = remembered choice, then 0
+FULLSCREEN_BLUR_EXPLICIT=""
+PANEL_MAXIMIZED_BLACK="" # empty = remembered choice, then 1
+PANEL_MAXIMIZED_BLACK_EXPLICIT=""
 BLUR_STRENGTH=""    # empty = remembered choice, then the tuned radii (100)
+BLUR_BRIGHTNESS=""  # empty = remembered choice, then the tuned brightness (100)
+# Each surface's own blur amount and brightness, empty = remembered choice,
+# then main (follow the two above). See BLUR_SURFACES in lib/steps-dconf.sh.
+WINDOW_BLUR_STRENGTH="" POPUP_BLUR_STRENGTH="" PANEL_BLUR_STRENGTH="" LOCKSCREEN_BLUR_STRENGTH=""
+WINDOW_BRIGHTNESS=""    POPUP_BRIGHTNESS=""    PANEL_BRIGHTNESS=""    LOCKSCREEN_BRIGHTNESS=""
+POPUP_OPACITY=""    # empty = remembered choice, then main (follow the windows)
+PANEL_HEIGHT=""     # empty = remembered choice, then the theme's 40px
 ADAPTIVE_BLUR=""     # private transient writer: active | restore, never memoed
-POPUP_BRIGHTNESS=""      # empty = remembered choice, then the preset (115)
-NOTIFICATION_OPACITY=""  # empty = remembered choice, then the sheet (40)
 APP_TINT_COLOR=""   # empty = remembered choice, then black (#000000)
 SHELL_TINT_COLOR="" # empty = remembered choice, then black (#000000)
 RADIUS_PRESET=""       # empty = remembered choice, then default
@@ -137,9 +155,11 @@ WANT_GUI=1
 WANT_WINDOW_MENU=1
 WANT_UPDATE_CHECK=1
 UPDATE_CHECK_EXPLICIT=""
+UPDATE_CHANNEL=""
 ASSUME_YES=0
 DRY_RUN=0
 FORCE=0
+RESET=0
 EXPLICIT_FLAGS=0
 FORCE_INTERACTIVE=0
 
@@ -168,12 +188,12 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --interactive     launch the interactive setup wizard explicitly
     --accent COLOR    accent to build around (default: $ACCENT_DEFAULT, and
                       remembered for later runs). One of: $VALID_ACCENTS
-    --recommended     Core package: the foundation plus six curated optional
+    --recommended     Core package: the foundation plus seven curated optional
                       extensions (the default)
     --full            Complete Experience: every optional piece at once — all
-                      14 extra extensions, plus icons, cursors, OSD and panel-blur-fix
+                      9 extra extensions, plus icons, cursors and OSD
     --extras          alias for --recommended (Core)
-    --all-extras      Complete Experience extension package: all 14 optionals
+    --all-extras      Complete Experience extension package: all 9 optionals
     --no-extras       Minimal package: the foundation only, with no optionals
     --minimal         alias for --no-extras (Minimal)
     --extensions LIST comma-separated extension UUIDs to install instead of a
@@ -183,15 +203,50 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       wizard's per-extension list sends
     --grain N         film grain over blurred surfaces, 0-1. Default is 0
     --no-grain        no grain at all (same as --grain 0, and the default)
+    --glass-style S   the material on the top bar and the dock: frosted (default,
+                      plain blur), liquid (the edges bend what is behind them
+                      like a lens, with a light rim) or vibrant (the colours
+                      behind come through more saturated and a little
+                      brighter), tinted (toward the accent colour) or smoked
+                      (darker and greyer, for white text). Vibrant, tinted
+                      and smoked reach the overview and lock screen too and
+                      leave the dock frosted. Liquid makes the dock blur the
+                      wallpaper rather than the windows passing behind it. Frosted mode only. Remembered
+                      for later runs
+    --liquid-windows  liquid or vibrant behind app windows
+                      too. Window blur turns static: a window blurs the
+                      wallpaper, not the window under it
+    --no-liquid-windows
+                      app windows keep the frosted blur (the default)
+    --fullscreen-blur keep the blur behind a window while it is fullscreen
+    --no-fullscreen-blur
+                      a fullscreen window (a video, a game) drops its blur
+                      and goes opaque until it leaves fullscreen (the default)
+    --panel-maximized-black
+                      turn the top bar black when a window fills the screen (the default)
+    --no-panel-maximized-black
+                      keep the top bar translucent frosted glass even when a window is maximized
     --blur-strength P how far every blur reaches, as a percentage of the tuned
                       radii: 25-200, 100 is the tuned look (remembered)
-    --popup-brightness P
-                      how bright the blur behind menus, Quick Settings and
-                      notification banners comes out, as a percentage of the
-                      backdrop: 50-150, 100 leaves it alone (remembered)
-    --notification-opacity P
-                      how much ground an arriving banner paints over that blur:
-                      10-85 (remembered)
+    --blur-brightness P
+                      how bright every blur comes out, as a percentage of the
+                      tuned brightness: 50-100, 100 is the tuned look (remembered)
+    --window-blur-strength P, --popup-blur-strength P,
+    --panel-blur-strength P, --lockscreen-blur-strength P
+                      one surface's own blur amount, in --blur-strength's unit,
+                      or main to follow it again. popup is menus, Quick
+                      Settings and notifications; panel the top bar;
+                      lockscreen the lock screen and the overview (remembered)
+    --window-brightness P, --popup-brightness P,
+    --panel-brightness P, --lockscreen-brightness P
+                      one surface's own brightness, in --blur-brightness's
+                      unit, or main to follow it again (remembered)
+    --panel-height PX the top bar's height in logical pixels: 24-48, 40 is the
+                      theme's, 32 GNOME's own. Snapped to whole device pixels
+                      at a fractional scale (remembered)
+    --popup-opacity P how opaque popups, menus and notifications are, in
+                      --app-transparency's unit: 70-100, or main (the default)
+                      to follow the app windows (remembered)
     --app-tint-color HEX
                       the colour a translucent app window is darkened toward,
                       e.g. #101820. Default #000000 (remembered)
@@ -206,9 +261,6 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       window,menu,quick-settings,notification,dialog,popup,osd,button
                       (e.g. 30,26,33,20,20,20,12,9999). Each is bounded by what
                       the presets already cover. Overrides --radius-preset
-    --panel-blur-fix  agent that rebuilds Blur My Shell's panel blur on layout change
-                      (default: on when this machine has more than one monitor)
-    --no-panel-blur-fix skip the panel blur rebuild agent
     --icons WHICH     colloid (default), reversal or hatter, either bare to
                       follow --accent or with a colour of its own: colloid-teal,
                       reversal-purple, hatter-slate. Colloid and Hatter take
@@ -230,18 +282,15 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       here. Remembered for later runs
     --osd             minimal pill OSD for volume & brightness (default: on)
     --no-osd          keep stock volume and brightness popup
-    --no-popup-blur   keep flat translucent popups and skip blur behind menus
-    --no-notification-blur
-                      keep flat notification banners and history cards, independently
-                      of --popup-blur
-    --no-bms-git      use Blur My Shell published build (implies --no-popup-blur
-                      and --no-notification-blur)
+    --no-popup-blur   keep flat translucent popups, menus and notifications, and
+                      skip the blur behind them
+    --no-bms-git      use Blur My Shell published build (implies --no-popup-blur)
     --app-transparency LEVEL
                       window transparency with blur: 90% (230, default), 82% (210),
-                      94% (240), or custom 70%-100% (e.g. --app-transparency 90%). Off by default
+                      94% (240), or custom 70%-100% (e.g. --app-transparency 90%)
     --window-opacity LEVEL
                       alias for --app-transparency (e.g. 90%, 82%, 94%, 230, 210, 240)
-    --no-app-transparency keep app windows opaque (default)
+    --no-app-transparency keep app windows opaque
     --app-blur-allow LIST
                       comma-separated wm_class patterns to blur in GTK/GNOME mode,
                       replacing the shipped list (e.g. 'org.gnome.Nautilus,*term*').
@@ -252,6 +301,14 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --deps-only       install the missing command-line dependencies and stop.
                       Needs root, so it is the one step the settings window
                       hands to a terminal rather than running itself
+    --progress-window show the install's progress, then a checklist of what
+                      landed and a log out button, in a window beside this
+                      terminal. Questions are still asked here. On by itself
+                      when the setup wizard started the run
+    --verify          check an existing install (stylesheets, theme, each
+                      extension, icons, pointer,
+                      settings app, login screen) and stop. Exits 1 if any
+                      check fails
     --window-buttons WHICH
                       titlebar buttons: close (close alone) or all (minimize,
                       maximize and close). Left as the system has it unless given
@@ -260,9 +317,9 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       hover), adwaita (always-visible neutral disc), material
                       (solid discs, close filled red) or flat (glyph only, no
                       disc ever). Remembered for later runs
-    --window-blur     blur behind app windows (default: on behind GTK/GNOME apps)
-    --gtk-apps-blur   blur behind GTK / GNOME applications only (Files, Settings, Terminal - default, low CPU)
-    --all-apps-blur   blur behind all application windows (heavy on CPU/GPU)
+    --window-blur     blur behind app windows (default: on behind all apps)
+    --gtk-apps-blur   blur behind GTK / GNOME applications only (Files, Settings, Terminal - low CPU)
+    --all-apps-blur   blur behind all application windows (default, heavy on CPU/GPU)
     --no-window-blur  keep window blur off (opaque windows)
     --glass-mode M    frosted (blur behind windows and popups) or performance
                       (blur shaders disabled, zero GPU overhead, customizable
@@ -271,7 +328,6 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --no-blur         no blur anywhere, opaque surfaces instead of translucent
                       ones, with the rest of the theme intact (best for low-end
                       GPUs or battery saver)
-    --no-rounded-blur skip gnome-rounded-blur library (popup blur falls back to static)
     --gdm             theme the GDM login screen with blurred Aura Glass style (requires sudo)
     --gdm-background PATH
                       set custom background image for GDM (default: blurred wallpaper)
@@ -285,6 +341,10 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --no-update-check skip the daily check for a newer release. The check asks
                       the git remote for its tags and notifies once per release;
                       it never installs anything on its own
+    --update-channel release|latest
+                      what the update check follows on main: release tags
+                      (default), or every commit, with a release still announced
+                      as one. Remembered
     --no-icons        leave the icon theme alone, and keep leaving it alone
     --no-cursors      leave the cursor theme alone, and keep leaving it alone
     --settings-only   retune an existing install and nothing else: reapply the
@@ -293,6 +353,9 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       network and no root. This is what aura-glass-settings runs
     --no-deps         never touch the package manager
     --force           reinstall things that are already present
+    --reset           forget every remembered choice first, so the run (and
+                      the wizard, with --interactive) starts from the defaults.
+                      The old choices are kept in backups/reset-<time>/
     -y, --yes         answer yes to every prompt (non-interactive)
     -n, --dry-run     print what would happen, change nothing
     -h, --help        this
@@ -316,25 +379,63 @@ parse_flags() {
         --accent)        ACCENT="${2:-}"; ACCENT_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --accent=*)      ACCENT="${1#*=}"; ACCENT_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --recommended|--extras)
-                         WANT_EXTRAS=1; EXT_EXTRA=("${EXT_EXTRA_RECOMMENDED[@]}"); EXPLICIT_FLAGS=1; shift ;;
-        --all-extras)    WANT_EXTRAS=1; EXT_EXTRA=("${EXT_EXTRA_ALL[@]}"); EXPLICIT_FLAGS=1; shift ;;
+                         WANT_EXTRAS=1; EXT_EXTRA=("${EXT_EXTRA_RECOMMENDED[@]}"); EXT_PACK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --all-extras)    WANT_EXTRAS=1; EXT_EXTRA=("${EXT_EXTRA_ALL[@]}"); EXT_PACK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-extras|--minimal)
-                         WANT_EXTRAS=0; EXT_EXTRA=(); EXPLICIT_FLAGS=1; shift ;;
-        --extensions)    EXT_LIST="${2:-}"; EXT_LIST_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
-        --extensions=*)  EXT_LIST="${1#*=}"; EXT_LIST_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --full)          WANT_EXTRAS=1; EXT_EXTRA=("${EXT_EXTRA_ALL[@]}"); WANT_ICONS=1; WANT_CURSORS=1
-                         WANT_OSD=1; WANT_PANEL_BLUR_FIX=1; EXPLICIT_FLAGS=1; shift ;;
+                         WANT_EXTRAS=0; EXT_EXTRA=(); EXT_PACK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --extensions)    EXT_LIST="${2:-}"; EXT_LIST_EXPLICIT=1; EXT_PACK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --extensions=*)  EXT_LIST="${1#*=}"; EXT_LIST_EXPLICIT=1; EXT_PACK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --full)          WANT_EXTRAS=1; EXT_EXTRA=("${EXT_EXTRA_ALL[@]}"); EXT_PACK_EXPLICIT=1; WANT_ICONS=1; WANT_CURSORS=1
+                         WANT_OSD=1; OSD_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --grain)         GRAIN="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --grain=*)       GRAIN="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --no-grain)      GRAIN=0; EXPLICIT_FLAGS=1; shift ;;
+        --glass-style)   GLASS_STYLE="${2:-}"; GLASS_STYLE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --glass-style=*) GLASS_STYLE="${1#*=}"; GLASS_STYLE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --liquid-windows)    LIQUID_WINDOWS=1; LIQUID_WINDOWS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-liquid-windows) LIQUID_WINDOWS=0; LIQUID_WINDOWS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --fullscreen-blur)    FULLSCREEN_BLUR=1; FULLSCREEN_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-fullscreen-blur) FULLSCREEN_BLUR=0; FULLSCREEN_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --panel-maximized-black)    PANEL_MAXIMIZED_BLACK=1; PANEL_MAXIMIZED_BLACK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-panel-maximized-black) PANEL_MAXIMIZED_BLACK=0; PANEL_MAXIMIZED_BLACK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --blur-strength) BLUR_STRENGTH="${2:-100}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --blur-strength=*) BLUR_STRENGTH="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --adaptive-blur) ADAPTIVE_BLUR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --adaptive-blur=*) ADAPTIVE_BLUR="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
-        --popup-brightness) POPUP_BRIGHTNESS="${2:-100}"; EXPLICIT_FLAGS=1; shift 2 ;;
-        --popup-brightness=*) POPUP_BRIGHTNESS="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
-        --notification-opacity) NOTIFICATION_OPACITY="${2:-40}"; EXPLICIT_FLAGS=1; shift 2 ;;
-        --notification-opacity=*) NOTIFICATION_OPACITY="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --blur-brightness) BLUR_BRIGHTNESS="${2:-100}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --blur-brightness=*) BLUR_BRIGHTNESS="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --window-blur-strength|--popup-blur-strength|--panel-blur-strength|--lockscreen-blur-strength)
+            _surface="${1#--}"; _surface="${_surface%-blur-strength}"
+            printf -v "$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BLUR_STRENGTH" '%s' "${2:-main}"
+            EXPLICIT_FLAGS=1; shift 2 ;;
+        --window-blur-strength=*|--popup-blur-strength=*|--panel-blur-strength=*|--lockscreen-blur-strength=*)
+            _surface="${1%%=*}"; _surface="${_surface#--}"; _surface="${_surface%-blur-strength}"
+            printf -v "$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BLUR_STRENGTH" '%s' "${1#*=}"
+            EXPLICIT_FLAGS=1; shift ;;
+        --popup-brightness|--panel-brightness|--lockscreen-brightness)
+            _surface="${1#--}"; _surface="${_surface%-brightness}"
+            printf -v "$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS" '%s' "${2:-main}"
+            EXPLICIT_FLAGS=1; shift 2 ;;
+        --popup-brightness=*|--panel-brightness=*|--lockscreen-brightness=*)
+            _surface="${1%%=*}"; _surface="${_surface#--}"; _surface="${_surface%-brightness}"
+            printf -v "$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS" '%s' "${1#*=}"
+            EXPLICIT_FLAGS=1; shift ;;
+        --window-brightness|--app-brightness|--window-blur-brightness)
+            WINDOW_BRIGHTNESS="${2:-main}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --window-brightness=*|--app-brightness=*|--window-blur-brightness=*)
+            WINDOW_BRIGHTNESS="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --panel-height) PANEL_HEIGHT="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --panel-height=*) PANEL_HEIGHT="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --popup-opacity) POPUP_OPACITY="${2:-main}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --popup-opacity=*) POPUP_OPACITY="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        # Retired with Blur My Shell v76, which blurs a notification banner
+        # through the popup component: the banners follow --popup-blur, and
+        # their ground follows --popup-opacity. Still accepted, so a script or
+        # an older settings window that passes one does not stop the run.
+        --notification-opacity) warn "--notification-opacity is retired — banners follow --popup-opacity"; shift 2 ;;
+        --notification-opacity=*) warn "--notification-opacity is retired — banners follow --popup-opacity"; shift ;;
+        --notification-blur|--no-notification-blur)
+                         warn "$1 is retired — notifications follow --popup-blur"; shift ;;
         --app-tint-color) APP_TINT_COLOR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --app-tint-color=*) APP_TINT_COLOR="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --shell-tint-color) SHELL_TINT_COLOR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
@@ -344,8 +445,10 @@ parse_flags() {
         --radius-preset) RADIUS_PRESET="${2:-}"; RADIUS_PRESET_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --radius-preset=*)
                          RADIUS_PRESET="${1#*=}"; RADIUS_PRESET_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --panel-blur-fix)    WANT_PANEL_BLUR_FIX=1; PANEL_BLUR_FIX_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-panel-blur-fix) WANT_PANEL_BLUR_FIX=0; PANEL_BLUR_FIX_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        # Retired with the rebuild service (see remove_panel_blur_unit). Still
+        # accepted, so a script or an older settings window that passes one
+        # does not stop the run; there is nothing left for either to choose.
+        --panel-blur-fix|--no-panel-blur-fix) shift ;;
         --cursors)       CURSORS="${2:-}"; CURSORS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --cursors=*)     CURSORS="${1#*=}"; CURSORS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --cursor-size)   CURSOR_SIZE="${2:-}"; CURSOR_SIZE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
@@ -354,19 +457,14 @@ parse_flags() {
         --font=*)        FONT="${1#*=}"; FONT_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --icons)         ICONS="${2:-}"; ICONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --icons=*)       ICONS="${1#*=}"; ICONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --osd)           WANT_OSD=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-osd)        WANT_OSD=0; EXPLICIT_FLAGS=1; shift ;;
-        --bms-git)       WANT_BMS_GIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-bms-git)    WANT_BMS_GIT=0; WANT_POPUP_BLUR=0; WANT_NOTIFICATION_BLUR=0
-                         POPUP_BLUR_EXPLICIT=1; NOTIFICATION_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --popup-blur)    WANT_POPUP_BLUR=1; WANT_BMS_GIT=1
+        --osd)           WANT_OSD=1; OSD_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-osd)        WANT_OSD=0; OSD_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --bms-git)       WANT_BMS_GIT=1; BMS_GIT_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-bms-git)    WANT_BMS_GIT=0; BMS_GIT_EXPLICIT=1; WANT_POPUP_BLUR=0
+                         POPUP_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --popup-blur)    WANT_POPUP_BLUR=1; WANT_BMS_GIT=1; BMS_GIT_EXPLICIT=1
                          POPUP_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-popup-blur) WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --notification-blur)
-                         WANT_NOTIFICATION_BLUR=1; WANT_BMS_GIT=1
-                         NOTIFICATION_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-notification-blur)
-                         WANT_NOTIFICATION_BLUR=0; NOTIFICATION_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --glass-mode)    GLASS_MODE="${2:-}"; GLASS_MODE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --glass-mode=*)  GLASS_MODE="${1#*=}"; GLASS_MODE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --blur)          WANT_BLUR=1; BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
@@ -385,11 +483,12 @@ parse_flags() {
         --window-blur)   WANT_WINDOW_BLUR=1; WINDOW_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-window-blur) WANT_WINDOW_BLUR=0; WINDOW_BLUR_EXPLICIT=1; APP_BLUR_SCOPE="none"; APP_BLUR_SCOPE_EXPLICIT=1; [ -z "$APP_TRANSPARENCY_EXPLICIT" ] && APP_TRANSPARENCY=0.95; EXPLICIT_FLAGS=1; shift ;;
         --no-blur)       WANT_BLUR=0; BLUR_EXPLICIT=1; WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1
-                         WANT_NOTIFICATION_BLUR=0; NOTIFICATION_BLUR_EXPLICIT=1
                          WANT_WINDOW_BLUR=0; WINDOW_BLUR_EXPLICIT=1
-                         WANT_ROUNDED_BLUR=0; EXPLICIT_FLAGS=1; shift ;;
-        --rounded-blur)      WANT_ROUNDED_BLUR=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-rounded-blur)   WANT_ROUNDED_BLUR=0; EXPLICIT_FLAGS=1; shift ;;
+                         EXPLICIT_FLAGS=1; shift ;;
+        # Retired with gnome-rounded-blur, which Blur My Shell v76 no longer
+        # loads: it rounds its blur itself. Still accepted, so a script or an
+        # older settings window that passes one does not stop the run.
+        --rounded-blur|--no-rounded-blur) shift ;;
         --app-transparency|--window-opacity|--window-transparency)
                          APP_TRANSPARENCY="${2:-$TOKEN_APP_TRANSPARENCY_SHIPPED}"; APP_TRANSPARENCY_EXPLICIT=1; EXPLICIT_FLAGS=1; APP_OPACITY_EXPLICIT=1; shift 2 ;;
         --app-transparency=*|--window-opacity=*|--window-transparency=*)
@@ -404,10 +503,16 @@ parse_flags() {
         --gdm-background=*) GDM_BG="${1#*=}"; WANT_GDM=1; GDM_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --gui)           WANT_GUI=1; EXPLICIT_FLAGS=1; shift ;;
         --no-gui)        WANT_GUI=0; EXPLICIT_FLAGS=1; shift ;;
-        --window-menu)   WANT_WINDOW_MENU=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-window-menu) WANT_WINDOW_MENU=0; EXPLICIT_FLAGS=1; shift ;;
+        --window-menu)   WANT_WINDOW_MENU=1; WINDOW_MENU_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-window-menu) WANT_WINDOW_MENU=0; WINDOW_MENU_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --update-check)  WANT_UPDATE_CHECK=1; UPDATE_CHECK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-update-check) WANT_UPDATE_CHECK=0; UPDATE_CHECK_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --update-channel)
+            case "${2:-}" in
+                release|latest) UPDATE_CHANNEL="$2" ;;
+                *) die "--update-channel takes release or latest" ;;
+            esac
+            EXPLICIT_FLAGS=1; shift 2 ;;
         --no-icons)      WANT_ICONS=0; EXPLICIT_FLAGS=1; shift ;;
         --no-cursors)    WANT_CURSORS=0; EXPLICIT_FLAGS=1; shift ;;
         --no-wm-buttons|--wm-buttons) # Deprecated, and a no-op. --window-buttons
@@ -422,8 +527,14 @@ parse_flags() {
         --incremental)   INCREMENTAL=1; EXPLICIT_FLAGS=1; shift ;;
         --plan-json)     PLAN_JSON=1; EXPLICIT_FLAGS=1; shift ;;
         --deps-only)     DEPS_ONLY=1; EXPLICIT_FLAGS=1; shift ;;
+        --progress-window) PROGRESS_WINDOW=1; shift ;;
+        --verify)        VERIFY_ONLY=1; WANT_DEPS=0; EXPLICIT_FLAGS=1; shift ;;
+        # The progress window's "Check again", so the results land in the
+        # events file it is already reading. Not in --help: nothing else needs it.
+        --progress-dir)  VERIFY_DIR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --no-deps)       WANT_DEPS=0; EXPLICIT_FLAGS=1; shift ;;
         --force)         FORCE=1; EXPLICIT_FLAGS=1; shift ;;
+        --reset)         RESET=1; EXPLICIT_FLAGS=1; shift ;;
         -y|--yes)        ASSUME_YES=1; EXPLICIT_FLAGS=1; shift ;;
         -n|--dry-run)    DRY_RUN=1; EXPLICIT_FLAGS=1; shift ;;
         -h|--help)       usage; exit 0 ;;
@@ -438,8 +549,14 @@ parse_flags "$@"
 # the font, the transparency and the glass mode are all resolved from it. An
 # install made under the old name keeps its settings somewhere else entirely,
 # and reading the new path first would answer every one of those from defaults.
-# This is also the earliest point at which DRY_RUN is known.
+# This is also the earliest point at which DRY_RUN is known. The solid-era
+# migration goes straight after, for the same reason: it rewrites the glass-mode
+# memo that the resolution below reads.
 migrate_legacy_names
+migrate_solid_era
+# After the migrations, which may rewrite memos this then moves aside, and
+# before anything below reads one.
+reset_remembered_choices
 
 # Resolve remembered accent or default
 if [ -z "$ACCENT" ] && [ -r "$CONF_DIR/accent" ]; then
@@ -472,7 +589,7 @@ if { [ "$EXPLICIT_FLAGS" = 0 ] || [ "$FORCE_INTERACTIVE" = 1 ]; } && [ "$ASSUME_
             ASSUME_YES=1
             FROM_GUI_WIZARD=1
             ;;
-        1) printf '\n  Installation cancelled.\n\n'; exit 0 ;;
+        1) restore_reset_choices; printf '\n  Installation cancelled.\n\n'; exit 0 ;;
     esac
 fi
 
@@ -508,13 +625,14 @@ EOF
             ;;
         *)
             WANT_QUICK_START=1
-            # The recommended pair, stated explicitly the way the GUI wizard's
-            # Answers() defaults do — install.sh's own flagless default is
-            # Colloid and Adwaita (ICONS/CURSORS below), which is a different,
-            # older answer than the one this project actually recommends now.
+            # The recommended pair, Reversal and Moga, stated explicitly the way
+            # the GUI wizard's Answers() defaults do. install.sh's own flagless
+            # default stays Colloid and Adwaita (ICONS/CURSORS below) on
+            # purpose: a bare ./install.sh in a script should not start
+            # fetching packs it never asked for (KI-05).
             ICONS="reversal"
             WANT_ICONS=1
-            CURSORS="aosp"
+            CURSORS="moga"
             WANT_CURSORS=1
             WANT_OSD=1
             # Every extension: the same array --all-extras and the GUI
@@ -532,12 +650,26 @@ EOF
                     gdm_note=", login screen themed"
                 fi
             fi
-            # Blur mode, scope and transparency are left untouched here: the
-            # top-of-script defaults (WANT_BLUR=1, APP_BLUR_SCOPE=gtk) and the
-            # remembered-value resolution below (APP_TRANSPARENCY, further
-            # down this script) already land on frosted glass at 90% on a
-            # fresh install with nothing overriding them — which is the same
-            # answer Steps 1-2 below would collect by hand.
+            # The window's Complete Experience states every answer
+            # (Answers.best: frosted, all apps, 90%, popup blur, 20px
+            # pointer), so a re-run on a machine that remembers something
+            # else lands on the same look from either wizard. These are the
+            # same answers Steps 1-2 and 3 below default to.
+            GLASS_MODE="frosted"
+            GLASS_MODE_EXPLICIT=1
+            WANT_BLUR=1
+            WANT_POPUP_BLUR=1
+            POPUP_BLUR_EXPLICIT=1
+            WANT_WINDOW_BLUR=1
+            WINDOW_BLUR_EXPLICIT=1
+            APP_BLUR_SCOPE="all"
+            APP_BLUR_SCOPE_EXPLICIT=1
+            APP_TRANSPARENCY=0.90
+            APP_OPACITY=230
+            APP_TRANSPARENCY_EXPLICIT=1
+            APP_OPACITY_EXPLICIT=1
+            CURSOR_SIZE="20"
+            CURSOR_SIZE_EXPLICIT=1
             printf '  %s✓%s Complete Experience selected — recommended look, every extension%s\n\n' \
                 "$C_GRN" "$C_OFF" "$gdm_note"
             ;;
@@ -572,16 +704,34 @@ EOF
     esac
     printf '  %s✓%s Accent set to %s%s%s\n\n' "$C_GRN" "$C_OFF" "$C_BLD" "$ACCENT" "$C_OFF"
 
-    # 2. Blur & Transparency Options. Frosted glass is the default and only mode
-    # offered during setup; Performance mode can be selected later in the
-    # Aura Glass settings app if desired.
-    GLASS_MODE="frosted"
-    GLASS_MODE_EXPLICIT=1
-    WANT_BLUR=1
+    # 2. Blur & Transparency Options. The same first question as the GTK
+    # wizard's page_blur: frosted glass, or performance. Performance goes out
+    # exactly as the window sends it, a lone --no-blur (which install.sh
+    # rejects beside any other blur flag by design), and skips the detail
+    # questions the way the window skips its blur-details page.
     printf '%sStep 2: Blur & Transparency Options%s\n' "$C_BLD" "$C_OFF"
+    printf '  Frosted glass, or performance:\n'
+    printf '    %s[1]%s Frosted glass %s[Default — blur behind the top bar, popups, menus and the volume pill]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[2]%s Performance %s[No blur anywhere — lighter on older GPUs and on battery]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '  Choice [1-2, default 1]: '
+    read -r ans_mode || ans_mode="1"
+    case "$ans_mode" in
+        2|performance)
+            parse_flags --no-blur
+            printf '  %s✓%s Performance selected — no blur anywhere\n\n' "$C_GRN" "$C_OFF"
+            ;;
+        *)
+            GLASS_MODE="frosted"
+            GLASS_MODE_EXPLICIT=1
+            WANT_BLUR=1
+            printf '  %s✓%s Frosted glass selected\n\n' "$C_GRN" "$C_OFF"
+            ;;
+    esac
+
+    if [ "$WANT_BLUR" = 1 ]; then
 
     # Question 1: Popup & Menu blur (default: Yes)
-    printf '  Enable blur behind popups, menus & top bar? %s[Y/n, default: Y]%s: ' "$C_DIM" "$C_OFF"
+    printf '  Enable blur behind popups, menus, notifications & top bar? %s[Y/n, default: Y]%s: ' "$C_DIM" "$C_OFF"
     read -r ans_popup || ans_popup="y"
     case "${ans_popup,,}" in
         n|no)
@@ -598,8 +748,8 @@ EOF
 
     # Question 2: App window blur target scope
     printf '\n  App Window Blur Target:\n'
-    printf '    %s[1]%s GTK / GNOME Applications only %s[Default — Files, Settings, Terminal (Low CPU)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '    %s[2]%s All Applications %s[Heavy — blurs browsers, Electron, Discord]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[1]%s All Applications %s[Default — blurs browsers, Electron, Discord too]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[2]%s GTK / GNOME Applications only %s[Files, Settings, Terminal (Low CPU)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
     printf '    %s[3]%s No blur on windows %s[95%% subtle translucency, crisp text, 0 CPU overhead]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
     printf '  Choice [1-3, default: 1]: '
     read -r ans_scope || ans_scope="1"
@@ -613,19 +763,19 @@ EOF
             APP_OPACITY=255
             printf '  %s✓%s Window blur disabled; app transparency set to 95%% (readable text)\n\n' "$C_GRN" "$C_OFF"
             ;;
-        2|all|every)
-            WANT_WINDOW_BLUR=1
-            WINDOW_BLUR_EXPLICIT=1
-            APP_BLUR_SCOPE="all"
-            APP_BLUR_SCOPE_EXPLICIT=1
-            printf '  %s✓%s Window blur enabled for ALL applications (Heavy CPU/GPU)\n' "$C_GRN" "$C_OFF"
-            ;;
-        *)
+        2|gtk|gnome)
             WANT_WINDOW_BLUR=1
             WINDOW_BLUR_EXPLICIT=1
             APP_BLUR_SCOPE="gtk"
             APP_BLUR_SCOPE_EXPLICIT=1
             printf '  %s✓%s Window blur enabled for GTK / GNOME applications only\n' "$C_GRN" "$C_OFF"
+            ;;
+        *)
+            WANT_WINDOW_BLUR=1
+            WINDOW_BLUR_EXPLICIT=1
+            APP_BLUR_SCOPE="all"
+            APP_BLUR_SCOPE_EXPLICIT=1
+            printf '  %s✓%s Window blur enabled for ALL applications\n\n' "$C_GRN" "$C_OFF"
             ;;
     esac
 
@@ -654,27 +804,34 @@ EOF
                 ;;
         esac
     fi
+    # An answer, the same as the window wizard's --app-transparency flag: left
+    # unmarked, load_glass_mode_memos would replace it with the drawer's level.
+    if [ -n "${APP_TRANSPARENCY:-}" ]; then
+        APP_TRANSPARENCY_EXPLICIT=1
+        APP_OPACITY_EXPLICIT=1
+    fi
+    fi   # WANT_BLUR: the detail questions are Frosted's
 
     # 3. Icons & Cursors
     printf '%sStep 3: Icons, Cursors & Font%s\n' "$C_BLD" "$C_OFF"
     printf '  Icon Theme:\n'
-    printf '    %s[1]%s Colloid %s[Default — matches accent (%s)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$ACCENT" "$C_OFF"
-    printf '    %s[2]%s Reversal %s[macOS-style circular icons]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '    %s[3]%s Hatter %s[Rounded squares, matches accent (%s)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$ACCENT" "$C_OFF"
+    # Same options, order and recommendation as the GTK wizard's page_icons.
+    printf '    %s[1]%s Reversal %s[Recommended — round, flatter, a colour of its own]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[2]%s Hatter %s[Rounded squares, matches accent (%s)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$ACCENT" "$C_OFF"
+    printf '    %s[3]%s Colloid %s[Matches accent (%s)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$ACCENT" "$C_OFF"
     printf '    %s[4]%s Default %s[Your current icon theme, left alone]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
     printf '  Choice [1-4, default 1]: '
     read -r ans_icon || ans_icon="1"
     case "$ans_icon" in
-        2|reversal)
-            # Bare, so accent_to_reversal picks a colour Reversal actually ships.
-            # "reversal-$ACCENT" was three broken answers out of nine here.
-            ICONS="reversal"
+        3|colloid)
+            ICONS="colloid"
             WANT_ICONS=1
-            printf '  %s✓%s Reversal icon theme selected (%s)\n' "$C_GRN" "$C_OFF" "$ACCENT"
+            printf '  %s✓%s Colloid icon theme selected\n' "$C_GRN" "$C_OFF"
             ;;
-        3|hatter)
-            # Bare for the same reason, though Hatter is the easy case: it has a
-            # variant for all nine accents under the accents' own names.
+        2|hatter)
+            # Bare for the same reason as Reversal below, though Hatter is the
+            # easy case: it has a variant for all nine accents under the
+            # accents' own names.
             ICONS="hatter"
             WANT_ICONS=1
             printf '  %s✓%s Hatter icon theme selected (%s)\n' "$C_GRN" "$C_OFF" "$ACCENT"
@@ -684,38 +841,47 @@ EOF
             printf '  %s✓%s Icons left alone — nothing here writes the icon theme\n' "$C_GRN" "$C_OFF"
             ;;
         *)
-            ICONS="colloid"
+            # Bare, so accent_to_reversal picks a colour Reversal actually ships.
+            # "reversal-$ACCENT" was three broken answers out of nine here.
+            ICONS="reversal"
             WANT_ICONS=1
-            printf '  %s✓%s Colloid icon theme selected\n' "$C_GRN" "$C_OFF"
+            printf '  %s✓%s Reversal icon theme selected (%s)\n' "$C_GRN" "$C_OFF" "$ACCENT"
             ;;
     esac
 
     printf '  Cursor Theme:\n'
-    printf '    %s[1]%s Stock Adwaita %s[Default — sharp and crisp]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '    %s[2]%s MacTahoe %s[macOS Tahoe style cursors]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '    %s[3]%s AOSP %s[Android pointers, scalable with a soft shadow]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '    %s[4]%s Default %s[Your current cursor theme, left alone]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '  Choice [1-4, default 1]: '
+    # Same options, order and recommendation as the GTK wizard's page_cursors.
+    printf '    %s[1]%s Moga Neon %s[Recommended — accent-matched neon pointers]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[2]%s AOSP %s[Android pointers, scalable with a soft shadow]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[3]%s Adwaita %s[GNOME'"'"'s own pointers, sharp at any size]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[4]%s MacTahoe %s[macOS Tahoe style pointers]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[5]%s Default %s[Your current cursor theme, left alone]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '  Choice [1-5, default 1]: '
     read -r ans_cursor || ans_cursor="1"
     case "$ans_cursor" in
-        2|mactahoe)
-            CURSORS="mactahoe"
-            WANT_CURSORS=1
-            printf '  %s✓%s MacTahoe cursors selected\n\n' "$C_GRN" "$C_OFF"
-            ;;
-        3|aosp)
+        2|aosp)
             CURSORS="aosp"
             WANT_CURSORS=1
             printf '  %s✓%s AOSP cursors selected\n\n' "$C_GRN" "$C_OFF"
             ;;
-        4|default|keep|none)
+        3|adwaita)
+            CURSORS="adwaita"
+            WANT_CURSORS=1
+            printf '  %s✓%s Adwaita cursors selected\n' "$C_GRN" "$C_OFF"
+            ;;
+        4|mactahoe)
+            CURSORS="mactahoe"
+            WANT_CURSORS=1
+            printf '  %s✓%s MacTahoe cursors selected\n\n' "$C_GRN" "$C_OFF"
+            ;;
+        5|default|keep|none)
             WANT_CURSORS=0
             printf '  %s✓%s Pointer left alone — nothing here writes the cursor theme\n\n' "$C_GRN" "$C_OFF"
             ;;
         *)
-            CURSORS="adwaita"
+            CURSORS="moga"
             WANT_CURSORS=1
-            printf '  %s✓%s Adwaita cursors selected\n' "$C_GRN" "$C_OFF"
+            printf '  %s✓%s Moga Neon cursors selected (%s)\n' "$C_GRN" "$C_OFF" "$ACCENT"
             ;;
     esac
 
@@ -781,54 +947,24 @@ EOF
         *)    WANT_OSD=1; printf '  %s✓%s Custom OSD pill bar enabled\n' "$C_GRN" "$C_OFF" ;;
     esac
 
+    # Same options, order and recommendation as the GTK wizard's page_extensions:
+    # the whole optional set, or none of it. The window has no middle tier and
+    # no per-extension list, so neither does this.
     printf '\n  Extension Package:\n'
-    printf '    %s[1]%s Core %s[Default — foundation plus 6 curated extensions]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '        • AppIndicator Support (System tray icons for Steam, Discord, etc.)\n'
-    printf '        • Magic Lamp Effect (macOS Genie window minimize effect)\n'
-    printf '        • Tiling Assistant (Window snap assist & 2x2 quarter tiling)\n'
-    printf '        • Hot Edge (Overview/dock trigger by touching bottom edge)\n'
-    printf '        • Kiwi Menu (macOS-style Applications menu in top bar)\n'
-    printf '        • Copyous (Modern clipboard history manager)\n'
-    printf '    %s[2]%s Complete Experience %s[Foundation plus all 8 optional extensions]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '    %s[3]%s Custom Selection %s[Pick extensions individually]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '    %s[4]%s Minimal %s[Foundation only — no optional extensions]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
-    printf '  Choice [1-4, default 1]: '
+    printf '    %s[1]%s Full Experience %s[Recommended — foundation plus all optional extensions (tray icons, tiling, effects, clipboard)]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '    %s[2]%s Minimal %s[Foundation only (blur, panel & user themes) — no optional extensions]%s\n' "$C_BLD" "$C_OFF" "$C_DIM" "$C_OFF"
+    printf '  Choice [1-2, default 1]: '
     read -r ans_pkg || ans_pkg="1"
     case "$ans_pkg" in
-        2|full|all)
-            WANT_EXTRAS=1
-            EXT_EXTRA=("${EXT_EXTRA_ALL[@]}")
-            printf '  %s✓%s Complete Experience selected (8 optional extensions)\n\n' "$C_GRN" "$C_OFF"
-            ;;
-        3|custom)
-            WANT_EXTRAS=1
-            EXT_EXTRA=()
-            printf '\n  %sSelect individual extensions:%s\n' "$C_BLD" "$C_OFF"
-            for u in "${EXT_EXTRA_ALL[@]}"; do
-                # Pre-select recommended as default yes, others as default no
-                is_rec=0 def_hint="[y/N]" def_val="n"
-                for r in "${EXT_EXTRA_RECOMMENDED[@]}"; do
-                    if [ "$r" = "$u" ]; then is_rec=1; def_hint="[Y/n]"; def_val="y"; break; fi
-                done
-                printf '    Install %s %s? ' "$(ext_description "$u")" "$def_hint"
-                read -r ans_ext || ans_ext="$def_val"
-                [ -z "$ans_ext" ] && ans_ext="$def_val"
-                case "${ans_ext,,}" in
-                    y|yes) EXT_EXTRA+=("$u"); printf '      %s+ added%s\n' "$C_GRN" "$C_OFF" ;;
-                    *)     printf '      %s- skipped%s\n' "$C_DIM" "$C_OFF" ;;
-                esac
-            done
-            printf '  %s✓%s %d optional extensions selected\n\n' "$C_GRN" "$C_OFF" "${#EXT_EXTRA[@]}"
-            ;;
-        4|minimal|none)
+        2|minimal|none)
             WANT_EXTRAS=0
             EXT_EXTRA=()
             printf '  %s✓%s Minimal selected — foundation only\n\n' "$C_GRN" "$C_OFF"
             ;;
         *)
             WANT_EXTRAS=1
-            EXT_EXTRA=("${EXT_EXTRA_RECOMMENDED[@]}")
-            printf '  %s✓%s Core selected (6 curated optional extensions)\n\n' "$C_GRN" "$C_OFF"
+            EXT_EXTRA=("${EXT_EXTRA_ALL[@]}")
+            printf '  %s✓%s Full Experience selected (%d optional extensions)\n\n' "$C_GRN" "$C_OFF" "${#EXT_EXTRA[@]}"
             ;;
     esac
 
@@ -867,17 +1003,15 @@ EOF
 
     # 7. Summary & Confirmation
     blur_desc="Frosted Glass"
-    [ "$WANT_BLUR" = 0 ] && blur_desc="Solid (No blur)"
+    [ "$WANT_BLUR" = 0 ] && blur_desc="Performance (No blur)"
     popup_desc="Enabled"
     [ "$WANT_POPUP_BLUR" = 0 ] && popup_desc="Disabled (Flat)"
-    notification_desc="Enabled"
-    [ "$WANT_NOTIFICATION_BLUR" = 0 ] && notification_desc="Disabled (Flat)"
     win_desc="GTK / GNOME Applications only (Low CPU)"
     [ "$APP_BLUR_SCOPE" = "all" ] && win_desc="All Applications (Heavy)"
     [ "$WANT_WINDOW_BLUR" = 0 ] && win_desc="Disabled (Opaque)"
     icon_desc="Colloid ($ACCENT)"
     [ "$WANT_ICONS" = 0 ] && icon_desc="Default (left alone)"
-    [[ "$ICONS" =~ ^reversal ]] && icon_desc="$ICONS"
+    [ -n "$ICONS" ] && [ "$ICONS" != colloid ] && icon_desc="$ICONS"
     cursor_desc="$CURSORS"
     [ "$WANT_CURSORS" = 0 ] && cursor_desc="Default (left alone)"
     cursor_size_desc="${CURSOR_SIZE}px"
@@ -907,7 +1041,6 @@ ${C_BLD}================ Configuration Summary ================${C_OFF}
   ${C_BLD}Accent Color:${C_OFF}        $ACCENT
   ${C_BLD}Blur Mode:${C_OFF}           $blur_desc
   ${C_BLD}Popup Blur:${C_OFF}          $popup_desc
-  ${C_BLD}Notification Blur:${C_OFF}   $notification_desc
   ${C_BLD}Window Blur:${C_OFF}         $win_desc
   ${C_BLD}App Translucency:${C_OFF}    $trans_desc
   ${C_BLD}Icon Theme:${C_OFF}          $icon_desc
@@ -923,14 +1056,67 @@ ${C_BLD}=======================================================${C_OFF}
 
 EOF
     if ! confirm "Proceed with installation?" 1; then
+        restore_reset_choices
         printf '\n  Installation cancelled.\n\n'
         exit 0
     fi
 fi
 
+# A wizard that ran has asked about the pack and the OSD, so its answer stands
+# even when it sent no flag for it (the window's default pack is "no flag").
+if [ "$WIZARD_RC" = 0 ] || [ "$WIZARD_RC" = 2 ]; then
+    EXT_PACK_EXPLICIT=1
+    OSD_EXPLICIT=1
+fi
+
+# Choices that no wizard re-asks on an update or a full reinstall (--gui,
+# --force --gui --yes): a typed flag has already filled the variable and its
+# *_EXPLICIT marker, so the memo is only read when the run was given neither.
+
+if [ -z "$EXT_PACK_EXPLICIT" ] && [ -r "$CONF_DIR/extension-pack" ]; then
+    # Unknown UUIDs are dropped, not fatal: a pack remembered by an older
+    # release may name an extension the catalogue has since retired.
+    EXT_EXTRA=()
+    while IFS= read -r ext_uuid; do
+        case " ${EXT_EXTRA_ALL[*]} " in
+            *" $ext_uuid "*) [ -n "$ext_uuid" ] && EXT_EXTRA+=("$ext_uuid") ;;
+        esac
+    done < <(tr ',' '\n' < "$CONF_DIR/extension-pack" 2>/dev/null || true)
+    # Recommended extensions the pack was never offered (see
+    # EXT_EXTRA_ADDED_LATER) join it, so an update installs them. A Minimal
+    # pack stays Minimal.
+    if [ "${#EXT_EXTRA[@]}" -gt 0 ]; then
+        if [ -r "$CONF_DIR/extension-catalog" ]; then
+            ext_seen=" $(tr ',' ' ' < "$CONF_DIR/extension-catalog") "
+        else
+            ext_seen=" ${EXT_EXTRA_ALL[*]} "
+            for ext_uuid in "${EXT_EXTRA_ADDED_LATER[@]}"; do
+                ext_seen="${ext_seen/ $ext_uuid / }"
+            done
+        fi
+        for ext_uuid in "${EXT_EXTRA_RECOMMENDED[@]}"; do
+            case "$ext_seen" in *" $ext_uuid "*) continue ;; esac
+            case " ${EXT_EXTRA[*]} " in *" $ext_uuid "*) continue ;; esac
+            EXT_EXTRA+=("$ext_uuid")
+        done
+    fi
+    if [ "${#EXT_EXTRA[@]}" -eq 0 ]; then WANT_EXTRAS=0; else WANT_EXTRAS=1; fi
+fi
+if [ -z "$OSD_EXPLICIT" ] && [ "$(cat "$CONF_DIR/osd" 2>/dev/null || true)" = 0 ]; then
+    WANT_OSD=0
+fi
+# window-menu is written by install_aura_ext and read live by the helper.
+if [ -z "$WINDOW_MENU_EXPLICIT" ] && [ "$(cat "$CONF_DIR/window-menu" 2>/dev/null || true)" = 0 ]; then
+    WANT_WINDOW_MENU=0
+fi
+# bms-source is written by install_bms: "ego" is --no-bms-git having been used.
+if [ -z "$BMS_GIT_EXPLICIT" ] && [ "$(cat "$CONF_DIR/bms-source" 2>/dev/null || true)" = ego ]; then
+    WANT_BMS_GIT=0
+fi
+
 # --extensions replaces the pack with a list of your own, which is what the setup
 # wizard's per-extension switches send: a pack name cannot say "the recommended
-# six, but not the magic lamp".
+# six, but not the audio panel".
 #
 # Every UUID is checked against what --all-extras would install rather than taken
 # on trust. A misspelled one would otherwise be looked for on the extensions site,
@@ -1014,14 +1200,13 @@ case " $VALID_FONTS " in
     *) die "unknown --font '$FONT' — pick one of: $VALID_FONTS" ;;
 esac
 
-resolve_glass_mode
-apply_glass_mode
-
-# This is deliberately private to the adaptive worker.  It resolves the same
-# normal memo/full-preset answer that apply_blur_strength uses, then asks that
-# existing writer for a temporary value.  The writer guard in steps-dconf.sh
-# keeps either transition out of blur-strength, which remains the user's
-# normal baseline for the next restore and for every ordinary install.
+# This is deliberately private to the adaptive worker. It is transient, so it
+# writes no memo and no drawer (remembering() is false), but it resolves like
+# the mode switch it stands in for: "active" is a retune to performance and
+# "restore" a retune to whatever mode is remembered. Everything downstream,
+# the sheets, the drawer's tints and level, the keys a mode owns, then comes
+# out the same as the app's Glass mode switch rather than from a second,
+# smaller copy of it (KI-25).
 if [ -n "$ADAPTIVE_BLUR" ]; then
     if [ "$SETTINGS_ONLY" != 1 ] || [ "$INCREMENTAL" != 1 ]; then
         die "--adaptive-blur requires --settings-only --incremental"
@@ -1030,12 +1215,36 @@ if [ -n "$ADAPTIVE_BLUR" ]; then
         active|restore) ;;
         *) die "--adaptive-blur wants active or restore" ;;
     esac
+    if [ "$ADAPTIVE_BLUR" = active ]; then
+        GLASS_MODE=performance
+        GLASS_MODE_EXPLICIT=1
+    fi
 fi
 
-if [ -z "$ADAPTIVE_BLUR" ]; then
-    seed_glass_mode
-    load_glass_mode_memos
+resolve_glass_mode
+apply_glass_mode
+
+# A dry run seeds and reads a scratch copy of the drawers (see modes_root
+# in lib/steps-modes.sh), so it resolves like the real run without writing
+# modes/ into $CONF_DIR. The adaptive transition is the same case: it resolves
+# against the drawers but must not create or reseed one. AURA_GLASS_DRY_MODES
+# names a drawer directory to use instead and keep: tools/check-glass-modes.sh
+# points it at its fixture so it can assert on what seeding wrote, across
+# several dry runs.
+MODES_ROOT=""
+if [ "$DRY_RUN" = 1 ] || [ -n "$ADAPTIVE_BLUR" ]; then
+    if [ "$DRY_RUN" = 1 ] && [ -n "${AURA_GLASS_DRY_MODES:-}" ]; then
+        MODES_ROOT="$AURA_GLASS_DRY_MODES"
+    else
+        MODES_ROOT="$(mktemp -d)"
+        add_exit_trap 'rm -rf "$MODES_ROOT"'
+        if [ -d "$CONF_DIR/modes" ]; then
+            cp -a "$CONF_DIR/modes/." "$MODES_ROOT/"
+        fi
+    fi
 fi
+seed_glass_mode
+load_glass_mode_memos
 
 if [ "${WANT_BLUR:-1}" = 0 ]; then
     if [ "${GLASS_MODE:-}" = performance ]; then
@@ -1077,7 +1286,37 @@ fi
 if [ -z "$APP_BLUR_SCOPE_EXPLICIT" ] && [ -r "$CONF_DIR/app-blur-scope" ]; then
     APP_BLUR_SCOPE="$(cat "$CONF_DIR/app-blur-scope" 2>/dev/null || true)"
 fi
-APP_BLUR_SCOPE="${APP_BLUR_SCOPE:-gtk}"
+APP_BLUR_SCOPE="${APP_BLUR_SCOPE:-all}"
+
+# A typed blur, brightness, popup opacity or top bar height outside its bounds fails here,
+# before anything is written, like --radius-preset below. A remembered one is
+# only warned about where it is read (resolve_blur_pipelines).
+_typed_percent() {  # FLAG VALUE LOW HIGH [main]
+    case "$2" in
+        main) [ "${5:-}" = main ] && return 0 ;;
+        ''|*[!0-9]*) ;;
+        *) [ "$2" -ge "$3" ] && [ "$2" -le "$4" ] && return 0 ;;
+    esac
+    die "$1 wants ${3}-${4}${5:+ or main}, got '$2'"
+}
+for _flag in "${TYPED_FLAGS[@]}"; do
+    case "${_flag%%=*}" in
+        --blur-strength) _typed_percent "$_flag" "$BLUR_STRENGTH" "$BLUR_STRENGTH_MIN" "$BLUR_STRENGTH_MAX" ;;
+        --blur-brightness) _typed_percent "$_flag" "$BLUR_BRIGHTNESS" "$BLUR_BRIGHTNESS_MIN" "$BLUR_BRIGHTNESS_MAX" ;;
+        --popup-opacity) _typed_percent "$_flag" "$POPUP_OPACITY" "$POPUP_OPACITY_MIN" "$POPUP_OPACITY_MAX" main ;;
+        --panel-height) _typed_percent "$_flag" "$PANEL_HEIGHT" "$PANEL_HEIGHT_MIN" "$PANEL_HEIGHT_MAX" ;;
+        --*-blur-strength)
+            _surface="${_flag%%=*}"; _surface="${_surface#--}"; _surface="${_surface%-blur-strength}"
+            _var="$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BLUR_STRENGTH"
+            _typed_percent "$_flag" "${!_var}" "$BLUR_STRENGTH_MIN" "$BLUR_STRENGTH_MAX" main ;;
+        --window-brightness|--app-brightness|--window-blur-brightness)
+            _typed_percent "$_flag" "$WINDOW_BRIGHTNESS" "$BLUR_BRIGHTNESS_MIN" "$BLUR_BRIGHTNESS_MAX" main ;;
+        --popup-brightness|--panel-brightness|--lockscreen-brightness)
+            _surface="${_flag%%=*}"; _surface="${_surface#--}"; _surface="${_surface%-brightness}"
+            _var="$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS"
+            _typed_percent "$_flag" "${!_var}" "$BLUR_BRIGHTNESS_MIN" "$BLUR_BRIGHTNESS_MAX" main ;;
+    esac
+done
 
 # No default: empty means the key is not ours to write. apply_window_buttons
 # reads the memo itself, so this only has to validate what a flag asked for —
@@ -1099,22 +1338,17 @@ if [ -n "$TITLEBUTTON_STYLE_EXPLICIT" ]; then
     esac
 fi
 
+# Validated here for the same reason; apply_glass_style reads the memo itself.
+if [ -n "$GLASS_STYLE_EXPLICIT" ]; then
+    case " $VALID_GLASS_STYLES " in
+        *" $GLASS_STYLE "*) ;;
+        *) die "unknown --glass-style '$GLASS_STYLE' — pick one of: $VALID_GLASS_STYLES" ;;
+    esac
+fi
+
 # Asking for eight values of your own is asking for the preset to be `custom`.
 # One flag decides both so they cannot be remembered disagreeing with each other.
 [ -n "$RADIUS_CUSTOM_EXPLICIT" ] && { RADIUS_PRESET="custom"; RADIUS_PRESET_EXPLICIT=1; }
-
-if [ -z "$PANEL_BLUR_FIX_EXPLICIT" ] && [ -r "$CONF_DIR/panel-blur-fix" ]; then
-    WANT_PANEL_BLUR_FIX="$(cat "$CONF_DIR/panel-blur-fix" 2>/dev/null || true)"
-fi
-# Neither a flag nor a memo: the agent exists for layouts that change, so a
-# machine with more than one screen gets it and a single screen is left alone.
-if [ -z "$WANT_PANEL_BLUR_FIX" ]; then
-    if [ "$(monitor_count)" -gt 1 ]; then
-        WANT_PANEL_BLUR_FIX=1
-    else
-        WANT_PANEL_BLUR_FIX=0
-    fi
-fi
 
 # Resolve remembered GDM choice on updates or runs without explicit GDM flags
 if [ -z "$GDM_EXPLICIT" ] && [ -r "$CONF_DIR/gdm-installed" ]; then
@@ -1240,9 +1474,9 @@ APP_OPACITY="${APP_OPACITY:-255}"
 # and a dry run that did not say which mode it resolved to would be describing
 # everything except the question that was asked.
 if [ "$DRY_RUN" = 1 ] && [ "$PLAN_JSON" != 1 ]; then
-    printf '  glass-mode: %s blur=%s window=%s popup=%s transparency=%s styling=%s\n' \
+    printf '  glass-mode: %s blur=%s window=%s popup=%s transparency=%s\n' \
         "$(glass_mode_from_state)" "$WANT_BLUR" "$WANT_WINDOW_BLUR" \
-        "$WANT_POPUP_BLUR" "$APP_TRANSPARENCY" "$WANT_STYLING"
+        "$WANT_POPUP_BLUR" "$APP_TRANSPARENCY"
 fi
 
 # Colloid is named in accent terms rather than in its own: it calls blue
@@ -1316,10 +1550,46 @@ PY
     exit 0
 fi
 
+if [ "$VERIFY_ONLY" = 1 ]; then
+    # Resolved like a flagless run, so it checks for what the remembered
+    # choices install. Results go to the progress window's events file when it
+    # asked, and always to the terminal.
+    if [ -n "$VERIFY_DIR" ] && [ -d "$VERIFY_DIR" ]; then
+        PROGRESS_DIR="$VERIFY_DIR"
+    fi
+    verify_install
+    [ "$VERIFY_FAILS" = 0 ] || exit 1
+    exit 0
+fi
+
+# The progress window is for a full install, which is everything that gets
+# past the --settings-only and --deps-only exits below; those two never start
+# it. The checklist is planned here, from the choices just resolved, so the
+# window shows every step from the start and marks the ones this run skips.
+if [ "$SETTINGS_ONLY" = 0 ] && [ "$DEPS_ONLY" = 0 ] \
+   && { [ "${FROM_GUI_WIZARD:-0}" = 1 ] || [ "$PROGRESS_WINDOW" = 1 ] \
+        || [ -n "${AURA_GLASS_PROGRESS_DIR:-}" ]; }; then
+    progress_begin
+    progress_plan \
+        session "Checking your system" \
+        deps "Dependencies" \
+        theme "Aura Glass theme" \
+        extensions "Shell extensions" \
+        icons "Icons" \
+        cursors "Pointer" \
+        fonts "Fonts" \
+        look "Glass look and settings" \
+        services "Settings app and background helpers" \
+        enable "Turning extensions on" \
+        gdm "Login screen" \
+        verify "Checking the result"
+fi
+
 printf '\n%s  aura-glass%s  %saccent %s%s\n' \
     "$C_BLD" "$C_OFF" "$C_DIM" "$ACCENT" "$C_OFF"
 [ "$DRY_RUN" = 1 ] && printf '%s  dry run — nothing will be changed%s\n' "$C_DIM" "$C_OFF"
 
+progress_start session
 preflight
 
 # Request sudo credentials upfront once if any system-wide component requires root
@@ -1327,13 +1597,16 @@ if [ "${SETTINGS_ONLY:-0}" = 0 ] && [ "${DRY_RUN:-0}" = 0 ] && [ "$EUID" -ne 0 ]
     need_root=0
     [ "${WANT_GDM:-0}" = 1 ] && need_root=1
     [ "${WANT_GDM_MONITORS:-0}" = 1 ] && need_root=1
-    [ "${WANT_ROUNDED_BLUR:-1}" = 1 ] && need_root=1
     if [ "$need_root" = 1 ]; then
         info "Authenticating sudo upfront for system components..."
+        progress_wait "sudo password, for the parts installed outside your home folder"
         if sudo -v; then
+            progress_resume
             ( while true; do sudo -n true; sleep 50; kill -0 "$$" || exit; done ) 2>/dev/null &
             SUDO_KEEP_ALIVE_PID=$!
-            trap 'kill $SUDO_KEEP_ALIVE_PID 2>/dev/null || true' EXIT
+            add_exit_trap 'kill $SUDO_KEEP_ALIVE_PID 2>/dev/null || true'
+        else
+            progress_resume
         fi
     fi
 fi
@@ -1342,8 +1615,7 @@ fi
 
 # Retuning an existing install is the three steps that read a flag and write a
 # setting. Everything skipped here either fetches something (the theme, the
-# extensions, the icon and cursor packs) or wants root (the rounded-blur library,
-# GDM), which is what makes this path fast, offline and unprivileged — and
+# extensions, the icon and cursor packs) or wants root (GDM), which is what makes this path fast, offline and unprivileged — and
 # therefore the one a GUI can drive without a terminal to answer prompts in.
 #
 # The three steps are the same functions a full install runs, in the same order,
@@ -1389,13 +1661,24 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
                     cursor-theme) apply_cursor_theme ;;
                     cursor-size) apply_cursor_size ;;
                     window-buttons) apply_window_buttons ;;
+                    blur-pipelines) apply_blur_pipelines ;;
                     app-blur) apply_app_blur ;;
                     css) install_css ;;
+                    app-opacity) apply_app_opacity ;;
+                    fullscreen-blur) apply_fullscreen_blur ;;
+                    panel-maximized-black) apply_panel_maximized_black ;;
+                    glass-style) apply_glass_style ;;
                     adaptive-blur)
                         apply_adaptive_blur "$ADAPTIVE_BLUR"
                         ;;
                 esac
             done
+            # The mode drawer is what the next full run, the settings window
+            # and an adaptive restore all read these values back from. The
+            # narrow path updated the top-level memos; without this the drawer
+            # kept the previous tint/level and the next full Apply put it back.
+            # An adaptive transition is transient and must not touch it.
+            [ -n "$ADAPTIVE_BLUR" ] || remember_glass_mode
             step "Done"
             exit 0
         fi
@@ -1412,16 +1695,7 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     # installed, and a font already resolvable needs no network either — see
     # install_fonts, which skips on fc-match rather than on this flag.
     if [ -n "$FONT_EXPLICIT" ]; then install_fonts; fi
-    # Not in solid mode. dconf/core.ini is every extension's settings, and
-    # loading it is exactly the "modifying the extension" that standing down is
-    # supposed to avoid — the extensions are switched off with their own
-    # settings intact, ready for the way back.
-    if [ "$WANT_STYLING" = 1 ]; then
-        load_dconf
-    else
-        step "Loading the dconf preset"
-        skip "solid mode — the extensions keep their own settings"
-    fi
+    load_dconf
     install_css
     apply_gsettings
     # Local, quick and needs nothing — the same grounds install_gui is here on,
@@ -1429,19 +1703,16 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     # light/dark switch, so a window that changes the icon answer has to be
     # able to install it, repoint it, or stand it down in the same run.
     install_icon_sync
-    if [ "$WANT_STYLING" = 0 ]; then
-        stand_down_extensions
-    else
-        restore_extensions
-        disable_retired_extensions
-        if [ "$WANT_STYLING" = 1 ]; then
-            dequeue_from_disabled_extensions "user-theme@gnome-shell-extensions.gcampax.github.com" || true
-            run gnome-extensions enable "user-theme@gnome-shell-extensions.gcampax.github.com" 2>/dev/null || true
-            if [ -d "$EXT_DIR/tiling-assistant@leleat-on-github" ] || [ -d "/usr/share/gnome-shell/extensions/tiling-assistant@leleat-on-github" ]; then
-                dequeue_from_disabled_extensions "tiling-assistant@leleat-on-github" || true
-                run gnome-extensions enable "tiling-assistant@leleat-on-github" 2>/dev/null || true
-                enqueue_extension "tiling-assistant@leleat-on-github" || true
-            fi
+    disable_retired_extensions
+    # Not on a dry run: the two queue helpers write gsettings directly,
+    # with no run in front of them to stop them (KI-08).
+    if [ "$DRY_RUN" != 1 ]; then
+        dequeue_from_disabled_extensions "user-theme@gnome-shell-extensions.gcampax.github.com" || true
+        run gnome-extensions enable "user-theme@gnome-shell-extensions.gcampax.github.com" 2>/dev/null || true
+        if [ -d "$EXT_DIR/tiling-assistant@leleat-on-github" ] || [ -d "/usr/share/gnome-shell/extensions/tiling-assistant@leleat-on-github" ]; then
+            dequeue_from_disabled_extensions "tiling-assistant@leleat-on-github" || true
+            run gnome-extensions enable "tiling-assistant@leleat-on-github" 2>/dev/null || true
+            enqueue_extension "tiling-assistant@leleat-on-github" || true
         fi
     fi
     remember_glass_mode
@@ -1450,14 +1721,15 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     # is enough to be running the current one.
     install_gui
     install_update_check
-    # Local, quick, needs nothing and is a plain user systemd unit — the same
-    # grounds install_gui is here on. Without it the window's switch for it
-    # would write a memo that nothing acted on until the next full install.
-    install_panel_blur_unit
+    install_wallpapers
+    # Local and quick, so a retune clears the retired rebuild service too and an
+    # existing install does not wait for its next full run to lose the flash.
+    remove_panel_blur_unit
     install_adaptive_performance
     if [ -r "$CONF_DIR/gdm-installed" ] || [ -r "$CONF_DIR/gdm-monitors-synced" ]; then
         install_gdm_sync_unit
-        "$REPO_ROOT/bin/aura-glass-gdm-sync" --once >/dev/null 2>&1 || true
+        # run, so a dry run reports it instead of copying into GDM's home.
+        run "$REPO_ROOT/bin/aura-glass-gdm-sync" --once >/dev/null 2>&1 || true
     fi
     if [ "$INCREMENTAL" = 1 ] && [ "$DRY_RUN" != 1 ]; then
         apply_source_fingerprint > "$CONF_DIR/apply-source-fingerprint"
@@ -1475,6 +1747,7 @@ EOF
     exit 0
 fi
 
+progress_start deps
 if [ "$WANT_DEPS" = 1 ]; then
     step "Checking dependencies"
     install_deps || die "dependencies are missing — re-run once they are installed, or pass --no-deps to try anyway"
@@ -1488,45 +1761,54 @@ else
     fi
 fi
 
+progress_start theme
 install_theme
+progress_start extensions
 install_extensions
-# Before load_dconf, so apply_popup_blur sees the result. On a first install it
-# will still pick static: Blur My Shell only writes rounded-blur-found once the
-# shell has loaded this build, which is the next login.
-install_rounded_blur
-if [ "$WANT_ICONS" = 1 ]; then install_icons; else step "Icons"; skip "left alone (--no-icons)"; fi
-if [ "$WANT_CURSORS" = 1 ]; then install_cursors; else step "Cursors"; skip "left alone (--no-cursors)"; fi
-install_fonts
-# Not in solid mode. dconf/core.ini is every extension's settings, and
-# loading it is exactly the "modifying the extension" that standing down is
-# supposed to avoid — the extensions are switched off with their own
-# settings intact, ready for the way back.
-if [ "$WANT_STYLING" = 1 ]; then
-    load_dconf
+if [ "$WANT_ICONS" = 1 ]; then
+    progress_start icons
+    install_icons
 else
-    step "Loading the dconf preset"
-    skip "solid mode — the extensions keep their own settings"
+    progress_end; progress_skip icons "left alone (--no-icons)"
+    step "Icons"; skip "left alone (--no-icons)"
 fi
+if [ "$WANT_CURSORS" = 1 ]; then
+    progress_start cursors
+    install_cursors
+else
+    progress_end; progress_skip cursors "left alone (--no-cursors)"
+    step "Cursors"; skip "left alone (--no-cursors)"
+fi
+progress_start fonts
+install_fonts
+progress_start look
+load_dconf
 install_css
 apply_gsettings
-if [ "$WANT_STYLING" = 0 ]; then
-    stand_down_extensions
-else
-    restore_extensions
-fi
 remember_glass_mode
+progress_start services
 install_icon_sync
 install_gui
 install_update_check
+install_wallpapers
 flatpak_override
-install_panel_blur_unit
+remove_panel_blur_unit
 install_adaptive_performance
+progress_start enable
 enable_extensions
-if [ "$WANT_GDM_MONITORS" = 1 ]; then
-    sync_gdm_monitors
-    [ "$WANT_GDM" != 1 ] && install_gdm_sync_unit
+if [ "$WANT_GDM_MONITORS" = 1 ] || [ "$WANT_GDM" = 1 ]; then
+    progress_start gdm
+    if [ "$WANT_GDM_MONITORS" = 1 ]; then
+        sync_gdm_monitors
+        [ "$WANT_GDM" != 1 ] && install_gdm_sync_unit
+    fi
+    if [ "$WANT_GDM" = 1 ]; then
+        install_gdm
+    fi
+else
+    progress_end; progress_skip gdm "not asked for"
 fi
-if [ "$WANT_GDM" = 1 ]; then
-    install_gdm
-fi
+progress_start verify
+verify_install
+progress_end
 finish

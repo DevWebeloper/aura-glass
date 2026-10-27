@@ -70,4 +70,28 @@ StDrawingArea {
   padding-right: 15px !important;
 }
 
+/* ---------- Top bar (shaded behind a maximized window) ----------------
+ * Aura Glass Helper adds .aura-glass-maximized to the panel while the focused
+ * window fills the panel's monitor (maximized, fullscreen, or Tiling
+ * Assistant's gapless resize to the work area). Over a maximized window the
+ * clear glass bar reads as a gap above the app; 60% black, picked by the user,
+ * joins it to the window while the blur still shows through.
+ *
+ * Blur My Shell's `#panel.transparent-panel { background: transparent
+ * !important }` comes from an extension stylesheet loaded after this one, so
+ * equal specificity loses; the second selector out-ranks it. The fade is the
+ * theme's own 250ms #panel transition.
+ */
+#panel.aura-glass-maximized,
+#panel.transparent-panel.aura-glass-maximized {
+  background: #000000 !important;
+  background-color: #000000 !important;
+}
+
+#panel.aura-glass-maximized-shaded,
+#panel.transparent-panel.aura-glass-maximized-shaded {
+  background-color: rgba(0, 0, 0, 0.6) !important;
+}
+
+
 

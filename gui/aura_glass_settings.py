@@ -17,7 +17,7 @@ exactly the code that resolved it last time.
 
 --settings-only is what makes that safe to drive from a window: it reapplies the
 dconf preset, the CSS and the gsettings, and skips the theme, the extensions and
-everything that wants root (the rounded-blur library, GDM). So Apply needs no
+everything that wants root (GDM). So Apply needs no
 password and no terminal to answer a prompt in.
 
 The icon pack, the pointer and the interface font are the exceptions, and only
@@ -49,8 +49,8 @@ Not everything here rides on Apply. Three kinds of thing cannot:
                        files are a package's and deleting them out from under
                        it would leave its database describing files that are
                        gone
-  anything root        the dependency install, the rounded-blur library, the
-                       login screen, the monitor sync, the uninstall scopes
+  anything root        the dependency install, the login screen, the
+                       monitor sync, the uninstall scopes
 
 The last of those used to be absent for a good reason: sudo down a pipe that
 nothing can type into blocks forever. The answer is not to run it here but to
@@ -75,7 +75,6 @@ the apply log and the confirmations have as much reason to be dragged off as
 the tint picker does.
 """
 import fnmatch
-import glob
 import json
 import math
 import os
@@ -84,6 +83,8 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
+import threading
 
 from preview_queue import PreviewQueue
 
@@ -223,35 +224,17 @@ TRANSPARENCY_SNAP = 1
 OPACITY_SUBTITLE = ("Lower is more see-through. 70% is the floor — below it, "
                     "text stops reading clearly")
 
-# Same reason as OPACITY_SUBTITLE: the popup-blur switch's subtitle is
-# identical on both tabs.
-POPUP_BLUR_SUBTITLE = "Popups, Quick Settings and the panel"
+# The three answers the "Blur behind windows" row offers, which are
+# install.sh's APP_BLUR_SCOPE values and the ones both wizards ask about.
+WINDOW_BLUR_CHOICES = [
+    ("all", "All apps", "Browsers and Electron apps too — heavy on the GPU"),
+    ("gtk", "GTK apps only", "GNOME and libadwaita apps, lighter on the GPU"),
+    ("none", "Off", "Translucent windows with no blur behind them"),
+]
 
-# Same reason again: the notification-blur switch's title and subtitle are
-# identical on both tabs. Independent of POPUP_BLUR_SUBTITLE's switch — this
-# one covers banners as they arrive and the cards in the date menu, whether or
-# not popups themselves are blurred.
-#
-# The badge rides in the title rather than in a suffix pill. A suffix on an
-# Adw.SwitchRow is right-aligned against the switch, which puts it a whole row
-# away from the words it qualifies on a wide window; inline it sits against the
-# label it is about. Pango's alpha is used rather than a colour so the badge
-# takes the label's own foreground and stays right in both light and dark —
-# a hardcoded hex would be legible in one and wrong in the other.
-NOTIFICATION_BLUR_TITLE = ('Blur behind notifications '
-                           '<span size="x-small" weight="bold" alpha="55%">'
-                           'BETA</span>')
-
-# What the badge is promising, in the subtitle, because a badge on its own only
-# tells you to be careful without saying of what. The cards are the fragile
-# half: they are blurred through GNOME's own notification group, whose child
-# layout this leans on and which moves between shell releases — so the failure
-# it is warning about is a visible one, and the switch beside it is the undo.
-NOTIFICATION_BLUR_SUBTITLE = ("Banners as they arrive and the cards in the "
-                              "date menu, blurred whether or not menus are. "
-                              "Beta — the cards lean on GNOME's own "
-                              "notification layout, which shifts between "
-                              "releases; turn this off if they look wrong")
+# The popup-blur switch's subtitle. Notifications ride on it since Blur My
+# Shell v76, which blurs a banner through the popup component.
+POPUP_BLUR_SUBTITLE = "Popups, Quick Settings, notifications and the panel"
 
 # --blur-strength scales every blur radius at once. The bounds are
 # BLUR_STRENGTH_MIN and BLUR_STRENGTH_MAX in lib/steps-dconf.sh, which is where
@@ -269,38 +252,57 @@ BLUR_STRENGTH_MARKS = [
 
 BLUR_STRENGTH_SNAP = 4
 
-# --popup-brightness lights the blur behind menus, Quick Settings and
-# notification banners. The bounds are POPUP_BRIGHTNESS_MIN and
-# POPUP_BRIGHTNESS_MAX in lib/steps-dconf.sh, which is where the reasoning for
-# them is; 115 is what dconf/core.ini ships and the default here.
-POPUP_BRIGHTNESS_MIN = 50
-POPUP_BRIGHTNESS_MAX = 150
-POPUP_BRIGHTNESS_DEFAULT = 115
+# --blur-brightness lights every blur at once, as a percentage of each
+# pipeline's tuned brightness. The bounds are BLUR_BRIGHTNESS_MIN and
+# BLUR_BRIGHTNESS_MAX in lib/steps-dconf.sh, which is where the reasoning for
+# them is; 100 is the tuned set and the default.
+BLUR_BRIGHTNESS_MIN = 50
+BLUR_BRIGHTNESS_MAX = 100
 
-# Marks on that bar. 100 is the backdrop's own brightness, so it is the one
-# labelled point that is not a look but a fact about the blur.
-POPUP_BRIGHTNESS_MARKS = [
+BLUR_BRIGHTNESS_MARKS = [
     (70, "dim"),
-    (100, "as-is"),
-    (130, "lit"),
+    (100, "tuned"),
 ]
 
-POPUP_BRIGHTNESS_SNAP = 4
+BLUR_BRIGHTNESS_SNAP = 4
 
-# --notification-opacity sets how much ground an arriving banner paints over
-# that blur. Bounds are NOTIFICATION_OPACITY_MIN and NOTIFICATION_OPACITY_MAX in
-# lib/steps-css.sh; 40 is what css/shell-notification-blur.css ships.
-NOTIFICATION_OPACITY_MIN = 10
-NOTIFICATION_OPACITY_MAX = 85
-NOTIFICATION_OPACITY_DEFAULT = 40
+# --popup-opacity, in the windows' own unit: POPUP_OPACITY_MIN and
+# POPUP_OPACITY_MAX in lib/steps-css.sh, the same range as the windows' bar.
+POPUP_OPACITY_MIN = 70
+POPUP_OPACITY_MAX = 100
 
-NOTIFICATION_OPACITY_MARKS = [
-    (20, "sheer"),
-    (40, "tuned"),
-    (70, "solid"),
+# --panel-height, the top bar's height in logical pixels. PANEL_HEIGHT_MIN,
+# PANEL_HEIGHT_MAX, PANEL_HEIGHT_THEME and PANEL_HEIGHT_GNOME in
+# lib/steps-css.sh, which is where the reasoning for them is: 40 is what the
+# theme draws, 32 is GNOME's own bar and what the reset button goes back to.
+PANEL_HEIGHT_MIN = 24
+PANEL_HEIGHT_MAX = 48
+PANEL_HEIGHT_THEME = 40
+PANEL_HEIGHT_GNOME = 32
+
+PANEL_HEIGHT_MARKS = [
+    (PANEL_HEIGHT_GNOME, "GNOME"),
+    (PANEL_HEIGHT_THEME, "Aura"),
 ]
 
-NOTIFICATION_OPACITY_SNAP = 4
+# The surfaces that can step out of the main blur amount and brightness, as
+# BLUR_SURFACES in lib/steps-dconf.sh names them: (id, title, subtitle). The id
+# names the memos and the flags (--window-blur-strength, --window-brightness).
+BLUR_SURFACES = [
+    ("window", "Windows", "Behind application windows"),
+    ("popup", "Popups & notifications",
+     "Menus, Quick Settings and notification banners"),
+    ("panel", "Top bar", "The panel along the top of the screen"),
+    ("lockscreen", "Lock screen", "And the overview behind the windows"),
+]
+
+# The two brightness memos an earlier release wrote under other names, and the
+# values it wrote by default — read as `main`, as surface_brightness_legacy in
+# lib/steps-dconf.sh reads them.
+SURFACE_BRIGHTNESS_LEGACY = {
+    "window": ("window-brightness", ("100",)),
+    "popup": ("popup-brightness", ("100", "115")),
+}
 
 # What both tint memos hold, and the shipped answer for each. Black is not a
 # colour anyone picked — it is the sheets as written, which is why choosing it
@@ -458,6 +460,13 @@ CURSOR_SIZE_GNOME = 24
 # "system" is not a font. It puts the three keys back to what they held before
 # aura-glass first ran, which is what makes this row an undo rather than a
 # fourth opinion. install.sh's apply_font is where that happens.
+UPDATE_CHANNELS = [
+    ("release", "Releases",
+     "Notify when a new tagged release is out"),
+    ("latest", "Latest commits",
+     "Follow main commit by commit; a tagged release is still announced"),
+]
+
 FONTS = [
     ("system", "System default",
      "GNOME's own font, left alone — and what the other three revert to"),
@@ -505,6 +514,25 @@ TITLEBUTTON_STYLES = [
      "No disc at all — the glyph brightens instead"),
 ]
 
+# The material on the top bar and the dock. Install-side: apply_glass_style in
+# lib/steps-dconf.sh, whose comment says why it stops at those two and why
+# liquid makes the dock's blur static.
+GLASS_STYLES = [
+    ("frosted", "Frosted", "Blur alone"),
+    ("liquid", "Liquid",
+     "The edges bend what is behind them like a lens. The dock blurs the "
+     "wallpaper, not the windows behind it"),
+    ("vibrant", "Vibrant",
+     "The colours behind the top bar and the overview come through richer "
+     "and a little brighter. The dock keeps its live frosted blur"),
+    ("tinted", "Tinted",
+     "The top bar and the overview take on your accent colour. The dock "
+     "keeps its live frosted blur"),
+    ("smoked", "Smoked",
+     "The top bar and the overview turn darker and greyer, so white text "
+     "reads more easily. The dock keeps its live frosted blur"),
+]
+
 # Appearance selectors share one small piece of row metadata.  Icon colour is
 # the only dependent list today: the family decides which variants it can
 # offer.  The other rows are still registered here so rebuilding Appearance
@@ -521,6 +549,7 @@ CONTEXTUAL_CHOICE_METADATA = {
     "cursors": {"enabled_when": "available"},
     "window_buttons": {"enabled_when": "available"},
     "titlebutton_style": {"enabled_when": "available"},
+    "glass_style": {"enabled_when": "available"},
 }
 
 # The sidebar: (id, title, icon, builder method), in the order shown.
@@ -560,15 +589,16 @@ NAV_SECTIONS = [
 # for "icon pack" lands on Appearance and "gdm" lands on System without either
 # word appearing in NAV_SECTIONS. Hand-kept rather than walked off the built
 # widgets: several of these pages are not Adw.PreferencesPage at all — Glass
-# is three tabs in a Box, System mixes custom rows with a refresh button — so
+# is two tabs in a Box, System mixes custom rows with a refresh button — so
 # a generic tree-walk would have to guess at each one's shape rather than
 # simply saying what is on it, the same trade-off EXT_TIERS already makes
 # elsewhere in this file.
 SEARCH_INDEX = {
     "glass": ["frosted", "performance", "blur", "tint", "opacity",
              "transparency", "popup blur", "window blur", "scope",
-             "notification", "notifications", "banner"],
-    "appearance": ["accent", "colour", "color", "font", "icon", "cursor",
+             "notification", "notifications", "banner", "brightness",
+             "top bar", "lock screen", "advanced"],
+    "appearance": ["top bar", "panel", "height", "accent", "colour", "color", "font", "icon", "cursor",
                   "pointer", "cursor size", "pointer size", "titlebar",
                   "window buttons", "colloid", "reversal", "hatter",
                   "mactahoe", "aosp", "traffic lights", "button style",
@@ -578,10 +608,11 @@ SEARCH_INDEX = {
     "extensions": ["gnome extensions", "blur my shell", "space-bar",
                   "vitals", "custom osd", "open bar"],
     "packages": ["icon pack", "cursor pack", "remove pack", "disk"],
-    "system": ["dependencies", "rounded blur library", "gdm", "login screen",
-              "monitor", "panel blur", "password", "sudo"],
-    "updates": ["release", "version", "update check", "repair", "reapply",
-                "reinstall", "settings app"],
+    "system": ["dependencies", "gdm", "login screen",
+              "monitor", "password", "sudo"],
+    "updates": ["release", "version", "changelog", "history", "tag",
+                "downgrade", "maintenance", "update check", "notification",
+                "repair", "reapply", "reinstall", "reset", "defaults"],
     "uninstall": ["remove", "revert", "delete"],
 }
 
@@ -603,30 +634,80 @@ FLAG_LABELS = {
     "--font": ("appearance", "Interface font"),
     "--window-buttons": ("appearance", "Titlebar buttons"),
     "--titlebar-button-style": ("appearance", "Titlebar button style"),
+    "--glass-style": ("glass", "Glass style"),
+    "--liquid-windows": ("glass", "Glass style behind app windows"),
+    "--no-liquid-windows": ("glass", "Glass style behind app windows"),
+    "--panel-height": ("appearance", "Top bar height"),
+    "--panel-maximized-black": ("appearance", "Black top bar on maximized window"),
+    "--no-panel-maximized-black": ("appearance", "Black top bar on maximized window"),
+    "--fullscreen-blur": ("glass", "Blur fullscreen windows"),
+    "--no-fullscreen-blur": ("glass", "Blur fullscreen windows"),
     "--update-check": ("updates", "Daily update check"),
     "--no-update-check": ("updates", "Daily update check"),
-    "--panel-blur-fix": ("system", "Panel blur fix"),
-    "--no-panel-blur-fix": ("system", "Panel blur fix"),
+    "--update-channel": ("updates", "Update channel"),
     "--radius-preset": ("radius", "Corner rounding"),
     "--radius-custom": ("radius", "Corner rounding"),
     "--glass-mode": ("glass", "Glass mode"),
-    "--gtk-apps-blur": ("glass", "Blur scope"),
-    "--all-apps-blur": ("glass", "Blur scope"),
-    "--no-window-blur": ("glass", "Window blur"),
-    "--app-transparency": ("glass", "Window transparency"),
-    "--no-app-transparency": ("glass", "Window transparency"),
+    "--gtk-apps-blur": ("glass", "Blur behind windows"),
+    "--all-apps-blur": ("glass", "Blur behind windows"),
+    "--no-window-blur": ("glass", "Blur behind windows"),
+    "--app-transparency": ("glass", "Opacity"),
+    "--no-app-transparency": ("glass", "Opacity"),
     "--popup-blur": ("glass", "Popup blur"),
     "--no-popup-blur": ("glass", "Popup blur"),
-    "--notification-blur": ("glass", "Notification blur"),
-    "--no-notification-blur": ("glass", "Notification blur"),
     "--app-tint-color": ("glass", "App tint"),
     "--shell-tint-color": ("glass", "Shell tint"),
-    "--blur-strength": ("glass", "Blur strength"),
-    "--popup-brightness": ("glass", "Popup blur brightness"),
-    "--notification-opacity": ("glass", "Notification ground"),
+    "--blur-strength": ("glass", "Blur amount"),
+    "--blur-brightness": ("glass", "Brightness"),
+    "--popup-opacity": ("glass", "Popups & notifications opacity"),
     "--app-blur-allow": ("apps", "Blur allow list"),
     "--app-blur-block": ("apps", "Blur block list"),
 }
+
+# Each surface's own blur amount and brightness, in the Advanced group's words.
+for _sid, _title, _subtitle in BLUR_SURFACES:
+    FLAG_LABELS["--%s-blur-strength" % _sid] = ("glass", "%s blur amount" % _title)
+    FLAG_LABELS["--%s-brightness" % _sid] = ("glass", "%s brightness" % _title)
+
+# install.sh's incremental actions (lib/steps-apply-plan.sh), in the popover's
+# words. full is not here: it is said with its reason instead.
+PLAN_ACTIONS = {
+    "accent": "the accent",
+    "cursor-theme": "the pointer",
+    "cursor-size": "the pointer size",
+    "window-buttons": "the titlebar buttons",
+    "blur-pipelines": "the blur amount and brightness",
+    "app-blur": "the per-app blur lists",
+    "css": "the stylesheets",
+    "app-opacity": "the window opacity",
+    "glass-style": "the tinted glass",
+}
+
+
+def plan_summary(plan):
+    """(title, subtitle) for what Apply will run, from --plan-json's document.
+
+    The installer decides; this only says it. A quick apply names the steps it
+    will run, a full one says why the quick path was not taken, in the
+    settings window's own labels where the reason names a flag.
+    """
+    actions = plan.get("actions") or ["full"]
+    if actions[0] != "full":
+        words = [PLAN_ACTIONS.get(a, a) for a in actions]
+        listed = words[0] if len(words) == 1 else \
+            ", ".join(words[:-1]) + " and " + words[-1]
+        return ("Quick apply", "Updates only %s, in a second or two" % listed)
+    reason = plan.get("fallback_reason") or ""
+    if reason.startswith("unclassified flag: "):
+        flag = reason[len("unclassified flag: "):]
+        label = FLAG_LABELS.get(flag, (None, flag))[1]
+        why = "%s needs one" % label
+    elif "fingerprint" in reason:
+        why = "Aura Glass changed since the last one"
+    else:
+        why = "nothing here has a quicker path"
+    return ("Full reapply", "Reapplies the preset, the CSS and the gsettings: "
+            "%s" % why)
 
 
 # The families install.sh fetches, and the ones uninstall.sh --assets already
@@ -636,7 +717,13 @@ FLAG_LABELS = {
 # aosp-cursors is the one that is not a prefix of a family of variants — the
 # pack is a single directory under that exact name — but it is matched the same
 # way, and nothing else in an icon directory starts with it.
-ICON_PACK_FAMILIES = ("Colloid", "Reversal", "Hatter", "MacTahoe", "aosp-cursors")
+ICON_PACK_FAMILIES = ("Colloid", "Reversal", "Hatter", "MacTahoe", "aosp-cursors",
+                      "Aura-Glass-Moga")
+# Families that are one pack however many directories they arrive as. Moga's
+# nine accent colours are installed together and the accent switch moves
+# between them, so removing the eight not showing right now would break the
+# next accent change.
+SINGLE_ROW_FAMILIES = ("Aura-Glass-Moga",)
 
 # Where a pack can be. The first two are ours to delete from; the rest are the
 # package manager's, and a window that offered to rm -rf out of /usr would be
@@ -983,30 +1070,6 @@ def parse_radius_custom(raw):
     return tuple(values)
 
 
-def monitor_count():
-    """How many screens this machine has — monitor_count() in lib/common.sh.
-
-    The same two sources in the same order, so the switch below draws the state
-    a flagless install.sh would have chosen: what the session is driving, and
-    the connectors DRM sees, whichever is larger. A laptop with its lid shut
-    around an external screen has two monitors and only DRM says so.
-    """
-    session = 0
-    display = Gdk.Display.get_default()
-    if display is not None:
-        session = display.get_monitors().get_n_items()
-
-    drm = 0
-    for status in glob.glob("/sys/class/drm/card*-*/status"):
-        try:
-            with open(status, encoding="utf-8") as fh:
-                drm += fh.read().strip() == "connected"
-        except OSError:
-            pass
-
-    return max(session, drm, 1)
-
-
 def read_memo(name, default=""):
     """One value from one file, the way install.sh remembers things."""
     try:
@@ -1045,13 +1108,59 @@ def read_hex_memo(name):
     return value if HEX_COLOR.match(value) else "#000000"
 
 
-def read_percent_memo(name):
-    """The blur strength memo, bounded, or 100 — the tuned radii."""
+def read_percent_memo(name, low=BLUR_STRENGTH_MIN, high=BLUR_STRENGTH_MAX):
+    """A main blur memo, or 100 — the tuned values.
+
+    Out of bounds is 100 too, as resolve_blur_pipelines in lib/steps-dconf.sh
+    hands it back, rather than clamped to the nearest end.
+    """
     try:
         value = int(read_memo(name, ""))
     except ValueError:
         return 100
-    return max(BLUR_STRENGTH_MIN, min(BLUR_STRENGTH_MAX, value))
+    return value if low <= value <= high else 100
+
+
+def read_dir_memo(directory, name):
+    """One memo out of DIRECTORY, or None when it is not there."""
+    try:
+        with open(os.path.join(directory, name), encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return None
+
+
+def surface_value(raw, low, high):
+    """A per-surface value as install.sh will use it: an int, or "main".
+
+    surface_value_checked in lib/steps-dconf.sh: anything that is not a whole
+    percentage inside the bounds follows the main slider.
+    """
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return "main"
+    return value if low <= value <= high else "main"
+
+
+def read_surface_memo(directory, key, low, high, surface=None):
+    """A per-surface memo out of $CONF_DIR or a mode's drawer.
+
+    surface_memo_read in lib/steps-dconf.sh: the memo itself, else for the two
+    brightness memos the name an earlier release wrote, whose default values
+    read as "main" and whose anything else is a choice, clamped to the top.
+    """
+    value = read_dir_memo(directory, key)
+    if value is not None:
+        return surface_value(value or "main", low, high)
+    legacy = SURFACE_BRIGHTNESS_LEGACY.get(surface) if surface else None
+    if legacy:
+        value = read_dir_memo(directory, legacy[0])
+        if value is not None:
+            if value in legacy[1] or not value.isdigit():
+                return "main"
+            return surface_value(min(int(value), high), low, high)
+    return "main"
 
 
 def read_bounded_memo(name, low, high, default):
@@ -1065,6 +1174,19 @@ def read_bounded_memo(name, low, high, default):
     except ValueError:
         return default
     return max(low, min(high, value))
+
+
+def read_surface_memos(directory):
+    """Every surface's own blur amount and brightness, as two dicts."""
+    strength, brightness = {}, {}
+    for sid, _title, _subtitle in BLUR_SURFACES:
+        strength[sid] = read_surface_memo(
+            directory, "%s-blur-strength" % sid, BLUR_STRENGTH_MIN,
+            BLUR_STRENGTH_MAX)
+        brightness[sid] = read_surface_memo(
+            directory, "%s-blur-brightness" % sid, BLUR_BRIGHTNESS_MIN,
+            BLUR_BRIGHTNESS_MAX, surface=sid)
+    return strength, brightness
 
 
 def read_cursor_size():
@@ -1132,14 +1254,19 @@ def blur_state(wm, allow, block, scope):
     """
     if scope == "none":
         return False, "default", None
-    consulted = block if scope == "all" else allow
-    covered = [p for p in consulted if pattern_matches(p, wm)]
-    if not covered:
-        return (scope == "all"), "default", None
-    pattern = covered[0]
-    reason = "exact" if pattern.lower() == wm.lower() else "pattern"
-    on = (scope != "all")
-    return on, reason, pattern
+    allow_covered = [p for p in allow if pattern_matches(p, wm)]
+    if allow_covered:
+        pattern = allow_covered[0]
+        reason = "exact" if pattern.lower() == wm.lower() else "pattern"
+        return True, reason, pattern
+    if scope == "all":
+        block_covered = [p for p in block if pattern_matches(p, wm)]
+        if block_covered:
+            pattern = block_covered[0]
+            reason = "exact" if pattern.lower() == wm.lower() else "pattern"
+            return False, reason, pattern
+        return True, "default", None
+    return False, "default", None
 
 
 def set_blur(wm, on, allow, block):
@@ -1358,6 +1485,27 @@ button.aura-swatch {
 }
 button.aura-swatch:hover {
   background-color: alpha(@window_fg_color, 0.12);
+}
+
+/* The badges on the Updates page's releases. Tinted rather than filled, so a
+ * column of them reads as labels and not as a row of buttons. */
+.aura-pill {
+  border-radius: 99px;
+  padding: 1px 9px;
+  font-size: smaller;
+  font-weight: bold;
+  background-color: alpha(@window_fg_color, 0.10);
+}
+.aura-pill.installed {
+  color: @success_color;
+  background-color: alpha(@success_color, 0.18);
+}
+.aura-pill.latest {
+  color: @accent_color;
+  background-color: alpha(@accent_bg_color, 0.20);
+}
+.aura-graph {
+  color: @accent_color;
 }
 """]
     for ident, values in RADIUS_PRESET_VALUES.items():
@@ -2005,58 +2153,459 @@ def is_test_build(repo):
     return branch is not None and branch not in RELEASE_BRANCHES
 
 
+def follows_commits(repo):
+    """Whether the update check compares commits rather than release tags.
+
+    A branch other than main does; main and a detached HEAD are the released
+    line, whose every commit is a tag of its own (see version_name). The same
+    rule bin/aura-glass-update-check applies.
+    """
+    return is_test_build(repo)
+
+
+def version_name(repo, ref="HEAD"):
+    """A commit on the released line, named the way people read versions.
+
+    The release tag at it (v0.3.5), or the release before it plus how many
+    commits later (v0.3.5+16) — every commit on main is a "tag" of its own this
+    way, with nothing to create on GitHub. bin/aura-glass-update-check's
+    version_name says exactly the same, and the two must agree.
+    """
+    d = git_out(repo, "describe", "--tags", "--long", "--match", "v[0-9]*", ref)
+    if not d:
+        return git_out(repo, "rev-parse", "--short=7", ref)
+    d = d.rsplit("-g", 1)[0]
+    tag, _, count = d.rpartition("-")
+    return tag if count == "0" else "%s+%s" % (tag, count)
+
+
 def installed_version(repo):
     """What is installed, in the terms its own line is measured in.
 
-    A release is a tag. A test build has no tag of its own — the newest one it
+    A release is its tag, a later commit on main is v0.3.5+N. A test build has no
+    tag of its own — the newest one it
     can see belongs to a release cut before the branch existed, and naming the
     checkout after it would claim it holds a release it does not — so it is named
     for the branch and the commit, the way the update check names it.
     """
     if not repo:
         return None
+    package = packaged(repo)
+    if package:
+        return "%s %s" % package
     branch = current_branch(repo)
-    if branch is None or branch in RELEASE_BRANCHES:
-        return git_out(repo, "describe", "--tags", "--abbrev=0")
+    if not follows_commits(repo):
+        return version_name(repo)
     short = git_out(repo, "rev-parse", "--short=7", "HEAD")
     return "%s@%s" % (branch, short) if short else None
 
 
-def update_blockers(repo):
-    """Why `git pull` here would be a bad idea. Empty list means go ahead.
+def packaged(repo):
+    """(name, version) when repo is a distribution package's copy, else None.
 
-    Updating edits the user's working tree, which is the most destructive thing
-    this window can do. Every one of these is a case where pulling would either
-    fail confusingly or throw away work, so each is refused with the reason
-    rather than worked around — stashing on someone's behalf is not this
-    program's decision to make.
+    The PKGBUILD leaves .packaged in the root-owned copy it installs, which is
+    not a git checkout; bin/aura-glass-update-check reads the same file.
+    """
+    if not repo or os.path.isdir(os.path.join(repo, ".git")):
+        return None
+    try:
+        with open(os.path.join(repo, ".packaged"), encoding="utf-8") as stream:
+            fields = stream.read().split()
+    except OSError:
+        return None
+    return (fields[0], fields[1]) if len(fields) >= 2 else None
+
+
+def update_blockers(repo):
+    """Why an update cannot be installed from this window. Empty means go ahead.
+
+    Only the cases with nothing to switch: no checkout, a package, no remote.
+    A dirty tree, a detached HEAD, a branch with no upstream and a diverged
+    history used to be here too, and every one of them greyed the Install button
+    out for someone who had done nothing but check out a tag or touch a file.
+    bin/aura-glass-update now handles those itself — edits are stashed and local
+    commits kept on a backup branch — so refusing them here would refuse an
+    update that would work.
     """
     if not repo:
         return ["The aura-glass checkout is gone."]
-
-    reasons = []
+    package = packaged(repo)
+    if package:
+        return ["Installed from the %s package — update it with your package "
+                "manager (for example yay -Syu %s)." % (package[0], package[0])]
     if git_out(repo, "rev-parse", "--is-inside-work-tree") != "true":
         return ["%s is not a git checkout." % repo]
+    if git_out(repo, "remote", "get-url", "origin") is None:
+        return ["The checkout has no origin remote to update from."]
+    return []
 
-    if git_out(repo, "status", "--porcelain"):
-        reasons.append("You have uncommitted changes there. Commit or stash "
-                       "them first — this will not do it for you.")
 
-    branch = git_out(repo, "rev-parse", "--abbrev-ref", "HEAD")
-    if branch in (None, "HEAD"):
-        reasons.append("The checkout is on a detached HEAD rather than a branch.")
+# The tags that are releases of this project, the same set the update check's
+# sed keeps. Anything else in refs/tags (a wip, an experiment) is not offered.
+RELEASE_TAG = re.compile(r"^v[0-9][0-9.]*(-beta)?$")
+
+# How many releases the Releases tab lists. The installed one is added when it
+# is older; History shows everything.
+SHOWN_VERSIONS = 5
+
+# The branch every release is cut from, as its remote-tracking ref.
+MAIN_REF = "refs/remotes/origin/main"
+
+
+def fetch_releases(repo):
+    """Bring the remote's tags and branches into the checkout's .git. Never raises.
+
+    --force for the same reason bin/aura-glass-update gives: a re-cut tag must
+    replace the stale local copy, not stop the fetch. Only refs move — the
+    working tree is untouched — so this is safe to run just because the Updates
+    page was opened. True if it worked.
+    """
+    try:
+        res = subprocess.run(
+            ["git", "-C", repo, "fetch", "--quiet", "--force", "--tags",
+             "origin"],
+            capture_output=True, text=True, timeout=60,
+            env=dict(os.environ, GIT_TERMINAL_PROMPT="0"))
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return res.returncode == 0
+
+
+def list_releases(repo):
+    """Every release tag the checkout knows, newest first.
+
+    Each is a dict of tag, sha (the commit, peeled through an annotated tag),
+    date and the tag's own subject line. versionsort.suffix puts v1.2.0-beta
+    below v1.2.0, which is the order they were cut in.
+    """
+    out = git_out(repo, "-c", "versionsort.suffix=-beta", "for-each-ref",
+                  "--sort=-v:refname",
+                  "--format=%(refname:strip=2)%00%(objectname)%00"
+                  "%(*objectname)%00%(creatordate:short)%00%(contents:subject)"
+                  "%00%(creatordate:unix)",
+                  "refs/tags")
+    releases = []
+    for line in (out or "").splitlines():
+        fields = line.split("\0")
+        if len(fields) != 6 or not RELEASE_TAG.match(fields[0]):
+            continue
+        tag, obj, peeled, date, subject, stamp = fields
+        releases.append({"tag": tag, "sha": peeled or obj, "date": date,
+                         "subject": subject,
+                         "time": int(stamp) if stamp.isdigit() else 0})
+    return releases
+
+
+def commit_subjects(repo, since, until, limit=60):
+    """The non-merge commit subjects in since..until, newest first.
+
+    The changelog of last resort: a release with no GitHub notes still shows
+    what went into it. since may be None for the first release there is.
+    """
+    span = until if since is None else "%s..%s" % (since, until)
+    out = git_out(repo, "log", "--no-merges", "--format=%s",
+                  "--max-count=%d" % limit, span)
+    return [l for l in (out or "").splitlines() if l]
+
+
+def count_commits(repo, since, until):
+    out = git_out(repo, "rev-list", "--count", "%s..%s" % (since, until))
+    return int(out) if out and out.isdigit() else 0
+
+
+def history_lines(repo, ref=MAIN_REF, limit=150):
+    """main's history as `git log --graph` draws it, one dict per line.
+
+    A commit line has sha, short, date, refs (the release tags on it) and
+    subject; a line that only continues the graph (the | and / lines) has just
+    graph. Decorations are limited to release tags so a local branch name does
+    not end up in someone's history view. Housekeeping commits are left out, as
+    shown_on_main says.
+    """
+    out = git_out(repo, "log", "--graph", "--max-count=%d" % limit,
+                  "--decorate=full", "--decorate-refs=refs/tags",
+                  "--format=%x00%H%x00%h%x00%cs%x00%D%x00%s", ref)
+    head = git_out(repo, "rev-parse", "HEAD")
+    tip = git_out(repo, "rev-parse", ref)
+    lines = []
+    for raw in (out or "").splitlines():
+        graph, sep, rest = raw.partition("\0")
+        if not sep:
+            lines.append({"graph": raw.rstrip()})
+            continue
+        sha, short, date, decor, subject = (rest.split("\0") + [""] * 5)[:5]
+        tags = [d.strip()[len("tag: refs/tags/"):] for d in decor.split(",")
+                if d.strip().startswith("tag: refs/tags/")]
+        tags = [t for t in tags if RELEASE_TAG.match(t)]
+        # Dropping a commit's line leaves the graph's | lines above and below
+        # it meeting, so the drawing stays whole. A release is never dropped.
+        if not tags and not shown_on_main(sha, subject, head, tip):
+            continue
+        lines.append({"graph": graph.rstrip(), "sha": sha, "short": short,
+                      "date": date, "subject": subject, "tags": tags})
+    return lines
+
+
+def first_release_with(repo, sha):
+    """The oldest release tag that contains sha, or None if none does yet."""
+    out = git_out(repo, "-c", "versionsort.suffix=-beta", "tag", "--contains",
+                  sha, "--sort=v:refname")
+    for tag in (out or "").splitlines():
+        if RELEASE_TAG.match(tag):
+            return tag
+    return None
+
+
+def github_slug(repo):
+    """owner/name when origin is on github.com, else None."""
+    url = git_out(repo, "remote", "get-url", "origin") or ""
+    found = re.match(r"^(?:https://github\.com/|git@github\.com:|"
+                     r"ssh://git@github\.com/)([^/]+/[^/]+?)(?:\.git)?/?$", url)
+    return found.group(1) if found else None
+
+
+def github_release_notes(repo):
+    """{tag: (title, markdown body)} from GitHub's releases, or {} offline.
+
+    The notes a release was published with are the changelog people actually
+    wrote, so they are preferred over commit subjects when there are any. One
+    unauthenticated request; GitHub allows sixty an hour, and the page asks once
+    per refresh. Anything but github.com, or any failure at all, is {} and the
+    commit subjects stand in.
+    """
+    slug = github_slug(repo)
+    if not slug:
+        return {}
+    import urllib.request
+    request = urllib.request.Request(
+        "https://api.github.com/repos/%s/releases?per_page=100" % slug,
+        headers={"Accept": "application/vnd.github+json",
+                 "User-Agent": "aura-glass-settings"})
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            rows = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError):
+        return {}
+    notes = {}
+    for row in rows if isinstance(rows, list) else []:
+        if isinstance(row, dict) and row.get("tag_name") and not row.get("draft"):
+            notes[row["tag_name"]] = (row.get("name") or "",
+                                      row.get("body") or "")
+    return notes
+
+
+def markdown_markup(text, limit=4000):
+    """Release-note markdown as Pango markup: headings, bullets, bold, code.
+
+    Not a markdown parser — the four things release notes here use, and the
+    rest left as text. Escaped first, so nothing in a note can break the label.
+    """
+    out = []
+    for line in text.replace("\r", "")[:limit].splitlines():
+        # The "What's New in vX" banner every release opens with repeats the
+        # row it sits under.
+        if re.match(r"^#{1,6}\s+.*what.s new in", line, re.I):
+            continue
+        line = GLib.markup_escape_text(line.rstrip())
+        heading = re.match(r"^#{1,6}\s+(.*)$", line)
+        if heading:
+            line = "<b>%s</b>" % heading.group(1)
+        else:
+            line = re.sub(r"^(\s*)[-*]\s+", r"\1  •  ", line)
+        line = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", line)
+        line = re.sub(r"`([^`]+)`", r"<tt>\1</tt>", line)
+        out.append(line)
+    # Runs of blank lines collapse to one; markdown leaves plenty.
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+
+
+# Commit subjects here follow `type(scope): what`. Read out in a changelog that
+# is jargon, so the type becomes a plain word and the scope goes.
+CHANGE_KINDS = {"feat": "New", "fix": "Fixed", "perf": "Faster"}
+CHANGE_ORDER = ("New", "Fixed", "Faster", "Other")
+# Housekeeping nobody installing the theme needs to read about.
+CHANGE_HIDDEN = ("chore", "ci", "build", "test", "style")
+
+
+def humanize_change(subject):
+    """(kind, sentence) for a commit subject, or None if it is housekeeping.
+
+    "feat(updates): name every commit" -> ("New", "Name every commit").
+    Anything not in that shape is kept as it is, under Other.
+    """
+    found = re.match(r"^(\w+)(?:\([^)]*\))?!?:\s*(.+)$", subject)
+    if not found:
+        return ("Other", subject)
+    kind, text = found.group(1).lower(), found.group(2).strip()
+    if kind in CHANGE_HIDDEN:
+        return None
+    text = re.sub(r"\s*\[skip ci\]$", "", text)
+    return (CHANGE_KINDS.get(kind, "Other"), text[:1].upper() + text[1:])
+
+
+def changes_markup(subjects, empty="No changes recorded."):
+    """Commit subjects as a short changelog: New, Fixed, Faster, Other."""
+    groups = {}
+    for subject in subjects:
+        change = humanize_change(subject)
+        if change and change[1] not in groups.get(change[0], []):
+            groups.setdefault(change[0], []).append(change[1])
+    if not groups:
+        return GLib.markup_escape_text(empty)
+    parts = []
+    for kind in CHANGE_ORDER:
+        if kind in groups:
+            parts.append("<b>%s</b>\n%s" % (kind, "\n".join(
+                "  •  " + GLib.markup_escape_text(t) for t in groups[kind])))
+    return "\n\n".join(parts)
+
+
+def shown_on_main(sha, subject, head, tip):
+    """Whether a commit on main gets a row of its own on the Updates page.
+
+    Housekeeping (the daily download-stats commit main used to carry, a ci
+    tweak) changes nothing anyone installing the theme would see, so it is not
+    listed as a version or a line of history. Two are kept whatever they say:
+    the installed one, which carries the Installed badge, and main's tip, which
+    is the only one Install goes to.
+    """
+    return humanize_change(subject) is not None or sha in (head, tip)
+
+
+def tag_changes(repo, sha):
+    """What one tag (a commit on main's own line) brought in, as subjects.
+
+    A merge brought in a whole branch, so its changes are that branch's
+    commits; anything else is the one commit.
+    """
+    parents = (git_out(repo, "rev-list", "--parents", "-n", "1", sha) or "").split()
+    if len(parents) > 2:
+        return commit_subjects(repo, parents[1], sha, limit=40)
+    subject = git_out(repo, "log", "-1", "--format=%s", sha)
+    return [subject] if subject else []
+
+
+def update_changelog(repo, target, notes):
+    """Everything an update to target brings, for the update window.
+
+    One section per release between the installed commit and target, oldest
+    boundary the installed commit, newest first, then one for the commits after
+    the last of them (a tag like v0.3.7+5, or a branch's tip). Each section is
+    the release's GitHub notes when it has any, then every commit it brought in,
+    as changes_markup groups them. notes is the {tag: (title, body)} the Updates
+    page already fetched; offline it is {} and the commits stand alone.
+
+    Read from the refs the checkout already has: opening the Updates page
+    fetched them, and aura-glass-update fetches again before it moves anything,
+    so at worst a release published in the last minute is missing here and
+    still installed.
+    """
+    if RELEASE_TAG.match(target) and git_out(
+            repo, "rev-parse", "-q", "--verify", "refs/tags/%s^{commit}" % target):
+        ref = "refs/tags/%s" % target
     else:
-        # Being on a branch other than main is not a blocker: it is the other
-        # line this window knows about, and pulling it is what someone testing
-        # that branch asked for. What still has to hold either way is that there
-        # is a remote branch to pull from — and --ff-only, which is what actually
-        # refuses a checkout whose history has diverged from it.
-        upstream = git_out(repo, "rev-parse", "--abbrev-ref",
-                           "--symbolic-full-name", "@{upstream}")
-        if upstream is None:
-            reasons.append("The branch %s is not tracking a remote branch."
-                           % branch)
-    return reasons
+        ref = "refs/remotes/origin/%s" % target
+    head = git_out(repo, "rev-parse", "HEAD")
+    tip = git_out(repo, "rev-parse", "%s^{commit}" % ref)
+    sections = []
+    if not head or not tip or head == tip:
+        return sections
+
+    def ancestor(a, b):
+        return git_out(repo, "merge-base", "--is-ancestor", a, b) is not None
+
+    between = [r for r in list_releases(repo)
+               if r["sha"] != head and ancestor(r["sha"], tip)
+               and not ancestor(r["sha"], head)]
+    between.sort(key=lambda r: r["time"])
+    bounds = [head] + [r["sha"] for r in between]
+    stops = between + [None]
+    for since, release in zip(bounds, stops):
+        until = release["sha"] if release else tip
+        if release is None and between and until == between[-1]["sha"]:
+            break
+        subjects = commit_subjects(repo, since, until, limit=200)
+        if release is None and not subjects:
+            break
+        body = notes.get(release["tag"], ("", ""))[1] if release else ""
+        markup = markdown_markup(body) if body else ""
+        changes = changes_markup(subjects, empty="")
+        if changes:
+            markup = (markup + "\n\n" if markup else "") + changes
+        if release:
+            title, date = release["tag"], release["date"]
+        else:
+            title = version_name(repo, tip)
+            date = git_out(repo, "log", "-1", "--format=%cs", tip) or ""
+        sections.append({"title": title, "date": date, "count": len(subjects),
+                         "markup": markup or GLib.markup_escape_text(
+                             "Housekeeping only — nothing you would see.")})
+    sections.reverse()
+    return sections
+
+
+def updates_snapshot(repo, fetch):
+    """Everything the Updates page lists, read in one go off the main thread.
+
+    fetch also asks the network: origin's refs, then GitHub's notes. Without it
+    the page shows what the checkout already knows, which is instant and what
+    the window opens with.
+    """
+    fetched = fetch_releases(repo) if fetch else None
+    releases = list_releases(repo)
+    for older, rel in zip(releases[1:] + [None], releases):
+        rel["changes"] = commit_subjects(
+            repo, older["sha"] if older else None, rel["sha"])
+    have_main = git_out(repo, "rev-parse", "-q", "--verify", MAIN_REF) is not None
+    main = None
+    if have_main:
+        # main's own line since the newest release, newest first: each commit
+        # is a tag (v0.3.5+N). First-parent, so a merged branch counts as the
+        # one commit that brought it in rather than as every commit on it.
+        since = releases[0]["sha"] if releases else None
+        span = MAIN_REF if since is None else "%s..%s" % (since, MAIN_REF)
+        out = git_out(repo, "log", "--first-parent", "--max-count=200",
+                      "--format=%H%x00%h%x00%cs%x00%s%x00%ct", span)
+        head = git_out(repo, "rev-parse", "HEAD")
+        tip = git_out(repo, "rev-parse", MAIN_REF)
+        tags = []
+        for line in (out or "").splitlines():
+            fields = line.split("\0")
+            if len(fields) != 5:
+                continue
+            tag = dict(zip(("sha", "short", "date", "subject"), fields[:4]))
+            tag["time"] = int(fields[4]) if fields[4].isdigit() else 0
+            if not shown_on_main(tag["sha"], tag["subject"], head, tip):
+                continue
+            # Named only where it will be shown: one describe per row.
+            if len(tags) < SHOWN_VERSIONS or tag["sha"] == head:
+                tag["name"] = version_name(repo, tag["sha"])
+                tag["changes"] = tag_changes(repo, tag["sha"])
+            tags.append(tag)
+        main = {"tip": tip, "tags": tags}
+    branch = current_branch(repo)
+    test = None
+    if branch and branch not in RELEASE_BRANCHES:
+        remote = "refs/remotes/origin/%s" % branch
+        if git_out(repo, "rev-parse", "-q", "--verify", remote) is not None:
+            test = {"branch": branch,
+                    "short": git_out(repo, "rev-parse", "--short=7", remote),
+                    "behind": count_commits(repo, "HEAD", remote),
+                    "changes": commit_subjects(repo, "HEAD", remote, limit=40)}
+    return {
+        "fetched": fetched,
+        "releases": releases,
+        "main": main,
+        "test": test,
+        "head": git_out(repo, "rev-parse", "HEAD"),
+        "head_tag": git_out(repo, "describe", "--tags", "--exact-match",
+                            "HEAD"),
+        "branch": branch,
+        "dirty": bool(git_out(repo, "status", "--porcelain")),
+        "history": history_lines(repo) if have_main else [],
+        "notes": github_release_notes(repo) if fetch else None,
+        "slug": github_slug(repo),
+    }
 
 
 class Settings:
@@ -2104,14 +2653,13 @@ class Settings:
             os.path.join(CONF_DIR, "shell-80-solid.css"))
 
         self.transparency = read_memo("app-transparency", "0") or "0"
-        self.scope = read_memo("app-blur-scope", "gtk") or "gtk"
+        self.scope = read_memo("app-blur-scope", "all") or "all"
         if read_memo("window-blur", "1") == "0":
             self.scope = "none"
         if self.scope not in BLUR_SCOPES:
-            self.scope = "gtk"
+            self.scope = "all"
 
         self.popup_blur = read_memo("popup-blur", "1") != "0"
-        self.notification_blur = read_memo("notification-blur", "1") != "0"
 
         if not self.glass_mode:
             # Derived exactly as glass_mode_from_state does in
@@ -2127,23 +2675,24 @@ class Settings:
             self.transparency = read_mode_memo("performance", "app-transparency", "1.00") or "1.00"
             self.scope = "none"
             self.popup_blur = False
-            self.notification_blur = False
             self.blur = False
             self.app_tint = read_mode_memo("performance", "app-tint-color", "#000000") or "#000000"
             self.shell_tint = read_mode_memo("performance", "shell-tint-color", "#000000") or "#000000"
             self.blur_strength = 100
-            self.popup_brightness = POPUP_BRIGHTNESS_DEFAULT
-            self.notification_opacity = NOTIFICATION_OPACITY_DEFAULT
+            self.blur_brightness = 100
+            self.surface_strength = {sid: "main" for sid, _t, _s in BLUR_SURFACES}
+            self.surface_brightness = {sid: "main" for sid, _t, _s in BLUR_SURFACES}
+            self.popup_opacity = "main"
         else:
             self.app_tint = read_mode_memo(self.glass_mode, "app-tint-color", read_hex_memo("app-tint-color"))
             self.shell_tint = read_mode_memo(self.glass_mode, "shell-tint-color", read_hex_memo("shell-tint-color"))
             self.blur_strength = read_percent_memo("blur-strength")
-            self.popup_brightness = read_bounded_memo(
-                "popup-brightness", POPUP_BRIGHTNESS_MIN, POPUP_BRIGHTNESS_MAX,
-                POPUP_BRIGHTNESS_DEFAULT)
-            self.notification_opacity = read_bounded_memo(
-                "notification-opacity", NOTIFICATION_OPACITY_MIN,
-                NOTIFICATION_OPACITY_MAX, NOTIFICATION_OPACITY_DEFAULT)
+            self.blur_brightness = read_percent_memo(
+                "blur-brightness", BLUR_BRIGHTNESS_MIN, BLUR_BRIGHTNESS_MAX)
+            self.surface_strength, self.surface_brightness = \
+                read_surface_memos(CONF_DIR)
+            self.popup_opacity = read_surface_memo(
+                CONF_DIR, "popup-opacity", POPUP_OPACITY_MIN, POPUP_OPACITY_MAX)
 
         # Which windows the applications component treats. Blur My Shell reads
         # one or the other depending on enable-all, which is the same choice
@@ -2200,16 +2749,28 @@ class Settings:
         if self.titlebutton_style not in [s[0] for s in TITLEBUTTON_STYLES]:
             self.titlebutton_style = "minimal"
 
-        # A user systemd unit rather than a look, but a remembered setting like
-        # any other, so it rides on Apply.
-        # Its default is the machine's, not a literal: the rebuild is for
-        # layouts that change, so install.sh turns it on for more than one
-        # monitor and leaves a single screen alone. Same rule here, or the
-        # switch would show a state nothing has agreed to.
-        self.panel_blur_fix = read_memo(
-            "panel-blur-fix", "1" if monitor_count() > 1 else "0") != "0"
+        # A top-level memo, not a drawer field: Performance has no blur for a
+        # style to shape, so there is nothing for a second copy to hold.
+        self.glass_style = read_memo("glass-style", "frosted") or "frosted"
+        if self.glass_style not in [g[0] for g in GLASS_STYLES]:
+            self.glass_style = "frosted"
+        # Kept whatever the style, as apply_glass_style keeps it, so going
+        # back to liquid or vibrant brings the windows back the way they were.
+        self.liquid_windows = read_memo("liquid-windows", "0") == "1"
+        # Off unless asked, as apply_fullscreen_blur defaults it.
+        self.fullscreen_blur = read_memo("fullscreen-blur", "0") == "1"
+        # A top-level memo like the style: the bar is the same height in both
+        # modes. Out of bounds is the theme's 40, as resolve_panel_height has it.
+        self.panel_height = surface_value(read_memo("panel-height", ""),
+                                          PANEL_HEIGHT_MIN, PANEL_HEIGHT_MAX)
+        if self.panel_height == "main":
+            self.panel_height = PANEL_HEIGHT_THEME
+        self.panel_maximized_black = read_memo("panel-maximized-black", "1") != "0"
 
         self.update_check = read_memo("update-check", "1") != "0"
+        self.update_channel = read_memo("update-channel", "release")
+        if self.update_channel not in [c[0] for c in UPDATE_CHANNELS]:
+            self.update_channel = "release"
         # Written by bin/aura-glass-update-check, so the window can say what is
         # waiting without going to the network itself. None means up to date.
         self.update_available = read_memo("update-available") or None
@@ -2229,11 +2790,8 @@ class Settings:
         disk_app_tint = read_memo("app-tint-color", "")
         disk_shell_tint = read_memo("shell-tint-color", "")
         disk_strength = read_memo("blur-strength", "")
-        disk_brightness = read_memo("popup-brightness", "")
-        disk_ground = read_memo("notification-opacity", "")
         disk_scope = read_memo("app-blur-scope", "")
         disk_popup = read_memo("popup-blur", "")
-        disk_notification = read_memo("notification-blur", "")
 
         self.modes = {}
         for mode in GLASS_MODES:
@@ -2250,27 +2808,34 @@ class Settings:
                                               disk_strength or "100"))
             except ValueError:
                 strength = 100
-            try:
-                brightness = int(read_mode_memo(
-                    mode, "popup-brightness",
-                    disk_brightness or str(POPUP_BRIGHTNESS_DEFAULT)))
-            except ValueError:
-                brightness = POPUP_BRIGHTNESS_DEFAULT
-            try:
-                ground = int(read_mode_memo(
-                    mode, "notification-opacity",
-                    disk_ground or str(NOTIFICATION_OPACITY_DEFAULT)))
-            except ValueError:
-                ground = NOTIFICATION_OPACITY_DEFAULT
+            # The main brightness, each surface's own blur and the popups'
+            # opacity are read the way load_glass_mode_memos reads them: from
+            # the drawer when there is one, missing keys and all, and from the
+            # top-level memos seed_glass_mode would copy in when there is not.
+            # Performance has no blur, so it has none of them to keep.
+            drawer = os.path.join(CONF_DIR, "modes", mode)
+            if mode == "performance":
+                brightness = 100
+                surface_strength = {sid: "main" for sid, _t, _s in BLUR_SURFACES}
+                surface_brightness = dict(surface_strength)
+                popup_opacity = "main"
+            else:
+                source = drawer if os.path.isdir(drawer) else CONF_DIR
+                brightness = surface_value(
+                    read_dir_memo(source, "blur-brightness"),
+                    BLUR_BRIGHTNESS_MIN, BLUR_BRIGHTNESS_MAX)
+                brightness = 100 if brightness == "main" else brightness
+                surface_strength, surface_brightness = read_surface_memos(source)
+                popup_opacity = read_surface_memo(
+                    source, "popup-opacity", POPUP_OPACITY_MIN,
+                    POPUP_OPACITY_MAX)
 
             if mode == "performance":
                 def_popup = "0"
-                def_notif = "0"
                 def_scope = "none"
             else:
                 def_popup = disk_popup or "1"
-                def_notif = disk_notification or "1"
-                def_scope = disk_scope or "gtk"
+                def_scope = disk_scope or "all"
 
             self.modes[mode] = {
                 "transparency": read_mode_memo(mode, "app-transparency", level),
@@ -2278,11 +2843,11 @@ class Settings:
                 "shell_tint": read_mode_memo(mode, "shell-tint-color",
                                              shell_default),
                 "blur_strength": strength,
-                "popup_brightness": brightness,
-                "notification_opacity": ground,
+                "blur_brightness": brightness,
+                "surface_strength": surface_strength,
+                "surface_brightness": surface_brightness,
+                "popup_opacity": popup_opacity,
                 "popup_blur": read_mode_memo(mode, "popup-blur", def_popup) != "0",
-                "notification_blur": read_mode_memo(
-                    mode, "notification-blur", def_notif) != "0",
                 "scope": read_mode_memo(mode, "app-blur-scope", def_scope),
             }
 
@@ -2295,10 +2860,11 @@ class Settings:
                 "app_tint": self.app_tint,
                 "shell_tint": self.shell_tint,
                 "blur_strength": self.blur_strength,
-                "popup_brightness": self.popup_brightness,
-                "notification_opacity": self.notification_opacity,
+                "blur_brightness": self.blur_brightness,
+                "surface_strength": dict(self.surface_strength),
+                "surface_brightness": dict(self.surface_brightness),
+                "popup_opacity": self.popup_opacity,
                 "popup_blur": self.popup_blur,
-                "notification_blur": self.notification_blur,
                 "scope": self.scope,
             })
 
@@ -2343,9 +2909,8 @@ class Settings:
         if self.update_check != other.update_check:
             args.append("--update-check" if self.update_check
                         else "--no-update-check")
-        if self.panel_blur_fix != other.panel_blur_fix:
-            args.append("--panel-blur-fix" if self.panel_blur_fix
-                        else "--no-panel-blur-fix")
+        if self.update_channel != other.update_channel:
+            args += ["--update-channel", self.update_channel]
 
         # Only ever on the way to a layout, never back to none. There is no flag
         # for "stop having an opinion" because there is nothing to restore to:
@@ -2357,6 +2922,19 @@ class Settings:
             args += ["--window-buttons", self.window_buttons]
         if self.titlebutton_style != other.titlebutton_style:
             args += ["--titlebar-button-style", self.titlebutton_style]
+        if self.glass_style != other.glass_style:
+            args += ["--glass-style", self.glass_style]
+        if self.liquid_windows != other.liquid_windows:
+            args.append("--liquid-windows" if self.liquid_windows
+                        else "--no-liquid-windows")
+        if self.fullscreen_blur != other.fullscreen_blur:
+            args.append("--fullscreen-blur" if self.fullscreen_blur
+                        else "--no-fullscreen-blur")
+        if self.panel_height != other.panel_height:
+            args += ["--panel-height", str(self.panel_height)]
+        if self.panel_maximized_black != other.panel_maximized_black:
+            args.append("--panel-maximized-black" if self.panel_maximized_black
+                        else "--no-panel-maximized-black")
         # --radius-custom implies the custom preset, so it stands in for
         # --radius-preset rather than joining it. Sent when the eight values
         # moved even if the preset name did not, because "custom" says nothing
@@ -2392,7 +2970,6 @@ class Settings:
         scope_base = base("scope")
         transparency_base = base("transparency")
         popup_base = base("popup_blur")
-        notification_base = base("notification_blur")
         app_tint_base = base("app_tint")
         shell_tint_base = base("shell_tint")
 
@@ -2418,10 +2995,6 @@ class Settings:
                 args.append("--popup-blur" if self.popup_blur
                             else "--no-popup-blur")
 
-            if self.notification_blur != notification_base:
-                args.append("--notification-blur" if self.notification_blur
-                            else "--no-notification-blur")
-
         # The two tints. Sent as the value rather than as an on/off, because
         # black is a value in its own right — it is the state the sheets ship
         # in, and asking for it again is how a tint is undone.
@@ -2445,12 +3018,21 @@ class Settings:
                 args += ["--blur-strength", str(self.blur_strength)]
 
             # Beside the strength and compared the same way, for the same reason
-            # its comment gives: neither is part of a mode's identity, so both are
-            # a plain comparison against `other` rather than against the drawer.
-            if self.popup_brightness != other.popup_brightness:
-                args += ["--popup-brightness", str(self.popup_brightness)]
-            if self.notification_opacity != other.notification_opacity:
-                args += ["--notification-opacity", str(self.notification_opacity)]
+            # its comment gives: none of these is part of a mode's identity, so
+            # each is a plain comparison against `other` rather than against
+            # the drawer. A surface handed back to the main slider is sent as
+            # "main", which is how install.sh is told to forget its own value.
+            if self.blur_brightness != other.blur_brightness:
+                args += ["--blur-brightness", str(self.blur_brightness)]
+            for sid, _title, _subtitle in BLUR_SURFACES:
+                if self.surface_strength[sid] != other.surface_strength[sid]:
+                    args += ["--%s-blur-strength" % sid,
+                             str(self.surface_strength[sid])]
+                if self.surface_brightness[sid] != other.surface_brightness[sid]:
+                    args += ["--%s-brightness" % sid,
+                             str(self.surface_brightness[sid])]
+            if self.popup_opacity != other.popup_opacity:
+                args += ["--popup-opacity", str(self.popup_opacity)]
 
         # Whichever list changed, consulted by the mode in force or not.
         #
@@ -2902,6 +3484,10 @@ class Window(Adw.ApplicationWindow):
         # would be two installers writing the same files.
         self._running = False
         self._needs_logout = False
+        # The --plan-json answer for the pending flags: a debounce timer, and a
+        # generation so an answer for flags that have since changed is dropped.
+        self._plan_timer = 0
+        self._plan_generation = 0
 
         self._apply = Gtk.Button(sensitive=False)
         self._apply.add_css_class("suggested-action")
@@ -2937,8 +3523,6 @@ class Window(Adw.ApplicationWindow):
         self._tints = {}
         self._tint_rows = {}
         self._strength_scales = {}
-        self._brightness_scales = {}
-        self._ground_scales = {}
         # Live preview: tint, transparency, radius, blur strength, popup blur
         # and window-blur scope show on the real desktop as they move, through
         # bin/aura-glass-preview — see that script for why calling it on every
@@ -3010,6 +3594,14 @@ class Window(Adw.ApplicationWindow):
         # the one place in the window with no room for one.
         content_view = Adw.ToolbarView(content=self._toasts)
         header = Adw.HeaderBar()
+        # The page's name over the mode in force, so the answer to "which
+        # glass am I in?" is on every page rather than only on Glass. The
+        # subtitle is filled by _sync_mode_status.
+        # The pages are built before this header, so the first subtitle is
+        # set here rather than by the _sync_mode_status the Glass page ran.
+        self._window_title = Adw.WindowTitle(title=NAV_SECTIONS[0][1],
+                                             subtitle=self._mode_summary())
+        header.set_title_widget(self._window_title)
         self._preview_toggle = Gtk.ToggleButton(
             icon_name="view-reveal-symbolic", active=True,
             tooltip_text="Live preview — show tint, transparency, radius, "
@@ -3105,6 +3697,14 @@ class Window(Adw.ApplicationWindow):
             trigger=Gtk.ShortcutTrigger.parse_string("<Control>f"),
             action=Gtk.CallbackAction.new(
                 lambda *_a: self._search_entry.grab_focus() or True)))
+        # Ctrl+S applies, the save key of every other editor on the desktop.
+        # Only when Apply itself could be pressed, so it can never start a
+        # second run over one already going.
+        search_shortcut.add_shortcut(Gtk.Shortcut(
+            trigger=Gtk.ShortcutTrigger.parse_string("<Control>s"),
+            action=Gtk.CallbackAction.new(
+                lambda *_a: (self._apply.get_sensitive()
+                             and self._on_apply(self._apply)) or True)))
         self.add_controller(search_shortcut)
 
         self._sidebar.select_row(self._sidebar.get_row_at_index(0))
@@ -3173,7 +3773,17 @@ class Window(Adw.ApplicationWindow):
             max_content_height=300, propagate_natural_height=True,
             hscrollbar_policy=Gtk.PolicyType.NEVER,
             margin_top=6, margin_bottom=6, margin_start=6, margin_end=6)
-        pending_popover = Gtk.Popover(child=pending_scroller)
+        # Undo every edit not yet applied, in one place, rather than hunting
+        # down each row the dots point at. The same thing closing the window
+        # and choosing Discard does, minus the closing.
+        discard = Gtk.Button(label="Discard changes",
+                             margin_start=6, margin_end=6, margin_bottom=6)
+        discard.add_css_class("destructive-action")
+        discard.connect("clicked", self._on_discard_changes)
+        pending_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        pending_box.append(pending_scroller)
+        pending_box.append(discard)
+        pending_popover = Gtk.Popover(child=pending_box)
         self._pending_button.set_popover(pending_popover)
 
         self._log_toggle_btn = Gtk.Button(label="Show Log", valign=Gtk.Align.CENTER)
@@ -3238,11 +3848,12 @@ class Window(Adw.ApplicationWindow):
         "--app-tint-color", "--shell-tint-color",
         "--app-transparency", "--no-app-transparency",
         "--radius-preset", "--radius-custom",
-        "--blur-strength",
-        "--popup-brightness", "--notification-opacity",
-        "--popup-blur", "--no-popup-blur",
-        "--notification-blur", "--no-notification-blur",
-    )) | _APP_ONLY_FLAGS
+        "--blur-strength", "--blur-brightness", "--popup-opacity",
+        "--popup-blur", "--no-popup-blur", "--panel-height",
+    )) | frozenset(
+        flag for sid, _t, _s in BLUR_SURFACES
+        for flag in ("--%s-blur-strength" % sid, "--%s-brightness" % sid)
+    ) | _APP_ONLY_FLAGS
 
     def _on_preview_toggle(self, button):
         self._preview_enabled = button.get_active()
@@ -3300,18 +3911,23 @@ class Window(Adw.ApplicationWindow):
             cmd = ("session=$(%s begin) && %s set --session \"$session\" "
                   "--glass-mode %s --app-tint %s --shell-tint %s "
                   "--transparency %s --radius-custom %s --blur-strength %s "
-                  "--popup-brightness %s --notification-opacity %s "
-                  "--popup-blur %s --notification-blur %s "
+                  "--blur-brightness %s %s --popup-opacity %s "
+                  "--popup-blur %s --panel-height %s "
                   "--window-blur %s --scope %s "
                   "--app-blur-allow %s --app-blur-block %s"
                   % (q(script), q(script), q(current.glass_mode), q(current.app_tint),
                      q(current.shell_tint), q(current.transparency),
                      q(",".join(str(v) for v in current.radius_custom)),
                      q(str(current.blur_strength)),
-                     q(str(current.popup_brightness)),
-                     q(str(current.notification_opacity)),
+                     q(str(current.blur_brightness)),
+                     " ".join(
+                         "--%s-blur-strength %s --%s-brightness %s"
+                         % (sid, q(str(current.surface_strength[sid])),
+                            sid, q(str(current.surface_brightness[sid])))
+                         for sid, _t, _s in BLUR_SURFACES),
+                     q(str(current.popup_opacity)),
                      q("1" if current.popup_blur else "0"),
-                     q("1" if current.notification_blur else "0"),
+                     q(str(current.panel_height)),
                      q(window_blur),
                      q(scope), q(",".join(current.allow)),
                      q(",".join(current.block))))
@@ -3477,6 +4093,21 @@ class Window(Adw.ApplicationWindow):
         open_over(dialog, self)
         return True
 
+    def _on_discard_changes(self, _button):
+        """Put every row back to what is installed, and the desktop with it."""
+        self._pending_button.get_popover().popdown()
+        if self._running:
+            return
+        if self._preview_timer:
+            GLib.source_remove(self._preview_timer)
+            self._preview_timer = 0
+        # Asynchronous, and a no-op when nothing is previewing. A preview
+        # never writes a memo, so the disk _reload reads is already the
+        # installed state whether or not the revert has finished.
+        self._preview_revert()
+        self._reload()
+        self._toasts.add_toast(Adw.Toast(title="Changes discarded"))
+
     def _discard_and_close(self):
         """Close only after an active preview has been asynchronously reverted."""
         if self._preview_timer:
@@ -3567,7 +4198,12 @@ class Window(Adw.ApplicationWindow):
         if row is None:
             return
         self._stack.set_visible_child_name(row._section)
+        # Opening Updates is asking what is out there, so the first visit in a
+        # session fetches. Later ones show what that fetch found.
+        if row._section == "updates" and not self._updates_fetched:
+            self._refresh_updates(True)
         self._content_page.set_title(row.get_title())
+        self._window_title.set_title(row.get_title())
 
     def _sidebar_header(self, row, before):
         """A caption above the first row of each group, and none above the rest.
@@ -3595,6 +4231,7 @@ class Window(Adw.ApplicationWindow):
         self._sidebar.unselect_all()
         self._stack.set_visible_child_name("uninstall")
         self._content_page.set_title("Uninstall")
+        self._window_title.set_title("Uninstall")
 
     def _on_search_changed(self, entry):
         text = entry.get_text().strip().lower()
@@ -3764,7 +4401,52 @@ class Window(Adw.ApplicationWindow):
         buttons.add(self._titlebutton_style_row)
         page.add(buttons)
 
+        # Pixels rather than a percentage: the bar's height is a length people
+        # compare against the one GNOME draws, and the reset button is that
+        # comparison made in one click.
+        bar = Adw.PreferencesGroup(
+            title="Top bar",
+            description="Snapped to whole pixels at a fractional display "
+                        "scale, so a maximized window meets it without a seam.")
+        self._panel_height_scale = self._percent_scale(
+            PANEL_HEIGHT_MIN, PANEL_HEIGHT_MAX, PANEL_HEIGHT_MARKS, 4, 0,
+            self._applied.panel_height, step=1)
+        self._panel_height_scale.connect("value-changed",
+                                         self._on_panel_height_changed)
+        reset = Gtk.Button(icon_name="edit-undo-symbolic",
+                           valign=Gtk.Align.CENTER,
+                           tooltip_text="GNOME's own height (%d px)"
+                                        % PANEL_HEIGHT_GNOME)
+        reset.add_css_class("flat")
+        reset.connect("clicked", lambda _b: self._panel_height_scale.set_value(
+            PANEL_HEIGHT_GNOME))
+        self._panel_height_reset = reset
+        bar.add(self._slider_row(
+            "Height", "%d px is the theme's, %d px GNOME's own"
+            % (PANEL_HEIGHT_THEME, PANEL_HEIGHT_GNOME),
+            self._panel_height_scale, reset))
+        self._panel_maximized_black_row = Adw.SwitchRow(
+            title="Black on maximized window",
+            subtitle="Turns the top bar pure black when a window fills the screen",
+            active=self._applied.panel_maximized_black)
+        self._panel_maximized_black_row.connect("notify::active", self._on_changed,
+                                                "panel_maximized_black")
+        bar.add(self._panel_maximized_black_row)
+        self._sync_panel_height()
+        page.add(bar)
+
         return page
+
+    def _sync_panel_height(self):
+        scale = self._panel_height_scale
+        scale._readout.set_label("%d px" % round(scale.get_value()))
+        self._panel_height_reset.set_sensitive(
+            round(scale.get_value()) != PANEL_HEIGHT_GNOME)
+
+    def _on_panel_height_changed(self, _scale):
+        self._sync_panel_height()
+        if not self._loading:
+            self._mark_dirty()
 
     def _build_radius_page(self):
         page = Adw.PreferencesPage()
@@ -4071,7 +4753,7 @@ class Window(Adw.ApplicationWindow):
         self._mark_dirty()
 
     def _build_glass_page(self):
-        """The three modes, as three tabs.
+        """The two modes, as two tabs.
 
         The tab is the mode: switching one is asking for the other mode, in the
         ordinary pending way every other control here works, and Apply is what
@@ -4079,15 +4761,17 @@ class Window(Adw.ApplicationWindow):
         selected tab says "you are reading this", not "you are running this",
         and those are two different answers until Apply. A banner at the top of
         a tab is the second one, and only speaks on a tab that is not the one
-        the desktop is actually wearing — the common case, sitting on the
-        applied tab, stays silent rather than saying "In use" at every visit.
+        the desktop is actually wearing. Above both sits a status row that
+        names the mode in force and the adaptive overlay over it: the panel
+        menu flips the overlay from outside this window, and a page that
+        showed neither left "which one am I in?" without an answer anywhere.
 
         Each tab owns its own controls rather than sharing dimmed ones. The page
         this replaces spent four rows and a sensitivity pass explaining which of
         its switches did not apply right now; a control that does not apply to
         the mode you are in is simply in another tab.
 
-        All three are built here and now, like every page in this window and for
+        Both are built here and now, like every page in this window and for
         the same reason: _reload and _mark_dirty read every widget there is, and
         a tab built on first visit would be a tab whose rows do not exist when
         they run.
@@ -4115,9 +4799,227 @@ class Window(Adw.ApplicationWindow):
                                     halign=Gtk.Align.CENTER,
                                     margin_top=12)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        box.append(self._build_mode_status())
         box.append(switcher)
         box.append(self._mode_stack)
         return box
+
+    # The panel menu's three profiles, under the panel menu's own words
+    # (extension.js, _profileLabels): the same choice made from two places
+    # has to read the same in both.
+    ADAPTIVE_PROFILES = (("auto", "Auto"), ("full", "Frost Glass"),
+                         ("performance", "Performance"))
+
+    # adaptive-performance/reason, as tools/aura_glass_adaptive.py writes it.
+    ADAPTIVE_REASONS = {"performance": "chosen in the profile",
+                        "battery": "on battery",
+                        "gpu": "the GPU is busy",
+                        "game": "a fullscreen game is running"}
+
+    # What the status row and the header subtitle read. glass-mode is the
+    # mode; the rest is the adaptive overlay the worker lays over frosted.
+    # shell-80-solid.css is watched for the timing alone: it lands with a
+    # transition, and the row should move when it does.
+    _MODE_FILES = ("glass-mode", "adaptive-profile", "shell-80-solid.css")
+
+    def _build_mode_status(self):
+        """The mode in force, the overlay over it, and the one-click switch.
+
+        Read off disk rather than off the tabs: a tab is a request, and this
+        row answers what the desktop is wearing right now — including the
+        adaptive overlay, which is never a glass mode (glass-mode stays
+        frosted under it) and so never moves a tab.
+        """
+        group = Adw.PreferencesGroup()
+        self._mode_row = Adw.ActionRow(title="Glass mode in use")
+        self._mode_pill = Gtk.Label(valign=Gtk.Align.CENTER)
+        self._mode_pill.add_css_class("aura-badge")
+        self._mode_pill.add_css_class("on")
+        self._mode_row.add_suffix(self._mode_pill)
+        self._mode_switch = Gtk.Button(valign=Gtk.Align.CENTER)
+        self._mode_switch.connect(
+            "clicked", lambda _b: self._switch_mode(self._other_mode()))
+        self._mode_row.add_suffix(self._mode_switch)
+        group.add(self._mode_row)
+
+        # The same command the panel menu runs, so the worker stays the one
+        # owner of the profile and of the transition it starts. Not an Apply
+        # flag: like an extension switch, it acts the moment it is chosen.
+        self._profile_row = Adw.ComboRow(
+            title="Adaptive performance",
+            model=Gtk.StringList.new(
+                [label for _p, label in self.ADAPTIVE_PROFILES]))
+        self._profile_syncing = False
+        self._profile_row.connect("notify::selected", self._on_profile_chosen)
+        group.add(self._profile_row)
+
+        # Its own monitors rather than the System page's: that one filters to
+        # stamp files, and this row is the only reader of these. The overlay
+        # lives in a subdirectory, which a directory monitor does not descend
+        # into, so it gets a second one.
+        self._mode_watch_timer = 0
+        self._mode_monitors = []
+        for path in (CONF_DIR, os.path.join(CONF_DIR, "adaptive-performance")):
+            monitor = Gio.File.new_for_path(path).monitor_directory(
+                Gio.FileMonitorFlags.NONE, None)
+            monitor.connect("changed", self._on_mode_file_changed)
+            self._mode_monitors.append(monitor)
+
+        clamp = Adw.Clamp(child=group, maximum_size=600,
+                          tightening_threshold=400, margin_top=12,
+                          margin_start=12, margin_end=12)
+        self._sync_mode_status()
+        return clamp
+
+    def _other_mode(self):
+        return ("frosted" if self._applied.glass_mode == "performance"
+                else "performance")
+
+    def _adaptive_state(self):
+        """(profile, active, reason), read where the worker writes them and
+        with the worker's own defaults (selected_profile, recorded_active)."""
+        profile = read_memo("adaptive-profile", "auto")
+        if profile not in [p for p, _l in self.ADAPTIVE_PROFILES]:
+            profile = "auto"
+        active = read_memo("adaptive-performance/active") == "1"
+        reason = read_memo("adaptive-performance/reason") or "normal"
+        return profile, active, reason
+
+    def _mode_summary(self):
+        """One line for the pill and the header subtitle."""
+        mode = self._mode_title(self._applied.glass_mode)
+        _profile, active, _reason = self._adaptive_state()
+        if self._applied.glass_mode == "frosted" and active:
+            return "%s · Performance overlay" % mode
+        return mode
+
+    def _sync_mode_status(self):
+        applied = self._applied.glass_mode
+        profile, active, reason = self._adaptive_state()
+        summary = self._mode_summary()
+        self._mode_pill.set_label(summary)
+        self._mode_switch.set_label(
+            "Switch to %s" % self._mode_title(self._other_mode()))
+        self._mode_switch.set_sensitive(self._repo is not None)
+        if applied == "performance":
+            self._mode_row.set_subtitle(
+                "No blur anywhere — every surface is opaque")
+        elif active:
+            self._mode_row.set_subtitle(
+                "Blur is paused for now — %s"
+                % self.ADAPTIVE_REASONS.get(reason, reason))
+        else:
+            self._mode_row.set_subtitle("Blur behind the shell and your apps")
+        if hasattr(self, "_window_title"):
+            self._window_title.set_subtitle(summary)
+
+        self._profile_syncing = True
+        self._profile_row.set_selected(
+            [p for p, _l in self.ADAPTIVE_PROFILES].index(profile))
+        self._profile_syncing = False
+        # The worker skips Performance mode outright (performance_mode in
+        # tools/aura_glass_adaptive.py): there is no blur there to lighten.
+        self._profile_row.set_sensitive(applied == "frosted")
+        if applied == "performance":
+            self._profile_row.set_subtitle(
+                "Only in Frosted glass — Performance has no blur to lighten")
+        elif profile == "auto":
+            self._profile_row.set_subtitle(
+                "Drops to Performance on battery, a busy GPU or a "
+                "fullscreen game, and back when it ends")
+        elif profile == "full":
+            self._profile_row.set_subtitle("Always full blur")
+        else:
+            self._profile_row.set_subtitle(
+                "Performance overlay held on until you pick another profile")
+
+    def _switch_mode(self, mode):
+        """Apply the other mode in one click: show its tab, then Apply.
+
+        Through the ordinary Apply, so flags_against sends --glass-mode and
+        install.sh is still the only thing that resolves it. Edits already
+        pending elsewhere in the window ride along, as they would on Apply.
+        """
+        if self._running:
+            self._toasts.add_toast(Adw.Toast(
+                title="Already applying something — try again in a moment"))
+            return
+        if self._glass_mode() != mode:
+            self._mode_stack.set_visible_child_name(mode)
+        self._on_apply(None)
+
+    def _on_profile_chosen(self, row, _param):
+        if self._profile_syncing or self._loading:
+            return
+        profile = self.ADAPTIVE_PROFILES[row.get_selected()][0]
+        if profile == self._adaptive_state()[0]:
+            return
+        if self._running:
+            self._toasts.add_toast(Adw.Toast(
+                title="Already applying something — try again in a moment"))
+            self._sync_mode_status()
+            return
+        argv = self._adaptive_argv("profile", profile)
+        if argv is None:
+            self._toasts.add_toast(Adw.Toast(
+                title="The aura-glass checkout is gone"))
+            self._sync_mode_status()
+            return
+        label = dict(self.ADAPTIVE_PROFILES)[profile]
+        self._run_started("Switching the adaptive profile to %s…" % label)
+        log_append(self._apply_log, "$ aura-glass-adaptive profile " + profile)
+
+        def done(ok, message):
+            self._sync_mode_status()
+            if ok:
+                self._run_finished(True, "Adaptive profile: %s" % label)
+                return
+            failed = "Could not switch the adaptive profile"
+            if message:
+                failed = "%s — %s" % (failed, message)
+            self._run_finished(False, failed)
+            self._toasts.add_toast(Adw.Toast(title=failed))
+
+        stream_command(argv, self._run_line, done)
+
+    def _on_mode_file_changed(self, _monitor, file, _other, _event):
+        parent = file.get_parent()
+        in_overlay = (parent is not None
+                      and parent.get_basename() == "adaptive-performance")
+        if not in_overlay and file.get_basename() not in self._MODE_FILES:
+            return
+        # Debounced like the System page's watch: a transition writes the
+        # sheet, the memo and the overlay state one after another.
+        if self._mode_watch_timer:
+            GLib.source_remove(self._mode_watch_timer)
+        self._mode_watch_timer = GLib.timeout_add(500, self._on_mode_settled)
+
+    def _on_mode_settled(self):
+        self._mode_watch_timer = 0
+        self._sync_mode_status()
+        self._follow_outside_mode_change()
+        return False
+
+    def _follow_outside_mode_change(self):
+        """Move the window onto a glass mode changed from outside it.
+
+        An Apply of this window's own lands on _reload when it finishes, so a
+        run in flight is left to that. A pending edit or a live preview is not
+        thrown away for it, for _sync_app_blur_memos's reason: a toast instead.
+        """
+        mode = read_memo("glass-mode", "")
+        if self._running or mode not in GLASS_MODES \
+                or mode == self._applied.glass_mode:
+            return
+        if self._preview_active \
+                or self._current().flags_against(self._applied):
+            self._toasts.add_toast(Adw.Toast(
+                title="The glass mode changed to %s outside this window — "
+                      "apply or revert the pending edits to follow it"
+                      % self._mode_title(mode)))
+            return
+        self._reload()
+        self._mark_dirty()
 
     def _mode_tab(self, mode, page):
         """A tab's page, with the banner that speaks when this is not the
@@ -4131,7 +5033,8 @@ class Window(Adw.ApplicationWindow):
         unlabelled mark is the wrong tool for the one thing on this page that
         is easy to get wrong.
         """
-        banner = Adw.Banner(revealed=False)
+        banner = Adw.Banner(revealed=False, button_label="Switch now")
+        banner.connect("button-clicked", lambda _b: self._switch_mode(mode))
         self._mode_banners[mode] = banner
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, vexpand=True)
         box.append(banner)
@@ -4171,8 +5074,8 @@ class Window(Adw.ApplicationWindow):
             # The applied mode by name, rather than a bare "not this one". The
             # tab bar stops answering "so which one am I in?" the moment you
             # click away from it, which is exactly when the question gets asked.
-            banner.set_title("%s is in use — Apply to switch"
-                             % self._mode_title(applied))
+            banner.set_title("%s is in use — switch now, or Apply with "
+                             "your other edits" % self._mode_title(applied))
             banner.set_revealed(True)
 
     def _on_mode_switched(self, _stack, _param):
@@ -4194,9 +5097,9 @@ class Window(Adw.ApplicationWindow):
 
         Seeded from this mode's own drawer rather than from the live top-level
         memos. The tab exists whichever mode is installed, and a machine running
-        Transparent still has a frosted drawer on disk — seed_glass_mode wrote
+        Performance still has a frosted drawer on disk — seed_glass_mode wrote
         it — holding what Apply would install if this tab were chosen. Reading
-        the top-level memos instead would show a machine standing at Solid its
+        the top-level memos instead would show a machine in Performance its
         own forced zeroes under a Frosted heading.
 
         Tint, opacity and blur amount lead the page: they are the three things
@@ -4210,106 +5113,285 @@ class Window(Adw.ApplicationWindow):
 
         page.add(self._build_tint_group("frosted"))
 
+        # The three main sliders, one row each. Every surface follows them
+        # unless the Advanced group below gives it a value of its own.
         glass = Adw.PreferencesGroup(
-            title="Transparency",
-            description="How much of the desktop comes through an app window.")
+            title="Glass",
+            description="Moves windows, popups and notifications together. "
+                        "Advanced below sets any of them apart.")
 
-        # Off is its own switch rather than the bottom of the bar. They are not
-        # the same thing: 100% leaves the transparency sheet installed and fully
-        # opaque, while off removes it, and install_transparency_css treats those
-        # differently. A single control would have to pretend otherwise.
-        #
-        # It is also the one switch the Transparent tab does not have, and that
-        # is the difference between the two modes rather than an oversight:
-        # being translucent with nothing blurred behind it is what that mode is,
-        # so turning it off there is asking for this tab.
-        self._transparency_on = Adw.SwitchRow(
-            title="Translucent app windows",
-            subtitle="Let the blur and the wallpaper through GTK app windows",
-            active=frosted["transparency"] != "0")
-        self._transparency_on.connect("notify::active", self._on_changed,
-                                      "transparency")
-        glass.add(self._transparency_on)
+        strength = self._percent_scale(
+            BLUR_STRENGTH_MIN, BLUR_STRENGTH_MAX, BLUR_STRENGTH_MARKS, 25,
+            BLUR_STRENGTH_SNAP, frosted["blur_strength"])
+        strength.connect("value-changed", self._on_main_changed)
+        self._strength_scales["frosted"] = strength
+        glass.add(self._slider_row(
+            "Blur amount", "Higher is softer, and costs more GPU time. Moves "
+            "the dock and the rest of the shell too", strength))
 
-        # The bar gets a row to itself, under the one that names it.
-        #
-        # It used to be a suffix on that row, which left it a few hundred pixels
-        # wide with three two-line mark labels under it and GtkScale's own value
-        # readout drawn over the top — four numbers competing for the same strip
-        # of pixels, and on a narrow window they overlapped into an unreadable
-        # smear. So: the readout moves to the row's suffix as an ordinary label,
-        # the marks lose their percentages, and the bar gets the full width to
-        # spread the three remaining words across.
+        brightness = self._percent_scale(
+            BLUR_BRIGHTNESS_MIN, BLUR_BRIGHTNESS_MAX, BLUR_BRIGHTNESS_MARKS, 10,
+            BLUR_BRIGHTNESS_SNAP, frosted["blur_brightness"])
+        brightness.connect("value-changed", self._on_main_changed)
+        self._glass_brightness_scale = brightness
+        glass.add(self._slider_row(
+            "Brightness", "100% is the tuned glass — lower darkens what shows "
+            "through", brightness))
+
+        # Opaque windows are stored as a flat "0" and show as 100%: the bar's
+        # top is what that looks like, and _current keeps the "0" until the
+        # bar is moved. The switch that used to sit above this said the same
+        # thing twice.
         self._transparency_scale = self._opacity_scale(
-            level_to_percent(frosted["transparency"]))
-
-        self._transparency_row = Adw.ActionRow(
-            title="Opacity", subtitle=OPACITY_SUBTITLE)
-        self._transparency_row.add_suffix(self._transparency_scale._readout)
-        glass.add(self._transparency_row)
-
-        self._transparency_bar = Gtk.Box(margin_start=12, margin_end=12,
-                                         margin_top=4, margin_bottom=4)
-        self._transparency_bar.append(self._transparency_scale)
-        glass.add(self._transparency_bar)
-
+            100 if frosted["transparency"] == "0"
+            else level_to_percent(frosted["transparency"]))
+        self._transparency_scale.connect("value-changed", self._on_main_changed)
+        glass.add(self._slider_row("Opacity", OPACITY_SUBTITLE,
+                                   self._transparency_scale))
         page.add(glass)
-        page.add(self._build_blur_strength_group("frosted"))
-        page.add(self._build_popup_brightness_group("frosted"))
-        page.add(self._build_notification_ground_group("frosted"))
 
-        # Which surfaces the blur reaches, once the tint/opacity/amount above
-        # have already answered what it looks like. Two switches, not the
-        # dropdown this was — they are two settings in install.sh,
-        # WANT_WINDOW_BLUR and APP_BLUR_SCOPE, and the dropdown was the only
-        # thing that ever made them one question.
+        # Which surfaces the blur reaches. One dropdown for the windows, not the
+        # two switches this was: the three answers are the ones both wizards
+        # already offer, and a second switch that only meant anything while the
+        # first was on read as two settings when it was one.
         reach = Adw.PreferencesGroup(title="Where the blur reaches")
-
-        self._window_blur_row = Adw.SwitchRow(
-            title="Blur behind app windows",
-            subtitle="Off leaves windows translucent with no blur behind them",
-            active=frosted["scope"] != "none")
-        self._window_blur_row.connect("notify::active", self._on_changed,
-                                      "scope")
+        self._window_blur_row = self._combo(
+            "Blur behind windows", "", WINDOW_BLUR_CHOICES,
+            frosted.get("scope", "all"), "scope")
         reach.add(self._window_blur_row)
 
-        # The cost in bold, and it is the only bold on the page. This is the one
-        # switch here that measured the overview at p90 99% GPU against 32%
-        # without it, and a subtitle that mentioned that in passing was a
-        # subtitle people turned it on without reading.
-        self._blur_all_row = Adw.SwitchRow(
-            title="Blur behind all application windows",
-            subtitle="Covers browsers and Electron apps too — <b>heavy on "
-                     "the GPU</b>",
-            active=frosted["scope"] == "all")
-        self._blur_all_row.connect("notify::active", self._on_changed, "scope")
-        reach.add(self._blur_all_row)
-
         self._popup_row = Adw.SwitchRow(
-            title="Blur behind menus and the top bar",
+            title="Blur behind menus, notifications and the top bar",
             subtitle=POPUP_BLUR_SUBTITLE,
             active=frosted["popup_blur"])
         self._popup_row.connect("notify::active", self._on_changed, "popup_blur")
         reach.add(self._popup_row)
-
-        self._notification_row = Adw.SwitchRow(
-            title=NOTIFICATION_BLUR_TITLE,
-            subtitle=NOTIFICATION_BLUR_SUBTITLE,
-            active=frosted["notification_blur"])
-        self._notification_row.connect("notify::active", self._on_changed,
-                                       "notification_blur")
-        reach.add(self._notification_row)
         page.add(reach)
+
+        style = Adw.PreferencesGroup(
+            title="Glass style",
+            description="The material on the top bar and the dock.")
+        self._glass_style_row = self._combo(
+            "Style", "", GLASS_STYLES, self._applied.glass_style,
+            "glass_style")
+        style.add(self._glass_style_row)
+        page.add(style)
+
+        page.add(self._build_advanced_group(frosted))
 
         # Last on the page rather than first: the cost is worth knowing, but
         # not the reason anyone opened this tab.
         page.add(tip_card(
             "<b>Blur is the most expensive thing in this window.</b> It costs "
             "GPU and battery — more on integrated graphics or a 4K screen. If "
-            "the desktop feels slow, turn off <b>Blur behind all application "
-            "windows</b> first, or switch to Performance."))
+            "the desktop feels slow, set <b>Blur behind windows</b> to GTK "
+            "apps only first, or switch to Performance."))
 
         return self._mode_tab("frosted", page)
+
+    def _build_advanced_group(self, frosted):
+        """Each surface on its own, collapsed until asked for.
+
+        A surface follows the main sliders until one of its own bars is moved;
+        from then on it keeps that value whatever the main slider does, and a
+        reset button hands it back. That is the whole of the model, and it is
+        install.sh's: an override is a number, following is "main".
+        """
+        group = Adw.PreferencesGroup(
+            title="Advanced",
+            description="Set a surface apart from the main sliders. A surface "
+                        "you change keeps its value until you reset it.")
+        # (sid, kind) -> row, for _current, _reload and the main sliders.
+        self._surface_rows = {}
+        for sid, title, subtitle in BLUR_SURFACES:
+            # No markup: "&" in a title is invalid Pango and blanks the row.
+            expander = Adw.ExpanderRow(title=title, subtitle=subtitle,
+                                       use_markup=False)
+            expander._sid = sid
+            self._surface_rows[(sid, "strength")] = self._surface_row(
+                expander, sid, "strength", "Blur amount",
+                BLUR_STRENGTH_MIN, BLUR_STRENGTH_MAX, BLUR_STRENGTH_MARKS, 25,
+                BLUR_STRENGTH_SNAP, frosted["surface_strength"][sid])
+            self._surface_rows[(sid, "brightness")] = self._surface_row(
+                expander, sid, "brightness", "Brightness",
+                BLUR_BRIGHTNESS_MIN, BLUR_BRIGHTNESS_MAX,
+                BLUR_BRIGHTNESS_MARKS, 10, BLUR_BRIGHTNESS_SNAP,
+                frosted["surface_brightness"][sid])
+            # One opacity for popups and banners together; the windows' own is
+            # the main Opacity bar, and the top bar and lock screen paint
+            # their own grounds.
+            if sid == "popup":
+                self._surface_rows[(sid, "opacity")] = self._surface_row(
+                    expander, sid, "opacity", "Opacity",
+                    POPUP_OPACITY_MIN, POPUP_OPACITY_MAX, TRANSPARENCY_MARKS, 5,
+                    TRANSPARENCY_SNAP, frosted["popup_opacity"], step=1)
+            group.add(expander)
+            self._sync_surface_summary(expander)
+
+        more = Adw.ExpanderRow(title="More",
+                               subtitle="Window blur behaviour")
+        self._liquid_windows_row = Adw.SwitchRow(
+            title="Glass style behind app windows",
+            subtitle="Window blur turns static: a window blurs the wallpaper, "
+                     "not the window under it",
+            active=self._applied.liquid_windows)
+        self._liquid_windows_row.connect("notify::active", self._on_changed,
+                                         "liquid_windows")
+        more.add_row(self._liquid_windows_row)
+        self._fullscreen_blur_row = Adw.SwitchRow(
+            title="Blur fullscreen windows",
+            subtitle="Off drops the blur behind a fullscreen video or game "
+                     "and makes it opaque",
+            active=self._applied.fullscreen_blur)
+        self._fullscreen_blur_row.connect("notify::active", self._on_changed,
+                                          "fullscreen_blur")
+        more.add_row(self._fullscreen_blur_row)
+        group.add(more)
+        return group
+
+    def _percent_scale(self, low, high, marks, page, snap, value, step=5):
+        """A bar over whole percentages, with its readout kept on its side.
+
+        Fives by default, not points: five percent is about the smallest step
+        that shows up on a screen, and four either side of a mark is the widest
+        snap radius that leaves the stop next to it reachable.
+        """
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,
+                                         low, high, step)
+        scale.set_hexpand(True)
+        scale.set_draw_value(False)
+        for at, label in marks:
+            scale.add_mark(at, Gtk.PositionType.BOTTOM, label)
+        tame_scale(scale, marks, step, page, snap)
+        scale._readout = Gtk.Label(valign=Gtk.Align.CENTER)
+        scale._readout.add_css_class("numeric")
+        scale._readout.add_css_class("dim-label")
+        scale.set_value(value)
+        self._sync_percent_value(scale)
+        return scale
+
+    def _slider_row(self, title, subtitle, scale, reset=None):
+        """A title, its readout and a bar, as one row.
+
+        One row rather than a row and a bar in a group of their own: an
+        Adw.PreferencesGroup puts every non-row child after its whole list
+        box, so the three main bars could not share a group any other way, and
+        an expander row only takes rows.
+        """
+        row = Adw.PreferencesRow(activatable=False, focusable=False)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4,
+                      margin_top=8, margin_bottom=8, margin_start=12,
+                      margin_end=12)
+        head = Gtk.Box(spacing=8)
+        words = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True,
+                        valign=Gtk.Align.CENTER)
+        words.append(Gtk.Label(label=title, xalign=0))
+        row._subtitle = Gtk.Label(label=subtitle, xalign=0, wrap=True)
+        row._subtitle.add_css_class("dim-label")
+        row._subtitle.add_css_class("caption")
+        words.append(row._subtitle)
+        head.append(words)
+        if reset is not None:
+            head.append(reset)
+        head.append(scale._readout)
+        box.append(head)
+        box.append(scale)
+        row.set_child(box)
+        row._scale = scale
+        return row
+
+    def _surface_row(self, expander, sid, kind, title, low, high, marks, page,
+                     snap, value, step=5):
+        """One surface's own bar, following its main slider or not."""
+        reset = Gtk.Button(icon_name="edit-undo-symbolic",
+                           valign=Gtk.Align.CENTER,
+                           tooltip_text="Follow the main slider again")
+        reset.add_css_class("flat")
+        scale = self._percent_scale(low, high, marks, page, snap,
+                                    self._main_value(kind) if value == "main"
+                                    else value, step)
+        row = self._slider_row(title, "", scale, reset)
+        row._follows = value == "main"
+        row._expander = expander
+        row._kind = kind
+        row._reset = reset
+        scale.connect("value-changed", self._on_surface_changed, row)
+        reset.connect("clicked", self._on_surface_reset, row)
+        expander.add_row(row)
+        self._sync_surface_row(row)
+        return row
+
+    def _main_value(self, kind):
+        """What a following surface of this kind shows: its main bar's value."""
+        scale = {"strength": self._strength_scales.get("frosted"),
+                 "brightness": getattr(self, "_glass_brightness_scale", None),
+                 "opacity": getattr(self, "_transparency_scale", None)}[kind]
+        return round(scale.get_value())
+
+    def _sync_surface_row(self, row):
+        row._reset.set_visible(not row._follows)
+        row._subtitle.set_label("Follows the main slider" if row._follows
+                                else "Set apart — the main slider leaves it")
+
+    def _sync_surface_summary(self, expander):
+        custom = [row._scale for (sid, _k), row in self._surface_rows.items()
+                  if sid == expander._sid and not row._follows]
+        expander.set_subtitle(
+            "Set apart from the main sliders" if custom else
+            dict((s, sub) for s, _t, sub in BLUR_SURFACES)[expander._sid])
+
+    def _on_main_changed(self, scale):
+        """A main bar moved: every surface still following it moves too.
+
+        The opacity bar has _on_scale_changed beside this for its readout and
+        the dirty mark, as it does on the Performance tab, so only the other
+        two get theirs here.
+        """
+        kind = ("strength" if scale is self._strength_scales.get("frosted")
+                else "brightness" if scale is
+                getattr(self, "_glass_brightness_scale", None) else "opacity")
+        loading, self._loading = self._loading, True
+        for (_sid, k), row in getattr(self, "_surface_rows", {}).items():
+            if k == kind and row._follows:
+                row._scale.set_value(round(scale.get_value()))
+        self._loading = loading
+        if kind == "opacity":
+            return
+        self._sync_percent_value(scale)
+        if not self._loading:
+            self._mark_dirty()
+
+    def _on_surface_changed(self, scale, row):
+        self._sync_percent_value(scale)
+        if self._loading:
+            return
+        if row._follows:
+            row._follows = False
+            self._sync_surface_row(row)
+            self._sync_surface_summary(row._expander)
+        self._mark_dirty()
+
+    def _on_surface_reset(self, _button, row):
+        row._follows = True
+        self._loading = True
+        row._scale.set_value(self._main_value(row._kind))
+        self._loading = False
+        self._sync_surface_row(row)
+        self._sync_surface_summary(row._expander)
+        self._mark_dirty()
+
+    def _surface_value(self, sid, kind):
+        """A surface's answer for _current: "main", or its own percentage."""
+        row = self._surface_rows[(sid, kind)]
+        return "main" if row._follows else int(round(row._scale.get_value()))
+
+    def _load_surface_row(self, row, value):
+        """Put a surface back to a value read off the disk (_reload)."""
+        row._follows = value == "main"
+        row._scale.set_value(self._main_value(row._kind) if row._follows
+                             else value)
+        self._sync_surface_row(row)
+        self._sync_surface_summary(row._expander)
 
     def _opacity_scale(self, percent):
         """One opacity bar, with the label that reports it kept on its side.
@@ -4499,147 +5581,8 @@ class Window(Adw.ApplicationWindow):
 
     # ---- how far the blur reaches -----------------------------------------
 
-    def _build_blur_strength_group(self, mode, description=None):
-        group = Adw.PreferencesGroup(
-            title="Blur amount",
-            description=description or
-            "How soft every blurred surface goes — panel, menus, windows, "
-            "lock screen. Scales the whole set at once.")
-
-        # On the bar rather than on the window, for the reason _opacity_scale
-        # gives: two tabs have one of these each, and the handler is handed the
-        # bar that moved.
-        readout = Gtk.Label(valign=Gtk.Align.CENTER)
-        readout.add_css_class("numeric")
-        readout.add_css_class("dim-label")
-
-        row = Adw.ActionRow(
-            title="Amount",
-            subtitle="Higher is softer, and costs more GPU time")
-        row.add_suffix(readout)
-        group.add(row)
-
-        scale = Gtk.Scale.new_with_range(
-            Gtk.Orientation.HORIZONTAL, BLUR_STRENGTH_MIN, BLUR_STRENGTH_MAX, 5)
-        scale.set_hexpand(True)
-        scale.set_draw_value(False)
-        for at, label in BLUR_STRENGTH_MARKS:
-            scale.add_mark(at, Gtk.PositionType.BOTTOM, label)
-        # Fives, not points. 175 points of blur strength across the same bar
-        # the opacity one gets 30 across is a resolution nobody can use or
-        # report — 5% of the tuned radii is the smallest change that shows up
-        # on a screen, so that is the step, and a drag lands on it. Four either
-        # side of a mark, which is the widest radius that leaves the stop next
-        # to it reachable.
-        tame_scale(scale, BLUR_STRENGTH_MARKS, 5, 25, BLUR_STRENGTH_SNAP)
-        scale._readout = readout
-        scale.set_value(self._applied.modes[mode]["blur_strength"])
-        self._sync_blur_strength_value(scale)
-        scale.connect("value-changed", self._on_blur_strength_changed)
-        self._strength_scales[mode] = scale
-
-        bar = Gtk.Box(margin_start=12, margin_end=12, margin_top=4,
-                      margin_bottom=4)
-        bar.append(scale)
-        group.add(bar)
-        return group
-
-    # The two knobs beside the amount, each in a group of its own rather than
-    # sharing one with it. Adw.PreferencesGroup puts every non-row child after
-    # its whole list box, so three bars in one group would stack under all three
-    # rows at once with nothing saying which belonged to which — the same
-    # constraint the amount's own group is built around.
-    def _build_percent_group(self, mode, title, description, row_title,
-                             row_subtitle, low, high, marks, page, snap,
-                             value, registry):
-        group = Adw.PreferencesGroup(title=title, description=description)
-
-        readout = Gtk.Label(valign=Gtk.Align.CENTER)
-        readout.add_css_class("numeric")
-        readout.add_css_class("dim-label")
-
-        row = Adw.ActionRow(title=row_title, subtitle=row_subtitle)
-        row.add_suffix(readout)
-        group.add(row)
-
-        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,
-                                         low, high, 5)
-        scale.set_hexpand(True)
-        scale.set_draw_value(False)
-        for at, label in marks:
-            scale.add_mark(at, Gtk.PositionType.BOTTOM, label)
-        # Fives and a four-wide snap, for the reason the amount's bar gives at
-        # length: five percent is about the smallest step that shows up on a
-        # screen, and four either side of a mark is the widest radius that
-        # leaves the stop next to it reachable.
-        tame_scale(scale, marks, 5, page, snap)
-        scale._readout = readout
-        scale.set_value(value)
-        self._sync_percent_value(scale)
-        scale.connect("value-changed", self._on_percent_changed)
-        registry[mode] = scale
-
-        bar = Gtk.Box(margin_start=12, margin_end=12, margin_top=4,
-                      margin_bottom=4)
-        bar.append(scale)
-        group.add(bar)
-        return group
-
     def _sync_percent_value(self, scale):
         scale._readout.set_label("%d%%" % round(scale.get_value()))
-
-    def _on_percent_changed(self, scale):
-        self._sync_percent_value(scale)
-        if self._loading:
-            return
-        self._mark_dirty()
-
-    def _build_popup_brightness_group(self, mode):
-        """How bright the popup blur comes out, menus and banners together.
-
-        Together, and the description says so, because Blur My Shell hands the
-        whole popup component one pipeline — a banner cannot be lit without the
-        date menu and the quick-toggle menus coming with it, and a control that
-        implied otherwise would be lying about what it moves.
-        """
-        return self._build_percent_group(
-            mode, "Popup blur brightness",
-            "How bright the blur behind menus, Quick Settings and "
-            "notification banners comes out. One pipeline serves all three, "
-            "so this moves them together.",
-            "Brightness",
-            "100% is the backdrop's own light — under darkens, over lifts",
-            POPUP_BRIGHTNESS_MIN, POPUP_BRIGHTNESS_MAX,
-            POPUP_BRIGHTNESS_MARKS, 25, POPUP_BRIGHTNESS_SNAP,
-            self._applied.modes[mode]["popup_brightness"],
-            self._brightness_scales)
-
-    def _build_notification_ground_group(self, mode):
-        """How much a banner paints over the blur it arrives on.
-
-        Its own number rather than a share of Opacity above: that one is about
-        a window being worked in, this one about a banner that arrived unasked
-        and has to be readable over whatever happened to be behind it.
-        """
-        return self._build_percent_group(
-            mode, "Notification ground",
-            "How much an arriving banner paints over its own blur. Hover and "
-            "pressed step up from wherever this lands, so the ladder holds.",
-            "Opacity",
-            "Lower shows more blur and less backing behind the text",
-            NOTIFICATION_OPACITY_MIN, NOTIFICATION_OPACITY_MAX,
-            NOTIFICATION_OPACITY_MARKS, 15, NOTIFICATION_OPACITY_SNAP,
-            self._applied.modes[mode]["notification_opacity"],
-            self._ground_scales)
-
-    def _sync_blur_strength_value(self, scale):
-        scale._readout.set_label("%d%%" % round(scale.get_value()))
-
-    def _on_blur_strength_changed(self, scale):
-        self._sync_blur_strength_value(scale)
-        if self._loading:
-            return
-        self._mark_dirty()
 
     # ---- extensions ---------------------------------------------------------
 
@@ -4757,6 +5700,14 @@ class Window(Adw.ApplicationWindow):
                                "remove")
                 row.add_prefix(button)
 
+            if entry.get("prefs"):
+                button = Gtk.Button(icon_name="emblem-system-symbolic",
+                                    valign=Gtk.Align.CENTER,
+                                    tooltip_text="Open this extension's settings")
+                button.add_css_class("flat")
+                button.connect("clicked", self._on_ext_prefs, entry["uuid"])
+                row.add_suffix(button)
+
             group.add(row)
             self._ext_rows.append((group, row))
 
@@ -4802,6 +5753,19 @@ class Window(Adw.ApplicationWindow):
             self._toasts.add_toast(Adw.Toast(title=failed))
 
         stream_command(argv, self._run_line, done)
+
+    def _on_ext_prefs(self, _button, uuid):
+        """The extension's own settings window, opened by the shell.
+
+        Not waited on: it is a separate window the extension owns, and
+        nothing it changes is this app's to re-read.
+        """
+        try:
+            Gio.Subprocess.new(["gnome-extensions", "prefs", uuid],
+                               Gio.SubprocessFlags.NONE)
+        except GLib.Error as exc:
+            self._toasts.add_toast(Adw.Toast(
+                title="Could not open the settings — %s" % exc.message))
 
     def _on_ext_action(self, _button, uuid, action):
         self._run_ext(action, uuid,
@@ -4934,22 +5898,6 @@ class Window(Adw.ApplicationWindow):
         self._deps_row.add_suffix(self._deps_install)
         group.add(self._deps_row)
 
-        # Its state is a stamp file rather than a setting, so it is a button
-        # that acts rather than a switch Apply would collect. Nothing here goes
-        # through Settings or flags_against.
-        self._rounded_row = Adw.ActionRow(
-            title="Rounded blur library",
-            subtitle="Popup blur follows their rounded corners, instead of "
-                     "falling back to a static one")
-        self._rounded_button = Gtk.Button(label="Install",
-                                          valign=Gtk.Align.CENTER)
-        self._rounded_button.connect("clicked", self._on_install_rounded_blur)
-        self._rounded_row.add_suffix(self._rounded_button)
-        group.add(self._rounded_row)
-
-        # Two separate things, despite both being "multi-monitor". This one is
-        # a user systemd unit and rides on Apply with everything else; the sync
-        # below copies into /etc and GDM's own home, and cannot.
         self._gdm_monitors_row = Adw.ActionRow(
             title="Sync the monitor layout to the login screen",
             subtitle="Copies ~/.config/monitors.xml so GDM opens on the same "
@@ -4966,29 +5914,15 @@ class Window(Adw.ApplicationWindow):
         group.add(self._gdm_row)
         page.add(group)
 
-        local = Adw.PreferencesGroup(
-            title="Runs without a password",
-            description="A user systemd unit — rides on Apply like everything "
-                        "else here.")
-        self._panel_blur_row = Adw.SwitchRow(
-            title="Rebuild the panel blur after a monitor change",
-            subtitle="Fixes a strip of wrong panel blur left over from login, "
-                     "before anything nudges it right",
-            active=self._applied.panel_blur_fix)
-        self._panel_blur_row.connect("notify::active", self._on_changed,
-                                     "panel_blur_fix")
-        local.add(self._panel_blur_row)
-        page.add(local)
-
         self._sync_system()
         self._check_deps()
         return page
 
-    # The three stamp files _sync_system reads. Anything else changing under
+    # The two stamp files _sync_system reads. Anything else changing under
     # $CONF_DIR — a CSS sheet mid-preview, a memo Apply just wrote — is not
     # this page's business, so the monitor filters to these rather than
     # re-syncing on every unrelated write.
-    _SYSTEM_STAMPS = ("rounded-blur", "gdm-monitors-synced", "gdm-installed")
+    _SYSTEM_STAMPS = ("gdm-monitors-synced", "gdm-installed")
 
     # Watched on the same debounce, for a different reason: a wm_class toggled
     # from the titlebar's "Blur This App" writes these two memos directly
@@ -5075,7 +6009,7 @@ class Window(Adw.ApplicationWindow):
             "own home directory, so it needs your password. A terminal will "
             "open and ask for it.",
             "Sync",
-            self._install_cmd("--gdm-monitors --yes"),
+            self._install_cmd("--gdm-monitors --yes --progress-window"),
             "Syncing the monitor layout")
 
     def _on_gdm(self, _button):
@@ -5100,7 +6034,7 @@ class Window(Adw.ApplicationWindow):
             "theme's: it is compiled separately and does not read the desktop's "
             "stylesheets.",
             "Theme it",
-            self._install_cmd("--gdm --yes"),
+            self._install_cmd("--gdm --yes --progress-window"),
             "Theming the login screen")
 
     def _confirm_root(self, heading, body, verb, command, what):
@@ -5125,14 +6059,6 @@ class Window(Adw.ApplicationWindow):
         window cannot see — so nothing here can know the moment one finishes.
         The rows say so rather than implying otherwise.
         """
-        installed = os.path.exists(os.path.join(CONF_DIR, "rounded-blur"))
-        self._rounded_row.set_subtitle(
-            "Installed. Reinstall if a mutter update stopped it loading"
-            if installed else
-            "Lets the blur behind popups follow their rounded corners instead "
-            "of falling back to a static one")
-        self._rounded_button.set_label("Reinstall" if installed else "Install")
-
         synced = os.path.exists(os.path.join(CONF_DIR, "gdm-monitors-synced"))
         self._gdm_monitors_button.set_label("Remove" if synced else "Sync")
         self._gdm_monitors_row.set_subtitle(
@@ -5147,8 +6073,7 @@ class Window(Adw.ApplicationWindow):
             "Blurs and darkens your wallpaper behind the login screen. Needs "
             "your password, and keeps GNOME's accent rather than this theme's")
 
-        for widget in (self._rounded_button, self._gdm_monitors_button,
-                       self._gdm_button):
+        for widget in (self._gdm_monitors_button, self._gdm_button):
             widget.set_sensitive(self._repo is not None)
 
     def _check_deps(self):
@@ -5180,14 +6105,6 @@ class Window(Adw.ApplicationWindow):
     def _on_install_deps(self, _button):
         self.run_in_terminal(self._install_cmd("--deps-only"),
                              "Installing dependencies")
-
-    def _on_install_rounded_blur(self, _button):
-        # No --yes. install_rounded_blur asks with confirm_always, which asks
-        # even under --yes because it is a root package — and a real terminal is
-        # exactly where that question can be answered, so it is left to ask
-        # rather than pre-answered on the user's behalf.
-        self.run_in_terminal(self._install_cmd("--rounded-blur --force"),
-                             "Installing the rounded blur library")
 
     # The three scopes uninstall.sh already has, in the order it offers them.
     # Each is its own row and its own confirmation rather than a dropdown with
@@ -5327,7 +6244,9 @@ class Window(Adw.ApplicationWindow):
         # would bury everything else for no gain.
         mine_groups, system_groups = {}, {}
         for name, path, is_mine in installed_packs():
-            key = theme_stem(name) if is_mine else pack_family(name)
+            family = pack_family(name)
+            key = (family if not is_mine or family in SINGLE_ROW_FAMILIES
+                   else theme_stem(name))
             bucket = mine_groups if is_mine else system_groups
             entry = bucket.setdefault(key, {"names": [], "paths": [],
                                             "in_use": False})
@@ -5345,7 +6264,8 @@ class Window(Adw.ApplicationWindow):
                 entry = bucket[key]
                 # The shortest name in the pair reads as the pack's own name:
                 # Reversal-purple rather than Reversal-purple-dark.
-                title = min(entry["names"], key=len)
+                title = (key if key in SINGLE_ROW_FAMILIES
+                         else min(entry["names"], key=len))
                 row = plain_row(Adw.ActionRow(), title)
                 row._paths = entry["paths"]
                 row._in_use = entry["in_use"]
@@ -5411,7 +6331,7 @@ class Window(Adw.ApplicationWindow):
     def _own_next_pack(self):
         """Name the package behind one system row, and give it a Remove."""
         for group, row in self._pack_rows:
-            if group is not self._packs_system or row._owner is not None:
+            if group is not self._packs_system or getattr(row, "_owner", "") is not None:
                 continue
             row._owner = pkg_owner(self._repo, row._paths[0]) or ""
             self._sync_pack_subtitle(row)
@@ -5794,19 +6714,18 @@ class Window(Adw.ApplicationWindow):
         if name is None:
             return
         # This page keeps no state of its own for the default — only a
-        # shortcut onto the frosted tab's own two switches. See _scope() and
+        # shortcut onto the frosted tab's own dropdown. See _scope() and
         # the "scope" branch of _on_changed, which is what actually notices
         # this and cascades into _rebuild_app_list.
-        if name == "all" and not self._blur_all_row.get_active():
-            self._blur_all_row.set_active(True)
-        elif name == "gtk" and self._blur_all_row.get_active():
-            self._blur_all_row.set_active(False)
+        if name in ("all", "gtk") and self._scope() != name:
+            self._set_scope(name)
 
     def _on_app_banner_clicked(self, _banner):
         self._sidebar.select_row(self._sidebar_rows["glass"])
         self._mode_stack.set_visible_child_name("frosted")
-        if self._app_banner_action == "window-blur":
-            self._window_blur_row.set_active(True)
+        if self._app_banner_action == "window-blur" \
+                and self._scope() == "none":
+            self._set_scope("all")
 
     def _sync_app_controls(self):
         """The banner, the default toggle, and which parts of the page are
@@ -6024,8 +6943,8 @@ class Window(Adw.ApplicationWindow):
             return
         self._allow[:] = pin_self_allow(allow)
         self._block[:] = pin_self_block(block)
-        if self._blur_all_row.get_active():
-            self._blur_all_row.set_active(False)
+        if self._scope() == "all":
+            self._set_scope("gtk")
         self._app_changed()
 
     def _on_app_start_all(self, _button):
@@ -6037,8 +6956,8 @@ class Window(Adw.ApplicationWindow):
             return
         self._allow[:] = pin_self_allow([])
         self._block[:] = pin_self_block(block)
-        if not self._blur_all_row.get_active():
-            self._blur_all_row.set_active(True)
+        if self._scope() == "gtk":
+            self._set_scope("all")
         self._app_changed()
 
     def _on_app_start_none(self, _button):
@@ -6113,10 +7032,27 @@ class Window(Adw.ApplicationWindow):
             os.replace(temporary, target)
         except OSError:
             return
+        # Same lookup as the profile combo, not PATH: a session started
+        # without ~/.local/bin on PATH saved the list but never told the
+        # worker (KI-17).
+        argv = self._adaptive_argv("refresh")
+        if argv is None:
+            return
         try:
-            subprocess.Popen(["aura-glass-adaptive", "refresh"])
+            subprocess.Popen(argv)
         except (OSError, subprocess.SubprocessError):
             pass
+
+    def _adaptive_argv(self, *args):
+        """The installed launcher, else the checkout's, else None."""
+        local = os.path.join(os.path.expanduser("~/.local/bin"),
+                             "aura-glass-adaptive")
+        if os.access(local, os.X_OK):
+            return [local, *args]
+        if self._repo is not None:
+            return ["bash", os.path.join(self._repo, "bin",
+                                         "aura-glass-adaptive"), *args]
+        return None
 
     def _sync_adaptive_game_rows(self):
         for row in list(self._adaptive_game_rows.values()):
@@ -6252,6 +7188,63 @@ class Window(Adw.ApplicationWindow):
             self._block.insert(min(idx_block, len(self._block)), pattern)
         self._app_changed()
 
+    def _build_maintenance_page(self):
+        """The Updates page's Maintenance tab: notifications and repair.
+
+        Updates is for choosing a version; these are set once and left, or
+        reached for when something is broken. A tab of their own so the release
+        list is the first thing on Updates rather than below a pile of switches.
+        """
+        page = Adw.PreferencesPage()
+
+        settings = Adw.PreferencesGroup(title="Notifications")
+        self._update_check_row = Adw.SwitchRow(
+            title="Check daily",
+            subtitle="One notification per release, in the background",
+            active=self._applied.update_check)
+        self._update_check_row.connect("notify::active", self._on_changed,
+                                       "update_check")
+        settings.add(self._update_check_row)
+        # No channel row. Which line the check follows is now chosen by what is
+        # installed from the Releases list — a release, or main's newest commit
+        # — so a second switch for it would only be able to disagree. The memo
+        # and --update-channel stay for the command line.
+        page.add(settings)
+
+        repair = Adw.PreferencesGroup(
+            title="Repair installation",
+            description="Reapply refreshes what you have chosen. Reset starts "
+                        "over: everything reinstalled on the theme's defaults, "
+                        "then the setup wizard to choose again.")
+
+        reapply_row = Adw.ActionRow(
+            title="Reapply settings",
+            subtitle="Reapplies saved dconf, CSS and GNOME settings in a "
+                     "terminal so prompts remain usable, without reinstalling "
+                     "the theme or extension packages")
+        self._repair_reapply = Gtk.Button(label="Reapply",
+                                          valign=Gtk.Align.CENTER,
+                                          sensitive=self._repo is not None)
+        self._repair_reapply.connect("clicked", self._on_reapply_settings)
+        reapply_row.add_suffix(self._repair_reapply)
+        repair.add(reapply_row)
+
+        reset_row = Adw.ActionRow(
+            title="Reset theme to defaults",
+            subtitle="Forgets every choice, reinstalls everything and opens "
+                     "the setup wizard, in a terminal. Old choices are kept "
+                     "in backups/")
+        self._repair_full = Gtk.Button(label="Reset",
+                                       valign=Gtk.Align.CENTER,
+                                       sensitive=self._repo is not None)
+        self._repair_full.add_css_class("destructive-action")
+        self._repair_full.connect("clicked", self._on_reset_defaults)
+        reset_row.add_suffix(self._repair_full)
+        repair.add(reset_row)
+
+        page.add(repair)
+        return page
+
     def _build_updates_page(self):
         page = Adw.PreferencesPage()
 
@@ -6260,11 +7253,13 @@ class Window(Adw.ApplicationWindow):
         # this checkout is on. These are what a released install reads.
         self._updates_group = Adw.PreferencesGroup(
             title="Updates",
-            description="Checks the git remote for release tags. Never "
-                        "installs anything on its own.")
+            description="Checks the git remote for new releases and tags. "
+                        "Never installs anything on its own.")
         updates = self._updates_group
 
         self._version_row = Adw.ActionRow(title="Version")
+        self._version_row.add_prefix(Gtk.Image.new_from_icon_name(
+            "emblem-default-symbolic"))
         self._check_button = Gtk.Button(label="Check now",
                                         valign=Gtk.Align.CENTER)
         self._check_button.connect("clicked", self._on_check_updates)
@@ -6273,7 +7268,10 @@ class Window(Adw.ApplicationWindow):
 
         self._update_button_row = Adw.ActionRow(
             title="Install update",
-            subtitle="Pulls the new release and runs the full installer")
+            subtitle="Switches the checkout to the new release and runs the "
+                     "full installer")
+        self._update_button_row.add_prefix(Gtk.Image.new_from_icon_name(
+            "software-update-available-symbolic"))
         self._update_button = Gtk.Button(valign=Gtk.Align.CENTER)
         self._update_button.add_css_class("suggested-action")
         self._update_button.connect("clicked", self._on_install_update)
@@ -6286,49 +7284,64 @@ class Window(Adw.ApplicationWindow):
         self._update_button.set_child(pressed)
         self._update_button_row.add_suffix(self._update_button)
         updates.add(self._update_button_row)
-
-        self._update_check_row = Adw.SwitchRow(
-            title="Check daily",
-            subtitle="One notification per release, in the background",
-            active=self._applied.update_check)
-        self._update_check_row.connect("notify::active", self._on_changed,
-                                       "update_check")
-        updates.add(self._update_check_row)
         page.add(updates)
 
-        repair = Adw.PreferencesGroup(
-            title="Repair installation",
-            description="These use the current saved selection. Reapply is a "
-                        "settings-only refresh; Full reinstall replaces the "
-                        "installed files and keeps the settings app included.")
+        # ---- every release, and the history they were cut from
+        #
+        # One list a person can pick any version from — newer, older, the same
+        # one again — rather than one button that only ever means "the next
+        # one". Each release opens into its notes and its own Install, so what
+        # changed is read where it is chosen. History is the same refs drawn as
+        # git draws them, for anyone who wants to see where a release sits.
+        self._releases_group = Adw.PreferencesGroup(title="Releases")
+        self._browse_switcher = Adw.ToggleGroup()
+        self._browse_switcher.add(Adw.Toggle(name="releases", label="Releases"))
+        self._browse_switcher.add(Adw.Toggle(name="history", label="History"))
+        self._browse_switcher.set_active_name("releases")
+        self._browse_switcher.set_valign(Gtk.Align.CENTER)
+        self._browse_switcher.connect("notify::active-name",
+                                      self._on_browse_switched)
+        refresh = Gtk.Button(icon_name="view-refresh-symbolic",
+                             valign=Gtk.Align.CENTER,
+                             tooltip_text="Fetch releases from the remote")
+        refresh.add_css_class("flat")
+        refresh.connect("clicked", lambda _b: self._refresh_updates(True))
+        self._browse_refresh = refresh
+        suffix = Gtk.Box(spacing=6)
+        suffix.append(refresh)
+        suffix.append(self._browse_switcher)
+        self._releases_group.set_header_suffix(suffix)
 
-        reapply_row = Adw.ActionRow(
-            title="Reapply settings",
-            subtitle="Reapplies saved dconf, CSS and GNOME settings without "
-                     "reinstalling the theme or extension packages")
-        self._repair_reapply = Gtk.Button(label="Reapply",
-                                          valign=Gtk.Align.CENTER,
-                                          sensitive=self._repo is not None)
-        self._repair_reapply.connect("clicked", self._on_reapply_settings)
-        reapply_row.add_suffix(self._repair_reapply)
-        repair.add(reapply_row)
+        self._browse_status = Gtk.Label(xalign=0, wrap=True, margin_bottom=6)
+        self._browse_status.add_css_class("dim-label")
+        self._browse_status.add_css_class("caption")
+        self._releases_group.add(self._browse_status)
 
-        reinstall_row = Adw.ActionRow(
-            title="Full reinstall with settings app",
-            subtitle="Reinstalls the current selection in a terminal so any "
-                     "password prompt remains usable; it does not select the "
-                     "Complete Experience package")
-        self._repair_full = Gtk.Button(label="Open terminal",
-                                       valign=Gtk.Align.CENTER,
-                                       sensitive=self._repo is not None)
-        self._repair_full.connect("clicked", self._on_full_reinstall)
-        reinstall_row.add_suffix(self._repair_full)
-        repair.add(reinstall_row)
-
-        page.add(repair)
+        self._browse_stack = Gtk.Stack(
+            transition_type=Gtk.StackTransitionType.CROSSFADE,
+            vhomogeneous=False)
+        # Tags (every commit on main, v0.3.5+N) and releases in one list,
+        # newest first by date.
+        self._release_list = Gtk.ListBox(
+            selection_mode=Gtk.SelectionMode.NONE)
+        self._release_list.add_css_class("boxed-list")
+        self._browse_stack.add_named(self._release_list, "releases")
+        self._history_list = Gtk.ListBox(
+            selection_mode=Gtk.SelectionMode.NONE)
+        self._history_list.add_css_class("card")
+        self._history_list.add_css_class("aura-history")
+        self._history_list.connect("row-activated", self._on_history_row)
+        self._browse_stack.add_named(self._history_list, "history")
+        self._releases_group.add(self._browse_stack)
+        page.add(self._releases_group)
+        self._release_rows = {}
+        self._updates_data = None
+        self._updates_fetched = False
+        self._updates_loading = False
+        self._updates_fetch_queued = False
 
         # An update is the one thing this window starts that is not quick: it
-        # is a git pull and then the full installer, which fetches the theme,
+        # is a fetch and checkout and then the full installer, which fetches the theme,
         # the extensions and whatever a release added. So its output is shown
         # on the page rather than folded away like Apply's — with nothing to
         # read, a minute of silence and a hang look the same.
@@ -6347,28 +7360,48 @@ class Window(Adw.ApplicationWindow):
         page.add(self._update_log_group)
 
         self._sync_updates()
+        # What the checkout already knows, straight away and without the
+        # network. Opening the page is what goes to the remote.
+        self._refresh_updates(False)
 
-        return page
+        # Two tabs on one sidebar entry, the way Glass carries its two modes.
+        self._updates_stack = Adw.ViewStack(vexpand=True)
+        self._updates_stack.add_titled_with_icon(
+            page, "versions", "Updates", "software-update-available-symbolic")
+        self._updates_stack.add_titled_with_icon(
+            self._build_maintenance_page(), "maintenance", "Maintenance",
+            "applications-engineering-symbolic")
+        switcher = Adw.ViewSwitcher(stack=self._updates_stack,
+                                    policy=Adw.ViewSwitcherPolicy.WIDE,
+                                    halign=Gtk.Align.CENTER, margin_top=12)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        box.append(switcher)
+        box.append(self._updates_stack)
+        return box
 
     # ---- state ------------------------------------------------------------
 
     # ---- the per-app list -------------------------------------------------
 
     def _scope(self):
-        """The three-way install.sh value, from the frosted tab's two switches.
+        """The three-way install.sh value, off the frosted tab's dropdown.
 
-        Only that tab has them, and only that mode has a scope: the other two
-        do not blur behind a window at all, which _current spells "none"
-        without asking here.
+        Only that tab has it, and only that mode has a scope: Performance does
+        not blur behind a window at all, which _current spells "none" without
+        asking here.
         """
-        if not self._window_blur_row.get_active():
-            return "none"
-        return "all" if self._blur_all_row.get_active() else "gtk"
+        return self._window_blur_row._ids[self._window_blur_row.get_selected()]
+
+    def _set_scope(self, scope):
+        # Through the row, so _on_changed's "scope" branch runs as it does for
+        # a hand on the dropdown.
+        self._window_blur_row.set_selected(
+            self._window_blur_row._ids.index(scope))
 
     def _list_is_consulted(self, which):
         """Whether the mode the tabs are showing reads this list."""
         # Frosted first, because a window blur is the only thing that consults
-        # either list and frosted is the only mode that has one. Transparent
+        # either list and frosted is the only mode that has one. Performance
         # keeps both lists — they are the same two memos, apply_app_blur still
         # writes them and flags_against still sends an edit — but nothing reads
         # them while it is in force.
@@ -6397,31 +7430,46 @@ class Window(Adw.ApplicationWindow):
             tints = self._tints["performance"]
             s.app_tint = tints["app"]
             s.shell_tint = tints["shell"]
-            s.blur_strength = self._applied.modes.get("performance", {}).get("blur_strength", 100)
-            s.popup_brightness = self._applied.modes.get("performance", {}).get("popup_brightness", 115)
-            s.notification_opacity = self._applied.modes.get("performance", {}).get("notification_opacity", 40)
+            performance = self._applied.modes["performance"]
+            s.blur_strength = performance["blur_strength"]
+            s.blur_brightness = performance["blur_brightness"]
+            s.surface_strength = dict(performance["surface_strength"])
+            s.surface_brightness = dict(performance["surface_brightness"])
+            s.popup_opacity = performance["popup_opacity"]
             s.scope = "none"
             s.transparency = percent_to_level(
                 round(self._p_transparency_scale.get_value()))
             s.popup_blur = False
-            s.notification_blur = False
         else:
             tints = self._tints[s.glass_mode]
             s.app_tint = tints["app"]
             s.shell_tint = tints["shell"]
             s.blur_strength = int(round(
                 self._strength_scales[s.glass_mode].get_value()))
-            s.popup_brightness = int(round(
-                self._brightness_scales[s.glass_mode].get_value()))
-            s.notification_opacity = int(round(
-                self._ground_scales[s.glass_mode].get_value()))
+            s.blur_brightness = int(round(
+                self._glass_brightness_scale.get_value()))
+            s.surface_strength = {
+                sid: self._surface_value(sid, "strength")
+                for sid, _t, _s in BLUR_SURFACES}
+            s.surface_brightness = {
+                sid: self._surface_value(sid, "brightness")
+                for sid, _t, _s in BLUR_SURFACES}
+            s.popup_opacity = self._surface_value("popup", "opacity")
             s.scope = self._scope()
-            s.transparency = (
-                percent_to_level(
-                    round(self._transparency_scale.get_value()))
-                if self._transparency_on.get_active() else "0")
+            # Opaque windows are a flat "0", shown at the bar's 100%. Left at
+            # 100 the "0" stands, so an untouched bar sends nothing — unless
+            # the app tint moved, which the transparency sheet carries and a
+            # "0" would drop (flags_against does not send a tint without a
+            # level), so a tint asks for the sheet back at 100%.
+            percent = round(self._transparency_scale.get_value())
+            applied = self._applied.modes["frosted"]["transparency"]
+            if applied == "0" and percent == 100:
+                s.transparency = (
+                    "1.00" if tints["app"] != self._applied.modes["frosted"]["app_tint"]
+                    else "0")
+            else:
+                s.transparency = percent_to_level(percent)
             s.popup_blur = self._popup_row.get_active()
-            s.notification_blur = self._notification_row.get_active()
         s.allow = list(self._allow)
         s.block = list(self._block)
         s.icons = join_icons(
@@ -6430,11 +7478,17 @@ class Window(Adw.ApplicationWindow):
         s.cursors = self._cursors_row._ids[self._cursors_row.get_selected()]
         s.cursor_size = int(self._cursor_size_row.get_value())
         s.font = self._font_row._ids[self._font_row.get_selected()]
+        s.update_channel = self._applied.update_channel
         s.window_buttons = self._window_buttons_row._ids[
             self._window_buttons_row.get_selected()]
         s.titlebutton_style = self._titlebutton_style_row._ids[
             self._titlebutton_style_row.get_selected()]
-        s.panel_blur_fix = self._panel_blur_row.get_active()
+        s.glass_style = self._glass_style_row._ids[
+            self._glass_style_row.get_selected()]
+        s.liquid_windows = self._liquid_windows_row.get_active()
+        s.fullscreen_blur = self._fullscreen_blur_row.get_active()
+        s.panel_height = int(round(self._panel_height_scale.get_value()))
+        s.panel_maximized_black = self._panel_maximized_black_row.get_active()
         s.update_check = self._update_check_row.get_active()
         # Not settings, so they never differ and never produce a flag. Carried so
         # flags_against sees a complete object either way.
@@ -6447,20 +7501,15 @@ class Window(Adw.ApplicationWindow):
         Every glass row here is the frosted tab's, and is named as that tab's
         rather than looked up through whichever tab is showing.
         """
-        # Nothing to widen when there is no window blur to widen.
-        self._blur_all_row.set_sensitive(self._window_blur_row.get_active())
-        # Nothing to set a level on when translucency itself is off.
-        live = self._transparency_on.get_active()
-        self._transparency_row.set_sensitive(live)
-        self._transparency_bar.set_sensitive(live)
+        # Nothing to keep behind a fullscreen window when no window is blurred.
+        self._fullscreen_blur_row.set_sensitive(self._scope() != "none")
 
-        # The app tint lives in the transparency sheet, which is removed rather
-        # than switched off when the windows are opaque — so with translucency
-        # off there is nothing for a colour to tint. The shell's own surfaces
-        # are translucent in their stylesheets whatever this switch says, so
-        # that row stays live.
-        self._tint_rows["frosted"]["app"].set_sensitive(live)
-        self._tint_rows["frosted"]["link"].set_sensitive(live)
+        # Only liquid and vibrant take app windows along (glass_style_takes_
+        # windows in lib/steps-dconf.sh); tinted and smoked never make window
+        # blur static.
+        self._liquid_windows_row.set_sensitive(
+            self._glass_style_row._ids[self._glass_style_row.get_selected()]
+            in ("liquid", "vibrant"))
 
     def _mark_dirty(self):
         args = self._current().flags_against(self._applied)
@@ -6494,14 +7543,60 @@ class Window(Adw.ApplicationWindow):
         while child is not None:
             self._pending_list.remove(child)
             child = self._pending_list.get_row_at_index(0)
+        self._plan_generation += 1
+        if self._plan_timer:
+            GLib.source_remove(self._plan_timer)
+            self._plan_timer = 0
         if not labels:
             self._pending_button.set_visible(False)
             return
+        self._plan_row = Adw.ActionRow(title="Apply will…",
+                                       subtitle="Asking the installer")
+        self._plan_row.add_css_class("property")
+        self._pending_list.append(self._plan_row)
         for label in labels:
             self._pending_list.append(Adw.ActionRow(title=label))
+        self._plan_timer = GLib.timeout_add(300, self._ask_plan, list(args),
+                                            self._plan_generation)
         self._pending_button.set_label(
             "%d change%s" % (len(labels), "" if len(labels) == 1 else "s"))
         self._pending_button.set_visible(True)
+
+    def _ask_plan(self, args, generation):
+        """Ask install.sh which steps this Apply will run (--plan-json).
+
+        The same flags _on_apply will send, through the real classifier and
+        fingerprint check, as a dry run that writes nothing. The answer only
+        fills the popover's first row; Apply itself never waits for it.
+        """
+        self._plan_timer = 0
+        if self._repo is None:
+            return GLib.SOURCE_REMOVE
+        argv = ["bash", os.path.join(self._repo, "install.sh"),
+                "--settings-only", "--incremental", "--dry-run", "--plan-json",
+                "--yes"] + args
+        try:
+            proc = Gio.Subprocess.new(
+                argv, Gio.SubprocessFlags.STDOUT_PIPE
+                | Gio.SubprocessFlags.STDERR_SILENCE)
+        except GLib.Error:
+            return GLib.SOURCE_REMOVE
+
+        def done(proc, res):
+            try:
+                _ok, out, _err = proc.communicate_utf8_finish(res)
+                # The last line: a one-time migration step may print first.
+                plan = json.loads((out or "").strip().splitlines()[-1])
+            except (GLib.Error, ValueError, IndexError):
+                plan = None
+            if generation != self._plan_generation or plan is None:
+                return
+            title, subtitle = plan_summary(plan)
+            self._plan_row.set_title(title)
+            self._plan_row.set_subtitle(subtitle)
+
+        proc.communicate_utf8_async(None, None, done)
+        return GLib.SOURCE_REMOVE
 
     def _sync_transparency_value(self, scale):
         scale._readout.set_label("%d%%" % round(scale.get_value()))
@@ -6563,7 +7658,7 @@ class Window(Adw.ApplicationWindow):
             self._button_pixels = int(self._radius_rows["button"].get_value())
             self._sync_radius_state()
 
-        if key in ("transparency", "scope", "icons"):
+        if key in ("transparency", "scope", "icons", "glass_style"):
             self._sync_sensitivity()
         # The scope decides which list is consulted, so it decides which badge
         # is lit. The mode does too, and _on_mode_switched says so there.
@@ -6588,18 +7683,17 @@ class Window(Adw.ApplicationWindow):
         # actually changes and the common reload is the one that lands back on
         # the tab it started on.
         self._sync_mode_banner()
+        self._sync_mode_status()
 
         frosted = self._applied.modes["frosted"]
-        self._window_blur_row.set_active(frosted["scope"] != "none")
-        self._blur_all_row.set_active(frosted["scope"] == "all")
-        self._transparency_on.set_active(frosted["transparency"] != "0")
-        # Only when it is on: off is stored as a flat "0", and moving the bar to
-        # 70% because of that would lose the level to come back to.
-        if frosted["transparency"] != "0":
-            self._transparency_scale.set_value(
-                level_to_percent(frosted["transparency"]))
+        self._set_scope(frosted.get("scope", "all")
+                        if frosted.get("scope", "all") in BLUR_SCOPES
+                        else "all")
+        self._transparency_scale.set_value(
+            100 if frosted["transparency"] == "0"
+            else level_to_percent(frosted["transparency"]))
         self._popup_row.set_active(frosted["popup_blur"])
-        self._notification_row.set_active(frosted["notification_blur"])
+        self._glass_brightness_scale.set_value(frosted["blur_brightness"])
 
 
         performance = self._applied.modes["performance"]
@@ -6617,12 +7711,12 @@ class Window(Adw.ApplicationWindow):
             rows["link"].set_active(tints["app"] == tints["shell"])
             if mode in self._strength_scales:
                 self._strength_scales[mode].set_value(drawer["blur_strength"])
-            if mode in self._brightness_scales:
-                self._brightness_scales[mode].set_value(
-                    drawer["popup_brightness"])
-            if mode in self._ground_scales:
-                self._ground_scales[mode].set_value(
-                    drawer["notification_opacity"])
+        # After the main bars, which a following surface reads its value off.
+        for (sid, kind), row in self._surface_rows.items():
+            self._load_surface_row(row, {
+                "strength": frosted["surface_strength"][sid],
+                "brightness": frosted["surface_brightness"][sid],
+                "opacity": frosted["popup_opacity"]}[kind])
 
         # In place rather than rebound: the per-app page's rows read
         # self._allow / self._block straight off this window on every rebuild,
@@ -6646,7 +7740,13 @@ class Window(Adw.ApplicationWindow):
         self._refill_contextual_choice(
             self._titlebutton_style_row, TITLEBUTTON_STYLES,
             self._applied.titlebutton_style, "titlebutton_style")
-        self._panel_blur_row.set_active(self._applied.panel_blur_fix)
+        self._refill_contextual_choice(
+            self._glass_style_row, GLASS_STYLES,
+            self._applied.glass_style, "glass_style")
+        self._liquid_windows_row.set_active(self._applied.liquid_windows)
+        self._fullscreen_blur_row.set_active(self._applied.fullscreen_blur)
+        self._panel_height_scale.set_value(self._applied.panel_height)
+        self._panel_maximized_black_row.set_active(self._applied.panel_maximized_black)
         self._update_check_row.set_active(self._applied.update_check)
         self._loading = False
         self._rebuild_app_list()
@@ -6665,19 +7765,27 @@ class Window(Adw.ApplicationWindow):
         # plainly rather than left to be inferred from a version string that
         # happens to have an @ in it. Someone testing a branch should be able to
         # tell at a glance that they are not running a release, and how to stop.
-        if is_test_build(self._repo):
+        package = packaged(self._repo)
+        if package:
+            self._version_row.set_title("Package")
+            self._updates_group.set_description(
+                "Installed from the %s package. The check asks GitHub whether "
+                "main has moved past the commit it was built from. Updates "
+                "come through your package manager, not this window."
+                % package[0])
+        elif is_test_build(self._repo):
             self._version_row.set_title("Test build")
             self._updates_group.set_description(
                 "This checkout is on the branch %s, not the released line, so "
                 "the check asks the git remote whether that branch has moved "
-                "rather than which releases exist. To go back to releases, run "
-                "git checkout main in the checkout once the branch has been "
-                "merged." % current_branch(self._repo))
+                "rather than which releases exist. To go back to releases, "
+                "install one from the list below." % current_branch(self._repo))
         else:
             self._version_row.set_title("Version")
             self._updates_group.set_description(
-                "The check asks the git remote which release tags exist. "
-                "It never installs anything on its own.")
+                "The check asks the git remote for new releases and new tags "
+                "on main, and offers the newest. It never installs anything "
+                "on its own.")
 
         if version is None:
             self._version_row.set_subtitle(
@@ -6700,19 +7808,360 @@ class Window(Adw.ApplicationWindow):
         self._update_button_row.set_visible(bool(pending))
 
         if pending and blockers:
-            # Shown rather than hidden. Someone who edited the checkout should
-            # find out why the button is off, not wonder whether the update
-            # notification was wrong.
+            # Shown rather than hidden. Someone whose install cannot be updated
+            # from here should find out why the button is off, not wonder
+            # whether the update notification was wrong.
             self._update_button_row.set_subtitle(blockers[0])
             self._update_button.set_sensitive(False)
+        if pending:
+            self._update_button_row.set_title("%s is available" % pending)
         elif pending:
             self._update_button_row.set_subtitle(
-                "Pulls %s and runs the full installer" % pending)
+                "Switches the checkout to %s and runs the full installer in a "
+                "terminal" % pending)
             self._update_button.set_sensitive(not self._running)
+
+    # ---- the release list -------------------------------------------------
+
+    def _refresh_updates(self, fetch):
+        """Re-read the release list, off the main thread, and redraw it.
+
+        fetch goes to the network (origin's refs and GitHub's notes) first. A
+        thread rather than the async subprocess calls used elsewhere because a
+        listing is a dozen git calls and an HTTP request in a row, and none of
+        them may stall the window while the network is slow.
+        """
+        repo = self._repo
+        if not repo or packaged(repo):
+            self._render_updates(None)
+            return
+        if self._updates_loading:
+            # The local read the window opens with is often still running when
+            # the page is first shown. Its fetch goes next rather than nowhere.
+            self._updates_fetch_queued = self._updates_fetch_queued or fetch
+            return
+        self._updates_loading = True
+        self._browse_refresh.set_sensitive(False)
+        if fetch:
+            self._browse_status.set_label("Fetching releases from the remote…")
+
+        def work():
+            try:
+                data = updates_snapshot(repo, fetch)
+            except Exception as exc:  # a listing must never take the window down
+                data = {"error": str(exc)}
+            GLib.idle_add(done, data)
+
+        def done(data):
+            self._updates_loading = False
+            self._browse_refresh.set_sensitive(True)
+            if fetch:
+                self._updates_fetched = True
+            # Notes are only read when fetching. A local re-read keeps the ones
+            # the last fetch brought rather than dropping back to commits.
+            if self._updates_data and data.get("notes") is None:
+                data["notes"] = self._updates_data.get("notes")
+            self._updates_data = data
+            self._render_updates(data)
+            if self._updates_fetch_queued:
+                self._updates_fetch_queued = False
+                self._refresh_updates(True)
+            return GLib.SOURCE_REMOVE
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _render_updates(self, data):
+        for listbox in (self._release_list, self._history_list):
+            while (child := listbox.get_first_child()) is not None:
+                listbox.remove(child)
+        self._release_rows = {}
+
+        if data is None or "error" in data:
+            package = packaged(self._repo)
+            if package:
+                text = ("Installed from the %s package — releases come through "
+                        "your package manager." % package[0])
+            elif data and "error" in data:
+                text = "Could not read the releases: %s" % data["error"]
+            else:
+                text = "No git checkout to list releases from."
+            self._browse_status.set_label(text)
+            self._browse_stack.set_visible(False)
+            return
+        self._browse_stack.set_visible(True)
+
+        status = []
+        if data["fetched"] is False:
+            status.append("Could not reach the remote — showing what this "
+                          "checkout already knows.")
+        if data["dirty"]:
+            status.append("The checkout has local edits. Installing stashes "
+                          "them first (git stash list to get them back).")
+        if not data["releases"]:
+            status.append("No releases yet — press refresh to fetch them.")
+        self._browse_status.set_label(" ".join(status))
+        self._browse_status.set_visible(bool(status))
+
+        notes = data.get("notes") or {}
+        head = data["head"]
+
+        if data["test"]:
+            test = data["test"]
+            installed = test["behind"] == 0
+            row = self._release_row(
+                title=test["branch"],
+                subtitle=("Test build · %s" % test["short"]) + (
+                    "" if installed else " · %d new commit%s"
+                    % (test["behind"], "" if test["behind"] == 1 else "s")),
+                pills=[("Installed", "installed")] if installed else [],
+                body=changes_markup(test["changes"],
+                                         "Nothing new on this branch."),
+                target=test["branch"], installed=installed)
+            self._release_list.append(row)
+
+        # Only the newest version can be installed, and the newest is always
+        # main's tip: a release when it is tagged, a tag (v0.3.5+N) when it is
+        # not. Everything older is there to read, not to install.
+        tip = data["main"]["tip"] if data["main"] else None
+        # On a test branch the branch row is what is installed, even when the
+        # branch sits on the same commit as one of main's: two Installed badges
+        # would say the checkout is on both lines at once. Main's newest then
+        # shows Install, which is how a tester goes back to the released line.
+        if data["test"]:
+            head = None
+
+        tags = data["main"]["tags"] if data["main"] else []
+        shown_tags = tags[:SHOWN_VERSIONS] + [
+            t for t in tags[SHOWN_VERSIONS:] if t["sha"] == head]
+        # One list, newest first by date, tags and releases side by side.
+        entries = [(t["time"], self._tag_row(t, head, tip)) for t in shown_tags]
+
+        # Five, newest first, and the installed one too when it is older — a
+        # list of every version ever cut buries the two people look for.
+        releases = data["releases"]
+        shown = releases[:SHOWN_VERSIONS] + [
+            r for r in releases[SHOWN_VERSIONS:] if head == r["sha"]]
+        for rel in shown:
+            tag = rel["tag"]
+            installed = head == rel["sha"]
+            # One badge at most: three side by side read as a puzzle. What is
+            # installed is the answer people look for first; failing that, which
+            # one is newest.
+            pills = [("Installed", "installed")] if installed else \
+                [("Latest", "latest")] if rel["sha"] == tip else []
+            title, body = notes.get(tag, ("", ""))
+            # Release titles open with their own tag, which is already the
+            # row's title; "v0.3.5 — Hex & Sticky" under "v0.3.5" says it twice.
+            own_tag = r"^%s\s*[—–:-]?\s*" % re.escape(tag)
+            title = re.sub(own_tag, "", title)
+            subject = re.sub(own_tag, "", rel["subject"])
+            if body.strip():
+                markup = markdown_markup(body)
+            else:
+                markup = changes_markup(rel["changes"])
+            row = self._release_row(
+                title=tag,
+                subtitle=" · ".join(x for x in (
+                    "Release", rel["date"], title or subject) if x),
+                pills=pills, body=markup, target="main", installed=installed,
+                link=("https://github.com/%s/releases/tag/%s"
+                      % (data["slug"], tag)) if data["slug"] else None,
+                can_install=rel["sha"] == tip)
+            entries.append((rel["time"], row))
+            self._release_rows[tag] = row
+
+        for _time, row in sorted(entries, key=lambda e: e[0], reverse=True):
+            self._release_list.append(row)
+
+        for line in data["history"]:
+            self._history_list.append(self._history_row(line, head))
+
+    def _tag_row(self, tag, head, tip):
+        """One tag (a commit on main): opens into what it changed. Only the
+        newest has Install."""
+        # A merge's own subject ("Merge branch ...") says nothing; the first
+        # change it brought in says what it was.
+        subjects = [tag["subject"]]
+        if tag["subject"].startswith("Merge "):
+            subjects = tag.get("changes", []) + subjects
+        change = next((c for c in map(humanize_change, subjects) if c), None)
+        installed = tag["sha"] == head
+        return self._release_row(
+            title=tag["name"],
+            subtitle="Tag · %s · %s" % (tag["date"],
+                                       change[1] if change else tag["subject"]),
+            pills=[("Installed", "installed")] if installed else
+                  [("Latest", "latest")] if tag["sha"] == tip else [],
+            body=changes_markup(tag.get("changes", [tag["subject"]]),
+                                "Housekeeping only — nothing you would see."),
+            target="main", installed=installed, can_install=tag["sha"] == tip)
+
+    def _release_row(self, title, subtitle, pills, body, target, installed,
+                     link=None, can_install=True):
+        """One version: its name and badge, and a click opens what changed.
+
+        The newest, when it is not installed yet, wears Install on the row
+        itself rather than a Latest badge — the button is the news.
+        """
+        row = Adw.ExpanderRow(title_lines=1, subtitle_lines=1)
+        plain_row(row, title, subtitle)
+        offer = can_install and not installed
+        if offer:
+            pills = [p for p in pills if p[1] != "latest"]
+            button = Gtk.Button(label="Install", valign=Gtk.Align.CENTER)
+            button.add_css_class("suggested-action")
+            button.connect("clicked", lambda _b: self._confirm_install(
+                target, False, title))
+            row.add_suffix(button)
+        for text, kind in pills:
+            pill = Gtk.Label(label=text, valign=Gtk.Align.CENTER)
+            pill.add_css_class("aura-pill")
+            pill.add_css_class(kind)
+            row.add_suffix(pill)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
+                      margin_top=12, margin_bottom=12, margin_start=12,
+                      margin_end=12)
+        notes = Gtk.Label(xalign=0, wrap=True, selectable=True,
+                          use_markup=True)
+        notes.set_markup(body)
+        box.append(notes)
+
+        actions = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+        if link:
+            actions.append(Gtk.LinkButton(uri=link, label="View on GitHub"))
+        if can_install and installed:
+            button = Gtk.Button(label="Reinstall", valign=Gtk.Align.CENTER)
+            button.connect("clicked", lambda _b: self._confirm_install(
+                target, True, title))
+            actions.append(button)
+        if actions.get_first_child() is not None:
+            box.append(actions)
+
+        holder = Gtk.ListBoxRow(activatable=False, selectable=False,
+                                child=box)
+        row.add_row(holder)
+        return row
+
+    def _history_row(self, line, head):
+        """One line of the graph: a commit to click, or a connector."""
+        graph = Gtk.Label(label=line["graph"], xalign=0,
+                          valign=Gtk.Align.START)
+        graph.add_css_class("monospace")
+        graph.add_css_class("aura-graph")
+        box = Gtk.Box(spacing=10, margin_start=12, margin_end=12)
+        box.append(graph)
+        if "sha" not in line:
+            return Gtk.ListBoxRow(activatable=False, selectable=False,
+                                  child=box)
+
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True,
+                       margin_top=6, margin_bottom=6)
+        subject = Gtk.Label(label=line["subject"], xalign=0,
+                            ellipsize=Pango.EllipsizeMode.END)
+        meta = Gtk.Label(label="%s · %s" % (line["short"], line["date"]),
+                         xalign=0)
+        meta.add_css_class("caption")
+        meta.add_css_class("dim-label")
+        text.append(subject)
+        text.append(meta)
+        box.append(text)
+        if line["sha"] == head:
+            pill = Gtk.Label(label="Installed", valign=Gtk.Align.CENTER)
+            pill.add_css_class("aura-pill")
+            pill.add_css_class("installed")
+            box.append(pill)
+        for tag in line["tags"]:
+            pill = Gtk.Label(label=tag, valign=Gtk.Align.CENTER)
+            pill.add_css_class("aura-pill")
+            pill.add_css_class("latest")
+            box.append(pill)
+        row = Gtk.ListBoxRow(child=box)
+        row._line = line
+        return row
+
+    def _on_browse_switched(self, switcher, _param):
+        self._browse_stack.set_visible_child_name(switcher.get_active_name())
+
+    def _on_history_row(self, _list, row):
+        """A tagged commit opens its release; any other says which one has it."""
+        line = getattr(row, "_line", None)
+        if line is None:
+            return
+        tag = line["tags"][0] if line["tags"] else \
+            first_release_with(self._repo, line["sha"])
+        if line["tags"] and tag in self._release_rows:
+            self._browse_switcher.set_active_name("releases")
+            self._release_rows[tag].set_expanded(True)
+            self._release_rows[tag].grab_focus()
+            return
+        body = git_out(self._repo, "log", "-1", "--format=%b",
+                       line["sha"]) or ""
+        where = ("First released in %s." % tag) if tag else \
+            "Not in a release yet — install main to get it."
+        dialog = AlertWindow(
+            heading=line["subject"],
+            body="%s · %s\n\n%s%s" % (line["short"], line["date"],
+                                     body.strip() + "\n\n" if body.strip()
+                                     else "", where))
+        dialog.add_response("close", "Close")
+        dialog.add_response("open", "Open %s" % tag if tag else "Open main")
+        dialog.set_response_appearance("open", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("open")
+        dialog.set_close_response("close")
+
+        def answered(_d, response):
+            if response != "open":
+                return
+            self._browse_switcher.set_active_name("releases")
+            target = self._release_rows.get(tag) if tag else \
+                self._release_list.get_row_at_index(0)
+            if target is not None:
+                target.set_expanded(True)
+                target.grab_focus()
+
+        dialog.connect("response", answered)
+        open_over(dialog, self)
+
+    def _confirm_install(self, target, installed, name=None):
+        """Say what Install is about to do to the checkout, then do it.
+
+        name is what the version is called in the list (v0.3.6, v0.3.5+16)
+        when target is main's tip, which is the only version offered.
+        """
+        blockers = update_blockers(self._repo)
+        if blockers:
+            self._toasts.add_toast(Adw.Toast(title=blockers[0]))
+            return
+        branch = target in RELEASE_BRANCHES or not RELEASE_TAG.match(target)
+        what = name or (("the newest commit on %s" % target) if branch
+                        else target)
+        body = ("Switches the checkout to %s and runs the full installer in a "
+                "terminal." % what)
+        if git_out(self._repo, "status", "--porcelain"):
+            body += (" Your local edits in the checkout are stashed first — "
+                     "git stash pop brings them back.")
+        if branch and name is None:
+            body += (" Commits of your own on %s are kept on a backup branch."
+                     % target)
+        dialog = AlertWindow(
+            heading=("Reinstall %s?" if installed else "Install %s?")
+            % (name or target),
+            body=body)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("install", "Reinstall" if installed else "Install")
+        dialog.set_response_appearance("install",
+                                       Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("install")
+        dialog.set_close_response("cancel")
+        dialog.connect("response", lambda _d, r: r == "install"
+                       and self._run_update(target))
+        open_over(dialog, self)
 
     def _on_check_updates(self, _button):
         self._check_button.set_sensitive(False)
         self._check_button.set_label("Checking…")
+        self._refresh_updates(True)
 
         checker = os.path.join(os.path.expanduser("~/.local/bin"),
                                "aura-glass-update-check")
@@ -6723,17 +8172,26 @@ class Window(Adw.ApplicationWindow):
         def done(proc, res):
             try:
                 proc.wait_finish(res)
+                status = proc.get_exit_status() if proc.get_if_exited() else 1
             except GLib.Error:
-                pass
+                status = 1
             self._check_button.set_label("Check now")
             # Re-read rather than trust an exit code: the checker's whole output
-            # for the window is the state file it leaves behind.
-            self._applied = Settings()
+            # for the window is the state file it leaves behind. Only the
+            # update field: replacing self._applied whole would move the
+            # applied mode under tabs and banners that did not move with it.
+            self._applied.update_available = Settings().update_available
             self._sync_updates()
             self._check_button.set_sensitive(True)
-            self._toasts.add_toast(Adw.Toast(
-                title=("%s is available" % self._applied.update_available)
-                if self._applied.update_available else "Up to date"))
+            # 1 is the checker's "could not tell" (offline, no tag, no
+            # checkout) — not an answer, so not "Up to date" either.
+            if self._applied.update_available:
+                title = "%s is available" % self._applied.update_available
+            elif status == 1:
+                title = "Could not check for updates — offline?"
+            else:
+                title = "Up to date"
+            self._toasts.add_toast(Adw.Toast(title=title))
 
         try:
             proc = Gio.Subprocess.new(
@@ -6748,84 +8206,120 @@ class Window(Adw.ApplicationWindow):
         proc.wait_async(None, done)
 
     def _on_install_update(self, _button):
+        if self._running:
+            self._toasts.add_toast(Adw.Toast(
+                title="Another installer operation is already running"))
+            return
+        if self._repo is None:
+            self._banner_missing_repo()
+            return
+        if self._preview_active or self._preview_proc is not None or \
+                self._preview_timer or self._preview_terminal_requested:
+            self._toasts.add_toast(Adw.Toast(
+                title="Apply or revert the live preview before updating"))
+            return
         blockers = update_blockers(self._repo)
         if blockers:
             self._sync_updates()
             self._toasts.add_toast(Adw.Toast(title=blockers[0]))
             return
-
-        # --ff-only so an update can never create a merge commit in someone's
-        # checkout, and never rewrites anything: if the branch has diverged this
-        # stops with git's own message rather than trying to be clever.
+        # A test build's offer is branch@sha, and its branch is what to install.
+        # On the released line the offer is a release or a tag (v0.3.6,
+        # v0.3.5+16), and either one is main's tip.
         #
-        # The full installer, not --settings-only: a release can bump the
-        # upstream theme ref, add an extension or add a stylesheet, and none of
-        # those reach the desktop through the settings-only path.
-        script = ("set -e\n"
-                  "git -C %s pull --ff-only\n"
-                  "bash %s --yes\n"
-                  % (GLib.shell_quote(self._repo),
-                     GLib.shell_quote(os.path.join(self._repo, "install.sh"))))
-
-        if is_test_build(self._repo):
-            doing = ("Pulling the newest commit on %s, then running the "
-                     "installer" % current_branch(self._repo))
+        # Straight to the update window, without _confirm_install's question:
+        # pressing Install update is the answer. What that dialog explained
+        # (local edits stashed, local commits kept on a backup branch) is
+        # printed in the window's log as aura-glass-update does it. Picking a
+        # version from the Releases list still asks, because it may go back.
+        pending = self._applied.update_available or ""
+        branch = pending.rpartition("@")[0]
+        if branch:
+            self._run_update(branch)
         else:
-            doing = "Pulling the new release, then running the installer"
+            self._run_update("main", pending or None)
 
-        self._update_log_group.set_visible(True)
-        self._update_log.get_buffer().set_text("")
-        self._update_button.set_sensitive(False)
-        self._update_text.set_label("Updating…")
-        self._update_spinner.set_visible(True)
-        self._update_button_row.set_subtitle(doing)
-        # The same interlock _run_started keeps, from the other side: this runs
-        # the full installer, and Apply must not start a second one over it.
-        self._running = True
-        self._apply.set_sensitive(False)
-        self._reapply.set_sensitive(False)
-        self._repair_reapply.set_sensitive(False)
-        self._repair_full.set_sensitive(False)
-        self._apply_status.set_label("%s…" % doing)
-        log_append(self._update_log, "$ git pull --ff-only && install.sh --yes")
+    def _run_update(self, target, name=None):
+        """Hand target to bin/aura-glass-update in a terminal.
 
-        def done(ok, message):
-            self._update_spinner.set_visible(False)
-            self._update_text.set_label("Install")
-            self._running = False
-            self._reapply.set_sensitive(True)
-            self._repair_reapply.set_sensitive(self._repo is not None)
-            self._repair_full.set_sensitive(self._repo is not None)
-            # Whatever happened, Apply goes back to answering for itself — a
-            # failed update must not leave it stuck off.
-            self._mark_dirty()
-            self._apply_status.set_label(
-                "Updated — log out and back in to finish" if ok
-                else "The update failed — see the log on the Updates page")
-            if not ok:
-                log_append(self._update_log, "")
-                log_append(self._update_log, "Failed: %s" % message)
-                # From disk rather than assumed: a pull that landed and an
-                # installer that then failed is still a checkout that moved,
-                # and the row has to say which version is there now.
-                self._applied = Settings()
-                self._sync_updates()
-                self._toasts.add_toast(Adw.Toast(
-                    title="The update failed — see the log below"))
-                return
-            log_append(self._update_log, "")
-            log_append(self._update_log,
-                       "Done — log out and back in to finish.")
-            self._applied = Settings()
-            self._reload()
-            self._sync_updates()
+        The installed copy when there is one: it is outside the checkout the
+        update rewrites. The repository's own is the fallback, and is safe too —
+        it runs from a main() it has read in full before the checkout moves.
+
+        A terminal rather than this window's log for the reasons that always
+        applied: git can ask for credentials and the full installer for sudo.
+        The update-available memo goes only once the install finished, so the
+        window stops offering what it just did.
+        """
+        if self._running:
             self._toasts.add_toast(Adw.Toast(
-                title="Updated — log out and back in to finish"))
+                title="Another installer operation is already running"))
+            return
+        if self._preview_active or self._preview_proc is not None or \
+                self._preview_timer or self._preview_terminal_requested:
+            self._toasts.add_toast(Adw.Toast(
+                title="Apply or revert the live preview before updating"))
+            return
+        updater = os.path.join(os.path.expanduser("~/.local/bin"),
+                               "aura-glass-update")
+        if not os.path.exists(updater):
+            updater = os.path.join(self._repo, "bin", "aura-glass-update")
 
-        stream_command(["bash", "-c", script], self._update_log_line, done)
+        # The update window's run directory: the changelog this window reads
+        # now, and the events and log aura-glass-update and the installer
+        # write into (lib/progress.sh). In the runtime dir, not $CONF_DIR: it
+        # is this update's, and the session's end is the right time to lose it.
+        run_dir = None
+        try:
+            run_dir = tempfile.mkdtemp(prefix="aura-glass-update-",
+                                       dir=GLib.get_user_runtime_dir())
+            for name_ in ("events", "log"):
+                open(os.path.join(run_dir, name_), "w").close()
+            notes = (self._updates_data or {}).get("notes") or {}
+            with open(os.path.join(run_dir, "changelog.json"), "w") as handle:
+                json.dump({"from": installed_version(self._repo) or "",
+                           "to": name or target,
+                           "sections": update_changelog(self._repo, target,
+                                                        notes)}, handle)
+        except OSError as exc:
+            print("aura-glass: no update window: %s" % exc, file=sys.stderr)
+            run_dir = None
 
-    def _update_log_line(self, line):
-        log_append(self._update_log, line)
+        script = "bash %s %s\n" % (GLib.shell_quote(updater),
+                                   GLib.shell_quote(target))
+        if run_dir:
+            script = "AURA_GLASS_PROGRESS_DIR=%s %s" % (
+                GLib.shell_quote(run_dir), script)
+        if self.run_in_terminal(script, "Theme update"):
+            if run_dir:
+                self._open_update_window(run_dir)
+            self._update_button_row.set_subtitle(
+                "Theme update running — follow it in the update window")
+            self._apply_status.remove_css_class("error")
+            self._apply_status.set_label(
+                "Theme update running — follow it in the update window")
+
+    def _open_update_window(self, run_dir):
+        """gui/aura_glass_install_progress.py --update, detached.
+
+        Its own process, so it outlives this window and an installer that
+        replaces this window's files. The copy beside this file first — the
+        checkout's is about to be moved by the update.
+        """
+        here = os.path.dirname(os.path.abspath(__file__))
+        for folder in (here, os.path.join(self._repo or "", "gui")):
+            window = os.path.join(folder, "aura_glass_install_progress.py")
+            if os.path.exists(window):
+                break
+        else:
+            return
+        try:
+            subprocess.Popen(["python3", window, "--dir", run_dir, "--update"],
+                             stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL,
+                             start_new_session=True)
+        except OSError as exc:
+            print("aura-glass: update window: %s" % exc, file=sys.stderr)
 
     def _on_reapply_settings(self, _button):
         if self._running:
@@ -6841,29 +8335,14 @@ class Window(Adw.ApplicationWindow):
                 title="Apply or revert the live preview before repairing"))
             return
 
-        argv = ["bash", os.path.join(self._repo, "install.sh"),
-                "--settings-only", "-y"]
-        self._run_started("Reapplying the saved settings…")
-        log_append(self._apply_log, "$ install.sh --settings-only -y")
+        cmd = self._install_cmd("--settings-only")
+        if self.run_in_terminal(cmd, "Reapply settings"):
+            self._apply_status.remove_css_class("error")
+            self._apply_status.set_label(
+                "Reapply settings opened in a terminal — follow its progress "
+                "there")
 
-        def done(ok, message):
-            if not ok:
-                failed = "Reapply settings failed"
-                if message:
-                    failed = "%s — %s" % (failed, message)
-                self._run_finished(False, failed)
-                self._toasts.add_toast(Adw.Toast(
-                    title="Could not reapply settings — see the details"))
-                return
-            self._applied = Settings()
-            self._reload()
-            said = self._applied_message()
-            self._run_finished(True, said)
-            self._toasts.add_toast(Adw.Toast(title="Settings reapplied"))
-
-        stream_command(argv, self._run_line, done)
-
-    def _on_full_reinstall(self, _button):
+    def _on_reset_defaults(self, _button):
         if self._running:
             self._toasts.add_toast(Adw.Toast(
                 title="Another installer operation is already running"))
@@ -6874,15 +8353,38 @@ class Window(Adw.ApplicationWindow):
         if self._preview_active or self._preview_proc is not None or \
                 self._preview_timer or self._preview_terminal_requested:
             self._toasts.add_toast(Adw.Toast(
-                title="Apply or revert the live preview before reinstalling"))
+                title="Apply or revert the live preview before resetting"))
             return
-        if self.run_in_terminal(
-                self._install_cmd("--force --gui --yes"),
-                "Full reinstall"):
-            self._apply_status.remove_css_class("error")
-            self._apply_status.set_label(
-                "Full reinstall opened in a terminal — follow its progress "
-                "there")
+        dialog = AlertWindow(
+            heading="Reset the theme to its defaults?",
+            body="Every choice you made here is forgotten, everything is "
+                 "reinstalled, and the setup wizard opens so you can choose "
+                 "again. Cancelling the wizard leaves things as they are. Your "
+                 "old choices are kept in %s." % os.path.join(
+                     CONF_DIR, "backups", "reset-<time>"))
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("reset", "Reset")
+        dialog.set_response_appearance("reset",
+                                       Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
+        def answered(_d, response):
+            if response != "reset":
+                return
+            # --reset moves the memos aside before anything reads them, --force
+            # reinstalls what is already there (core.ini included), and
+            # --interactive opens the wizard despite the other flags. In a
+            # terminal, because the wizard's text fallback and sudo need one.
+            if self.run_in_terminal(
+                    self._install_cmd("--reset --force --gui --interactive"),
+                    "Reset to defaults"):
+                self._apply_status.remove_css_class("error")
+                self._apply_status.set_label(
+                    "Reset opened in a terminal — follow its progress there")
+
+        dialog.connect("response", answered)
+        open_over(dialog, self)
 
     # ---- actions ----------------------------------------------------------
 
@@ -6915,12 +8417,7 @@ class Window(Adw.ApplicationWindow):
         return path if os.path.exists(path) else None
 
     def _on_reapply(self, _button):
-        """Run aura-glass-apply, the same command a shell would.
-
-        Through the bottom bar rather than a modal, the same way an extension
-        switch runs: it is a second or two of output that belongs in the log
-        already sitting there, not a window in front of the page.
-        """
+        """Run aura-glass-apply in a real terminal window."""
         if self._running:
             self._toasts.add_toast(Adw.Toast(
                 title="Already applying something — try again in a moment"))
@@ -6939,25 +8436,12 @@ class Window(Adw.ApplicationWindow):
                       "is gone"))
             return
 
-        self._run_started("Re-applying the CSS to the theme…")
-        log_append(self._apply_log, "$ aura-glass-apply --force-reload")
-
-        def done(ok, message):
-            if not ok:
-                failed = "aura-glass-apply failed"
-                if message:
-                    failed = "%s — %s" % (failed, message)
-                self._run_finished(False, failed)
-                self._toasts.add_toast(Adw.Toast(title=failed))
-                return
-            # GTK read ~/.config/gtk-4.0/gtk.css at startup and will not read
-            # it again, so this window would show every re-applied change but
-            # its own. The same reload the preview does, for the same reason.
+        cmd = "bash %s " "--force-reload" % GLib.shell_quote(script)
+        if self.run_in_terminal(cmd, "Reapply CSS"):
+            self._apply_status.remove_css_class("error")
+            self._apply_status.set_label(
+                "Reapply CSS opened in a terminal — follow its progress there")
             self._reload_preview_css()
-            self._run_finished(True, "CSS re-applied to the theme")
-            self._toasts.add_toast(Adw.Toast(title="CSS re-applied"))
-
-        stream_command(["bash", script, "--force-reload"], self._run_line, done)
 
     def _on_apply(self, _button):
         args = self._current().flags_against(self._applied)
