@@ -19,12 +19,13 @@ a restart.
 | Top bar shaded behind a maximized window | `shell-00-flat` (`#panel.aura-glass-maximized`, 60% black) | none | none | Aura Glass Helper `_syncPanelShade`: focused window on the primary monitor that is maximized, fullscreen or covers the work area (Tiling Assistant `maximize-with-gap`), outside the overview |
 | Panel blur after monitor changes | none | none | none | Blur My Shell v76 keeps it aligned itself. The old `aura-glass-panel-blur.service` is removed by `remove_panel_blur_unit` |
 | Panel icon size for this display | generated `shell-90-density` | none | `TUNED_PPI` (in `steps-css.sh`) | `measure_logical_ppi`, `density_css` |
+| Top bar height (24–48 px, settings app → Appearance → Top bar; reset goes to GNOME's 32), snapped so there is no seam under a maximized window | generated `shell-90-density` (`#panel { height }`: the asked height snapped to whole device pixels, so 39px for the theme's 40 at 1.33/1.67; absent when that is the theme's own 40) | none | `PANEL_HEIGHT_THEME` 40, `PANEL_HEIGHT_GNOME` 32 (`steps-css.sh`, copied in `gui/aura_glass_settings.py`, held by `check-gui-flags.py`) | `resolve_panel_height`, `measure_primary_scale`, `panel_height_css`. Memo `$C/panel-height` |
 | Quick Settings panel | `shell-20-popup-menus`, `shell-popup-blur` | `[blur-my-shell/popup] quick-settings-corner-radius` | `TOKEN_RADIUS_QUICK_SETTINGS` | `install_css`, `apply_radius_*` |
 | Quick Settings sliders | `shell-10-quick-settings` | none | none | `install_css` |
 | Quick toggles and switches | `shell-40-quick-toggles` | none | none (follows `-st-accent-color`) | `install_css` |
-| Popup menus (panel, right-click) | `shell-20-popup-menus`, `shell-popup-blur` | `[blur-my-shell/popup] menu-corner-radius`, pipeline `popups` | `TOKEN_RADIUS_MENU`, `TOKEN_BLUR_RADIUS_POPUP` | `install_css`, `apply_popup_blur`, `apply_popup_brightness` |
+| Popup menus (panel, right-click) | `shell-20-popup-menus`, `shell-popup-blur` | `[blur-my-shell/popup] menu-corner-radius`, pipeline `popups` | `TOKEN_RADIUS_MENU`, `TOKEN_BLUR_RADIUS_POPUP` | `install_css`, `apply_popup_blur`, `apply_blur_pipelines`; opacity `apply_popup_transparency` (`--popup-opacity`, else the windows' level) |
 | Date / calendar menu | `shell-20-popup-menus`, `shell-popup-blur` | grouped with **Quick Settings** radius, not the menu one | `TOKEN_RADIUS_QUICK_SETTINGS` | as above |
-| Notification banners and history cards | `shell-30-notifications`, `shell-notification-blur` | the popup blur (v76 has no separate notification switch), `notification-corner-radius` | `TOKEN_RADIUS_NOTIFICATION` | `apply_notification_blur`, `apply_notification_opacity` (`tools/apply-notification-opacity.py`) |
+| Notification banners and history cards | `shell-30-notifications`, `shell-notification-blur` | the popup blur (v76 has no separate notification switch), `notification-corner-radius` | `TOKEN_RADIUS_NOTIFICATION` | `install_css` (the sheet goes with `--popup-blur`), `apply_notification_opacity` (`tools/apply-notification-opacity.py`, ground 40 × the popup opacity / 90) |
 | Modal dialogs (auth, power, run) | `shell-50-dialogs` | `[blur-my-shell/popup] dialog-corner-radius` | `TOKEN_RADIUS_DIALOG` | `install_css` |
 | Copyous clipboard dialog (Super+V) | `.modal-dialog.clipboard-dialog` in `shell-50-dialogs`, `shell-popup-blur`, `shell-80-solid`; its cards, buttons and search bar on the white lift ladder in `shell-50-dialogs` | as modal dialogs | `TOKEN_RADIUS_DIALOG` | `aura-glass-apply` copies those rules into `$CONF_DIR/extension-overrides.css`; Aura Glass Helper loads it as an extension sheet, the only rank that outranks Copyous's own stylesheet |
 | Other popups | `shell-popup-blur` | `[blur-my-shell/popup] corner-radius` | `TOKEN_RADIUS_POPUP` | `apply_radius_dconf` |
@@ -54,7 +55,7 @@ a restart.
 | Window corners and surfaces | `gtk4-70-surfaces` | `[blur-my-shell/applications] corner-radius` | `TOKEN_RADIUS_WINDOW` | `apply_radius_css`, `apply_radius_dconf` |
 | Window transparency | `gtk4-transparency` (installed only if level ≠ 0) | `[blur-my-shell/applications] opacity` (the level × 255, so non-GTK apps like Chrome show the blur too) | `TOKEN_APP_TRANSPARENCY_SHIPPED` | `install_transparency_css` → `tools/rescale-transparency.py`. Memo `$C/app-transparency` |
 | App tint | `gtk4-transparency` | none | `TOKEN_APP_TINT` | `apply_app_tint_color` → `tools/apply-tint-color.py`. Memo `$C/app-tint-color` |
-| Blur behind app windows | none | `[blur-my-shell/applications] blur, enable-all, whitelist, blacklist`, pipeline `windows`. Dialogs and tool palettes follow their app (`patches/blur-my-shell-subwindows.patch`) | `TOKEN_BLUR_RADIUS_APPLICATIONS` | `apply_app_blur` (`app_blur_literal`), `apply_window_brightness` |
+| Blur behind app windows | none | `[blur-my-shell/applications] blur, enable-all, whitelist, blacklist`, pipeline `windows`. Dialogs and tool palettes follow their app (`patches/blur-my-shell-subwindows.patch`) | `TOKEN_BLUR_RADIUS_APPLICATIONS` | `apply_app_blur` (`app_blur_literal`), `apply_blur_pipelines` |
 | Accent colour in GTK | substituted by `aura-glass-apply` (`@accent_bg_color`) | none | none | `apply_accent` |
 
 ## 3. GTK3 apps
@@ -68,14 +69,14 @@ a restart.
 
 | Feature | Where | Applied by |
 |---|---|---|
-| Blur strength (25–200 %) | every `unscaled_radius` in `pipelines`, capped at v76's 100 | `apply_blur_strength`. Memo `$C/blur-strength` (frosted drawer) |
-| Popup blur brightness (50–150 %, v76 clamps above 100) | pipeline `popups` | `apply_popup_brightness` → `tools/apply-popup-brightness.py` |
-| Window blur brightness (50–150 %, v76 clamps above 100) | pipeline `windows` | `apply_window_brightness` |
+| Main blur amount (25–200 %) and brightness (50–100 %) | every `dual_kawase_blur` effect's `unscaled_radius` and `brightness` in `pipelines`, from `core.ini`'s values, capped at v76's 100 and 1.0 | `apply_blur_pipelines`. Memos `$C/blur-strength`, `$C/blur-brightness` (frosted drawer) |
+| One surface's own blur amount and brightness (windows, popups & notifications, top bar, lock screen + overview) | the pipeline its component (`applications`, `popup`, `panel`, `lockscreen`) points at; `main` follows the main values. Dock, app folders and window list follow the main values only | `apply_blur_pipelines` (`BLUR_SURFACES`). Memos `$C/<surface>-blur-strength`, `$C/<surface>-blur-brightness` (frosted drawer) |
+| Popups & notifications opacity (70–100, or follow the windows) | `shell-popup-blur.css` alphas and the banner ground in `shell-notification-blur.css` | `apply_popup_transparency`, `apply_notification_opacity`. Memo `$C/popup-opacity` (frosted drawer) |
 | Moving an install onto v76's pipelines | `pipelines`, `settings-version`, every component's `pipeline`; legacy `sigma`/`brightness`/`customize` reset | `upgrade_bms_settings` (once: below version 7, or after v76's own migration) |
 | Grain (0–1) | the noise effect in pipelines | `apply_grain` |
 | Glass style (frosted / liquid / vibrant / tinted / smoked) | a `refraction` effect (id prefix `effect_aura_glass_style_`) after the blur in pipelines `panel` and `dock` (v76 rounds it from the component's corner); liquid also sets `[dash-to-dock] static-blur=true`. `--liquid-windows` adds pipeline `windows` and `[applications] static-blur=true`. Vibrant is a `luminosity` effect (saturation 1.35, brightness 1.06, 1.0 on the lock screen and windows) ahead of the blur in pipelines `lock screen` and `panel`, leaving the dock dynamic; with `--liquid-windows` also pipeline `windows` and `[applications] static-blur=true`. Tinted is a `color` effect (accent RGB from `accent_hex`, alpha 0.3, blend Color) and smoked a `luminosity` effect (brightness 0.7, saturation 0.8), both in `panel` and `lock screen` only, never windows. An `--accent` incremental Apply adds the `glass-style` action under tinted | `apply_glass_style`. Memos `$C/glass-style`, `$C/liquid-windows` (top-level, not drawer fields) |
 | Popup blur on/off | `[popup] blur` + `shell-popup-blur.css` present/absent | `apply_popup_blur`, `install_css` |
-| Notification blur on/off | `shell-notification-blur.css`; `[popup] notification` is inert on v76, where notifications follow the popup blur | `apply_notification_blur`, `install_css` |
+| Notification blur | follows the popup blur: `shell-notification-blur.css` is installed with `shell-popup-blur.css` (`--notification-blur` is retired) | `install_css` |
 | Per-app blur lists | `[applications] whitelist/blacklist`, memos `app-blur-allow/-block` | `apply_app_blur`. Window menu: `aura-glass-preview app-blur` |
 
 ## 5. Modes and adaptive

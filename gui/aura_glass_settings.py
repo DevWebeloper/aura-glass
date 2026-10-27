@@ -224,35 +224,17 @@ TRANSPARENCY_SNAP = 1
 OPACITY_SUBTITLE = ("Lower is more see-through. 70% is the floor — below it, "
                     "text stops reading clearly")
 
-# Same reason as OPACITY_SUBTITLE: the popup-blur switch's subtitle is
-# identical on both tabs.
-POPUP_BLUR_SUBTITLE = "Popups, Quick Settings and the panel"
+# The three answers the "Blur behind windows" row offers, which are
+# install.sh's APP_BLUR_SCOPE values and the ones both wizards ask about.
+WINDOW_BLUR_CHOICES = [
+    ("all", "All apps", "Browsers and Electron apps too — heavy on the GPU"),
+    ("gtk", "GTK apps only", "GNOME and libadwaita apps, lighter on the GPU"),
+    ("none", "Off", "Translucent windows with no blur behind them"),
+]
 
-# Same reason again: the notification-blur switch's title and subtitle are
-# identical on both tabs. Independent of POPUP_BLUR_SUBTITLE's switch — this
-# one covers banners as they arrive and the cards in the date menu, whether or
-# not popups themselves are blurred.
-#
-# The badge rides in the title rather than in a suffix pill. A suffix on an
-# Adw.SwitchRow is right-aligned against the switch, which puts it a whole row
-# away from the words it qualifies on a wide window; inline it sits against the
-# label it is about. Pango's alpha is used rather than a colour so the badge
-# takes the label's own foreground and stays right in both light and dark —
-# a hardcoded hex would be legible in one and wrong in the other.
-NOTIFICATION_BLUR_TITLE = ('Blur behind notifications '
-                           '<span size="x-small" weight="bold" alpha="55%">'
-                           'BETA</span>')
-
-# What the badge is promising, in the subtitle, because a badge on its own only
-# tells you to be careful without saying of what. The cards are the fragile
-# half: they are blurred through GNOME's own notification group, whose child
-# layout this leans on and which moves between shell releases — so the failure
-# it is warning about is a visible one, and the switch beside it is the undo.
-NOTIFICATION_BLUR_SUBTITLE = ("Banners as they arrive and the cards in the "
-                              "date menu, blurred whether or not menus are. "
-                              "Beta — the cards lean on GNOME's own "
-                              "notification layout, which shifts between "
-                              "releases; turn this off if they look wrong")
+# The popup-blur switch's subtitle. Notifications ride on it since Blur My
+# Shell v76, which blurs a banner through the popup component.
+POPUP_BLUR_SUBTITLE = "Popups, Quick Settings, notifications and the panel"
 
 # --blur-strength scales every blur radius at once. The bounds are
 # BLUR_STRENGTH_MIN and BLUR_STRENGTH_MAX in lib/steps-dconf.sh, which is where
@@ -270,52 +252,57 @@ BLUR_STRENGTH_MARKS = [
 
 BLUR_STRENGTH_SNAP = 4
 
-# --popup-brightness lights the blur behind menus, Quick Settings and
-# notification banners. The bounds are POPUP_BRIGHTNESS_MIN and
-# POPUP_BRIGHTNESS_MAX in lib/steps-dconf.sh, which is where the reasoning for
-# them is; 115 is what dconf/core.ini ships and the default here.
-POPUP_BRIGHTNESS_MIN = 50
-POPUP_BRIGHTNESS_MAX = 150
-POPUP_BRIGHTNESS_DEFAULT = 115
+# --blur-brightness lights every blur at once, as a percentage of each
+# pipeline's tuned brightness. The bounds are BLUR_BRIGHTNESS_MIN and
+# BLUR_BRIGHTNESS_MAX in lib/steps-dconf.sh, which is where the reasoning for
+# them is; 100 is the tuned set and the default.
+BLUR_BRIGHTNESS_MIN = 50
+BLUR_BRIGHTNESS_MAX = 100
 
-# Marks on that bar. 100 is the backdrop's own brightness, so it is the one
-# labelled point that is not a look but a fact about the blur.
-POPUP_BRIGHTNESS_MARKS = [
+BLUR_BRIGHTNESS_MARKS = [
     (70, "dim"),
-    (100, "as-is"),
-    (130, "lit"),
+    (100, "tuned"),
 ]
 
-POPUP_BRIGHTNESS_SNAP = 4
+BLUR_BRIGHTNESS_SNAP = 4
 
-# --window-brightness lights the blur behind application windows.
-# 100 is what dconf/core.ini ships and the default here.
-WINDOW_BRIGHTNESS_MIN = 50
-WINDOW_BRIGHTNESS_MAX = 150
-WINDOW_BRIGHTNESS_DEFAULT = 100
+# --popup-opacity, in the windows' own unit: POPUP_OPACITY_MIN and
+# POPUP_OPACITY_MAX in lib/steps-css.sh, the same range as the windows' bar.
+POPUP_OPACITY_MIN = 70
+POPUP_OPACITY_MAX = 100
 
-WINDOW_BRIGHTNESS_MARKS = [
-    (70, "dim"),
-    (100, "as-is"),
-    (130, "lit"),
+# --panel-height, the top bar's height in logical pixels. PANEL_HEIGHT_MIN,
+# PANEL_HEIGHT_MAX, PANEL_HEIGHT_THEME and PANEL_HEIGHT_GNOME in
+# lib/steps-css.sh, which is where the reasoning for them is: 40 is what the
+# theme draws, 32 is GNOME's own bar and what the reset button goes back to.
+PANEL_HEIGHT_MIN = 24
+PANEL_HEIGHT_MAX = 48
+PANEL_HEIGHT_THEME = 40
+PANEL_HEIGHT_GNOME = 32
+
+PANEL_HEIGHT_MARKS = [
+    (PANEL_HEIGHT_GNOME, "GNOME"),
+    (PANEL_HEIGHT_THEME, "Aura"),
 ]
 
-WINDOW_BRIGHTNESS_SNAP = 4
-
-# --notification-opacity sets how much ground an arriving banner paints over
-# that blur. Bounds are NOTIFICATION_OPACITY_MIN and NOTIFICATION_OPACITY_MAX in
-# lib/steps-css.sh; 40 is what css/shell-notification-blur.css ships.
-NOTIFICATION_OPACITY_MIN = 10
-NOTIFICATION_OPACITY_MAX = 85
-NOTIFICATION_OPACITY_DEFAULT = 40
-
-NOTIFICATION_OPACITY_MARKS = [
-    (20, "sheer"),
-    (40, "tuned"),
-    (70, "solid"),
+# The surfaces that can step out of the main blur amount and brightness, as
+# BLUR_SURFACES in lib/steps-dconf.sh names them: (id, title, subtitle). The id
+# names the memos and the flags (--window-blur-strength, --window-brightness).
+BLUR_SURFACES = [
+    ("window", "Windows", "Behind application windows"),
+    ("popup", "Popups & notifications",
+     "Menus, Quick Settings and notification banners"),
+    ("panel", "Top bar", "The panel along the top of the screen"),
+    ("lockscreen", "Lock screen", "And the overview behind the windows"),
 ]
 
-NOTIFICATION_OPACITY_SNAP = 4
+# The two brightness memos an earlier release wrote under other names, and the
+# values it wrote by default — read as `main`, as surface_brightness_legacy in
+# lib/steps-dconf.sh reads them.
+SURFACE_BRIGHTNESS_LEGACY = {
+    "window": ("window-brightness", ("100",)),
+    "popup": ("popup-brightness", ("100", "115")),
+}
 
 # What both tint memos hold, and the shipped answer for each. Black is not a
 # colour anyone picked — it is the sheets as written, which is why choosing it
@@ -609,8 +596,9 @@ NAV_SECTIONS = [
 SEARCH_INDEX = {
     "glass": ["frosted", "performance", "blur", "tint", "opacity",
              "transparency", "popup blur", "window blur", "scope",
-             "notification", "notifications", "banner"],
-    "appearance": ["accent", "colour", "color", "font", "icon", "cursor",
+             "notification", "notifications", "banner", "brightness",
+             "top bar", "lock screen", "advanced"],
+    "appearance": ["top bar", "panel", "height", "accent", "colour", "color", "font", "icon", "cursor",
                   "pointer", "cursor size", "pointer size", "titlebar",
                   "window buttons", "colloid", "reversal", "hatter",
                   "mactahoe", "aosp", "traffic lights", "button style",
@@ -649,6 +637,7 @@ FLAG_LABELS = {
     "--glass-style": ("glass", "Glass style"),
     "--liquid-windows": ("glass", "Glass style behind app windows"),
     "--no-liquid-windows": ("glass", "Glass style behind app windows"),
+    "--panel-height": ("appearance", "Top bar height"),
     "--fullscreen-blur": ("glass", "Blur fullscreen windows"),
     "--no-fullscreen-blur": ("glass", "Blur fullscreen windows"),
     "--update-check": ("updates", "Daily update check"),
@@ -657,24 +646,26 @@ FLAG_LABELS = {
     "--radius-preset": ("radius", "Corner rounding"),
     "--radius-custom": ("radius", "Corner rounding"),
     "--glass-mode": ("glass", "Glass mode"),
-    "--gtk-apps-blur": ("glass", "Blur scope"),
-    "--all-apps-blur": ("glass", "Blur scope"),
-    "--no-window-blur": ("glass", "Window blur"),
-    "--app-transparency": ("glass", "Window transparency"),
-    "--no-app-transparency": ("glass", "Window transparency"),
+    "--gtk-apps-blur": ("glass", "Blur behind windows"),
+    "--all-apps-blur": ("glass", "Blur behind windows"),
+    "--no-window-blur": ("glass", "Blur behind windows"),
+    "--app-transparency": ("glass", "Opacity"),
+    "--no-app-transparency": ("glass", "Opacity"),
     "--popup-blur": ("glass", "Popup blur"),
     "--no-popup-blur": ("glass", "Popup blur"),
-    "--notification-blur": ("glass", "Notification blur"),
-    "--no-notification-blur": ("glass", "Notification blur"),
     "--app-tint-color": ("glass", "App tint"),
     "--shell-tint-color": ("glass", "Shell tint"),
-    "--blur-strength": ("glass", "Blur strength"),
-    "--window-brightness": ("glass", "Window blur brightness"),
-    "--popup-brightness": ("glass", "Popup blur brightness"),
-    "--notification-opacity": ("glass", "Notification ground"),
+    "--blur-strength": ("glass", "Blur amount"),
+    "--blur-brightness": ("glass", "Brightness"),
+    "--popup-opacity": ("glass", "Popups & notifications opacity"),
     "--app-blur-allow": ("apps", "Blur allow list"),
     "--app-blur-block": ("apps", "Blur block list"),
 }
+
+# Each surface's own blur amount and brightness, in the Advanced group's words.
+for _sid, _title, _subtitle in BLUR_SURFACES:
+    FLAG_LABELS["--%s-blur-strength" % _sid] = ("glass", "%s blur amount" % _title)
+    FLAG_LABELS["--%s-brightness" % _sid] = ("glass", "%s brightness" % _title)
 
 # install.sh's incremental actions (lib/steps-apply-plan.sh), in the popover's
 # words. full is not here: it is said with its reason instead.
@@ -683,7 +674,7 @@ PLAN_ACTIONS = {
     "cursor-theme": "the pointer",
     "cursor-size": "the pointer size",
     "window-buttons": "the titlebar buttons",
-    "window-brightness": "the window blur brightness",
+    "blur-pipelines": "the blur amount and brightness",
     "app-blur": "the per-app blur lists",
     "css": "the stylesheets",
     "app-opacity": "the window opacity",
@@ -1115,13 +1106,59 @@ def read_hex_memo(name):
     return value if HEX_COLOR.match(value) else "#000000"
 
 
-def read_percent_memo(name):
-    """The blur strength memo, bounded, or 100 — the tuned radii."""
+def read_percent_memo(name, low=BLUR_STRENGTH_MIN, high=BLUR_STRENGTH_MAX):
+    """A main blur memo, or 100 — the tuned values.
+
+    Out of bounds is 100 too, as resolve_blur_pipelines in lib/steps-dconf.sh
+    hands it back, rather than clamped to the nearest end.
+    """
     try:
         value = int(read_memo(name, ""))
     except ValueError:
         return 100
-    return max(BLUR_STRENGTH_MIN, min(BLUR_STRENGTH_MAX, value))
+    return value if low <= value <= high else 100
+
+
+def read_dir_memo(directory, name):
+    """One memo out of DIRECTORY, or None when it is not there."""
+    try:
+        with open(os.path.join(directory, name), encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return None
+
+
+def surface_value(raw, low, high):
+    """A per-surface value as install.sh will use it: an int, or "main".
+
+    surface_value_checked in lib/steps-dconf.sh: anything that is not a whole
+    percentage inside the bounds follows the main slider.
+    """
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return "main"
+    return value if low <= value <= high else "main"
+
+
+def read_surface_memo(directory, key, low, high, surface=None):
+    """A per-surface memo out of $CONF_DIR or a mode's drawer.
+
+    surface_memo_read in lib/steps-dconf.sh: the memo itself, else for the two
+    brightness memos the name an earlier release wrote, whose default values
+    read as "main" and whose anything else is a choice, clamped to the top.
+    """
+    value = read_dir_memo(directory, key)
+    if value is not None:
+        return surface_value(value or "main", low, high)
+    legacy = SURFACE_BRIGHTNESS_LEGACY.get(surface) if surface else None
+    if legacy:
+        value = read_dir_memo(directory, legacy[0])
+        if value is not None:
+            if value in legacy[1] or not value.isdigit():
+                return "main"
+            return surface_value(min(int(value), high), low, high)
+    return "main"
 
 
 def read_bounded_memo(name, low, high, default):
@@ -1135,6 +1172,19 @@ def read_bounded_memo(name, low, high, default):
     except ValueError:
         return default
     return max(low, min(high, value))
+
+
+def read_surface_memos(directory):
+    """Every surface's own blur amount and brightness, as two dicts."""
+    strength, brightness = {}, {}
+    for sid, _title, _subtitle in BLUR_SURFACES:
+        strength[sid] = read_surface_memo(
+            directory, "%s-blur-strength" % sid, BLUR_STRENGTH_MIN,
+            BLUR_STRENGTH_MAX)
+        brightness[sid] = read_surface_memo(
+            directory, "%s-blur-brightness" % sid, BLUR_BRIGHTNESS_MIN,
+            BLUR_BRIGHTNESS_MAX, surface=sid)
+    return strength, brightness
 
 
 def read_cursor_size():
@@ -2608,7 +2658,6 @@ class Settings:
             self.scope = "all"
 
         self.popup_blur = read_memo("popup-blur", "1") != "0"
-        self.notification_blur = read_memo("notification-blur", "1") != "0"
 
         if not self.glass_mode:
             # Derived exactly as glass_mode_from_state does in
@@ -2624,27 +2673,24 @@ class Settings:
             self.transparency = read_mode_memo("performance", "app-transparency", "1.00") or "1.00"
             self.scope = "none"
             self.popup_blur = False
-            self.notification_blur = False
             self.blur = False
             self.app_tint = read_mode_memo("performance", "app-tint-color", "#000000") or "#000000"
             self.shell_tint = read_mode_memo("performance", "shell-tint-color", "#000000") or "#000000"
             self.blur_strength = 100
-            self.popup_brightness = POPUP_BRIGHTNESS_DEFAULT
-            self.window_brightness = WINDOW_BRIGHTNESS_DEFAULT
-            self.notification_opacity = NOTIFICATION_OPACITY_DEFAULT
+            self.blur_brightness = 100
+            self.surface_strength = {sid: "main" for sid, _t, _s in BLUR_SURFACES}
+            self.surface_brightness = {sid: "main" for sid, _t, _s in BLUR_SURFACES}
+            self.popup_opacity = "main"
         else:
             self.app_tint = read_mode_memo(self.glass_mode, "app-tint-color", read_hex_memo("app-tint-color"))
             self.shell_tint = read_mode_memo(self.glass_mode, "shell-tint-color", read_hex_memo("shell-tint-color"))
             self.blur_strength = read_percent_memo("blur-strength")
-            self.popup_brightness = read_bounded_memo(
-                "popup-brightness", POPUP_BRIGHTNESS_MIN, POPUP_BRIGHTNESS_MAX,
-                POPUP_BRIGHTNESS_DEFAULT)
-            self.window_brightness = read_bounded_memo(
-                "window-brightness", WINDOW_BRIGHTNESS_MIN, WINDOW_BRIGHTNESS_MAX,
-                WINDOW_BRIGHTNESS_DEFAULT)
-            self.notification_opacity = read_bounded_memo(
-                "notification-opacity", NOTIFICATION_OPACITY_MIN,
-                NOTIFICATION_OPACITY_MAX, NOTIFICATION_OPACITY_DEFAULT)
+            self.blur_brightness = read_percent_memo(
+                "blur-brightness", BLUR_BRIGHTNESS_MIN, BLUR_BRIGHTNESS_MAX)
+            self.surface_strength, self.surface_brightness = \
+                read_surface_memos(CONF_DIR)
+            self.popup_opacity = read_surface_memo(
+                CONF_DIR, "popup-opacity", POPUP_OPACITY_MIN, POPUP_OPACITY_MAX)
 
         # Which windows the applications component treats. Blur My Shell reads
         # one or the other depending on enable-all, which is the same choice
@@ -2711,6 +2757,12 @@ class Settings:
         self.liquid_windows = read_memo("liquid-windows", "0") == "1"
         # Off unless asked, as apply_fullscreen_blur defaults it.
         self.fullscreen_blur = read_memo("fullscreen-blur", "0") == "1"
+        # A top-level memo like the style: the bar is the same height in both
+        # modes. Out of bounds is the theme's 40, as resolve_panel_height has it.
+        self.panel_height = surface_value(read_memo("panel-height", ""),
+                                          PANEL_HEIGHT_MIN, PANEL_HEIGHT_MAX)
+        if self.panel_height == "main":
+            self.panel_height = PANEL_HEIGHT_THEME
 
         self.update_check = read_memo("update-check", "1") != "0"
         self.update_channel = read_memo("update-channel", "release")
@@ -2735,12 +2787,8 @@ class Settings:
         disk_app_tint = read_memo("app-tint-color", "")
         disk_shell_tint = read_memo("shell-tint-color", "")
         disk_strength = read_memo("blur-strength", "")
-        disk_brightness = read_memo("popup-brightness", "")
-        disk_win_brightness = read_memo("window-brightness", "")
-        disk_ground = read_memo("notification-opacity", "")
         disk_scope = read_memo("app-blur-scope", "")
         disk_popup = read_memo("popup-blur", "")
-        disk_notification = read_memo("notification-blur", "")
 
         self.modes = {}
         for mode in GLASS_MODES:
@@ -2757,32 +2805,33 @@ class Settings:
                                               disk_strength or "100"))
             except ValueError:
                 strength = 100
-            try:
-                brightness = int(read_mode_memo(
-                    mode, "popup-brightness",
-                    disk_brightness or str(POPUP_BRIGHTNESS_DEFAULT)))
-            except ValueError:
-                brightness = POPUP_BRIGHTNESS_DEFAULT
-            try:
-                win_brightness = int(read_mode_memo(
-                    mode, "window-brightness",
-                    disk_win_brightness or str(WINDOW_BRIGHTNESS_DEFAULT)))
-            except ValueError:
-                win_brightness = WINDOW_BRIGHTNESS_DEFAULT
-            try:
-                ground = int(read_mode_memo(
-                    mode, "notification-opacity",
-                    disk_ground or str(NOTIFICATION_OPACITY_DEFAULT)))
-            except ValueError:
-                ground = NOTIFICATION_OPACITY_DEFAULT
+            # The main brightness, each surface's own blur and the popups'
+            # opacity are read the way load_glass_mode_memos reads them: from
+            # the drawer when there is one, missing keys and all, and from the
+            # top-level memos seed_glass_mode would copy in when there is not.
+            # Performance has no blur, so it has none of them to keep.
+            drawer = os.path.join(CONF_DIR, "modes", mode)
+            if mode == "performance":
+                brightness = 100
+                surface_strength = {sid: "main" for sid, _t, _s in BLUR_SURFACES}
+                surface_brightness = dict(surface_strength)
+                popup_opacity = "main"
+            else:
+                source = drawer if os.path.isdir(drawer) else CONF_DIR
+                brightness = surface_value(
+                    read_dir_memo(source, "blur-brightness"),
+                    BLUR_BRIGHTNESS_MIN, BLUR_BRIGHTNESS_MAX)
+                brightness = 100 if brightness == "main" else brightness
+                surface_strength, surface_brightness = read_surface_memos(source)
+                popup_opacity = read_surface_memo(
+                    source, "popup-opacity", POPUP_OPACITY_MIN,
+                    POPUP_OPACITY_MAX)
 
             if mode == "performance":
                 def_popup = "0"
-                def_notif = "0"
                 def_scope = "none"
             else:
                 def_popup = disk_popup or "1"
-                def_notif = disk_notification or "1"
                 def_scope = disk_scope or "all"
 
             self.modes[mode] = {
@@ -2791,12 +2840,11 @@ class Settings:
                 "shell_tint": read_mode_memo(mode, "shell-tint-color",
                                              shell_default),
                 "blur_strength": strength,
-                "popup_brightness": brightness,
-                "window_brightness": win_brightness,
-                "notification_opacity": ground,
+                "blur_brightness": brightness,
+                "surface_strength": surface_strength,
+                "surface_brightness": surface_brightness,
+                "popup_opacity": popup_opacity,
                 "popup_blur": read_mode_memo(mode, "popup-blur", def_popup) != "0",
-                "notification_blur": read_mode_memo(
-                    mode, "notification-blur", def_notif) != "0",
                 "scope": read_mode_memo(mode, "app-blur-scope", def_scope),
             }
 
@@ -2809,11 +2857,11 @@ class Settings:
                 "app_tint": self.app_tint,
                 "shell_tint": self.shell_tint,
                 "blur_strength": self.blur_strength,
-                "popup_brightness": self.popup_brightness,
-                "window_brightness": self.window_brightness,
-                "notification_opacity": self.notification_opacity,
+                "blur_brightness": self.blur_brightness,
+                "surface_strength": dict(self.surface_strength),
+                "surface_brightness": dict(self.surface_brightness),
+                "popup_opacity": self.popup_opacity,
                 "popup_blur": self.popup_blur,
-                "notification_blur": self.notification_blur,
                 "scope": self.scope,
             })
 
@@ -2879,6 +2927,8 @@ class Settings:
         if self.fullscreen_blur != other.fullscreen_blur:
             args.append("--fullscreen-blur" if self.fullscreen_blur
                         else "--no-fullscreen-blur")
+        if self.panel_height != other.panel_height:
+            args += ["--panel-height", str(self.panel_height)]
         # --radius-custom implies the custom preset, so it stands in for
         # --radius-preset rather than joining it. Sent when the eight values
         # moved even if the preset name did not, because "custom" says nothing
@@ -2914,7 +2964,6 @@ class Settings:
         scope_base = base("scope")
         transparency_base = base("transparency")
         popup_base = base("popup_blur")
-        notification_base = base("notification_blur")
         app_tint_base = base("app_tint")
         shell_tint_base = base("shell_tint")
 
@@ -2940,10 +2989,6 @@ class Settings:
                 args.append("--popup-blur" if self.popup_blur
                             else "--no-popup-blur")
 
-            if self.notification_blur != notification_base:
-                args.append("--notification-blur" if self.notification_blur
-                            else "--no-notification-blur")
-
         # The two tints. Sent as the value rather than as an on/off, because
         # black is a value in its own right — it is the state the sheets ship
         # in, and asking for it again is how a tint is undone.
@@ -2967,14 +3012,21 @@ class Settings:
                 args += ["--blur-strength", str(self.blur_strength)]
 
             # Beside the strength and compared the same way, for the same reason
-            # its comment gives: neither is part of a mode's identity, so both are
-            # a plain comparison against `other` rather than against the drawer.
-            if self.window_brightness != other.window_brightness:
-                args += ["--window-brightness", str(self.window_brightness)]
-            if self.popup_brightness != other.popup_brightness:
-                args += ["--popup-brightness", str(self.popup_brightness)]
-            if self.notification_opacity != other.notification_opacity:
-                args += ["--notification-opacity", str(self.notification_opacity)]
+            # its comment gives: none of these is part of a mode's identity, so
+            # each is a plain comparison against `other` rather than against
+            # the drawer. A surface handed back to the main slider is sent as
+            # "main", which is how install.sh is told to forget its own value.
+            if self.blur_brightness != other.blur_brightness:
+                args += ["--blur-brightness", str(self.blur_brightness)]
+            for sid, _title, _subtitle in BLUR_SURFACES:
+                if self.surface_strength[sid] != other.surface_strength[sid]:
+                    args += ["--%s-blur-strength" % sid,
+                             str(self.surface_strength[sid])]
+                if self.surface_brightness[sid] != other.surface_brightness[sid]:
+                    args += ["--%s-brightness" % sid,
+                             str(self.surface_brightness[sid])]
+            if self.popup_opacity != other.popup_opacity:
+                args += ["--popup-opacity", str(self.popup_opacity)]
 
         # Whichever list changed, consulted by the mode in force or not.
         #
@@ -3465,9 +3517,6 @@ class Window(Adw.ApplicationWindow):
         self._tints = {}
         self._tint_rows = {}
         self._strength_scales = {}
-        self._window_brightness_scales = {}
-        self._brightness_scales = {}
-        self._ground_scales = {}
         # Live preview: tint, transparency, radius, blur strength, popup blur
         # and window-blur scope show on the real desktop as they move, through
         # bin/aura-glass-preview — see that script for why calling it on every
@@ -3793,12 +3842,12 @@ class Window(Adw.ApplicationWindow):
         "--app-tint-color", "--shell-tint-color",
         "--app-transparency", "--no-app-transparency",
         "--radius-preset", "--radius-custom",
-        "--blur-strength",
-        "--window-brightness",
-        "--popup-brightness", "--notification-opacity",
-        "--popup-blur", "--no-popup-blur",
-        "--notification-blur", "--no-notification-blur",
-    )) | _APP_ONLY_FLAGS
+        "--blur-strength", "--blur-brightness", "--popup-opacity",
+        "--popup-blur", "--no-popup-blur", "--panel-height",
+    )) | frozenset(
+        flag for sid, _t, _s in BLUR_SURFACES
+        for flag in ("--%s-blur-strength" % sid, "--%s-brightness" % sid)
+    ) | _APP_ONLY_FLAGS
 
     def _on_preview_toggle(self, button):
         self._preview_enabled = button.get_active()
@@ -3856,20 +3905,23 @@ class Window(Adw.ApplicationWindow):
             cmd = ("session=$(%s begin) && %s set --session \"$session\" "
                   "--glass-mode %s --app-tint %s --shell-tint %s "
                   "--transparency %s --radius-custom %s --blur-strength %s "
-                  "--window-brightness %s "
-                  "--popup-brightness %s --notification-opacity %s "
-                  "--popup-blur %s --notification-blur %s "
+                  "--blur-brightness %s %s --popup-opacity %s "
+                  "--popup-blur %s --panel-height %s "
                   "--window-blur %s --scope %s "
                   "--app-blur-allow %s --app-blur-block %s"
                   % (q(script), q(script), q(current.glass_mode), q(current.app_tint),
                      q(current.shell_tint), q(current.transparency),
                      q(",".join(str(v) for v in current.radius_custom)),
                      q(str(current.blur_strength)),
-                     q(str(current.window_brightness)),
-                     q(str(current.popup_brightness)),
-                     q(str(current.notification_opacity)),
+                     q(str(current.blur_brightness)),
+                     " ".join(
+                         "--%s-blur-strength %s --%s-brightness %s"
+                         % (sid, q(str(current.surface_strength[sid])),
+                            sid, q(str(current.surface_brightness[sid])))
+                         for sid, _t, _s in BLUR_SURFACES),
+                     q(str(current.popup_opacity)),
                      q("1" if current.popup_blur else "0"),
-                     q("1" if current.notification_blur else "0"),
+                     q(str(current.panel_height)),
                      q(window_blur),
                      q(scope), q(",".join(current.allow)),
                      q(",".join(current.block))))
@@ -4343,7 +4395,45 @@ class Window(Adw.ApplicationWindow):
         buttons.add(self._titlebutton_style_row)
         page.add(buttons)
 
+        # Pixels rather than a percentage: the bar's height is a length people
+        # compare against the one GNOME draws, and the reset button is that
+        # comparison made in one click.
+        bar = Adw.PreferencesGroup(
+            title="Top bar",
+            description="Snapped to whole pixels at a fractional display "
+                        "scale, so a maximized window meets it without a seam.")
+        self._panel_height_scale = self._percent_scale(
+            PANEL_HEIGHT_MIN, PANEL_HEIGHT_MAX, PANEL_HEIGHT_MARKS, 4, 0,
+            self._applied.panel_height, step=1)
+        self._panel_height_scale.connect("value-changed",
+                                         self._on_panel_height_changed)
+        reset = Gtk.Button(icon_name="edit-undo-symbolic",
+                           valign=Gtk.Align.CENTER,
+                           tooltip_text="GNOME's own height (%d px)"
+                                        % PANEL_HEIGHT_GNOME)
+        reset.add_css_class("flat")
+        reset.connect("clicked", lambda _b: self._panel_height_scale.set_value(
+            PANEL_HEIGHT_GNOME))
+        self._panel_height_reset = reset
+        bar.add(self._slider_row(
+            "Height", "%d px is the theme's, %d px GNOME's own"
+            % (PANEL_HEIGHT_THEME, PANEL_HEIGHT_GNOME),
+            self._panel_height_scale, reset))
+        self._sync_panel_height()
+        page.add(bar)
+
         return page
+
+    def _sync_panel_height(self):
+        scale = self._panel_height_scale
+        scale._readout.set_label("%d px" % round(scale.get_value()))
+        self._panel_height_reset.set_sensitive(
+            round(scale.get_value()) != PANEL_HEIGHT_GNOME)
+
+    def _on_panel_height_changed(self, _scale):
+        self._sync_panel_height()
+        if not self._loading:
+            self._mark_dirty()
 
     def _build_radius_page(self):
         page = Adw.PreferencesPage()
@@ -5010,46 +5100,60 @@ class Window(Adw.ApplicationWindow):
 
         page.add(self._build_tint_group("frosted"))
 
+        # The three main sliders, one row each. Every surface follows them
+        # unless the Advanced group below gives it a value of its own.
         glass = Adw.PreferencesGroup(
-            title="Transparency",
-            description="How much of the desktop comes through an app window.")
+            title="Glass",
+            description="Moves windows, popups and notifications together. "
+                        "Advanced below sets any of them apart.")
 
-        # Off is its own switch rather than the bottom of the bar. They are not
-        # the same thing: 100% leaves the transparency sheet installed and fully
-        # opaque, while off removes it, and install_transparency_css treats those
-        # differently. A single control would have to pretend otherwise.
-        self._transparency_on = Adw.SwitchRow(
-            title="Translucent app windows",
-            subtitle="Let the blur and the wallpaper through GTK app windows",
-            active=frosted["transparency"] != "0")
-        self._transparency_on.connect("notify::active", self._on_changed,
-                                      "transparency")
-        glass.add(self._transparency_on)
+        strength = self._percent_scale(
+            BLUR_STRENGTH_MIN, BLUR_STRENGTH_MAX, BLUR_STRENGTH_MARKS, 25,
+            BLUR_STRENGTH_SNAP, frosted["blur_strength"])
+        strength.connect("value-changed", self._on_main_changed)
+        self._strength_scales["frosted"] = strength
+        glass.add(self._slider_row(
+            "Blur amount", "Higher is softer, and costs more GPU time. Moves "
+            "the dock and the rest of the shell too", strength))
 
-        # The bar gets a row to itself, under the one that names it.
-        #
-        # It used to be a suffix on that row, which left it a few hundred pixels
-        # wide with three two-line mark labels under it and GtkScale's own value
-        # readout drawn over the top — four numbers competing for the same strip
-        # of pixels, and on a narrow window they overlapped into an unreadable
-        # smear. So: the readout moves to the row's suffix as an ordinary label,
-        # the marks lose their percentages, and the bar gets the full width to
-        # spread the three remaining words across.
+        brightness = self._percent_scale(
+            BLUR_BRIGHTNESS_MIN, BLUR_BRIGHTNESS_MAX, BLUR_BRIGHTNESS_MARKS, 10,
+            BLUR_BRIGHTNESS_SNAP, frosted["blur_brightness"])
+        brightness.connect("value-changed", self._on_main_changed)
+        self._glass_brightness_scale = brightness
+        glass.add(self._slider_row(
+            "Brightness", "100% is the tuned glass — lower darkens what shows "
+            "through", brightness))
+
+        # Opaque windows are stored as a flat "0" and show as 100%: the bar's
+        # top is what that looks like, and _current keeps the "0" until the
+        # bar is moved. The switch that used to sit above this said the same
+        # thing twice.
         self._transparency_scale = self._opacity_scale(
-            level_to_percent(frosted["transparency"]))
-
-        self._transparency_row = Adw.ActionRow(
-            title="Opacity", subtitle=OPACITY_SUBTITLE)
-        self._transparency_row.add_suffix(self._transparency_scale._readout)
-        glass.add(self._transparency_row)
-
-        self._transparency_bar = Gtk.Box(margin_start=12, margin_end=12,
-                                         margin_top=4, margin_bottom=4)
-        self._transparency_bar.append(self._transparency_scale)
-        glass.add(self._transparency_bar)
-
+            100 if frosted["transparency"] == "0"
+            else level_to_percent(frosted["transparency"]))
+        self._transparency_scale.connect("value-changed", self._on_main_changed)
+        glass.add(self._slider_row("Opacity", OPACITY_SUBTITLE,
+                                   self._transparency_scale))
         page.add(glass)
-        page.add(self._build_blur_strength_group("frosted"))
+
+        # Which surfaces the blur reaches. One dropdown for the windows, not the
+        # two switches this was: the three answers are the ones both wizards
+        # already offer, and a second switch that only meant anything while the
+        # first was on read as two settings when it was one.
+        reach = Adw.PreferencesGroup(title="Where the blur reaches")
+        self._window_blur_row = self._combo(
+            "Blur behind windows", "", WINDOW_BLUR_CHOICES,
+            frosted.get("scope", "all"), "scope")
+        reach.add(self._window_blur_row)
+
+        self._popup_row = Adw.SwitchRow(
+            title="Blur behind menus, notifications and the top bar",
+            subtitle=POPUP_BLUR_SUBTITLE,
+            active=frosted["popup_blur"])
+        self._popup_row.connect("notify::active", self._on_changed, "popup_blur")
+        reach.add(self._popup_row)
+        page.add(reach)
 
         style = Adw.PreferencesGroup(
             title="Glass style",
@@ -5058,6 +5162,61 @@ class Window(Adw.ApplicationWindow):
             "Style", "", GLASS_STYLES, self._applied.glass_style,
             "glass_style")
         style.add(self._glass_style_row)
+        page.add(style)
+
+        page.add(self._build_advanced_group(frosted))
+
+        # Last on the page rather than first: the cost is worth knowing, but
+        # not the reason anyone opened this tab.
+        page.add(tip_card(
+            "<b>Blur is the most expensive thing in this window.</b> It costs "
+            "GPU and battery — more on integrated graphics or a 4K screen. If "
+            "the desktop feels slow, set <b>Blur behind windows</b> to GTK "
+            "apps only first, or switch to Performance."))
+
+        return self._mode_tab("frosted", page)
+
+    def _build_advanced_group(self, frosted):
+        """Each surface on its own, collapsed until asked for.
+
+        A surface follows the main sliders until one of its own bars is moved;
+        from then on it keeps that value whatever the main slider does, and a
+        reset button hands it back. That is the whole of the model, and it is
+        install.sh's: an override is a number, following is "main".
+        """
+        group = Adw.PreferencesGroup(
+            title="Advanced",
+            description="Set a surface apart from the main sliders. A surface "
+                        "you change keeps its value until you reset it.")
+        # (sid, kind) -> row, for _current, _reload and the main sliders.
+        self._surface_rows = {}
+        for sid, title, subtitle in BLUR_SURFACES:
+            # No markup: "&" in a title is invalid Pango and blanks the row.
+            expander = Adw.ExpanderRow(title=title, subtitle=subtitle,
+                                       use_markup=False)
+            expander._sid = sid
+            self._surface_rows[(sid, "strength")] = self._surface_row(
+                expander, sid, "strength", "Blur amount",
+                BLUR_STRENGTH_MIN, BLUR_STRENGTH_MAX, BLUR_STRENGTH_MARKS, 25,
+                BLUR_STRENGTH_SNAP, frosted["surface_strength"][sid])
+            self._surface_rows[(sid, "brightness")] = self._surface_row(
+                expander, sid, "brightness", "Brightness",
+                BLUR_BRIGHTNESS_MIN, BLUR_BRIGHTNESS_MAX,
+                BLUR_BRIGHTNESS_MARKS, 10, BLUR_BRIGHTNESS_SNAP,
+                frosted["surface_brightness"][sid])
+            # One opacity for popups and banners together; the windows' own is
+            # the main Opacity bar, and the top bar and lock screen paint
+            # their own grounds.
+            if sid == "popup":
+                self._surface_rows[(sid, "opacity")] = self._surface_row(
+                    expander, sid, "opacity", "Opacity",
+                    POPUP_OPACITY_MIN, POPUP_OPACITY_MAX, TRANSPARENCY_MARKS, 5,
+                    TRANSPARENCY_SNAP, frosted["popup_opacity"], step=1)
+            group.add(expander)
+            self._sync_surface_summary(expander)
+
+        more = Adw.ExpanderRow(title="More",
+                               subtitle="Window blur behaviour")
         self._liquid_windows_row = Adw.SwitchRow(
             title="Glass style behind app windows",
             subtitle="Window blur turns static: a window blurs the wallpaper, "
@@ -5065,39 +5224,7 @@ class Window(Adw.ApplicationWindow):
             active=self._applied.liquid_windows)
         self._liquid_windows_row.connect("notify::active", self._on_changed,
                                          "liquid_windows")
-        style.add(self._liquid_windows_row)
-        page.add(style)
-        page.add(self._build_window_brightness_group("frosted"))
-        page.add(self._build_popup_brightness_group("frosted"))
-        page.add(self._build_notification_ground_group("frosted"))
-
-        # Which surfaces the blur reaches, once the tint/opacity/amount above
-        # have already answered what it looks like. Two switches, not the
-        # dropdown this was — they are two settings in install.sh,
-        # WANT_WINDOW_BLUR and APP_BLUR_SCOPE, and the dropdown was the only
-        # thing that ever made them one question.
-        reach = Adw.PreferencesGroup(title="Where the blur reaches")
-
-        self._window_blur_row = Adw.SwitchRow(
-            title="Blur behind app windows",
-            subtitle="Off leaves windows translucent with no blur behind them",
-            active=frosted.get("scope", "all") != "none")
-        self._window_blur_row.connect("notify::active", self._on_changed,
-                                      "scope")
-        reach.add(self._window_blur_row)
-
-        # The cost in bold, and it is the only bold on the page. This is the one
-        # switch here that measured the overview at p90 99% GPU against 32%
-        # without it, and a subtitle that mentioned that in passing was a
-        # subtitle people turned it on without reading.
-        self._blur_all_row = Adw.SwitchRow(
-            title="Blur behind all application windows",
-            subtitle="Covers browsers and Electron apps too — <b>heavy on "
-                     "the GPU</b>",
-            active=frosted.get("scope", "all") != "gtk")
-        self._blur_all_row.connect("notify::active", self._on_changed, "scope")
-        reach.add(self._blur_all_row)
-
+        more.add_row(self._liquid_windows_row)
         self._fullscreen_blur_row = Adw.SwitchRow(
             title="Blur fullscreen windows",
             subtitle="Off drops the blur behind a fullscreen video or game "
@@ -5105,33 +5232,153 @@ class Window(Adw.ApplicationWindow):
             active=self._applied.fullscreen_blur)
         self._fullscreen_blur_row.connect("notify::active", self._on_changed,
                                           "fullscreen_blur")
-        reach.add(self._fullscreen_blur_row)
+        more.add_row(self._fullscreen_blur_row)
+        group.add(more)
+        return group
 
-        self._popup_row = Adw.SwitchRow(
-            title="Blur behind menus and the top bar",
-            subtitle=POPUP_BLUR_SUBTITLE,
-            active=frosted["popup_blur"])
-        self._popup_row.connect("notify::active", self._on_changed, "popup_blur")
-        reach.add(self._popup_row)
+    def _percent_scale(self, low, high, marks, page, snap, value, step=5):
+        """A bar over whole percentages, with its readout kept on its side.
 
-        self._notification_row = Adw.SwitchRow(
-            title=NOTIFICATION_BLUR_TITLE,
-            subtitle=NOTIFICATION_BLUR_SUBTITLE,
-            active=frosted["notification_blur"])
-        self._notification_row.connect("notify::active", self._on_changed,
-                                       "notification_blur")
-        reach.add(self._notification_row)
-        page.add(reach)
+        Fives by default, not points: five percent is about the smallest step
+        that shows up on a screen, and four either side of a mark is the widest
+        snap radius that leaves the stop next to it reachable.
+        """
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,
+                                         low, high, step)
+        scale.set_hexpand(True)
+        scale.set_draw_value(False)
+        for at, label in marks:
+            scale.add_mark(at, Gtk.PositionType.BOTTOM, label)
+        tame_scale(scale, marks, step, page, snap)
+        scale._readout = Gtk.Label(valign=Gtk.Align.CENTER)
+        scale._readout.add_css_class("numeric")
+        scale._readout.add_css_class("dim-label")
+        scale.set_value(value)
+        self._sync_percent_value(scale)
+        return scale
 
-        # Last on the page rather than first: the cost is worth knowing, but
-        # not the reason anyone opened this tab.
-        page.add(tip_card(
-            "<b>Blur is the most expensive thing in this window.</b> It costs "
-            "GPU and battery — more on integrated graphics or a 4K screen. If "
-            "the desktop feels slow, turn off <b>Blur behind all application "
-            "windows</b> first, or switch to Performance."))
+    def _slider_row(self, title, subtitle, scale, reset=None):
+        """A title, its readout and a bar, as one row.
 
-        return self._mode_tab("frosted", page)
+        One row rather than a row and a bar in a group of their own: an
+        Adw.PreferencesGroup puts every non-row child after its whole list
+        box, so the three main bars could not share a group any other way, and
+        an expander row only takes rows.
+        """
+        row = Adw.PreferencesRow(activatable=False, focusable=False)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4,
+                      margin_top=8, margin_bottom=8, margin_start=12,
+                      margin_end=12)
+        head = Gtk.Box(spacing=8)
+        words = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True,
+                        valign=Gtk.Align.CENTER)
+        words.append(Gtk.Label(label=title, xalign=0))
+        row._subtitle = Gtk.Label(label=subtitle, xalign=0, wrap=True)
+        row._subtitle.add_css_class("dim-label")
+        row._subtitle.add_css_class("caption")
+        words.append(row._subtitle)
+        head.append(words)
+        if reset is not None:
+            head.append(reset)
+        head.append(scale._readout)
+        box.append(head)
+        box.append(scale)
+        row.set_child(box)
+        row._scale = scale
+        return row
+
+    def _surface_row(self, expander, sid, kind, title, low, high, marks, page,
+                     snap, value, step=5):
+        """One surface's own bar, following its main slider or not."""
+        reset = Gtk.Button(icon_name="edit-undo-symbolic",
+                           valign=Gtk.Align.CENTER,
+                           tooltip_text="Follow the main slider again")
+        reset.add_css_class("flat")
+        scale = self._percent_scale(low, high, marks, page, snap,
+                                    self._main_value(kind) if value == "main"
+                                    else value, step)
+        row = self._slider_row(title, "", scale, reset)
+        row._follows = value == "main"
+        row._expander = expander
+        row._kind = kind
+        row._reset = reset
+        scale.connect("value-changed", self._on_surface_changed, row)
+        reset.connect("clicked", self._on_surface_reset, row)
+        expander.add_row(row)
+        self._sync_surface_row(row)
+        return row
+
+    def _main_value(self, kind):
+        """What a following surface of this kind shows: its main bar's value."""
+        scale = {"strength": self._strength_scales.get("frosted"),
+                 "brightness": getattr(self, "_glass_brightness_scale", None),
+                 "opacity": getattr(self, "_transparency_scale", None)}[kind]
+        return round(scale.get_value())
+
+    def _sync_surface_row(self, row):
+        row._reset.set_visible(not row._follows)
+        row._subtitle.set_label("Follows the main slider" if row._follows
+                                else "Set apart — the main slider leaves it")
+
+    def _sync_surface_summary(self, expander):
+        custom = [row._scale for (sid, _k), row in self._surface_rows.items()
+                  if sid == expander._sid and not row._follows]
+        expander.set_subtitle(
+            "Set apart from the main sliders" if custom else
+            dict((s, sub) for s, _t, sub in BLUR_SURFACES)[expander._sid])
+
+    def _on_main_changed(self, scale):
+        """A main bar moved: every surface still following it moves too.
+
+        The opacity bar has _on_scale_changed beside this for its readout and
+        the dirty mark, as it does on the Performance tab, so only the other
+        two get theirs here.
+        """
+        kind = ("strength" if scale is self._strength_scales.get("frosted")
+                else "brightness" if scale is
+                getattr(self, "_glass_brightness_scale", None) else "opacity")
+        loading, self._loading = self._loading, True
+        for (_sid, k), row in getattr(self, "_surface_rows", {}).items():
+            if k == kind and row._follows:
+                row._scale.set_value(round(scale.get_value()))
+        self._loading = loading
+        if kind == "opacity":
+            return
+        self._sync_percent_value(scale)
+        if not self._loading:
+            self._mark_dirty()
+
+    def _on_surface_changed(self, scale, row):
+        self._sync_percent_value(scale)
+        if self._loading:
+            return
+        if row._follows:
+            row._follows = False
+            self._sync_surface_row(row)
+            self._sync_surface_summary(row._expander)
+        self._mark_dirty()
+
+    def _on_surface_reset(self, _button, row):
+        row._follows = True
+        self._loading = True
+        row._scale.set_value(self._main_value(row._kind))
+        self._loading = False
+        self._sync_surface_row(row)
+        self._sync_surface_summary(row._expander)
+        self._mark_dirty()
+
+    def _surface_value(self, sid, kind):
+        """A surface's answer for _current: "main", or its own percentage."""
+        row = self._surface_rows[(sid, kind)]
+        return "main" if row._follows else int(round(row._scale.get_value()))
+
+    def _load_surface_row(self, row, value):
+        """Put a surface back to a value read off the disk (_reload)."""
+        row._follows = value == "main"
+        row._scale.set_value(self._main_value(row._kind) if row._follows
+                             else value)
+        self._sync_surface_row(row)
+        self._sync_surface_summary(row._expander)
 
     def _opacity_scale(self, percent):
         """One opacity bar, with the label that reports it kept on its side.
@@ -5321,160 +5568,8 @@ class Window(Adw.ApplicationWindow):
 
     # ---- how far the blur reaches -----------------------------------------
 
-    def _build_blur_strength_group(self, mode, description=None):
-        group = Adw.PreferencesGroup(
-            title="Blur amount",
-            description=description or
-            "How soft every blurred surface goes — panel, menus, windows, "
-            "lock screen. Scales the whole set at once.")
-
-        # On the bar rather than on the window, for the reason _opacity_scale
-        # gives: two tabs have one of these each, and the handler is handed the
-        # bar that moved.
-        readout = Gtk.Label(valign=Gtk.Align.CENTER)
-        readout.add_css_class("numeric")
-        readout.add_css_class("dim-label")
-
-        row = Adw.ActionRow(
-            title="Amount",
-            subtitle="Higher is softer, and costs more GPU time")
-        row.add_suffix(readout)
-        group.add(row)
-
-        scale = Gtk.Scale.new_with_range(
-            Gtk.Orientation.HORIZONTAL, BLUR_STRENGTH_MIN, BLUR_STRENGTH_MAX, 5)
-        scale.set_hexpand(True)
-        scale.set_draw_value(False)
-        for at, label in BLUR_STRENGTH_MARKS:
-            scale.add_mark(at, Gtk.PositionType.BOTTOM, label)
-        # Fives, not points. 175 points of blur strength across the same bar
-        # the opacity one gets 30 across is a resolution nobody can use or
-        # report — 5% of the tuned radii is the smallest change that shows up
-        # on a screen, so that is the step, and a drag lands on it. Four either
-        # side of a mark, which is the widest radius that leaves the stop next
-        # to it reachable.
-        tame_scale(scale, BLUR_STRENGTH_MARKS, 5, 25, BLUR_STRENGTH_SNAP)
-        scale._readout = readout
-        scale.set_value(self._applied.modes[mode]["blur_strength"])
-        self._sync_blur_strength_value(scale)
-        scale.connect("value-changed", self._on_blur_strength_changed)
-        self._strength_scales[mode] = scale
-
-        bar = Gtk.Box(margin_start=12, margin_end=12, margin_top=4,
-                      margin_bottom=4)
-        bar.append(scale)
-        group.add(bar)
-        return group
-
-    # The two knobs beside the amount, each in a group of its own rather than
-    # sharing one with it. Adw.PreferencesGroup puts every non-row child after
-    # its whole list box, so three bars in one group would stack under all three
-    # rows at once with nothing saying which belonged to which — the same
-    # constraint the amount's own group is built around.
-    def _build_percent_group(self, mode, title, description, row_title,
-                             row_subtitle, low, high, marks, page, snap,
-                             value, registry):
-        group = Adw.PreferencesGroup(title=title, description=description)
-
-        readout = Gtk.Label(valign=Gtk.Align.CENTER)
-        readout.add_css_class("numeric")
-        readout.add_css_class("dim-label")
-
-        row = Adw.ActionRow(title=row_title, subtitle=row_subtitle)
-        row.add_suffix(readout)
-        group.add(row)
-
-        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,
-                                         low, high, 5)
-        scale.set_hexpand(True)
-        scale.set_draw_value(False)
-        for at, label in marks:
-            scale.add_mark(at, Gtk.PositionType.BOTTOM, label)
-        # Fives and a four-wide snap, for the reason the amount's bar gives at
-        # length: five percent is about the smallest step that shows up on a
-        # screen, and four either side of a mark is the widest radius that
-        # leaves the stop next to it reachable.
-        tame_scale(scale, marks, 5, page, snap)
-        scale._readout = readout
-        scale.set_value(value)
-        self._sync_percent_value(scale)
-        scale.connect("value-changed", self._on_percent_changed)
-        registry[mode] = scale
-
-        bar = Gtk.Box(margin_start=12, margin_end=12, margin_top=4,
-                      margin_bottom=4)
-        bar.append(scale)
-        group.add(bar)
-        return group
-
     def _sync_percent_value(self, scale):
         scale._readout.set_label("%d%%" % round(scale.get_value()))
-
-    def _on_percent_changed(self, scale):
-        self._sync_percent_value(scale)
-        if self._loading:
-            return
-        self._mark_dirty()
-
-    def _build_window_brightness_group(self, mode):
-        """How bright the window blur comes out across application windows."""
-        return self._build_percent_group(
-            mode, "Window blur brightness",
-            "How bright the frosted glass behind application windows comes "
-            "out. 100% is the backdrop's own light.",
-            "Brightness",
-            "100% is the backdrop's own light — under darkens, over lifts",
-            WINDOW_BRIGHTNESS_MIN, WINDOW_BRIGHTNESS_MAX,
-            WINDOW_BRIGHTNESS_MARKS, 25, WINDOW_BRIGHTNESS_SNAP,
-            self._applied.modes[mode].get("window_brightness", WINDOW_BRIGHTNESS_DEFAULT),
-            self._window_brightness_scales)
-
-    def _build_popup_brightness_group(self, mode):
-        """How bright the popup blur comes out, menus and banners together.
-
-        Together, and the description says so, because Blur My Shell hands the
-        whole popup component one pipeline — a banner cannot be lit without the
-        date menu and the quick-toggle menus coming with it, and a control that
-        implied otherwise would be lying about what it moves.
-        """
-        return self._build_percent_group(
-            mode, "Popup blur brightness",
-            "How bright the blur behind menus, Quick Settings and "
-            "notification banners comes out. One pipeline serves all three, "
-            "so this moves them together.",
-            "Brightness",
-            "100% is the backdrop's own light — under darkens, over lifts",
-            POPUP_BRIGHTNESS_MIN, POPUP_BRIGHTNESS_MAX,
-            POPUP_BRIGHTNESS_MARKS, 25, POPUP_BRIGHTNESS_SNAP,
-            self._applied.modes[mode]["popup_brightness"],
-            self._brightness_scales)
-
-    def _build_notification_ground_group(self, mode):
-        """How much a banner paints over the blur it arrives on.
-
-        Its own number rather than a share of Opacity above: that one is about
-        a window being worked in, this one about a banner that arrived unasked
-        and has to be readable over whatever happened to be behind it.
-        """
-        return self._build_percent_group(
-            mode, "Notification ground",
-            "How much an arriving banner paints over its own blur. Hover and "
-            "pressed step up from wherever this lands, so the ladder holds.",
-            "Opacity",
-            "Lower shows more blur and less backing behind the text",
-            NOTIFICATION_OPACITY_MIN, NOTIFICATION_OPACITY_MAX,
-            NOTIFICATION_OPACITY_MARKS, 15, NOTIFICATION_OPACITY_SNAP,
-            self._applied.modes[mode]["notification_opacity"],
-            self._ground_scales)
-
-    def _sync_blur_strength_value(self, scale):
-        scale._readout.set_label("%d%%" % round(scale.get_value()))
-
-    def _on_blur_strength_changed(self, scale):
-        self._sync_blur_strength_value(scale)
-        if self._loading:
-            return
-        self._mark_dirty()
 
     # ---- extensions ---------------------------------------------------------
 
@@ -5965,8 +6060,7 @@ class Window(Adw.ApplicationWindow):
             "Blurs and darkens your wallpaper behind the login screen. Needs "
             "your password, and keeps GNOME's accent rather than this theme's")
 
-        for widget in (self._rounded_button, self._gdm_monitors_button,
-                       self._gdm_button):
+        for widget in (self._gdm_monitors_button, self._gdm_button):
             widget.set_sensitive(self._repo is not None)
 
     def _check_deps(self):
@@ -6607,19 +6701,18 @@ class Window(Adw.ApplicationWindow):
         if name is None:
             return
         # This page keeps no state of its own for the default — only a
-        # shortcut onto the frosted tab's own two switches. See _scope() and
+        # shortcut onto the frosted tab's own dropdown. See _scope() and
         # the "scope" branch of _on_changed, which is what actually notices
         # this and cascades into _rebuild_app_list.
-        if name == "all" and not self._blur_all_row.get_active():
-            self._blur_all_row.set_active(True)
-        elif name == "gtk" and self._blur_all_row.get_active():
-            self._blur_all_row.set_active(False)
+        if name in ("all", "gtk") and self._scope() != name:
+            self._set_scope(name)
 
     def _on_app_banner_clicked(self, _banner):
         self._sidebar.select_row(self._sidebar_rows["glass"])
         self._mode_stack.set_visible_child_name("frosted")
-        if self._app_banner_action == "window-blur":
-            self._window_blur_row.set_active(True)
+        if self._app_banner_action == "window-blur" \
+                and self._scope() == "none":
+            self._set_scope("all")
 
     def _sync_app_controls(self):
         """The banner, the default toggle, and which parts of the page are
@@ -6837,8 +6930,8 @@ class Window(Adw.ApplicationWindow):
             return
         self._allow[:] = pin_self_allow(allow)
         self._block[:] = pin_self_block(block)
-        if self._blur_all_row.get_active():
-            self._blur_all_row.set_active(False)
+        if self._scope() == "all":
+            self._set_scope("gtk")
         self._app_changed()
 
     def _on_app_start_all(self, _button):
@@ -6850,8 +6943,8 @@ class Window(Adw.ApplicationWindow):
             return
         self._allow[:] = pin_self_allow([])
         self._block[:] = pin_self_block(block)
-        if not self._blur_all_row.get_active():
-            self._blur_all_row.set_active(True)
+        if self._scope() == "gtk":
+            self._set_scope("all")
         self._app_changed()
 
     def _on_app_start_none(self, _button):
@@ -7278,15 +7371,19 @@ class Window(Adw.ApplicationWindow):
     # ---- the per-app list -------------------------------------------------
 
     def _scope(self):
-        """The three-way install.sh value, from the frosted tab's two switches.
+        """The three-way install.sh value, off the frosted tab's dropdown.
 
-        Only that tab has them, and only that mode has a scope: the other two
-        do not blur behind a window at all, which _current spells "none"
-        without asking here.
+        Only that tab has it, and only that mode has a scope: Performance does
+        not blur behind a window at all, which _current spells "none" without
+        asking here.
         """
-        if not self._window_blur_row.get_active():
-            return "none"
-        return "all" if self._blur_all_row.get_active() else "gtk"
+        return self._window_blur_row._ids[self._window_blur_row.get_selected()]
+
+    def _set_scope(self, scope):
+        # Through the row, so _on_changed's "scope" branch runs as it does for
+        # a hand on the dropdown.
+        self._window_blur_row.set_selected(
+            self._window_blur_row._ids.index(scope))
 
     def _list_is_consulted(self, which):
         """Whether the mode the tabs are showing reads this list."""
@@ -7320,34 +7417,46 @@ class Window(Adw.ApplicationWindow):
             tints = self._tints["performance"]
             s.app_tint = tints["app"]
             s.shell_tint = tints["shell"]
-            s.blur_strength = self._applied.modes.get("performance", {}).get("blur_strength", 100)
-            s.window_brightness = self._applied.modes.get("performance", {}).get("window_brightness", WINDOW_BRIGHTNESS_DEFAULT)
-            s.popup_brightness = self._applied.modes.get("performance", {}).get("popup_brightness", 115)
-            s.notification_opacity = self._applied.modes.get("performance", {}).get("notification_opacity", 40)
+            performance = self._applied.modes["performance"]
+            s.blur_strength = performance["blur_strength"]
+            s.blur_brightness = performance["blur_brightness"]
+            s.surface_strength = dict(performance["surface_strength"])
+            s.surface_brightness = dict(performance["surface_brightness"])
+            s.popup_opacity = performance["popup_opacity"]
             s.scope = "none"
             s.transparency = percent_to_level(
                 round(self._p_transparency_scale.get_value()))
             s.popup_blur = False
-            s.notification_blur = False
         else:
             tints = self._tints[s.glass_mode]
             s.app_tint = tints["app"]
             s.shell_tint = tints["shell"]
             s.blur_strength = int(round(
                 self._strength_scales[s.glass_mode].get_value()))
-            s.window_brightness = int(round(
-                self._window_brightness_scales[s.glass_mode].get_value())) if s.glass_mode in self._window_brightness_scales else self._applied.modes.get(s.glass_mode, {}).get("window_brightness", WINDOW_BRIGHTNESS_DEFAULT)
-            s.popup_brightness = int(round(
-                self._brightness_scales[s.glass_mode].get_value())) if s.glass_mode in self._brightness_scales else self._applied.modes.get(s.glass_mode, {}).get("popup_brightness", POPUP_BRIGHTNESS_DEFAULT)
-            s.notification_opacity = int(round(
-                self._ground_scales[s.glass_mode].get_value())) if s.glass_mode in self._ground_scales else self._applied.modes.get(s.glass_mode, {}).get("notification_opacity", NOTIFICATION_OPACITY_DEFAULT)
+            s.blur_brightness = int(round(
+                self._glass_brightness_scale.get_value()))
+            s.surface_strength = {
+                sid: self._surface_value(sid, "strength")
+                for sid, _t, _s in BLUR_SURFACES}
+            s.surface_brightness = {
+                sid: self._surface_value(sid, "brightness")
+                for sid, _t, _s in BLUR_SURFACES}
+            s.popup_opacity = self._surface_value("popup", "opacity")
             s.scope = self._scope()
-            s.transparency = (
-                percent_to_level(
-                    round(self._transparency_scale.get_value()))
-                if self._transparency_on.get_active() else "0")
+            # Opaque windows are a flat "0", shown at the bar's 100%. Left at
+            # 100 the "0" stands, so an untouched bar sends nothing — unless
+            # the app tint moved, which the transparency sheet carries and a
+            # "0" would drop (flags_against does not send a tint without a
+            # level), so a tint asks for the sheet back at 100%.
+            percent = round(self._transparency_scale.get_value())
+            applied = self._applied.modes["frosted"]["transparency"]
+            if applied == "0" and percent == 100:
+                s.transparency = (
+                    "1.00" if tints["app"] != self._applied.modes["frosted"]["app_tint"]
+                    else "0")
+            else:
+                s.transparency = percent_to_level(percent)
             s.popup_blur = self._popup_row.get_active()
-            s.notification_blur = self._notification_row.get_active()
         s.allow = list(self._allow)
         s.block = list(self._block)
         s.icons = join_icons(
@@ -7365,6 +7474,7 @@ class Window(Adw.ApplicationWindow):
             self._glass_style_row.get_selected()]
         s.liquid_windows = self._liquid_windows_row.get_active()
         s.fullscreen_blur = self._fullscreen_blur_row.get_active()
+        s.panel_height = int(round(self._panel_height_scale.get_value()))
         s.update_check = self._update_check_row.get_active()
         # Not settings, so they never differ and never produce a flag. Carried so
         # flags_against sees a complete object either way.
@@ -7377,22 +7487,8 @@ class Window(Adw.ApplicationWindow):
         Every glass row here is the frosted tab's, and is named as that tab's
         rather than looked up through whichever tab is showing.
         """
-        # Nothing to widen when there is no window blur to widen.
-        self._blur_all_row.set_sensitive(self._window_blur_row.get_active())
-        self._fullscreen_blur_row.set_sensitive(
-            self._window_blur_row.get_active())
-        # Nothing to set a level on when translucency itself is off.
-        live = self._transparency_on.get_active()
-        self._transparency_row.set_sensitive(live)
-        self._transparency_bar.set_sensitive(live)
-
-        # The app tint lives in the transparency sheet, which is removed rather
-        # than switched off when the windows are opaque — so with translucency
-        # off there is nothing for a colour to tint. The shell's own surfaces
-        # are translucent in their stylesheets whatever this switch says, so
-        # that row stays live.
-        self._tint_rows["frosted"]["app"].set_sensitive(live)
-        self._tint_rows["frosted"]["link"].set_sensitive(live)
+        # Nothing to keep behind a fullscreen window when no window is blurred.
+        self._fullscreen_blur_row.set_sensitive(self._scope() != "none")
 
         # Only liquid and vibrant take app windows along (glass_style_takes_
         # windows in lib/steps-dconf.sh); tinted and smoked never make window
@@ -7576,16 +7672,14 @@ class Window(Adw.ApplicationWindow):
         self._sync_mode_status()
 
         frosted = self._applied.modes["frosted"]
-        self._window_blur_row.set_active(frosted.get("scope", "all") != "none")
-        self._blur_all_row.set_active(frosted.get("scope", "all") != "gtk")
-        self._transparency_on.set_active(frosted["transparency"] != "0")
-        # Only when it is on: off is stored as a flat "0", and moving the bar to
-        # 70% because of that would lose the level to come back to.
-        if frosted["transparency"] != "0":
-            self._transparency_scale.set_value(
-                level_to_percent(frosted["transparency"]))
+        self._set_scope(frosted.get("scope", "all")
+                        if frosted.get("scope", "all") in BLUR_SCOPES
+                        else "all")
+        self._transparency_scale.set_value(
+            100 if frosted["transparency"] == "0"
+            else level_to_percent(frosted["transparency"]))
         self._popup_row.set_active(frosted["popup_blur"])
-        self._notification_row.set_active(frosted["notification_blur"])
+        self._glass_brightness_scale.set_value(frosted["blur_brightness"])
 
 
         performance = self._applied.modes["performance"]
@@ -7603,15 +7697,12 @@ class Window(Adw.ApplicationWindow):
             rows["link"].set_active(tints["app"] == tints["shell"])
             if mode in self._strength_scales:
                 self._strength_scales[mode].set_value(drawer["blur_strength"])
-            if mode in self._window_brightness_scales:
-                self._window_brightness_scales[mode].set_value(
-                    drawer.get("window_brightness", WINDOW_BRIGHTNESS_DEFAULT))
-            if mode in self._brightness_scales:
-                self._brightness_scales[mode].set_value(
-                    drawer["popup_brightness"])
-            if mode in self._ground_scales:
-                self._ground_scales[mode].set_value(
-                    drawer["notification_opacity"])
+        # After the main bars, which a following surface reads its value off.
+        for (sid, kind), row in self._surface_rows.items():
+            self._load_surface_row(row, {
+                "strength": frosted["surface_strength"][sid],
+                "brightness": frosted["surface_brightness"][sid],
+                "opacity": frosted["popup_opacity"]}[kind])
 
         # In place rather than rebound: the per-app page's rows read
         # self._allow / self._block straight off this window on every rebuild,
@@ -7640,6 +7731,7 @@ class Window(Adw.ApplicationWindow):
             self._applied.glass_style, "glass_style")
         self._liquid_windows_row.set_active(self._applied.liquid_windows)
         self._fullscreen_blur_row.set_active(self._applied.fullscreen_blur)
+        self._panel_height_scale.set_value(self._applied.panel_height)
         self._update_check_row.set_active(self._applied.update_check)
         self._loading = False
         self._rebuild_app_list()

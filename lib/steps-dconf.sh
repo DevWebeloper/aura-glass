@@ -202,8 +202,8 @@ apply_dconf_merge() {
 # blob, and migrates older settings into it once, on its first load, when
 # settings-version is below its own (7). That migration turns each dynamic
 # component's legacy sigma into a new "Migrated dynamic blur" pipeline and
-# repoints the component at it, where apply_blur_strength, the brightness
-# writers and apply_glass_style cannot reach it. merge_dconf_preset cannot fix
+# repoints the component at it, where apply_blur_pipelines and
+# apply_glass_style cannot reach it. merge_dconf_preset cannot fix
 # that either: it keeps any value the user's dconf holds that this repo never
 # shipped, and both a v73 install's rewritten blob and v76's migrated pipelines
 # are such values.
@@ -315,11 +315,8 @@ load_dconf() {
     fi
 
     apply_grain
-    apply_blur_strength
-    apply_popup_brightness
-    apply_window_brightness
+    apply_blur_pipelines
     apply_popup_blur
-    apply_notification_blur
     apply_app_blur
     apply_app_opacity
     apply_fullscreen_blur
@@ -417,7 +414,7 @@ apply_radius_dconf() {
 # what --app-tint-color does to the window's own ground.
 #
 # Our effects are told apart by their id prefix and removed before anything is
-# added, so a re-run, a switch back to frosted and apply_blur_strength's blob
+# added, so a re-run, a switch back to frosted and apply_blur_pipelines's blob
 # rewrites all land in the same state.
 VALID_GLASS_STYLES="frosted liquid vibrant tinted smoked"
 
@@ -1089,46 +1086,6 @@ apply_popup_blur() {
     ok "popup blur on, dynamic — sampling live surface behind popups"
 }
 
-# Notification banners and the history cards in the date menu, gated by the
-# patched popup component's own `notification` key — independent of
-# popup/blur, the same way this project's --popup-blur and
-# --notification-blur flags are independent of each other. static-blur stays
-# apply_popup_blur's business: it is a setting on
-# the popup component as a whole, not on this surface alone, and the popup
-# blur switch already decides them whenever it runs.
-apply_notification_blur() {
-    local base=/org/gnome/shell/extensions/blur-my-shell
-    local want="${WANT_NOTIFICATION_BLUR:-1}" memo="$CONF_DIR/notification-blur"
-
-    # Same reasoning as apply_popup_blur: --no-blur turns this off as a
-    # consequence of turning everything off, not a real choice to remember,
-    # so performance neither reads nor writes the memo.
-    if [ "${WANT_BLUR:-1}" != 1 ]; then
-        run dconf write "$base/popup/notification" false
-        skip "notification blur off with the rest of it (--no-blur)"
-        return 0
-    fi
-
-    if [ -z "${NOTIFICATION_BLUR_EXPLICIT:-}" ] && [ -r "$memo" ]; then
-        want="$(cat "$memo" 2>/dev/null || true)"
-        want="${want:-1}"
-    fi
-
-    if remembering; then
-        mkdir -p "$CONF_DIR"
-        printf '%s\n' "$want" > "$memo"
-    fi
-
-    if [ "$want" != 1 ]; then
-        run dconf write "$base/popup/notification" false
-        skip "notification blur off — banners and history cards keep the flat look"
-        return 0
-    fi
-
-    run dconf write "$base/popup/notification" true
-    ok "notification blur on — banners and history cards blur independently"
-}
-
 # Custom OSD keeps a set of named profiles beside the live settings, and its
 # preferences window overwrites the live settings with the active profile the
 # moment one is picked from the list. The preset above only writes the live
@@ -1217,161 +1174,140 @@ PY
     ok "blur grain set to $want (remembered for future installs)"
 }
 
-# How far the blur reaches, as a percentage of the tuned values.
+# How far each blur reaches and how bright it comes out, as percentages of the
+# tuned values in dconf/core.ini.
 #
-# One number for every blurred surface rather than one per surface. The six
-# sigmas in tokens/tokens.sh are not a ladder anybody should have to climb one
-# rung at a time — they are already in proportion to each other, chosen against
-# what each surface sits in front of, and what people actually want is the
-# whole set softer or crisper. Scaling keeps those proportions: the panel stays
-# heavier than the dock at every setting.
+# Two main numbers, one for each, cover every blurred surface at once:
+# --blur-strength scales every pipeline's radius and --blur-brightness every
+# pipeline's brightness. Those tuned values are already in proportion to each
+# other, chosen against what each surface sits in front of, so scaling keeps the
+# proportions: the panel stays heavier than the dock at every strength, and the
+# lock screen stays dimmer than the rest at every brightness.
 #
-# Both places a blur radius lives are scaled, because Blur My Shell has two.
-# The per-component `sigma` keys are what the older releases read. The
-# `pipelines` blob is what the current ones read, and it carries the same
-# number again as `unscaled_radius` inside each effect. A run that moved one
-# and not the other would soften the desktop on one machine and do nothing on
-# the next.
+# Four surfaces can step out of the main numbers: windows, popups (menus, Quick
+# Settings and the notification banners Blur My Shell v76 blurs through the same
+# pipeline), the top bar and the lock screen (whose pipeline the overview shares).
+# Each override is in the same unit as its main number and replaces it for that
+# surface alone, and `main` hands the surface back. A surface that was tuned
+# keeps its own value when the main number moves; that is the point of tuning it.
+# The dock, app folders and window list follow the main numbers only.
 #
-# Sigmas are written from the tokens rather than read back and multiplied, so
-# the value cannot compound over repeated installs. The blob has to be read —
-# there is no token for its seven copies — but dconf load has just rewritten it
-# from dconf/core.ini a few lines above, which is the same assumption apply_grain
-# already makes.
+# v76 keeps a blur's radius and brightness only inside the `pipelines` blob, so
+# this writes nothing else. Values are computed from dconf/core.ini's own blob
+# rather than from what is live, so nothing compounds over repeated runs, and
+# the surface a pipeline belongs to is read off the component that points at it
+# rather than off a hard-coded id, so repointing one in core.ini moves this with
+# it. Text rewriting rather than GVariant parsing: the blob round-trips through
+# `dconf read`/`dconf write` as the text dconf prints, and a regex over existing
+# params cannot invent keys that were not already there. Only the
+# dual_kawase_blur effect's two params move, so the grain, the corner and the
+# glass-style effects other writers keep in the same blob are left as they are.
 #
-# Remembered, like the grain beside it: dconf load puts the shipped sigmas back
+# Remembered, like the grain beside it: dconf load puts the shipped blob back
 # on every run, so an unremembered choice would last until the next install.
-# How bright the blur behind menus, Quick Settings and notification banners
-# comes out, as a percentage of the backdrop it is blurring. 100% is the
-# backdrop's own brightness; under that the blur darkens what is behind it, over
-# it the blur lifts it.
-#
-# One number for every popup surface, and it has to be, because Blur My Shell
-# gives the whole popup component one pipeline — settings.popup.PIPELINE in
-# components/popup/static_actor.js is read once and handed to every surface the
-# component makes. A banner cannot be brightened without the date menu and the
-# quick-toggle menus coming with it, and a control that implied otherwise would
-# be lying about what it moves.
-#
-# Both places the number lives are written, for the same reason
-# apply_blur_strength writes two: the per-component `brightness` key is what the
-# older releases read, and the `pipelines` blob is what the current ones read.
-# The pipeline is found by the name the popup component actually points at
-# rather than by a hard-coded id, so renaming or repointing it in dconf/core.ini
-# does not silently turn this into a no-op.
-#
-# Runs after apply_blur_strength, which rewrites the same blob. That one only
-# touches `unscaled_radius` and this one only touches `brightness`, so the order
-# between them is not load-bearing — but keeping them adjacent is, because
-# anything that resets the blob wholesale has to come before both.
-#
-# Remembered, like the strength above it: dconf load puts the shipped brightness
-# back on every run.
-POPUP_BRIGHTNESS_MIN=50
-POPUP_BRIGHTNESS_MAX=150
-
-apply_popup_brightness() {
-    local want="${POPUP_BRIGHTNESS:-}" memo="$CONF_DIR/popup-brightness"
-    if [ -z "$want" ] && [ -f "$memo" ]; then
-        want="$(cat "$memo" 2>/dev/null || true)"
-    fi
-    [ -n "$want" ] || return 0
-
-    case "$want" in
-        ''|*[!0-9]*) warn "--popup-brightness wants a whole percentage, got '$want'"
-                     return 0 ;;
-    esac
-    if [ "$want" -lt "$POPUP_BRIGHTNESS_MIN" ] || [ "$want" -gt "$POPUP_BRIGHTNESS_MAX" ]; then
-        warn "--popup-brightness $want is outside ${POPUP_BRIGHTNESS_MIN}-${POPUP_BRIGHTNESS_MAX} — leaving the popup blur alone"
-        return 0
-    fi
-
-    if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: light the popup blur at ${want}%"
-        return 0
-    fi
-
-    python3 "$REPO_ROOT/tools/apply-popup-brightness.py" "$want" \
-        || { warn "could not light the popup blur"; return 0; }
-
-    if remembering; then
-        mkdir -p "$CONF_DIR"
-        printf '%s\n' "$want" > "$memo"
-    fi
-    ok "popup blur lit at ${want}% (remembered for later runs)"
-}
-
-WINDOW_BRIGHTNESS_MIN=50
-WINDOW_BRIGHTNESS_MAX=150
-
-apply_window_brightness() {
-    local want="${WINDOW_BRIGHTNESS:-}" memo="$CONF_DIR/window-brightness"
-    if [ -z "$want" ] && [ -f "$memo" ]; then
-        want="$(cat "$memo" 2>/dev/null || true)"
-    fi
-    [ -n "$want" ] || return 0
-
-    case "$want" in
-        ''|*[!0-9]*) warn "--window-brightness wants a whole percentage, got '$want'"
-                     return 0 ;;
-    esac
-    if [ "$want" -lt "$WINDOW_BRIGHTNESS_MIN" ] || [ "$want" -gt "$WINDOW_BRIGHTNESS_MAX" ]; then
-        warn "--window-brightness $want is outside ${WINDOW_BRIGHTNESS_MIN}-${WINDOW_BRIGHTNESS_MAX} — leaving the window blur alone"
-        return 0
-    fi
-
-    if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: light the window blur at ${want}%"
-        return 0
-    fi
-
-    python3 - "$want" <<'PY' || { warn "could not light the window blur"; return 0; }
-import re, subprocess, sys
-want = int(sys.argv[1]) / 100.0
-BASE = "/org/gnome/shell/extensions/blur-my-shell"
-pipe_name = subprocess.run(["dconf", "read", BASE + "/applications/pipeline"],
-                           capture_output=True, text=True).stdout.strip().strip("'")
-blob = subprocess.run(["dconf", "read", BASE + "/pipelines"],
-                      capture_output=True, text=True).stdout.strip()
-if pipe_name and blob and pipe_name in blob:
-    start = blob.index(pipe_name)
-    nxt = blob.find("'pipeline_", start + len(pipe_name))
-    end = nxt if nxt != -1 else len(blob)
-    sliced = re.sub(r"('brightness': <)([0-9.]+)(>)",
-                    lambda m: "%s%s%s" % (m.group(1), repr(want), m.group(3)),
-                    blob[start:end])
-    new = blob[:start] + sliced + blob[end:]
-    # Compared as numbers: see the note in apply_glass_style.
-    _num = re.compile(r"-?\d+\.\d+(?:e[-+]?\d+)?")
-    if (_num.sub(lambda m: repr(float(m.group())), new)
-            != _num.sub(lambda m: repr(float(m.group())), blob)):
-        subprocess.run(["dconf", "write", BASE + "/pipelines", new], check=True)
-PY
-
-    if remembering; then
-        mkdir -p "$CONF_DIR"
-        printf '%s\n' "$want" > "$memo"
-    fi
-    ok "window blur lit at ${want}% (remembered for later runs)"
-}
-
 BLUR_STRENGTH_MIN=25
 BLUR_STRENGTH_MAX=200
+# 100 is the top because v76 clamps a blur's brightness to 0-1, so anything
+# past a pipeline already tuned at 1.0 did nothing; 50 is the floor the old
+# --popup-brightness had, below which the glass reads as a grey film.
+BLUR_BRIGHTNESS_MIN=50
+BLUR_BRIGHTNESS_MAX=100
 
-# This is the one blur-strength resolver for both the normal writer and the
-# adaptive transition.  Normal installation leaves an unchosen value empty so
-# dconf/core.ini keeps its tuned 100%; the adaptive caller supplies that 100%
-# fallback because it has to calculate an actual temporary value from it.
-resolve_blur_strength() {
-    local fallback="${1-}" want="${BLUR_STRENGTH:-}" memo="$CONF_DIR/blur-strength"
-    if [ -z "$want" ] && [ -f "$memo" ]; then
-        want="$(cat "$memo" 2>/dev/null || true)"
+# surface:memo-prefix:dconf component. The memo prefix names the flags too
+# (--window-blur-strength, --window-brightness).
+BLUR_SURFACES="window:applications popup:popup panel:panel lockscreen:lockscreen"
+
+# A per-surface memo, from its own file or — for the two brightness memos an
+# earlier release wrote under another name — from that one. A legacy value at
+# what that release wrote by default (100, and 115 for the popups) is `main`:
+# every install has one, and reading it as an override would pin the surface
+# at the main slider's old position. Anything else was chosen and stays.
+# DIR KEY [LEGACY_KEY LEGACY_DEFAULT...]
+surface_memo_read() {
+    local dir="$1" key="$2" legacy="${3:-}" value d
+    if [ -r "$dir/$key" ]; then
+        value="$(cat "$dir/$key" 2>/dev/null || true)"
+        printf '%s\n' "${value:-main}"
+        return 0
     fi
-    printf '%s\n' "${want:-$fallback}"
+    if [ -n "$legacy" ] && [ -r "$dir/$legacy" ]; then
+        shift 3
+        value="$(cat "$dir/$legacy" 2>/dev/null || true)"
+        for d in "$@"; do [ "$value" = "$d" ] && { printf 'main\n'; return 0; }; done
+        case "$value" in
+            ''|*[!0-9]*) printf 'main\n' ;;
+            *) [ "$value" -gt "$BLUR_BRIGHTNESS_MAX" ] && value="$BLUR_BRIGHTNESS_MAX"
+               printf '%s\n' "$value" ;;
+        esac
+        return 0
+    fi
+    printf 'main\n'
 }
 
-apply_blur_strength() {
-    local want memo="$CONF_DIR/blur-strength"
+# The legacy name and defaults surface_memo_read takes for a brightness memo.
+surface_brightness_legacy() {
+    case "$1" in
+        window) printf '%s\n' "window-brightness 100" ;;
+        popup)  printf '%s\n' "popup-brightness 100 115" ;;
+        *)      printf '\n' ;;
+    esac
+}
+
+# A value as this run will use it: a whole percentage inside LOW-HIGH, or
+# `main`. A typed flag outside that dies in install.sh before anything is
+# written; this is for a memo, which is warned about and handed back to main.
+# NAME VALUE LOW HIGH
+surface_value_checked() {
+    local name="$1" value="$2" low="$3" high="$4"
+    case "$value" in
+        main) printf 'main\n'; return 0 ;;
+        ''|*[!0-9]*) ;;
+        *) if [ "$value" -ge "$low" ] && [ "$value" -le "$high" ]; then
+               printf '%s\n' "$value"; return 0
+           fi ;;
+    esac
+    warn "$name '$value' is not main or ${low}-${high} — following the main slider" >&2
+    printf 'main\n'
+}
+
+# Fills the main and per-surface variables this run has not been given, from
+# the top-level memos. The mode drawer has already filled them on a run with a
+# mode (load_glass_mode_memos), so this only reaches the memos for a run
+# without one.
+resolve_blur_pipelines() {
+    local entry surface var bvar legacy memo
+    [ -n "${BLUR_STRENGTH:-}" ] || BLUR_STRENGTH="$(cat "$CONF_DIR/blur-strength" 2>/dev/null || true)"
+    BLUR_STRENGTH="${BLUR_STRENGTH:-100}"
+    [ -n "${BLUR_BRIGHTNESS:-}" ] || BLUR_BRIGHTNESS="$(cat "$CONF_DIR/blur-brightness" 2>/dev/null || true)"
+    BLUR_BRIGHTNESS="${BLUR_BRIGHTNESS:-100}"
+    for entry in $BLUR_SURFACES; do
+        surface="${entry%%:*}"
+        var="$(printf '%s' "$surface" | tr '[:lower:]' '[:upper:]')_BLUR_STRENGTH"
+        bvar="$(printf '%s' "$surface" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS"
+        if [ -z "${!var:-}" ]; then
+            printf -v "$var" '%s' "$(surface_memo_read "$CONF_DIR" "$surface-blur-strength")"
+        fi
+        if [ -z "${!bvar:-}" ]; then
+            legacy="$(surface_brightness_legacy "$surface")"
+            # shellcheck disable=SC2086 # the legacy name and its defaults, split
+            printf -v "$bvar" '%s' "$(surface_memo_read "$CONF_DIR" "$surface-blur-brightness" $legacy)"
+        fi
+        printf -v "$var" '%s' "$(surface_value_checked "--$surface-blur-strength" "${!var}" "$BLUR_STRENGTH_MIN" "$BLUR_STRENGTH_MAX")"
+        printf -v "$bvar" '%s' "$(surface_value_checked "--$surface-brightness" "${!bvar}" "$BLUR_BRIGHTNESS_MIN" "$BLUR_BRIGHTNESS_MAX")"
+    done
+    # The two main numbers have no `main` to fall back to, so a bad memo goes
+    # back to the tuned 100.
+    [ "$(surface_value_checked --blur-strength "$BLUR_STRENGTH" \
+            "$BLUR_STRENGTH_MIN" "$BLUR_STRENGTH_MAX" 2>/dev/null)" = main ] \
+        && { warn "--blur-strength '$BLUR_STRENGTH' is outside ${BLUR_STRENGTH_MIN}-${BLUR_STRENGTH_MAX} — using 100"; BLUR_STRENGTH=100; }
+    [ "$(surface_value_checked --blur-brightness "$BLUR_BRIGHTNESS" \
+            "$BLUR_BRIGHTNESS_MIN" "$BLUR_BRIGHTNESS_MAX" 2>/dev/null)" = main ] \
+        && { warn "--blur-brightness '$BLUR_BRIGHTNESS' is outside ${BLUR_BRIGHTNESS_MIN}-${BLUR_BRIGHTNESS_MAX} — using 100"; BLUR_BRIGHTNESS=100; }
+    return 0
+}
+
+apply_blur_pipelines() {
+    local entry surface component var bvar spec=""
     # --no-blur leaves the rest of the theme intact but deliberately omits
     # Blur My Shell.  A normal call keeps its established behaviour; only the
     # private transient path has to stand down here, before it can recreate or
@@ -1380,49 +1316,38 @@ apply_blur_strength() {
         skip "no blur — no transient Blur My Shell strength to apply"
         return 0
     fi
-    want="$(resolve_blur_strength)"
-    [ -n "$want" ] || return 0
+    resolve_blur_pipelines
 
-    case "$want" in
-        ''|*[!0-9]*) warn "--blur-strength wants a whole percentage, got '$want'"
-                     return 0 ;;
-    esac
-    if [ "$want" -lt "$BLUR_STRENGTH_MIN" ] || [ "$want" -gt "$BLUR_STRENGTH_MAX" ]; then
-        warn "--blur-strength $want is outside ${BLUR_STRENGTH_MIN}-${BLUR_STRENGTH_MAX} — leaving the blur alone"
-        return 0
-    fi
-
-    # Ordinary 100% follows dconf/core.ini already.  A transient restore is
-    # different: it follows an earlier adaptive downshift, and has to put the
-    # radii back to 100 without changing the user's blur-strength memo.
-    if [ "$want" = 100 ] && [ -z "${ADAPTIVE_BLUR:-}" ]; then
-        if remembering; then
-            mkdir -p "$CONF_DIR"
-            printf '%s\n' "$want" > "$memo"
-        fi
-    fi
+    for entry in $BLUR_SURFACES; do
+        surface="${entry%%:*}"; component="${entry#*:}"
+        var="$(printf '%s' "$surface" | tr '[:lower:]' '[:upper:]')_BLUR_STRENGTH"
+        bvar="$(printf '%s' "$surface" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS"
+        spec="$spec $component=${!var}/${!bvar}"
+    done
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: scale every blur radius to ${want}%"
+        info "dry-run: blur at ${BLUR_STRENGTH}%, brightness at ${BLUR_BRIGHTNESS}% (surfaces:$spec)"
         return 0
     fi
 
-    # Every surface's radius is in its own pipeline (dconf/core.ini), so
-    # scaling the pipelines is the whole job: v76 reads no sigma key.
-python3 - "$want" "$REPO_ROOT" <<'PY' || { warn "could not scale the blur pipelines"; return 0; }
+    # shellcheck disable=SC2086 # one argument per surface
+    python3 - "$REPO_ROOT" "$BLUR_STRENGTH" "$BLUR_BRIGHTNESS" $spec <<'PY' || { warn "could not write the blur pipelines"; return 0; }
 import os
 import re
 import subprocess
 import sys
 
-want_ratio = int(sys.argv[1]) / 100.0
-root = sys.argv[2]
-KEY = "/org/gnome/shell/extensions/blur-my-shell/pipelines"
+root, strength, brightness = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+BASE = "/org/gnome/shell/extensions/blur-my-shell"
 
-# Read baseline radii from core.ini so scaled values are anchored to the
-# canonical preset rather than compounding over successive runs.
-core_ini = os.path.join(root, "dconf", "core.ini")
+
+def read(key):
+    return subprocess.run(["dconf", "read", BASE + key],
+                          capture_output=True, text=True).stdout.strip()
+
+
 base_blob = ""
+core_ini = os.path.join(root, "dconf", "core.ini")
 if os.path.isfile(core_ini):
     with open(core_ini, "r", encoding="utf-8") as stream:
         for line in stream:
@@ -1430,46 +1355,89 @@ if os.path.isfile(core_ini):
                 base_blob = line[len("pipelines="):].strip()
                 break
 
-pattern = r"(\{'type': <'dual_kawase_blur'>, 'id': <'([^']+)'>, 'params': <\{'unscaled_radius': <)([0-9.]+)(>)"
-baseline_radii = {match[1]: float(match[2]) for match in re.findall(pattern, base_blob)}
+EFFECT = re.compile(r"(\{'type': <'dual_kawase_blur'>, 'id': <'([^']+)'>, "
+                    r"'params': <\{)([^}]*)(\}>)")
+RADIUS = re.compile(r"('unscaled_radius': <)([0-9.e+-]+)(>)")
+BRIGHT = re.compile(r"('brightness': <)([0-9.e+-]+)(>)")
 
-cur = subprocess.run(["dconf", "read", KEY],
-                     capture_output=True, text=True).stdout.strip()
-if not cur:
-    cur = base_blob
+baseline = {}
+for match in EFFECT.finditer(base_blob):
+    params = match.group(3)
+    radius, bright = RADIUS.search(params), BRIGHT.search(params)
+    baseline[match.group(2)] = (float(radius.group(2)) if radius else None,
+                                float(bright.group(2)) if bright else None)
+
+# Pipeline id -> (strength, brightness) for the surfaces that have their own;
+# every other pipeline takes the main pair.
+own = {}
+for arg in sys.argv[4:]:
+    component, values = arg.split("=", 1)
+    s, b = values.split("/", 1)
+    pipeline = read("/%s/pipeline" % component).strip("'")
+    if pipeline:
+        own[pipeline] = (strength if s == "main" else int(s),
+                         brightness if b == "main" else int(b))
+
+cur = read("/pipelines") or base_blob
 if not cur:
     sys.exit(0)
 
-
-def scale(match):
-    prefix = match.group(1)
-    effect_id = match.group(2)
-    suffix = match.group(4)
-    raw = float(match.group(3))
-    base_radius = baseline_radii.get(effect_id, raw)
-    # Floored at 1: a radius of 0 is not a fainter blur, it is the effect
-    # switched off, and the switches on the Glass page are where that answer
-    # lives. Capped at 100, the most v76 accepts.
-    target_radius = min(100.0, max(1.0, round(base_radius * want_ratio, 1)))
-    return "%s%s%s" % (prefix, repr(target_radius), suffix)
+# The blob is a dict keyed by pipeline id, so each pipeline's effects sit
+# between its own key and the next one.
+KEY = re.compile(r"'(pipeline_[^']+)': \{")
+marks = [(m.start(), m.group(1)) for m in KEY.finditer(cur)]
 
 
-new = re.sub(pattern, scale, cur)
+def owner(pos):
+    name = None
+    for start, pipeline in marks:
+        if start > pos:
+            break
+        name = pipeline
+    return name
+
+
+def rewrite(match):
+    s, b = own.get(owner(match.start()), (strength, brightness))
+    base_radius, base_bright = baseline.get(match.group(2), (None, None))
+    params = match.group(3)
+    if base_radius is not None:
+        # Floored at 1: a radius of 0 is not a fainter blur, it is the effect
+        # switched off, and the switches on the Glass page are where that
+        # answer lives. Capped at 100, the most v76 accepts.
+        radius = min(100.0, max(1.0, round(base_radius * s / 100.0, 1)))
+        params = RADIUS.sub(lambda m: "%s%r%s" % (m.group(1), radius, m.group(3)), params)
+    if base_bright is not None:
+        # Capped at 1.0, the most v76 accepts.
+        bright = min(1.0, round(base_bright * b / 100.0, 2))
+        params = BRIGHT.sub(lambda m: "%s%r%s" % (m.group(1), bright, m.group(3)), params)
+    return match.group(1) + params + match.group(4)
+
+
+new = EFFECT.sub(rewrite, cur)
 # Compared as numbers: see the note in apply_glass_style.
 _num = re.compile(r"-?\d+\.\d+(?:e[-+]?\d+)?")
 if (_num.sub(lambda m: repr(float(m.group())), new)
         != _num.sub(lambda m: repr(float(m.group())), cur)):
-    subprocess.run(["dconf", "write", KEY, new], check=True)
+    subprocess.run(["dconf", "write", BASE + "/pipelines", new], check=True)
 PY
 
-    if [ "$want" = 100 ] && [ -z "${ADAPTIVE_BLUR:-}" ]; then
-        ok "blur strength at 100% — the tuned values"
-    elif [ -z "${ADAPTIVE_BLUR:-}" ] && remembering; then
+    if remembering; then
         mkdir -p "$CONF_DIR"
-        printf '%s\n' "$want" > "$memo"
-        ok "blur strength at ${want}% of the tuned radii (remembered for later runs)"
+        printf '%s\n' "$BLUR_STRENGTH" > "$CONF_DIR/blur-strength"
+        printf '%s\n' "$BLUR_BRIGHTNESS" > "$CONF_DIR/blur-brightness"
+        for entry in $BLUR_SURFACES; do
+            surface="${entry%%:*}"
+            var="$(printf '%s' "$surface" | tr '[:lower:]' '[:upper:]')_BLUR_STRENGTH"
+            bvar="$(printf '%s' "$surface" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS"
+            printf '%s\n' "${!var}" > "$CONF_DIR/$surface-blur-strength"
+            printf '%s\n' "${!bvar}" > "$CONF_DIR/$surface-blur-brightness"
+        done
+    fi
+    if [ -n "${ADAPTIVE_BLUR:-}" ]; then
+        ok "blur at ${BLUR_STRENGTH}%, brightness at ${BLUR_BRIGHTNESS}% (transient adaptive value)"
     else
-        ok "blur strength at ${want}% of the tuned radii (transient adaptive value)"
+        ok "blur at ${BLUR_STRENGTH}%, brightness at ${BLUR_BRIGHTNESS}% of the tuned values (remembered for later runs)"
     fi
 }
 

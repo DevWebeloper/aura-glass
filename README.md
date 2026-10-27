@@ -106,7 +106,7 @@ Your saved settings are never changed by this.
 
 Open **Aura Glass** from the app grid, or run `aura-glass-settings`.
 
-- **Glass.** Mode, tints, transparency, blur strength, popup and window blur brightness, notification ground.
+- **Glass.** Mode, tints, and three main sliders (blur amount, brightness, opacity) that move windows, popups and notifications together, with an Advanced group to set windows, popups & notifications, the top bar or the lock screen apart.
 - **Appearance.** Accent, icons, pointer and its size, font, titlebar buttons and their style.
 - **Corner rounding.** Seven presets or eight per-surface values. The blur behind always matches the corner painted on top.
 - **Per-app blur.** A switch per app, the windows open right now, wildcard patterns, and the games that trigger Performance.

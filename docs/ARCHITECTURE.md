@@ -41,7 +41,7 @@ by the GUI and the adaptive worker:
 
 | Modifier | Contract |
 |---|---|
-| `--incremental` | Classify the typed flags (`lib/steps-apply-plan.sh`) and run **only** the matching steps: `accent`, `cursor-theme`, `cursor-size`, `window-buttons`, `window-brightness`, `app-blur`, `css`, `adaptive-blur`. Any other flag, a missing or changed source fingerprint, or no narrow flag at all falls back to the full retune. |
+| `--incremental` | Classify the typed flags (`lib/steps-apply-plan.sh`) and run **only** the matching steps: `accent`, `cursor-theme`, `cursor-size`, `window-buttons`, `blur-pipelines`, `app-blur`, `css`, `adaptive-blur`. Any other flag, a missing or changed source fingerprint, or no narrow flag at all falls back to the full retune. |
 | `--plan-json` | With `--settings-only --incremental --dry-run`, print `{"schema_version":1,"actions":[…],"fallback_reason":…}` on stdout and exit. The settings window asks it for the pending flags (debounced, as a dry run) and shows the answer as the first row of the "N changes" popover: a quick apply and its steps, or a full reapply and why (`plan_summary`). `tools/check-incremental-apply.py` and `check-gui-flags.py` cover it. |
 | `--adaptive-blur active\|restore` | Private to the adaptive worker. Requires `--settings-only --incremental`. Applies or removes a **transient** no-blur state without writing any memo (`remembering()` is false while it's set). |
 
@@ -104,10 +104,10 @@ A mode is **not a new kind of setting**. It names a combination of flags
 `install.sh` already has, and it owns a drawer that keeps that combination's own
 tuning. `lib/steps-modes.sh` resolves a mode into flags and steps aside.
 
-| Mode | `WANT_BLUR` | window / popup / notification blur | transparency seed | sheets |
+| Mode | `WANT_BLUR` | window / popup (and notification) blur | transparency seed | sheets |
 |---|---|---|---|---|
-| `frosted` (default) | 1 | on / on / on (each overridable) | the top-level memo, else **0**, so windows come out opaque (KI-18). The flagless resolver default is 0.90 | `shell-popup-blur`, `shell-notification-blur`, `gtk4-transparency` |
-| `performance` | 0 | off / off / off | `1.00` (opaque) | `shell-80-solid` (opaque ladder); `gtk4-transparency` only if the level is below 1.00 |
+| `frosted` (default) | 1 | on / on (each overridable) | the top-level memo, else **0**, so windows come out opaque (KI-18). The flagless resolver default is 0.90 | `shell-popup-blur`, `shell-notification-blur`, `gtk4-transparency` |
+| `performance` | 0 | off / off | `1.00` (opaque) | `shell-80-solid` (opaque ladder); `gtk4-transparency` only if the level is below 1.00 |
 
 - `VALID_GLASS_MODES="frosted performance"`. `resolve_glass_mode` takes
   `--glass-mode`, then infers it from typed flags (`--blur`/`--window-blur` →
@@ -115,9 +115,11 @@ tuning. `lib/steps-modes.sh` resolves a mode into flags and steps aside.
   Anything else, including the legacy names `solid` and `transparent`, leaves
   `GLASS_MODE` empty, and `remember_glass_mode` then records `frosted`.
 - **Drawers** (`$CONF_DIR/modes/<mode>/`) hold `app-transparency`,
-  `app-tint-color`, `shell-tint-color`, `app-blur-scope`, `popup-blur`,
-  `notification-blur`, `blur-strength`, `popup-brightness`, `window-brightness`
-  and `notification-opacity`.
+  `app-tint-color`, `shell-tint-color`, `app-blur-scope` and `popup-blur`, and
+  under frosted `blur-strength`, `blur-brightness`, `popup-opacity` and each
+  surface's `<surface>-blur-strength` and `<surface>-blur-brightness`
+  (`surface_memo_read`, which also reads an older drawer's
+  `window-brightness`/`popup-brightness`).
   - `seed_glass_mode` creates a drawer on first entry. Frosted seeds from the
     top-level memos; performance seeds opaque black.
   - `load_glass_mode_memos` copies the drawer into this run's variables where no
@@ -218,14 +220,15 @@ stays at the shipped `default` state so `check-tokens.sh` has one baseline.
 | `install_transparency_css` | `tools/rescale-transparency.py` | every alpha in `gtk4-transparency.css`, rescaled from `TOKEN_APP_TRANSPARENCY_SHIPPED` (0.92) |
 | `apply_app_tint_color` | `tools/apply-tint-color.py` | the colour translucent GTK grounds mix toward |
 | `apply_shell_tint_color` | `tools/apply-shell-tint.py` | the hue of shell surfaces (lightness kept) |
-| `apply_popup_transparency` | inline Python | popup and solid-sheet alphas scaled by the window level |
-| `apply_notification_opacity` | `tools/apply-notification-opacity.py` | the alpha of the notification ground ladder |
+| `apply_popup_transparency` | inline Python | popup alphas scaled by `--popup-opacity` (else the window level), solid-sheet alphas by the window level |
+| `apply_notification_opacity` | `tools/apply-notification-opacity.py` | the alpha of the notification ground ladder, following the popup opacity |
 | `apply_radius_css` | `tools/apply-radius-preset.py` (+ `tools/token_manifest.py`) | the eight radii across every installed sheet |
-| `apply_popup_brightness` (`lib/steps-dconf.sh`) | `tools/apply-popup-brightness.py` | both places Blur My Shell keeps a popup brightness |
+| `apply_blur_pipelines` (`lib/steps-dconf.sh`) | inline Python | every pipeline's blur radius and brightness, from `core.ini`'s values, per surface |
 
 The tint rewriters own a literal's colour channels and the opacity rewriters own
 its alpha, so they're order-independent. `shell-90-density.css` is generated per
-display by `measure_logical_ppi` and `density_css`.
+display by `measure_logical_ppi` and `density_css`, plus the top bar height (`--panel-height`, default the theme's 40) snapped to
+whole device pixels at the primary scale (`measure_primary_scale`, `panel_height_css`).
 
 ### Splicing: `bin/aura-glass-apply`
 
@@ -295,9 +298,8 @@ component's corner-radius key; no pipeline carries a `corner` effect.
    the legacy `sigma`/`brightness`/`customize` keys. Otherwise v76's own
    migration would turn each legacy sigma into a "Migrated dynamic blur"
    pipeline the writers below cannot reach.
-2. Then always overlays the resolved flags: `apply_grain`, `apply_blur_strength`,
-   `apply_popup_brightness`, `apply_window_brightness`, `apply_popup_blur`,
-   `apply_notification_blur`, `apply_app_blur`, `apply_app_opacity`,
+2. Then always overlays the resolved flags: `apply_grain`, `apply_blur_pipelines`,
+   `apply_popup_blur`, `apply_app_blur`, `apply_app_opacity`,
    `apply_radius_dconf`, `apply_glass_style`, `sync_osd_profile` and
    `refresh_bms_after_dconf`. The last one is skipped on GNOME ≥ 51, where
    toggling BMS crashes Mutter.

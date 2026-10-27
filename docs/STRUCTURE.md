@@ -39,8 +39,8 @@ For "which file draws this button / owns this setting", use
 | `steps-assets.sh` | Icon packs (Colloid, Reversal, Hatter, MacTahoe) and accent mapping (`icon_base`, `accent_to_*`); pointers (Adwaita, AOSP, MacTahoe, Moga, original); `install_wallpapers`. |
 | `steps-fonts.sh` | `--font` installs: Inter, MiSans (Latin + Arabic), SF Pro. |
 | `steps-modes.sh` | Glass modes: `resolve_glass_mode`, `apply_glass_mode`, the drawers (`seed_glass_mode`, `load_glass_mode_memos`, `save_glass_mode_memos`), `remember_glass_mode`. |
-| `steps-css.sh` | `install_css` and the rewriter wrappers (transparency, tints, popup transparency, notification opacity, radius), `install_window_control_style`, display density (`measure_logical_ppi`, `density_css`). |
-| `steps-dconf.sh` | `load_dconf` and every `apply_*` that writes a dconf/gsettings key: radii, pipelines, app blur and lists, popup/notification blur, grain, brightnesses, blur strength, `apply_adaptive_blur`, window buttons, cursor theme/size, accent, Moga variants, `apply_gsettings`, `apply_font`. |
+| `steps-css.sh` | `install_css` and the rewriter wrappers (transparency, tints, popup transparency, notification opacity, radius), `install_window_control_style`, display density (`measure_logical_ppi`, `density_css`), top bar height for the scale (`measure_primary_scale`, `panel_height_css`). |
+| `steps-dconf.sh` | `load_dconf` and every `apply_*` that writes a dconf/gsettings key: radii, pipelines, app blur and lists, popup blur, grain, `apply_blur_pipelines` (every blur amount and brightness), `apply_adaptive_blur`, window buttons, cursor theme/size, accent, Moga variants, `apply_gsettings`, `apply_font`. |
 | `steps-integration.sh` | `install_icon_sync`, `flatpak_override`, `remove_panel_blur_unit` (retired service), `install_adaptive_performance`. |
 | `steps-gdm.sh` | Login screen theme, wallpaper generation, monitor sync, and the GDM sync unit (all opt-in, root). |
 | `steps-gui.sh` | `install_gui` (settings window, launcher, preview, desktop entry, icon, the `repo-path` memo), `install_first_open_autostart`, `install_update_check`. |
@@ -67,7 +67,7 @@ For "which file draws this button / owns this setting", use
 | `shell-80-solid` opaque ladder (Performance / `--no-blur`) | `gtk4-60-controls` switches, checks, radios, sliders | |
 | `shell-popup-blur` popup alphas over real blur | `gtk4-70-surfaces` surfaces, Nautilus status, sidebars | |
 | `shell-notification-blur` notification alphas over real blur | `gtk4-transparency` translucent windows (rescaled, tinted) | |
-| *(generated)* `shell-90-density` panel icon scale for this display | `gtk4-window-controls-{adwaita,material,flat}` one, by style | |
+| *(generated)* `shell-90-density` panel icon scale and top bar height for this display | `gtk4-window-controls-{adwaita,material,flat}` one, by style | |
 
 ### `dconf/`
 
@@ -135,7 +135,6 @@ install or retune. Don't move or rename one without updating its callers.
 | `apply-shell-tint.py` | `apply_shell_tint_color` |
 | `apply-notification-opacity.py` | `apply_notification_opacity` |
 | `apply-radius-preset.py` | `apply_radius_css` (imports `token_manifest.py`) |
-| `apply-popup-brightness.py` | `apply_popup_brightness` |
 | `token_manifest.py` | `apply-radius-preset.py`, `check-tokens.sh` |
 | `moga_cursor.py` | `install_moga_cursors` (resolves official release metadata) |
 | `aura_glass_operation.py` | `bin/aura-glass-operation` (copied to `~/.local/share/aura-glass/`) |
@@ -222,7 +221,7 @@ install.sh ──(not --help/--dry-run)──▶ aura-glass-operation run -- ins
   ├─ install_css ─▶ tools/{rescale-transparency,apply-tint-color,apply-shell-tint,
   │                       apply-notification-opacity,apply-radius-preset}.py
   │              └▶ ~/.local/bin/aura-glass-apply ─▶ (lock already held) splice 4 targets
-  ├─ load_dconf ─▶ dconf load; apply_* ─▶ tools/apply-popup-brightness.py
+  ├─ load_dconf ─▶ dconf load; apply_* (inline Python)
   ├─ install_cursors ─▶ tools/moga_cursor.py (Moga only)
   └─ install_{gui,update_check,icon_sync,adaptive_performance} ─▶ systemctl --user …
 

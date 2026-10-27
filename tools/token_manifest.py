@@ -32,7 +32,7 @@ Each entry is (token name, kind, *args).
        than standing on its own as a key of its own: Blur My Shell keeps every
        pipeline in a single GVariant blob under `pipelines`, and a blur radius
        inside it is a number the section/key form cannot reach. The writer for
-       these is apply_blur_strength, which reads the live key rather than a file
+       these is apply_blur_pipelines, which reads the live key rather than a file
        in $CONF_DIR — which is why apply-radius-preset.py must not see them.
 
 The `[^}]*?` in the CSS patterns cannot cross a closing brace, so each one stays

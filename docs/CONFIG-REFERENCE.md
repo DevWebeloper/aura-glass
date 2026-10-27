@@ -48,7 +48,7 @@ implementation view.
 | `--extensions LIST` | | `extension-pack` | comma-separated UUIDs, each must be in `EXT_EXTRA_ALL`. Empty means minimal. A remembered UUID that is no longer in the catalogue is dropped, not fatal |
 | `--full` | | `extension-pack`, `osd` | all extras + icons + cursors + OSD |
 | `--osd` / `--no-osd` | on | `osd` (`0\|1`) | Custom OSD pill. A remembered `0` is what a flagless `--gui` update or `--force` reinstall reads back |
-| `--bms-git` / `--no-bms-git` | git | `bms-ref`, `bms-source` | `--no-bms-git` (EGO build) also forces popup and notification blur off. A remembered `ego` keeps a flagless re-run on the EGO build; `--bms-git`, `--popup-blur` or `--notification-blur` typed override it |
+| `--bms-git` / `--no-bms-git` | git | `bms-ref`, `bms-source` | `--no-bms-git` (EGO build) also forces popup blur off. A remembered `ego` keeps a flagless re-run on the EGO build; `--bms-git` or `--popup-blur` typed override it |
 | `--rounded-blur` / `--no-rounded-blur` | retired | none | accepted and ignored. gnome-rounded-blur is no longer installed: Blur My Shell v76 rounds its blur itself. An older install's `rounded-blur` stamp only tells `uninstall.sh` to explain how to remove the library |
 | `--gui` / `--no-gui` | on | none | settings window (needs PyGObject, libadwaita, pycairo) |
 | `--window-menu` / `--no-window-menu` | on | `window-menu` | "Blur This App" (the helper reads the memo live) |
@@ -68,15 +68,18 @@ implementation view.
 | `--window-blur` / `--no-window-blur` | on. `--no-window-blur` also sets scope `none` and level 0.95 unless a level was given | `window-blur` | | full |
 | `--all-apps-blur` (`--all-app-blur`), `--gtk-apps-blur` (`--gtk-app-blur`), `--app-blur-scope gtk\|all` | **`all`** | `app-blur-scope` | ✓ | full |
 | `--app-blur-allow LIST`, `--app-blur-block LIST` | shipped lists in `core.ini` | `app-blur-allow`, `app-blur-block` (one pattern per line) | | `app-blur` |
-| `--popup-blur` / `--no-popup-blur` | on | `popup-blur` | ✓ | full |
-| `--notification-blur` / `--no-notification-blur` | on | `notification-blur` | ✓ | full |
+| `--popup-blur` / `--no-popup-blur` | on. Covers notification banners too (Blur My Shell v76 blurs them through the popup component), so `shell-notification-blur.css` goes with it | `popup-blur` | ✓ | full |
+| `--notification-blur` / `--no-notification-blur` | retired: accepted, warned, ignored. Notifications follow `--popup-blur` | none | | full |
 | `--app-transparency L` (`--window-opacity`, `--window-transparency`); `--no-app-transparency` (+ the two `--no-` aliases) | `0.70–1.00`, `%`, or `0–255`. 0 = off. Fresh default 0.90 (0.95 without window blur, 1.00 in performance). Buckets snap to 0.82, 0.90 and 0.95 | `app-transparency` (`app-opacity` is always 255 now) | ✓ | `css` for the primary spelling, full for the aliases |
 | `--app-tint-color HEX` | `#000000` | `app-tint-color` | ✓ | `css` |
 | `--shell-tint-color HEX` | `#000000` (inherits app tint if unset) | `shell-tint-color` | ✓ | `css` |
-| `--notification-opacity P` | 10–85, default 40 | `notification-opacity` | ✓ | `css` |
-| `--blur-strength P` | 25–200, default 100 | `blur-strength` | ✓ | full |
-| `--popup-brightness P` | 50–150, default 115 (preset) | `popup-brightness` | ✓ | full |
-| `--window-brightness P` (`--app-brightness`, `--window-blur-brightness`) | 50–150, default 100 | `window-brightness` | ✓ | `window-brightness` (except the last alias, which is full) |
+| `--panel-height PX` | 24–48 logical px, default 40 (the theme's). 32 is GNOME's own and the settings app's reset. Snapped to whole device pixels at the primary scale (`panel_height_css`) | `panel-height` | | `css` |
+| `--popup-opacity P\|main` | 70–100 in `--app-transparency`'s unit, or `main` (default): follow the app windows (level 0 counts as 100). Scales `shell-popup-blur.css` and the banner ground (40 at 90) by P/90. Ignored in performance | `popup-opacity` | ✓ | `css` |
+| `--notification-opacity P` | retired: accepted, warned, ignored. The banner ground follows `--popup-opacity` | none | | full |
+| `--blur-strength P` | 25–200 % of each pipeline's tuned radius, default 100. The main blur amount: every pipeline | `blur-strength` | ✓ | `blur-pipelines` |
+| `--blur-brightness P` | 50–100 % of each pipeline's tuned brightness, default 100. The main brightness: every pipeline (the lock screen's tuned 80 % scales with it) | `blur-brightness` | ✓ | `blur-pipelines` |
+| `--window-blur-strength`, `--popup-blur-strength`, `--panel-blur-strength`, `--lockscreen-blur-strength` `P\|main` | 25–200, or `main` (default): that surface's own blur amount, replacing `--blur-strength` for it. `popup` is menus, Quick Settings and notifications; `lockscreen` is also the overview | `<surface>-blur-strength` | ✓ | `blur-pipelines` |
+| `--window-brightness` (`--app-brightness`, `--window-blur-brightness`), `--popup-brightness`, `--panel-brightness`, `--lockscreen-brightness` `P\|main` | 50–100, or `main` (default): that surface's own brightness, replacing `--blur-brightness` for it | `<surface>-blur-brightness` (legacy `window-brightness` 100 and `popup-brightness` 100/115 read as `main`, other legacy values as the override) | ✓ | `blur-pipelines` |
 | `--grain N` / `--no-grain` | 0–1, default 0 | `grain` | | full |
 | `--glass-style S` | `frosted` (default), `liquid`, `vibrant`, `tinted` (accent colour), `smoked`. Liquid: top bar and dock, and makes the dock's blur static. The others: top bar, overview and lock screen; the dock stays frosted | `glass-style` | | full |
 | `--liquid-windows` / `--no-liquid-windows` | off. Liquid or vibrant behind app windows too (ignored under tinted and smoked); makes `[applications] static-blur` true | `liquid-windows` | | full |
@@ -105,7 +108,7 @@ implementation view.
 | `cursor-theme` | `install_cursors` (if needed), then `apply_cursor_theme` |
 | `cursor-size` | `apply_cursor_size` |
 | `window-buttons` | `apply_window_buttons` |
-| `window-brightness` | `apply_window_brightness` |
+| `blur-pipelines` | `apply_blur_pipelines` (every blur amount and brightness flag) |
 | `app-blur` | `apply_app_blur` |
 | `css` | `install_css` (the whole CSS pipeline + `aura-glass-apply`) |
 | `glass-style` | `apply_glass_style` (an accent edit under the tinted style) |
@@ -137,9 +140,12 @@ not adaptive).
 | `app-transparency` | `0` or `0.70`–`1.00` | `install_transparency_css` |
 | `app-opacity` | BMS applications actor opacity (follows the transparency level, level × 255) | `apply_app_opacity` |
 | `app-tint-color`, `shell-tint-color` | `#rrggbb` | `apply_app_tint_color`, `apply_shell_tint_color` |
-| `notification-opacity` | 10–85 | `apply_notification_opacity` |
-| `blur-strength` | 25–200 | `apply_blur_strength` |
-| `popup-brightness`, `window-brightness` | 50–150 | `apply_popup_brightness`, `apply_window_brightness` |
+| `popup-opacity` | 70–100 or `main` (written under frosted only) | `apply_popup_transparency` |
+| `panel-height` | 24–48 | `install_css` |
+| `blur-strength`, `blur-brightness` | 25–200, 50–100 | `apply_blur_pipelines` |
+| `{window,popup,panel,lockscreen}-blur-strength` | 25–200 or `main` | `apply_blur_pipelines` |
+| `{window,popup,panel,lockscreen}-blur-brightness` | 50–100 or `main` | `apply_blur_pipelines` |
+| `popup-brightness`, `window-brightness`, `notification-opacity`, `notification-blur` | legacy, no longer written. The two brightness memos are read once as the per-surface value when the new memo is absent | none |
 | `grain` | 0–1 | `apply_grain` |
 | `glass-style` | `frosted\|liquid\|vibrant\|tinted\|smoked` | `apply_glass_style` |
 | `liquid-windows` | `0\|1`, kept under frosted | `apply_glass_style` |
@@ -154,13 +160,14 @@ not adaptive).
 | `window-blur` | `0\|1` | `apply_app_blur` |
 | `app-blur-scope` | `all\|gtk\|none` | `apply_app_blur` |
 | `app-blur-allow`, `app-blur-block` | one wm_class pattern per line (wildcards). The settings window's own class is pinned to allow | `apply_app_blur` (installer, preview `app-blur`, window menu) |
-| `popup-blur`, `notification-blur` | `0\|1` (not written while blur is off) | `apply_popup_blur`, `apply_notification_blur` |
+| `popup-blur` | `0\|1` (not written while blur is off) | `apply_popup_blur` |
 
 ### Mode drawers: `$C/modes/<frosted|performance>/`
 
-`app-transparency app-tint-color shell-tint-color app-blur-scope popup-blur
-notification-blur blur-strength popup-brightness window-brightness
-notification-opacity`. Created by `seed_glass_mode`, read by
+`app-transparency app-tint-color shell-tint-color app-blur-scope popup-blur`, and
+under frosted `blur-strength blur-brightness popup-opacity` plus each surface's
+`<surface>-blur-strength` and `<surface>-blur-brightness` (an older drawer's
+`window-brightness`/`popup-brightness` are read as those). Created by `seed_glass_mode`, read by
 `load_glass_mode_memos`, `Settings()` and `apply_adaptive_blur restore`, written
 by `save_glass_mode_memos`.
 
