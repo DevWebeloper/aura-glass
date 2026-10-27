@@ -96,7 +96,7 @@ a restart.
 | Fonts | `lib/steps-fonts.sh`, `apply_font` |
 | Extension catalogue | `lib/steps.sh` (arrays, `ext_description`), `bin/aura-glass-ext`, `lib/steps-extensions.sh` |
 | Blur This App (window menu) | `extensions/aura-glass-blur@aura-glass.local/extension.js` → `aura-glass-operation app-blur` |
-| Switch workspaces while dragging in the overview (mouse wheel, three-finger swipe with the item held, or hold at the screen edge) | `extensions/aura-glass-blur@aura-glass.local/extension.js` (`_attachDragScroll`, `_onDragScroll`, `_onDragEvent` on a patched `DND._Draggable._onEvent`, `_onHoldSwipe`, `_readTouch` on the touchpad's evdev node, `_syncDragEdge`) |
+| Mouse wheel switches workspaces while dragging in the overview | `extensions/aura-glass-blur@aura-glass.local/extension.js` (`_attachDragScroll`, `_onDragScroll`) |
 
 ## 7. Installer / system behaviour
 
