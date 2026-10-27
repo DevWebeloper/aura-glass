@@ -30,7 +30,7 @@ flag means. Every other program composes flags or calls those functions.
 
 | Run | Command | What it does | Needs |
 |---|---|---|---|
-| **Full install** | `./install.sh [flags]` | (progress window, after the GTK wizard or with `--progress-window`) → deps → rounded-blur (a failure stops here: retry, continue without, or abort) → base theme → extensions → icons → cursors → fonts → dconf preset → CSS → gsettings → extensions on/off → integrations (icon sync, GUI, update timer, Flatpak override, retired panel-blur unit removed, adaptive worker) → enable extensions → GDM (opt-in) → `verify_install` (the checklist) → `finish` (log out, from the window when it is open) | network; root only for deps, rounded-blur fallback, GDM |
+| **Full install** | `./install.sh [flags]` | (progress window, after the GTK wizard or with `--progress-window`) → deps → base theme → extensions → icons → cursors → fonts → dconf preset → CSS → gsettings → extensions on/off → integrations (icon sync, GUI, update timer, Flatpak override, retired panel-blur unit removed, adaptive worker) → enable extensions → GDM (opt-in) → `verify_install` (the checklist) → `finish` (log out, from the window when it is open) | network; root only for deps, rounded-blur fallback, GDM |
 | **Retune** | `./install.sh --settings-only [flags]` | optional pack/font install if those flags were given → dconf preset → CSS → gsettings → icon sync → extensions on/off → remember mode → GUI, update timer, retired panel-blur unit removed, adaptive worker → GDM sync (if installed) | nothing. Offline, unprivileged, a few seconds |
 
 `--settings-only` refuses to run unless `$CONF_DIR` and the theme directory
@@ -162,7 +162,7 @@ top-bar menu (Aura Glass Helper)          aura-glass-adaptive.service (user)
 - **active.** `install.sh` resolves the run as a retune to Performance (same
   `WANT_*`, the performance drawer's tints and level), so it leaves the same
   sheets and keys as the Glass mode switch: it saves the keys a mode owns
-  (`dconf/solid.ini`'s set, including `hacks-level` and the OSD alpha) to
+  (`dconf/solid.ini`'s set: every component's blur switch and the OSD alpha) to
   `adaptive-performance/saved-mode-keys`, then runs `load_dconf` and
   `install_css`. It turns pipelines off *without* disabling the extension,
   because disabling BMS on GNOME 51 segfaults Mutter. `install_css` re-splices
@@ -266,8 +266,9 @@ bounded per surface by `radius_bounds`). `pill` is a retired name that
 `radius_preset_canonical` maps to `rounded`.
 
 **Project rule:** a painted radius must equal the blur radius behind it, so
-`apply_radius_css` (paint) and `apply_radius_dconf` + `apply_pipeline_radius`
-(blur) always move together.
+`apply_radius_css` (paint) and `apply_radius_dconf` (blur) always move
+together. Since Blur My Shell v76 a blur's corner comes only from its
+component's corner-radius key; no pipeline carries a `corner` effect.
 
 ---
 
@@ -287,11 +288,17 @@ bounded per surface by `radius_bounds`). `pill` is a retired name that
    a key is written when it is missing or still holds a value some release
    shipped (recorded in the `dconf-shipped` memo, seeded from git history),
    and kept when it holds anything else, since only the user can have put it
-   there. `solid.ini`'s keys are left to `sync_mode_owned_keys`.
+   there. `solid.ini`'s keys are left to `sync_mode_owned_keys`. Before the
+   merge, `upgrade_bms_settings` moves an install still below Blur My Shell
+   v76's `settings-version` (7), or one v76 has migrated itself, onto
+   `core.ini`'s pipelines, version and component `pipeline` keys, and resets
+   the legacy `sigma`/`brightness`/`customize` keys. Otherwise v76's own
+   migration would turn each legacy sigma into a "Migrated dynamic blur"
+   pipeline the writers below cannot reach.
 2. Then always overlays the resolved flags: `apply_grain`, `apply_blur_strength`,
    `apply_popup_brightness`, `apply_window_brightness`, `apply_popup_blur`,
    `apply_notification_blur`, `apply_app_blur`, `apply_app_opacity`,
-   `apply_radius_dconf` (+ `apply_pipeline_radius`), `sync_osd_profile` and
+   `apply_radius_dconf`, `apply_glass_style`, `sync_osd_profile` and
    `refresh_bms_after_dconf`. The last one is skipped on GNOME ≥ 51, where
    toggling BMS crashes Mutter.
 
@@ -319,12 +326,11 @@ Catalogued in `lib/steps.sh`:
 
 - Upstreams are **pinned by commit** (table in §12). A theme that changes under
   the CSS gives a half-applied look with no error.
-- Blur My Shell patches, applied in order: `blur-my-shell-overview.patch`,
-  `blur-my-shell-subwindows.patch`, `blur-my-shell-notifications.patch` (adds the
-  separate `popup/notification` key), `blur-my-shell-static-maximized.patch`
-  (static blur for full-screen windows, dynamic for smaller ones),
-  `blur-my-shell-panel-refit.patch` (top-bar blur refitted in place after a
-  monitor change, no flash). Custom OSD gets
+- Blur My Shell gets one patch, `blur-my-shell-subwindows.patch` (a blurred
+  app's dialogs and tool palettes match through their transient-for app and
+  GTK application id; ATTACHED and UTILITY frame types). v73's overview,
+  notification, static-maximized and panel-refit patches were dropped with v76,
+  which was checked live without them. Custom OSD gets
   `custom-osd-gnome50.patch`. Copyous gets `copyous-gnome51.patch`. Wiggly gets
   `wiggly-follow-cursor.patch` on its EGO download (`patch_wiggly_extension`).
 - `bin/aura-glass-ext` exposes the catalogue one UUID at a time
@@ -407,35 +413,20 @@ after 30 s instead of interleaving.
 | What | Repo | Pin |
 |---|---|---|
 | Base theme | kayozxo/GNOME-macOS-Tahoe | `6dfcd9d941e5` (installed as `Tahoe-Dark`, adopted as `Aura-Glass`) |
-| Blur My Shell | aunetx/blur-my-shell | `425761d55049` (v73) + 3 patches |
+| Blur My Shell | aunetx/blur-my-shell | `19ce844b8ca3` (v76) + 1 patch |
 | Custom OSD | neuromorph/custom-osd | `334ac17e9348` + GNOME 50/51 patch |
-| gnome-rounded-blur | kancko/gnome-rounded-blur | `a4db9e5947b1` (v1.0.2) + `patches/gnome-rounded-blur-offstage.patch` |
 | Colloid / Reversal / MacTahoe icons | vinceliuice, yeyushengfan258, vinceliuice | `c9e702beb96f` / `2c8122287e3b` / `b85923bb87f5` |
 | Hatter icons | Mibea/Hatter | full SHA, shallow sparse fetch |
 | AOSP cursors | Tech-Tac/aosp-cursors | release 1.3.1 + sha256 |
 | Moga cursors | gnome-look.org/p/2302110 | release metadata resolved by `tools/moga_cursor.py` |
 | Fonts | Inter 4.1 (sha256), MiSans (sha256 as notice; URLs unversioned), SF Pro mirror `8bfea09aa6f1` | |
 
-`gnome-rounded-blur` is built from the pin plus its patch and installed
-system-wide, where the shell finds it: on Arch as a `makepkg` package
-(`1.0.2-1.1`, one pkgrel above the AUR's) through `sudo pacman -U`, elsewhere
-with `meson … && sudo meson install`. Not through an AUR helper, which cannot
-apply a patch. The `rounded-blur-patch` stamp makes an unpatched install (the
-AUR package, or one from before the patch) rebuild once. Its build
-dependencies (compiler, meson, pkg-config, gobject-introspection, mutter's
-development files; Debian's `libmutter-N-dev` by API number) are offered by
-`ensure_rounded_blur_build_deps` in `lib/distro.sh`. There is no
-rootless build. One in `~/.local` never loads, because the shell searches
-neither `~/.local/lib` nor `~/.local/share/girepository-1.0` (KI-12), so an old
-one is removed.
-
-It is built first in a full install, before the theme or any extension, by
-`require_rounded_blur`. A failed build (dependencies declined, patch, build or
-`sudo` install) stops there with nothing installed yet and asks: retry,
-continue without it (popup blur rounds through Blur My Shell's corner shader,
-and the next full install tries again), or abort. It asks even under `--yes`.
-Without a terminal it stops; `--no-rounded-blur` is how a script goes on
-without it (KI-39).
+Blur My Shell v76 is built the way its Makefile does: the component
+stylesheets bundled into one `stylesheet.css` in its order, and every `src/`
+directory but `styles/` packed. gnome-rounded-blur is no longer installed
+(v76 rounds its blur in the Dual Kawase output pass); `--rounded-blur` and
+`--no-rounded-blur` are accepted and ignored, and `uninstall.sh` still says
+how to remove a library an older release put in `/usr`.
 
 ---
 

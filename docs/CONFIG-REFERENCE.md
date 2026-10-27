@@ -49,7 +49,7 @@ implementation view.
 | `--full` | | `extension-pack`, `osd` | all extras + icons + cursors + OSD |
 | `--osd` / `--no-osd` | on | `osd` (`0\|1`) | Custom OSD pill. A remembered `0` is what a flagless `--gui` update or `--force` reinstall reads back |
 | `--bms-git` / `--no-bms-git` | git | `bms-ref`, `bms-source` | `--no-bms-git` (EGO build) also forces popup and notification blur off. A remembered `ego` keeps a flagless re-run on the EGO build; `--bms-git`, `--popup-blur` or `--notification-blur` typed override it |
-| `--rounded-blur` / `--no-rounded-blur` | on | `rounded-blur-choice` (`0\|1`), `rounded-blur` (stamp) | gnome-rounded-blur. Only the typed flags write the choice: `--no-blur` forces it off for a run without that being a decision, and a remembered `1` never overrides it |
+| `--rounded-blur` / `--no-rounded-blur` | retired | none | accepted and ignored. gnome-rounded-blur is no longer installed: Blur My Shell v76 rounds its blur itself. An older install's `rounded-blur` stamp only tells `uninstall.sh` to explain how to remove the library |
 | `--gui` / `--no-gui` | on | none | settings window (needs PyGObject, libadwaita, pycairo) |
 | `--window-menu` / `--no-window-menu` | on | `window-menu` | "Blur This App" (the helper reads the memo live) |
 | `--update-check` / `--no-update-check` | on | `update-check` | daily timer |
@@ -194,15 +194,15 @@ by `save_glass_mode_memos`.
 | `update-check` | `0\|1` | `install_update_check` |
 | `update-channel` | `release\|latest`. Still written, **no longer read**: every commit on main is offered as a tag (`v0.3.5+N`) either way | `install_update_check` |
 | `update-available` | the version a check found: a release `vX.Y.Z`, a tag `vX.Y.Z+N`, or `branch@sha` on a test build | `aura-glass-update-check` |
-| `rounded-blur` | build stamp | `rounded_blur_stamp` |
-| `rounded-blur-choice` | `0\|1`, only after a typed `--rounded-blur` / `--no-rounded-blur`. Only a `0` is read back | `install_rounded_blur`; read in `install.sh`'s resolution block |
+| `rounded-blur` | build stamp from an older release; read only by `uninstall.sh` | no longer written |
+| `rounded-blur-choice` | from an older release; no longer read | no longer written |
 | `extension-pack` | comma-separated UUIDs of the optional extensions chosen. Empty file = Minimal. Absent = the Recommended seven | `install_extensions`; read in the resolution block |
 | `extension-catalog` | comma-separated UUIDs of `EXT_EXTRA_ALL` when the pack was chosen. A recommended extension missing from it joins a non-empty pack on an update. Absent = everything but `EXT_EXTRA_ADDED_LATER` | `install_extensions`; read in the resolution block |
 | `dconf-shipped` | `<ini>\t<section/key>\t<value>` lines: every value a preset has been loaded or merged at, appended, never rewritten. An update writes a preset key only when it is missing or still holds one of these, so a value the user set is kept. Seeded from the preset's git history on the first merge. Removed by uninstall | `merge_dconf_preset` (in `load_dconf`) |
 | `kept-extensions` | one UUID per line: retired extensions the user chose to keep when asked. Not asked again | `disable_retired_extensions` |
 | `osd` | `0\|1`. Only a `0` is read back | `install_custom_osd`; read in the resolution block |
 | `bms-ref`, `bms-source` | installed BMS commit and `git\|ego`. `ego` is read back as `--no-bms-git` | `install_bms`; read in the resolution block |
-| `bms-overview-patch`, `bms-subwindow-patch`, `bms-notification-patch`, `bms-static-patch`, `bms-panel-patch`, `custom-osd-patch` (legacy `openbar-patch`), `rounded-blur-patch` | patch stamps | `patch_stamp_write` |
+| `bms-subwindow-patch`, `custom-osd-patch` (legacy `openbar-patch`) | patch stamps. `bms-overview-patch`, `bms-notification-patch`, `bms-static-patch`, `bms-panel-patch` and `rounded-blur-patch` are left by older releases and no longer read | `patch_stamp_write` |
 | `gdm-installed`, `gdm-monitors-synced` | login-screen state | `lib/steps-gdm.sh` |
 | `gdm-gresource` | `sha256sum` line for the gresource `install_gdm` wrote. A mismatch makes `aura-glass-gdm-sync` warn that a package update reverted the login theme (KI-30) | `record_gdm_gresource`; read by `aura-glass-gdm-sync` |
 | `accent-from-wallpaper` | opt-in marker for the (currently uncatalogued) auto-accent extension | `bin/aura-glass-ext` writes it; `lib/steps-extensions.sh` reads it |
@@ -290,7 +290,7 @@ cursor-size and font keys (what `original` / `system` restore).
 | `~/.cache/aura-glass/src/` | pinned checkouts (`$SRC_CACHE`) |
 | `~/.cache/aura-glass/operation.lock` | the writer lock |
 | `~/.local/share/fonts/aura-glass/` | downloaded fonts |
-| `~/.local/lib/libblur-effect-1.0.so*` | an old rootless gnome-rounded-blur build. No longer written; removed by `install_rounded_blur` and `uninstall.sh` (KI-12) |
+| `~/.local/lib/libblur-effect-1.0.so*` | an old rootless gnome-rounded-blur build. No longer written; removed by `uninstall.sh` (KI-12) |
 
 Pre-rename installs used `tahoe-glass` everywhere. `lib/steps-migrate.sh`,
 `aura-glass-apply` and `uninstall.sh` resolve both.

@@ -98,8 +98,8 @@ flatpak_override() {
 # The panel blur rebuild service toggled Blur My Shell's panel/blur false then
 # true after every monitor change and once at login, to rebuild a panel blur
 # sized against a layout that had since changed. The toggle itself flashed the
-# bare top bar. patches/blur-my-shell-panel-refit.patch now refits that blur
-# in place inside Blur My Shell, in one frame, so the service only costs a
+# bare top bar. Blur My Shell v76 keeps that blur aligned itself (and v73 did
+# with patches/blur-my-shell-panel-refit.patch), so the service only costs a
 # flash. Every run takes out whatever an earlier one installed, under all three
 # names it has had, with its command and the memo that drove it.
 remove_panel_blur_unit() {

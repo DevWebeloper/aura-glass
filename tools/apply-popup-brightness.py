@@ -3,11 +3,10 @@
 
     apply-popup-brightness.py PERCENT
 
-Blur My Shell keeps a blur's brightness in two places — the per-component key
-the older releases read, and a `brightness` param inside the `pipelines` blob
-the current ones read. lib/steps-dconf.sh writes the first one; this writes the
-second, which needs more than a dconf write because the blob holds every
-pipeline at once and only one of them is the popups'.
+Blur My Shell v76 keeps a blur's brightness only as a `brightness` param inside
+the `pipelines` blob (the per-component key is read once, by its settings
+migration). Writing it needs more than a dconf write, because the blob holds
+every pipeline at once and only one of them is the popups'.
 
 Which one that is comes from the popup component's own `pipeline` key rather
 than from a hard-coded id, so repointing the component in dconf/core.ini moves
@@ -38,9 +37,8 @@ def main():
 
     name, blob = read("/popup/pipeline"), read("/pipelines")
     if not name or not blob or name not in blob:
-        # No pipelines blob, or the component points at one that is not in it.
-        # The per-component key lib/steps-dconf.sh already wrote is then the
-        # only brightness there is, and it is set.
+        # No pipelines blob, or the component points at one that is not in it:
+        # there is no popup brightness to set.
         return 0
 
     # The named pipeline's own slice of the blob, so what is rewritten below is

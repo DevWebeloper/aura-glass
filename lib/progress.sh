@@ -1,8 +1,8 @@
 # shellcheck shell=bash
 # aura-glass — telling a window how a full install is going.
 #
-# The terminal stays where the install happens. sudo, the rounded-blur retry and
-# the retired-extension questions are asked there, and every line the run
+# The terminal stays where the install happens. sudo and the
+# retired-extension questions are asked there, and every line the run
 # prints is still printed there. What a window adds is what a long terminal
 # scroll does not give: how far along the run is, which part is running,
 # whether the terminal is waiting for an answer, and at the end a checklist of
@@ -312,16 +312,6 @@ verify_install() {
                 "gnome-extensions enable $u"
         fi
     done
-
-    if [ "${WANT_BLUR:-1}" = 1 ] && [ "${WANT_ROUNDED_BLUR:-1}" = 1 ]; then
-        if rounded_blur_loadable; then
-            verify_check ok Blur "Rounded blur library"
-        else
-            verify_check fail Blur "Rounded blur library" \
-                "gnome-rounded-blur is not installed, or no longer loads against this mutter; popup blur rounds through the corner shader instead" \
-                "./install.sh --rounded-blur --force"
-        fi
-    fi
 
     local theme
     if [ "${WANT_ICONS:-0}" = 1 ]; then

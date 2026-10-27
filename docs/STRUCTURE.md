@@ -35,7 +35,7 @@ For "which file draws this button / owns this setting", use
 | `distro.sh` | `detect_distro` (arch/fedora/debian/suse), `missing_cmds`, `install_deps`, the GUI toolkit probe and hints, `pkg_owner`/`pkg_remove_cmd`, `ensure_aur_helper`. |
 | `steps.sh` | Upstream pins, paths (`CONF_DIR`, `EXT_DIR`, `SRC_CACHE`, `BACKUP_DIR`), extension arrays and `ext_description`, `preflight`, `install_theme`, `finish`. **Sourced first**, because flag parsing reads `CONF_DIR`. |
 | `steps-migrate.sh` | Moving from `tahoe-glass` to `aura-glass`: `migrate_legacy_names`, `merge_backups`, `adopt_theme_dir`, `sweep_theme_orphans`. The one-time solid-era migration, `migrate_solid_era`. |
-| `steps-extensions.sh` | EGO installs, the pinned BMS and Custom OSD builds plus patches, the first-party extension (`install_aura_ext`), `install_rounded_blur` and `require_rounded_blur` (its stop-and-ask wrapper), enable/queue helpers, `refresh_bms_after_dconf`, `disable_retired_extensions`. |
+| `steps-extensions.sh` | EGO installs, the pinned BMS and Custom OSD builds plus patches, the first-party extension (`install_aura_ext`), enable/queue helpers, `refresh_bms_after_dconf`, `disable_retired_extensions`. |
 | `steps-assets.sh` | Icon packs (Colloid, Reversal, Hatter, MacTahoe) and accent mapping (`icon_base`, `accent_to_*`); pointers (Adwaita, AOSP, MacTahoe, Moga, original); `install_wallpapers`. |
 | `steps-fonts.sh` | `--font` installs: Inter, MiSans (Latin + Arabic), SF Pro. |
 | `steps-modes.sh` | Glass modes: `resolve_glass_mode`, `apply_glass_mode`, the drawers (`seed_glass_mode`, `load_glass_mode_memos`, `save_glass_mode_memos`), `remember_glass_mode`. |
@@ -81,15 +81,10 @@ For "which file draws this button / owns this setting", use
 
 | Patch | Target |
 |---|---|
-| `blur-my-shell-overview.patch` | BMS: take blur out of overview window previews when `blur-on-overview` is false |
 | `blur-my-shell-subwindows.patch` | BMS: blur a blurred app's ATTACHED dialogs and UTILITY palettes too |
-| `blur-my-shell-notifications.patch` | BMS: split notifications onto their own `popup/notification` key |
-| `blur-my-shell-static-maximized.patch` | BMS: static blur for a window that covers its monitor (maximized both ways, fullscreen, or filling the work area), dynamic for smaller ones |
-| `blur-my-shell-panel-refit.patch` | BMS: after a monitor change or startup, swap a stale top-bar blur in place in one frame, instead of `reset()` (style flash, skipped without a work-area change) |
 | `custom-osd-gnome50.patch` | Custom OSD on GNOME 50/51 |
 | `copyous-gnome51.patch` | Copyous on GNOME 51 |
 | `wiggly-follow-cursor.patch` | Wiggly: measure the pointer in logical pixels before every shake, grow and shrink about its hotspot, and follow the cursor theme itself (`theme.js`) |
-| `gnome-rounded-blur-offstage.patch` | gnome-rounded-blur: place the background blur right in screenshots (off-stage paints) |
 
 ### `bin/`: commands (most installed into `~/.local/bin`)
 
@@ -141,7 +136,7 @@ install or retune. Don't move or rename one without updating its callers.
 | `apply-notification-opacity.py` | `apply_notification_opacity` |
 | `apply-radius-preset.py` | `apply_radius_css` (imports `token_manifest.py`) |
 | `apply-popup-brightness.py` | `apply_popup_brightness` |
-| `token_manifest.py` | `apply-radius-preset.py`, `check-tokens.sh` (and the pattern `apply_pipeline_radius` mirrors) |
+| `token_manifest.py` | `apply-radius-preset.py`, `check-tokens.sh` |
 | `moga_cursor.py` | `install_moga_cursors` (resolves official release metadata) |
 | `aura_glass_operation.py` | `bin/aura-glass-operation` (copied to `~/.local/share/aura-glass/`) |
 | `aura_glass_adaptive.py` | `bin/aura-glass-adaptive` (copied to `~/.local/share/aura-glass/`) |

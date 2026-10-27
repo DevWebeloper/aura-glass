@@ -414,7 +414,7 @@ if [ -f "$CONF_DIR/rounded-blur" ]; then
     # Not removed from here: it is the one thing this project installs outside
     # $HOME, and an uninstaller that runs sudo on your behalf is worse than one
     # that tells you what to run.
-    info "installed into /usr by this project. To remove it:"
+    info "installed into /usr by an older release; nothing uses it since Blur My Shell v76. To remove it:"
     info "    sudo pacman -Rs gnome-rounded-blur       # if it came from the AUR"
     info "    sudo ninja -C ~/.cache/aura-glass/src/gnome-rounded-blur/build uninstall"
 fi

@@ -48,11 +48,12 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 | [KI-32](#ki-32) | Medium | **Fixed** | Updating from the settings app greys out Install or stops at a git error (detached HEAD, local edits, diverged history, re-cut tag) |
 | [KI-33](#ki-33) | Medium | **Fixed** (`feat/efficient-blur-qol`) | The helper threw `ReferenceError: mode is not defined` on every enable, so Performance never got its window opacity |
 | [KI-34](#ki-34) | Medium | **Fixed** (`feat/efficient-blur-qol`) | Every retune rewrote ~37 dconf/gsettings keys to the values already there, waking Blur My Shell, User Themes and GTK |
-| [KI-35](#ki-35) | Info | By design (decided 2026-10-22) | Frosted repaints the whole stage every frame (`hacks-level=2`). Lower levels left visible patches and saved nothing once windows redraw; window blur is the real cost |
+| [KI-35](#ki-35) | Info | Superseded (Blur My Shell v76 has no `hacks-level`) | Frosted repaints the whole stage every frame (`hacks-level=2`). Lower levels left visible patches and saved nothing once windows redraw; window blur is the real cost |
 | [KI-36](#ki-36) | Low | **Fixed** (needs a live check) | History cards in the date menu keep the old blur radius and corner after a blur-strength, adaptive or radius-preset change |
 | [KI-37](#ki-37) | Low | **Fixed** (needs a live check) | A square dark band under the second card of a notification stack, around its rounded corners |
 | [KI-38](#ki-38) | Medium | **Fixed** (needs a live check) | Updates removed retired extensions without asking, and either kept user extension settings and missed preset fixes, or reset them (`--force`, `extras.ini`) |
 | [KI-39](#ki-39) | Medium | **Fixed** (needs a live check) | A failed gnome-rounded-blur build only warned, and the install carried on around it; the only fix was to re-run and watch the build |
+| [KI-40](#ki-40) | Medium | **Fixed** (`fix/bms-v76`, resume needs a live check) | Blur My Shell's blur renders wrong after resume from suspend or hibernate until the extension is toggled |
 
 ---
 
@@ -893,6 +894,10 @@ byte-identical; a brightness change makes exactly its 2 writes.
 
 **Frosted repaints the whole screen every frame. Kept on purpose.**
 
+**Superseded (2026-10-27).** Blur My Shell v76 removed `hacks-level` and tracks
+what is behind each blur itself, so nothing here is written any more. Kept
+for the measurements.
+
 **What it costs.** Blur My Shell's `hacks-level=2` turns clipped redraws off,
 so any damage repaints the whole monitor and every blur actor on it.
 
@@ -1032,6 +1037,36 @@ it stops with a message naming `--no-rounded-blur`. The loop was exercised with
 a stubbed build (no terminal stops; retry then success, continue and abort in a
 pseudo-terminal); the hermetic suite passes. Needs a run on a machine where the
 build fails.
+
+---
+
+## KI-40
+
+**Blur renders wrong after resume from suspend or hibernate.** Reported by a
+user on GNOME Shell 51.1 (CachyOS, Wayland).
+
+**Symptom.** After a resume the blur looks wrong with unchanged settings.
+`gnome-extensions disable` then `enable` on `blur-my-shell@aunetx` fixes it
+until the next resume.
+
+**Root cause.** Upstream aunetx/blur-my-shell#700 and #850: v73's native
+Gaussian blur effects (`native_static_gaussian_blur`,
+`native_dynamic_gaussian_blur`) kept two radius values and reused the wrong
+one after resume. v76 (2026-10-18) replaced them with `dual_kawase_blur`.
+
+**Fix.** `BMS_REF` moves to v76 (`19ce844b8ca3`). `dconf/core.ini` ships v76's
+settings (`settings-version=7`, one Dual Kawase pipeline per surface, no
+`corner` effects), `upgrade_bms_settings` moves existing installs onto it, and
+the radius tokens became `TOKEN_BLUR_RADIUS_*` (`radius = 2 × sigma`,
+upstream's own mapping). Of the five v73 patches only the subwindow one was
+still needed; it was re-cut. gnome-rounded-blur and `hacks-level` were retired,
+since v76 uses neither. A live toggle is not an option on GNOME ≥ 51 (it
+crashes Mutter), so the reporter's resume-hook workaround was not adopted.
+
+**Verify.** Suspend and resume twice, hibernate once where supported: the blur
+stays right without touching the extension. Checked live on 2026-10-27 so far:
+v76 loads, settings migrate, overview previews, notifications, the top bar on
+two monitors and a blurred app's Save As dialog. The resume itself is pending.
 
 ---
 

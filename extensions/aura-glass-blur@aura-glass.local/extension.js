@@ -110,7 +110,7 @@ function readState(...parts) {
     }
 }
 
-// Mirrors Blur My Shell's own components/applications.js wildcardToRegex:
+// Mirrors Blur My Shell's own components/applications/window_rules.js wildcard_to_regex:
 // escape every regex metacharacter except * and ?, anchor at both ends,
 // * -> .*, ? -> ., case-insensitive. Brackets are escaped rather than left to
 // form a character class, so [abc] matches the three literal characters —
@@ -169,10 +169,10 @@ function rootWindowClass(window) {
     return classes.length ? classes[classes.length - 1] : null;
 }
 
-// Mirrors coversMonitor in patches/blur-my-shell-static-maximized.patch, so the
-// top bar shades for exactly the windows Blur My Shell treats as filling the
-// screen: maximized both ways, fullscreen, or sized over the whole work area
-// without either flag. The last is Tiling Assistant's drag-to-top or maximize
+// A window that fills the screen, for the top-bar shade: maximized both ways,
+// fullscreen, or sized over the whole work area without either flag. (The same
+// test once chose static blur behind such a window, in a Blur My Shell patch
+// dropped with v76.) The last is Tiling Assistant's drag-to-top or maximize
 // with maximize-with-gap on: it resizes to the work area instead of
 // maximizing, so GTK never sees the window as maximized either.
 function coversMonitor(window) {
@@ -186,9 +186,9 @@ function coversMonitor(window) {
         frame.y + frame.height >= area.y + area.height;
 }
 
-// The same frame-type gate check_blur applies in Blur My Shell's
-// components/applications.js (patched by patches/blur-my-shell-subwindows.patch
-// to include ATTACHED and UTILITY too) — a window neither this nor Blur My
+// The same frame-type gate Blur My Shell's components/applications/window_rules.js
+// applies (patched by patches/blur-my-shell-subwindows.patch to include
+// ATTACHED and UTILITY too) — a window neither this nor Blur My
 // Shell would ever blur is not offered up as something to blur.
 function isBlurrable(frameType) {
     return frameType === Meta.FrameType.NORMAL ||

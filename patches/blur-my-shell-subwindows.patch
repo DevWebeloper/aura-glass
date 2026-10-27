@@ -1,265 +1,95 @@
-diff --git a/src/components/applications.js b/src/components/applications.js
-index eda61e2..1e72aed 100644
---- a/src/components/applications.js
-+++ b/src/components/applications.js
-@@ -54,6 +54,17 @@ function matchesAnyPattern(value, patterns) {
-     return patterns.some(pattern => pattern.test(value));
- }
- 
-+
-+/// True when any of a window's classes matches. A window is filed under more
-+/// than one name: its own wm_class, the GApplication id GTK stamps on every
-+/// window one app opens, and the wm_class of each window it is transient for.
-+/// Matching only get_wm_class() leaves a dialog, a tool palette or a portal
-+/// file chooser unblurred beside the window it came out of — this list is
-+/// what makes "blur this app" mean the app rather than one of its windows.
-+function matchesAnyClass(values, patterns) {
-+    return values.some(value => matchesAnyPattern(value, patterns));
-+}
-+
- export const ApplicationsBlur = class ApplicationsBlur {
-     constructor(connections, settings, effects_manager) {
-         this.connections = connections;
-@@ -165,15 +176,20 @@ export const ApplicationsBlur = class ApplicationsBlur {
-     }
- 
-     /// Iterate through all existing windows and add blur as needed.
--    update_all_windows() {
-+    update_all_windows(rebuild = true) {
-         // Recompile patterns in case whitelist/blacklist changed
-         this._update_patterns();
- 
--        // remove all previously blurred windows, in the case where the
--        // whitelist was changed
--        this.meta_window_map.forEach(((_meta_window, pid) => {
--            this.remove_blur(pid);
--        }));
-+        // A pipeline refresh assigns new tracking IDs below. List/scope edits
-+        // only recheck selection, preserving unchanged actors and GPU effects.
-+        // When rebuilding, release the old IDs and Meta.Window listeners too,
-+        // or each refresh retains another entry per window and multiplies
-+        // callbacks on later window events.
-+        if (rebuild) {
-+            this.meta_window_map.forEach((_meta_window, pid) => {
-+                this.untrack_meta_window(pid);
-+            });
-+        }
- 
-         for (
-             let i = 0;
-@@ -183,14 +199,27 @@ export const ApplicationsBlur = class ApplicationsBlur {
-             let workspace = global.workspace_manager.get_workspace_by_index(i);
-             let windows = workspace.list_windows();
- 
--            windows.forEach(meta_window => this.track_new(meta_window));
-+            windows.forEach(meta_window => {
-+                if (!rebuild && this.meta_window_map.get(meta_window.bms_pid) === meta_window)
-+                    this.check_blur(meta_window);
-+                else
-+                    this.track_new(meta_window);
-+            });
-         }
-+        // Rebuilt windows have new IDs; retain the user's dynamic-opacity
-+        // behavior for the currently focused window without waiting for focus.
-+        this.init_dynamic_opacity();
-     }
- 
-     /// Adds the needed signals to every new tracked window, and adds blur if
-     /// needed.
-     /// Accepts only untracked meta windows (i.e no `bms_pid` set)
-     track_new(meta_window) {
-+        // Sticky windows may appear in several workspace lists, and a newly
-+        // mapped window may also arrive through window-created.
-+        if (this.meta_window_map.get(meta_window.bms_pid) === meta_window)
-+            return;
-+
-         // create a pid that will follow the window during its whole life
-         const pid = ("" + Math.random()).slice(2, 16);
-         meta_window.bms_pid = pid;
-@@ -206,6 +235,19 @@ export const ApplicationsBlur = class ApplicationsBlur {
+diff --git a/src/components/applications/index.js b/src/components/applications/index.js
+index a98c5e8..b3c8343 100644
+--- a/src/components/applications/index.js
++++ b/src/components/applications/index.js
+@@ -149,6 +149,13 @@ export const ApplicationsBlur = class ApplicationsBlur {
+             meta_window, 'notify::gtk-application-id',
              _ => this.check_blur(meta_window)
          );
- 
-+        // same for the GApplication id, and for a window's own transient-for
-+        // chain settling — 'shown' fires once the window is mapped, and for
-+        // some clients transient-for is only set by then, after this window
-+        // was already tracked from 'window-created'.
-+        this.connections.connect(
-+            meta_window, 'notify::gtk-application-id',
-+            _ => this.check_blur(meta_window)
-+        );
++        // Some clients only set transient-for once the window is mapped, after
++        // it was already tracked from 'window-created', so the rules run again
++        // when it is shown.
 +        this.connections.connect(
 +            meta_window, 'shown',
 +            _ => this.check_blur(meta_window)
 +        );
-+
-         // update the clip, position, and/or size when the window changes
+ 
          this.connections.connect(
-             meta_window, 'size-changed',
-@@ -224,19 +266,25 @@ export const ApplicationsBlur = class ApplicationsBlur {
-             _ => this.untrack_meta_window(pid)
-         );
+             meta_window, 'unmanaging',
+diff --git a/src/components/applications/window_rules.js b/src/components/applications/window_rules.js
+index 0ca7acc..8317207 100644
+--- a/src/components/applications/window_rules.js
++++ b/src/components/applications/window_rules.js
+@@ -4,6 +4,12 @@ const BLURRED_FRAME_TYPES = [
+     Meta.FrameType.NORMAL,
+     Meta.FrameType.DIALOG,
+     Meta.FrameType.MODAL_DIALOG,
++    // attach-modal-dialogs is true out of the box on GNOME, and Mutter reports
++    // an attached modal as ATTACHED rather than MODAL_DIALOG, which is why
++    // every modal dialog was the place the glass stopped. UTILITY covers tool
++    // palettes and floating panels the set above was already meant to include.
++    Meta.FrameType.ATTACHED,
++    Meta.FrameType.UTILITY,
+ ];
  
--        this.check_blur(meta_window);
--
--        if (this.settings.applications.STATIC_BLUR && meta_window.get_client_type() === Meta.WindowClientType.X11) {
--            const window_actor = meta_window.get_compositor_private();
--            window_actor.connect('child-added', _ => {
--                if (!meta_window.blur_actor) {
--                    this._warn("can't move blur actor to back, it doesn't exist");
--                    return;
--                }
-+        // Window-state listeners belong to tracking, not each blur effect.
-+        // Class/list changes can recreate the effect many times per window.
-+        this.connections.connect(
-+            meta_window, 'notify::maximized-horizontally',
-+            _ => this.update_corner_radius(meta_window)
-+        );
-+        this.connections.connect(
-+            meta_window, 'notify::maximized-vertically',
-+            _ => this.update_corner_radius(meta_window)
-+        );
-+        this.connections.connect(
-+            meta_window, 'notify::fullscreen',
-+            _ => {
-+                this.update_corner_radius(meta_window);
-+                this.reconcile_window_visibility(meta_window);
-+            }
-+        );
+ /// Converts a case-insensitive wildcard pattern, where `*` matches any sequence and `?` any single
+@@ -18,6 +24,39 @@ function matches_any(value, patterns) {
+     return Boolean(value) && patterns.some(pattern => pattern.test(value));
+ }
  
--                window_actor.set_child_below_sibling(meta_window.blur_actor, null);
--            });
--        }
-+        this.check_blur(meta_window);
-     }
- 
-     /// Updates the size of the blur actor associated to a meta window from its pid.
-@@ -288,6 +336,30 @@ export const ApplicationsBlur = class ApplicationsBlur {
-     /// Checks if the given actor needs to be blurred.
-     /// Accepts only tracked meta window, be it blurred or not.
-     ///
-+    /// Every class a window can be matched under: its own wm_class, its GTK
-+    /// application id, and the same two for each window up its transient-for
-+    /// chain — so a dialog, a tool palette, or a cross-process file chooser
-+    /// inherits the decision made for the app it came out of. Bounded and
-+    /// cycle-guarded: transient-for loops are malformed, but a client can
-+    /// still set one, and this runs on every window event.
-+    window_classes(meta_window) {
-+        const classes = [];
-+        const push = v => { if (v && !classes.includes(v)) classes.push(v); };
++/// True when any of a window's classes matches.
++function matches_any_class(values, patterns) {
++    return values.some(value => matches_any(value, patterns));
++}
 +
-+        push(meta_window.get_wm_class());
-+        push(meta_window.get_gtk_application_id());
++/// Every class a window can be matched under: its own wm_class, its GTK
++/// application id, and the same two for each window up its transient-for
++/// chain, so a dialog, a tool palette or a cross-process file chooser inherits
++/// the decision made for the app it came out of. Matching only get_wm_class()
++/// left those unblurred beside the window they came out of. Bounded and
++/// cycle-guarded: transient-for loops are malformed, but a client can still
++/// set one, and this runs on every window event.
++function window_classes(meta_window) {
++    const classes = [];
++    const push = value => {
++        if (value && !classes.includes(value))
++            classes.push(value);
++    };
 +
-+        const seen = new Set([meta_window]);
-+        let parent = meta_window.get_transient_for();
-+        for (let depth = 0; parent && depth < 8 && !seen.has(parent); depth++) {
-+            seen.add(parent);
-+            push(parent.get_wm_class());
-+            push(parent.get_gtk_application_id());
-+            parent = parent.get_transient_for();
-+        }
-+        return classes;
++    push(meta_window.get_wm_class());
++    push(meta_window.get_gtk_application_id());
++
++    const seen = new Set([meta_window]);
++    let parent = meta_window.get_transient_for();
++    for (let depth = 0; parent && depth < 8 && !seen.has(parent); depth++) {
++        seen.add(parent);
++        push(parent.get_wm_class());
++        push(parent.get_gtk_application_id());
++        parent = parent.get_transient_for();
 +    }
++    return classes;
++}
 +
-     /// In order to be blurred, a window either:
-     /// - is whitelisted in the user preferences if not enable-all
-     /// - is not blacklisted if enable-all
-@@ -297,23 +369,31 @@ export const ApplicationsBlur = class ApplicationsBlur {
-     /// - ? matches any single character
-     /// - Matching is case-insensitive
-     check_blur(meta_window) {
--        const window_wm_class = meta_window.get_wm_class();
-+        const window_classes = this.window_classes(meta_window);
-         const enable_all = this.settings.applications.ENABLE_ALL;
--        if (window_wm_class)
--            this._log(`pid ${meta_window.bms_pid} associated to wm class name ${window_wm_class}`);
-+        if (window_classes.length > 0)
-+            this._log(`pid ${meta_window.bms_pid} associated to classes ${window_classes.join(', ')}`);
- 
- 
-         // if we are in blacklist mode and the window is not blacklisted
-         // or if we are in whitelist mode and the window is whitelisted
-         if (
--            window_wm_class !== ""
--            && ((enable_all && !matchesAnyPattern(window_wm_class, this._compiled_blacklist))
--                || (!enable_all && matchesAnyPattern(window_wm_class, this._compiled_whitelist))
-+            window_classes.length > 0
-+            && (matchesAnyClass(window_classes, this._compiled_whitelist)
-+                || (enable_all && !matchesAnyClass(window_classes, this._compiled_blacklist))
-             )
-             && [
-                 Meta.FrameType.NORMAL,
-                 Meta.FrameType.DIALOG,
--                Meta.FrameType.MODAL_DIALOG
-+                Meta.FrameType.MODAL_DIALOG,
-+                // attach-modal-dialogs is true out of the box on GNOME, and
-+                // Mutter reports an attached modal as ATTACHED rather than
-+                // MODAL_DIALOG — which is why every modal dialog was the
-+                // place the glass stopped. UTILITY covers tool palettes and
-+                // floating panels the same NORMAL/DIALOG/MODAL_DIALOG set
-+                // was already meant to include.
-+                Meta.FrameType.ATTACHED,
-+                Meta.FrameType.UTILITY
-             ].includes(meta_window.get_frame_type())
-         ) {
-             // only blur the window if it is not already done
-@@ -377,24 +457,18 @@ export const ApplicationsBlur = class ApplicationsBlur {
- 
-         // now set up the signals, for the window actor only: they are disconnected
-         // in `remove_blur`, whereas the signals for the meta window are disconnected
--        // only when the whole component is disabled
-+        // when the window is untracked or the whole component is disabled
- 
--        // listen for window state changes (maximized/fullscreen)
--        this.connections.connect(
--            meta_window, 'notify::maximized-horizontally',
--            _ => this.update_corner_radius(meta_window)
--        );
--        this.connections.connect(
--            meta_window, 'notify::maximized-vertically',
--            _ => this.update_corner_radius(meta_window)
--        );
--        this.connections.connect(
--            meta_window, 'notify::fullscreen',
--            _ => {
--                this.update_corner_radius(meta_window);
--                this.reconcile_window_visibility(meta_window);
--            }
--        );
-+        if (this.settings.applications.STATIC_BLUR && meta_window.get_client_type() === Meta.WindowClientType.X11) {
-+            this.connections.connect(window_actor, 'child-added', _ => {
-+                if (!meta_window.blur_actor) {
-+                    this._warn("can't move blur actor to back, it doesn't exist");
-+                    return;
-+                }
-+
-+                window_actor.set_child_below_sibling(meta_window.blur_actor, null);
-+            });
-+        }
- 
-         // update the window opacity when it changes, else we don't control it fully
-         this.connections.connect(
-@@ -574,7 +648,10 @@ export const ApplicationsBlur = class ApplicationsBlur {
-         this._log("resetting...");
- 
-         this.disable();
--        setTimeout(_ => this.enable(), 1);
-+        this._enable_timeout_id = setTimeout(() => {
-+            this._enable_timeout_id = null;
-+            this.enable();
-+        }, 1);
+ /// Decides which windows are blurred: when blurring every window, those not in the blacklist,
+ /// else only those in the whitelist.
+ export class WindowRules {
+@@ -31,12 +70,14 @@ export class WindowRules {
+         this.blacklist = this.settings.applications.BLACKLIST.map(wildcard_to_regex);
      }
  
-     change_pipeline() {
-@@ -630,6 +707,10 @@ export const ApplicationsBlur = class ApplicationsBlur {
++    /// The whitelist is consulted in both modes, so a window listed there is
++    /// blurred even when blurring every window would block one of its classes.
+     matches(meta_window) {
+-        const wm_class = meta_window.get_wm_class();
+-        const listed = this.settings.applications.ENABLE_ALL
+-            ? !matches_any(wm_class, this.blacklist)
+-            : matches_any(wm_class, this.whitelist);
+-        return wm_class !== ''
++        const classes = window_classes(meta_window);
++        const listed = matches_any_class(classes, this.whitelist)
++            || (this.settings.applications.ENABLE_ALL
++                && !matches_any_class(classes, this.blacklist));
++        return classes.length > 0
+             && listed
+             && BLURRED_FRAME_TYPES.includes(meta_window.get_frame_type());
      }
- 
-     disable() {
-+        if (this._enable_timeout_id) {
-+            clearTimeout(this._enable_timeout_id);
-+            this._enable_timeout_id = null;
-+        }
-         this._log("removing blur from applications...");
- 
-         this.service?.unexport();

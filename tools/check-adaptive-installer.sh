@@ -8,7 +8,8 @@
 # transient overlay, the other the ordinary mode switch, and what each leaves
 # in dconf and in the generated sheets is compared. That is the KI-25 shape:
 # the tray profile used to be a hand-kept subset of the switch and differed in
-# the shell sheet, the app sheet, hacks-level and the OSD alpha, none of which
+# the shell sheet, the app sheet, Blur My Shell's old hacks-level and the OSD
+# alpha, none of which
 # a check against a fabricated memo could see.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -148,9 +149,9 @@ for key in panel overview appfolder lockscreen window-list screenshot popup appl
          "/org/gnome/shell/extensions/blur-my-shell/$key/blur")" = false ] \
         || failures+=("active: blur-my-shell/$key/blur is not false")
 done
-[ "$(HOME="$scratch/tray" "$scratch/tray/fakebin/dconf" read \
-     /org/gnome/shell/extensions/blur-my-shell/hacks-level)" = 0 ] \
-    || failures+=("active: hacks-level was left at Frosted's value")
+[ -z "$(HOME="$scratch/tray" "$scratch/tray/fakebin/dconf" read \
+     /org/gnome/shell/extensions/blur-my-shell/hacks-level)" ] \
+    || failures+=("active: wrote the removed hacks-level")
 
 # --- 2. restore == the Frosted install it came from -------------------------
 : > "$scratch/tray/ext.log"

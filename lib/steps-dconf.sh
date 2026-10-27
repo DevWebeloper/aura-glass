@@ -11,7 +11,7 @@
 # Sourced by install.sh.
 
 # The keys a glass mode owns are exactly the ones dconf/solid.ini sets: every
-# Blur My Shell component's blur switch, its hacks level and the OSD alpha.
+# Blur My Shell component's blur switch and the OSD alpha.
 # A fresh install gets them from loading the preset, but an existing install
 # skips the preset to keep the user's own extension settings — so on that path
 # a mode switch used to move only the three components an apply_* below owns
@@ -198,6 +198,63 @@ apply_dconf_merge() {
     [ "$n" = 0 ] || ok "$n preset value(s) from $1 brought up to date, your own settings kept"
 }
 
+# Blur My Shell v76 keeps every blur's radius and brightness in the pipelines
+# blob, and migrates older settings into it once, on its first load, when
+# settings-version is below its own (7). That migration turns each dynamic
+# component's legacy sigma into a new "Migrated dynamic blur" pipeline and
+# repoints the component at it, where apply_blur_strength, the brightness
+# writers and apply_glass_style cannot reach it. merge_dconf_preset cannot fix
+# that either: it keeps any value the user's dconf holds that this repo never
+# shipped, and both a v73 install's rewritten blob and v76's migrated pipelines
+# are such values.
+#
+# So an install still below v76's version, or one v76 has already migrated,
+# gets dconf/core.ini's pipelines blob, settings-version and every component's
+# pipeline key written over it, once, and the legacy keys v76 reads only while
+# migrating are reset. Every writer above then shapes core.ini's pipelines as
+# on a fresh install. Custom pipelines a user built in Blur My Shell's own
+# preferences on v73 are lost; no component of this preset pointed at one.
+upgrade_bms_settings() {
+    local base=/org/gnome/shell/extensions/blur-my-shell
+    local version migrated=0 section
+    version="$(dconf read "$base/settings-version" 2>/dev/null || true)"
+    for section in appfolder applications dash-to-dock panel popup window-list; do
+        case "$(dconf read "$base/$section/pipeline" 2>/dev/null || true)" in
+            "'pipeline_migrated_dynamic_blur"*) migrated=1 ;;
+        esac
+    done
+    if [ "${version:-0}" -ge 7 ] 2>/dev/null && [ "$migrated" = 0 ]; then
+        return 0
+    fi
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: move the Blur My Shell settings to dconf/core.ini's v76 pipelines"
+        return 0
+    fi
+
+    local key value
+    while IFS="$(printf '\t')" read -r key value; do
+        [ -n "$key" ] || continue
+        run dconf write "/org/gnome/shell/extensions/$key" "$value"
+    done < <(python3 - "$REPO_ROOT/dconf/core.ini" <<'UPGRADE_PY'
+import configparser, sys
+p = configparser.ConfigParser(interpolation=None, strict=False)
+p.optionxform = str
+p.read(sys.argv[1], encoding="utf-8")
+for key in ("pipelines", "settings-version"):
+    print("blur-my-shell/%s\t%s" % (key, p["blur-my-shell"][key]))
+for section in p.sections():
+    if section.startswith("blur-my-shell/") and p.has_option(section, "pipeline"):
+        print("%s/pipeline\t%s" % (section, p[section]["pipeline"]))
+UPGRADE_PY
+)
+    for section in "" appfolder applications dash-to-dock panel popup window-list; do
+        for key in sigma brightness customize; do
+            run dconf reset "$base/${section:+$section/}$key"
+        done
+    done
+    ok "Blur My Shell settings moved to the v76 pipelines (each surface on its own)"
+}
+
 load_dconf() {
     step "Loading the dconf preset"
 
@@ -217,6 +274,9 @@ load_dconf() {
 
     if [ "$is_update" = 1 ] && [ "$has_core_dconf" = 1 ] && [ "${FORCE:-0}" != 1 ]; then
         ok "existing extension settings preserved (theme update)"
+        # Before the merge, which would move settings-version to 7 from the
+        # 2 this repo shipped and so hide that the pipelines are still v73's.
+        upgrade_bms_settings
         apply_dconf_merge dconf/core.ini dconf/solid.ini
         if [ "${WANT_EXTRAS:-0}" = 1 ]; then apply_dconf_merge dconf/extras.ini; fi
         sync_mode_owned_keys
@@ -263,7 +323,6 @@ load_dconf() {
     apply_app_blur
     apply_app_opacity
     apply_fullscreen_blur
-    pin_frosted_hacks_level
     apply_radius_dconf
     apply_glass_style
     sync_osd_profile
@@ -306,80 +365,7 @@ apply_radius_dconf() {
     run dconf write "$base/popup/dialog-corner-radius" "$TOKEN_RADIUS_DIALOG"
     run dconf write "$base/popup/corner-radius" "$TOKEN_RADIUS_POPUP"
     run dconf write "$base/popup/osd-corner-radius" "$TOKEN_RADIUS_OSD"
-    apply_pipeline_radius
     ok "blur corner radii follow the '${RADIUS_PRESET:-default}' preset"
-}
-
-# The window corner again, in the other place Blur My Shell keeps it.
-#
-# [applications] names a pipeline, and that pipeline carries a `corner` effect
-# with a radius of its own — so the blur behind an app window is rounded twice
-# over, by corner-radius above and by the effect here. Only the first moved with
-# a preset, which left a `soft` desktop rounding one at 16 and the other at 30:
-# the two-stacked-surfaces fault tokens/tokens.sh exists to prevent, inside a
-# single component.
-#
-# Every pipeline lives in one GVariant blob under `pipelines`, so this is a
-# read-modify-write of one number inside it rather than a key to set. The
-# pattern comes from tools/token_manifest.py — the same list
-# tools/check-tokens.sh asserts dconf/core.ini against — so the shipped value
-# and the value moved here cannot drift apart. It matches by pipeline name: the
-# id beside it is generated per machine and is not a thing to hard-code.
-#
-# The other three corner effects are left alone deliberately. `panel` and `dock`
-# round surfaces that are not among the eight a preset covers, and
-# `default rounded` is named by no component at all.
-#
-# Runs after apply_blur_strength, which rewrites the same key. That one only
-# ever touches `unscaled_radius`, so the two do not fight over a value — but it
-# also resets the whole blob from the shipped literal in bin/aura-glass-preview,
-# so the order is fixed rather than incidental.
-apply_pipeline_radius() {
-    if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: round the windows blur pipeline at $TOKEN_RADIUS_WINDOW"
-        return 0
-    fi
-    python3 - "$REPO_ROOT" "$TOKEN_RADIUS_WINDOW" <<'PIPELINE_PY' || { warn "could not round the windows blur pipeline"; return 0; }
-import os
-import re
-import subprocess
-import sys
-
-root, want = sys.argv[1], sys.argv[2]
-sys.path.insert(0, os.path.join(root, "tools"))
-from token_manifest import raw_entries
-
-KEY = "/org/gnome/shell/extensions/blur-my-shell/pipelines"
-cur = subprocess.run(["dconf", "read", KEY],
-                     capture_output=True, text=True).stdout.strip()
-if not cur:
-    sys.exit(0)
-
-new = cur
-for _token, _kind, _rel, pattern in raw_entries({"TOKEN_RADIUS_WINDOW"}):
-    matches = list(re.finditer(pattern, new, re.M))
-    if not matches:
-        # Blur My Shell renamed the pipeline, or this machine never had it.
-        # Said out loud rather than passed over: the painted corner has already
-        # moved by the time this runs, so a silent miss here is exactly the
-        # mismatch this function exists to close.
-        print("no `windows` pipeline in %s — its blur corner stays where it is"
-              % KEY, file=sys.stderr)
-        continue
-    # From the end, so an earlier replacement cannot move a later span.
-    for m in reversed(matches):
-        for i in range(1, (m.lastindex or 0) + 1):
-            start, end = m.span(i)
-            new = new[:start] + want + new[end:]
-
-# dconf prints a double back in full (0.7 as 0.69999999999999996), so the
-# texts differ even when nothing moved. Compared as numbers, an unchanged
-# blob is not written again — a pipelines write rebuilds every blur effect.
-_num = re.compile(r"-?\d+\.\d+(?:e[-+]?\d+)?")
-if (_num.sub(lambda m: repr(float(m.group())), new)
-        != _num.sub(lambda m: repr(float(m.group())), cur)):
-    subprocess.run(["dconf", "write", KEY, new], check=True)
-PIPELINE_PY
 }
 
 # The material on the top bar and the dock, and optionally behind app windows:
@@ -391,19 +377,19 @@ PIPELINE_PY
 # takes on the accent's hue) or smoked (the luminosity effect again, darker
 # and greyer, so white text on it reads more easily).
 #
-# Only on static blur. Blur My Shell runs a pipeline's extra effects on static
-# blur alone: a dynamic surface goes through DummyPipeline, which builds the
-# native blur and nothing else from it. Chaining one more shader after a
-# dynamic blur does not work either. The shader gets the actor's own texture,
-# which is empty, not the blurred backdrop. That is the same reason a dynamic
-# popup's corners come out square without gnome-rounded-blur (see
-# [blur-my-shell/popup] in dconf/core.ini). So liquid switches the dock to
+# Only on static blur. Blur My Shell v73 ran a pipeline's extra effects on
+# static blur alone: a dynamic surface went through DummyPipeline, which built
+# the native blur and nothing else from it, and a shader chained after a
+# dynamic blur got the actor's own texture, which is empty, not the blurred
+# backdrop. v76 sends dynamic blur through the whole pipeline instead
+# (render/backdrop/), but the styles have not been tried on it, so they still
+# keep to static surfaces. So liquid switches the dock to
 # static blur, which blurs the wallpaper rather than the windows passing behind
 # it. App windows follow only when --liquid-windows asks, for the same trade
 # on a much bigger surface: every blurred window then shows the wallpaper
 # behind it, not the window under it. Menus and notifications keep their
 # dynamic frosted blur. Their pipeline is one for every popup surface, with
-# radii from 12 to 33, and one refraction corner radius cannot fit them all.
+# radii from 12 to 33, and one refraction across all of them was not wanted.
 #
 # Static blur is computed once per wallpaper or layout change, so the shader
 # costs nothing while the desktop repaints. Measured on the panel with
@@ -427,13 +413,8 @@ PIPELINE_PY
 # a switch from liquid or vibrant with windows on puts the windows' dynamic
 # blur back. Each already has a dynamic-safe counterpart on windows, owned by
 # its own flag and memo and left alone here: smoked is what a lower
-# --window-brightness does to the native blur behind a window, and tinted is
+# --window-brightness does to the blur behind a window, and tinted is
 # what --app-tint-color does to the window's own ground.
-#
-# The refraction effect rounds its own edge, so its corner radius must be the
-# one the pipeline's corner effect cuts at, or the rim would bend a corner the
-# corner effect has already cut away. It is read from that effect at run time
-# rather than kept as another copy of the number.
 #
 # Our effects are told apart by their id prefix and removed before anything is
 # added, so a re-run, a switch back to frosted and apply_blur_strength's blob
@@ -555,20 +536,20 @@ new = OURS.sub(strip, cur)
 # The refraction effect's look is Blur My Shell's own default (strength 0.42,
 # bezel 22, falloff 2.4, rim 4.8, gloss 0.55, shadow 0.28). The three
 # values that differ only remove cost or a second copy of something:
-#   blur_radius 0     the native blur before it has already blurred. Its own
-#                     blur would be a second gaussian, run once per pass.
+#   blur_radius 0     the Dual Kawase blur before it has already blurred. Its
+#                     own blur would be a second one, run once per pass.
 #   rgb_fringing 0    one backdrop read per pixel instead of three. The
 #                     colour split also read as a defect on white text.
 #   tint 0            the tint is css/'s job (--shell-tint-color). A second
 #                     one here would ignore that choice.
+# v76 dropped the effect's corner_radius: it rounds the refraction from the
+# component's own corner, as it does the blur.
 LIQUID = ("'strength': <0.42>, 'blur_radius': <0.0>, 'edge_size': <22.0>, "
-          "'falloff': <2.4>, 'corner_radius': <%s>, 'rim_width': <4.8>, "
+          "'falloff': <2.4>, 'rim_width': <4.8>, "
           "'rgb_fringing': <0.0>, 'gloss': <0.55>, 'tint': <0.0>, "
           "'shadow': <0.28>")
-BLUR = re.compile(r"<\{'type': <'native_static_gaussian_blur'>, 'id': <'[^']*'>, "
+BLUR = re.compile(r"<\{'type': <'dual_kawase_blur'>, 'id': <'[^']*'>, "
                   r"'params': <\{[^{}]*\}>\}>")
-CORNER = re.compile(r"'type': <'corner'>, 'id': <'[^']*'>, "
-                    r"'params': <\{'radius': <([0-9.]+)>")
 
 
 def effects_span(blob, name):
@@ -602,14 +583,12 @@ if want == "liquid":
             continue
         effects = new[span[0]:span[1]]
         blur = BLUR.search(effects)
-        corner = CORNER.search(effects)
         if blur is None:
             print("the `%s` pipeline has no static blur — it stays frosted"
                   % name, file=sys.stderr)
             continue
-        radius = float(corner.group(1)) if corner else 0.0
         effect = ("<{'type': <'refraction'>, 'id': <'%srefraction_%s'>, "
-                  "'params': <{%s}>}>" % (PREFIX, name, LIQUID % repr(radius)))
+                  "'params': <{%s}>}>" % (PREFIX, name, LIQUID))
         at = span[0] + blur.end()
         new = new[:at] + ", " + effect + new[at:]
 
@@ -688,23 +667,21 @@ for name in names if want in ("vibrant", "tinted", "smoked") else []:
               % name, file=sys.stderr)
         continue
     effect = style_effect(name)
-    # Never after a corner effect. The luminosity shader divides hue and
-    # saturation, not only the value, by alpha, so on the corner's
+    # Always ahead of the blur. The luminosity shader divides hue and
+    # saturation, not only the value, by alpha, so on a rounded corner's
     # anti-aliased edge it turns the hue: a magenta rim round the whole top
-    # bar in the preview, whose pipeline cuts its corner before the blur.
-    # Before that corner the texture is opaque everywhere and the effect
-    # still reaches the blur, just ahead of it rather than behind. The color
-    # effect does not divide, but goes in the same place so every style
-    # shapes the same pixels.
-    corner = CORNER.search(effects)
-    if corner is not None and corner.start() < blur.start():
-        at = span[0] + effects.rfind("<{", 0, corner.start())
-        new = new[:at] + effect + ", " + new[at:]
-    else:
-        at = span[0] + blur.end()
-        new = new[:at] + ", " + effect + new[at:]
+    # bar in the preview, back when its pipeline cut a corner effect. v76 cuts
+    # the corner in the blur's own output pass, so after the blur every
+    # rounded surface has that edge. Ahead of it the texture is opaque
+    # everywhere and the effect still reaches the blur. The color effect does
+    # not divide, but goes in the same place so every style shapes the same
+    # pixels.
+    at = span[0] + blur.start()
+    new = new[:at] + effect + ", " + new[at:]
 
-# Compared as numbers: see the note in apply_pipeline_radius.
+# dconf prints a double back in full (0.7 as 0.69999999999999996), so the
+# texts differ even when nothing moved. Compared as numbers, an unchanged
+# blob is not written again — a pipelines write rebuilds every blur effect.
 _num = re.compile(r"-?\d+\.\d+(?:e[-+]?\d+)?")
 if (_num.sub(lambda m: repr(float(m.group())), new)
         != _num.sub(lambda m: repr(float(m.group())), cur)):
@@ -814,24 +791,6 @@ apply_fullscreen_blur() {
     fi
 }
 
-# Frosted repaints the whole stage every frame: Blur My Shell's hacks-level at
-# core.ini's value (2). See hacks-level there for why lower levels were tried and
-# dropped. Written on every frosted run, not only on the way in from another
-# mode, because a short-lived --blur-refresh (2026-10-22) left installs at 0 and
-# load_dconf skips core.ini on an existing install. Its memo goes with it.
-# Performance and the adaptive overlay keep solid.ini's 0, so nothing is written
-# while blur is off. run skips the write when the level is already in place,
-# which matters: every change of level restarts Blur My Shell.
-pin_frosted_hacks_level() {
-    if remembering; then rm -f "$CONF_DIR/blur-refresh"; fi
-    [ "${WANT_BLUR:-1}" = 1 ] || return 0
-    local key value
-    while IFS="$(printf '\t')" read -r key value; do
-        [ "$key" = blur-my-shell/hacks-level ] || continue
-        run dconf write "/org/gnome/shell/extensions/$key" "$value"
-    done < <(mode_owned_dconf_keys 1)
-}
-
 # The popup keys themselves ship in dconf/core.ini so the whole preset stays
 # readable in one file. Two things cannot live there:
 #
@@ -840,9 +799,8 @@ pin_frosted_hacks_level() {
 # --no-popup-blur. Same reason --grain and --icons are remembered.
 #
 # static-blur is kept false: popup and Quick Settings blur is dynamic,
-# sampling whatever is behind the menu in real time. Corner rounding is handled
-# natively when gnome-rounded-blur is available, or via Blur My Shell's corner
-# shader fallback.
+# sampling whatever is behind the menu in real time. v76 rounds the corners in
+# the blur's own output pass.
 # Which windows the applications component treats, as wm_class patterns.
 #
 # Blur My Shell compiles these and matches a window's wm_class against them
@@ -1134,8 +1092,8 @@ apply_popup_blur() {
 # Notification banners and the history cards in the date menu, gated by the
 # patched popup component's own `notification` key — independent of
 # popup/blur, the same way this project's --popup-blur and
-# --notification-blur flags are independent of each other. static-blur and
-# rounded-blur-found stay apply_popup_blur's business: they are settings on
+# --notification-blur flags are independent of each other. static-blur stays
+# apply_popup_blur's business: it is a setting on
 # the popup component as a whole, not on this surface alone, and the popup
 # blur switch already decides them whenever it runs.
 apply_notification_blur() {
@@ -1248,7 +1206,7 @@ cur = subprocess.run(["dconf", "read", KEY], capture_output=True, text=True).std
 if not cur:
     sys.exit(0)
 new = re.sub(r"('noise': <)[0-9.]+(>)", lambda m: m.group(1) + repr(want) + m.group(2), cur)
-# Compared as numbers: see the note in apply_pipeline_radius.
+# Compared as numbers: see the note in apply_glass_style.
 _num = re.compile(r"-?\d+\.\d+(?:e[-+]?\d+)?")
 if (_num.sub(lambda m: repr(float(m.group())), new)
         != _num.sub(lambda m: repr(float(m.group())), cur)):
@@ -1333,12 +1291,6 @@ apply_popup_brightness() {
         return 0
     fi
 
-    local base=/org/gnome/shell/extensions/blur-my-shell
-    # LC_NUMERIC=C: mawk (Debian's awk) prints the locale's decimal comma,
-    # and dconf rejects 1,15 as GVariant text (#18).
-    run dconf write "$base/popup/brightness" \
-        "$(LC_NUMERIC=C awk -v p="$want" 'BEGIN { printf "%.2f", p / 100 }')"
-
     python3 "$REPO_ROOT/tools/apply-popup-brightness.py" "$want" \
         || { warn "could not light the popup blur"; return 0; }
 
@@ -1373,11 +1325,6 @@ apply_window_brightness() {
         return 0
     fi
 
-    local base=/org/gnome/shell/extensions/blur-my-shell
-    # LC_NUMERIC=C for the same reason as the popup brightness (#18).
-    run dconf write "$base/applications/brightness" \
-        "$(LC_NUMERIC=C awk -v p="$want" 'BEGIN { printf "%.2f", p / 100 }')"
-
     python3 - "$want" <<'PY' || { warn "could not light the window blur"; return 0; }
 import re, subprocess, sys
 want = int(sys.argv[1]) / 100.0
@@ -1394,7 +1341,7 @@ if pipe_name and blob and pipe_name in blob:
                     lambda m: "%s%s%s" % (m.group(1), repr(want), m.group(3)),
                     blob[start:end])
     new = blob[:start] + sliced + blob[end:]
-    # Compared as numbers: see the note in apply_pipeline_radius.
+    # Compared as numbers: see the note in apply_glass_style.
     _num = re.compile(r"-?\d+\.\d+(?:e[-+]?\d+)?")
     if (_num.sub(lambda m: repr(float(m.group())), new)
             != _num.sub(lambda m: repr(float(m.group())), blob)):
@@ -1445,10 +1392,9 @@ apply_blur_strength() {
         return 0
     fi
 
-    # Ordinary 100% follows dconf/core.ini already, so it need not rewrite six
-    # keys.  A transient restore is different: it follows an earlier adaptive
-    # downshift, and has to put those keys back to 100 without changing the
-    # user's blur-strength memo.
+    # Ordinary 100% follows dconf/core.ini already.  A transient restore is
+    # different: it follows an earlier adaptive downshift, and has to put the
+    # radii back to 100 without changing the user's blur-strength memo.
     if [ "$want" = 100 ] && [ -z "${ADAPTIVE_BLUR:-}" ]; then
         if remembering; then
             mkdir -p "$CONF_DIR"
@@ -1461,21 +1407,8 @@ apply_blur_strength() {
         return 0
     fi
 
-    local base=/org/gnome/shell/extensions/blur-my-shell
-    local pair name token scaled
-    for pair in "panel:$TOKEN_SIGMA_PANEL" "appfolder:$TOKEN_SIGMA_APPFOLDER" \
-                "popup:$TOKEN_SIGMA_POPUP" "window-list:$TOKEN_SIGMA_WINDOW_LIST" \
-                "applications:$TOKEN_SIGMA_APPLICATIONS" \
-                "dash-to-dock:$TOKEN_SIGMA_DASH_TO_DOCK"; do
-        name="${pair%%:*}"; token="${pair##*:}"
-        # Rounded, floored at 1. A sigma of 0 is not a fainter blur, it is the
-        # effect switched off, and the switches on the Glass page are where
-        # that answer lives.
-        scaled=$(( (token * want + 50) / 100 ))
-        [ "$scaled" -lt 1 ] && scaled=1
-        run dconf write "$base/$name/sigma" "$scaled"
-    done
-
+    # Every surface's radius is in its own pipeline (dconf/core.ini), so
+    # scaling the pipelines is the whole job: v76 reads no sigma key.
 python3 - "$want" "$REPO_ROOT" <<'PY' || { warn "could not scale the blur pipelines"; return 0; }
 import os
 import re
@@ -1497,7 +1430,7 @@ if os.path.isfile(core_ini):
                 base_blob = line[len("pipelines="):].strip()
                 break
 
-pattern = r"(\{'type': <'native_static_gaussian_blur'>, 'id': <'([^']+)'>, 'params': <\{'unscaled_radius': <)([0-9.]+)(>)"
+pattern = r"(\{'type': <'dual_kawase_blur'>, 'id': <'([^']+)'>, 'params': <\{'unscaled_radius': <)([0-9.]+)(>)"
 baseline_radii = {match[1]: float(match[2]) for match in re.findall(pattern, base_blob)}
 
 cur = subprocess.run(["dconf", "read", KEY],
@@ -1514,12 +1447,15 @@ def scale(match):
     suffix = match.group(4)
     raw = float(match.group(3))
     base_radius = baseline_radii.get(effect_id, raw)
-    target_radius = max(1.0, round(base_radius * want_ratio, 1))
+    # Floored at 1: a radius of 0 is not a fainter blur, it is the effect
+    # switched off, and the switches on the Glass page are where that answer
+    # lives. Capped at 100, the most v76 accepts.
+    target_radius = min(100.0, max(1.0, round(base_radius * want_ratio, 1)))
     return "%s%s%s" % (prefix, repr(target_radius), suffix)
 
 
 new = re.sub(pattern, scale, cur)
-# Compared as numbers: see the note in apply_pipeline_radius.
+# Compared as numbers: see the note in apply_glass_style.
 _num = re.compile(r"-?\d+\.\d+(?:e[-+]?\d+)?")
 if (_num.sub(lambda m: repr(float(m.group())), new)
         != _num.sub(lambda m: repr(float(m.group())), cur)):

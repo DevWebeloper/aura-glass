@@ -4,9 +4,8 @@
 #
 #   https://github.com/DevWebeloper/aura-glass
 #
-# Nothing here needs root except the optional dependency install, the
-# optional rounded-blur library, and the optional GDM login screen theme:
-# every other asset lands under $HOME.
+# Nothing here needs root except the optional dependency install and the
+# optional GDM login screen theme: every other asset lands under $HOME.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -118,8 +117,6 @@ WINDOW_BUTTONS=""        # empty = leave the titlebar as the system has it
 WINDOW_BUTTONS_EXPLICIT=""
 TITLEBUTTON_STYLE=""     # empty = remembered choice, then minimal
 TITLEBUTTON_STYLE_EXPLICIT=""
-WANT_ROUNDED_BLUR=1
-ROUNDED_BLUR_EXPLICIT=""   # only --rounded-blur / --no-rounded-blur: --no-blur's forced 0 is not a choice
 APP_TRANSPARENCY=""   # empty = remembered choice, then off (e.g. 0.90 / 90%)
 APP_TRANSPARENCY_EXPLICIT=""
 APP_OPACITY=""        # empty = remembered choice, then 255 (e.g. 230)
@@ -297,7 +294,7 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       terminal. Questions are still asked here. On by itself
                       when the setup wizard started the run
     --verify          check an existing install (stylesheets, theme, each
-                      extension, the rounded-blur library, icons, pointer,
+                      extension, icons, pointer,
                       settings app, login screen) and stop. Exits 1 if any
                       check fails
     --window-buttons WHICH
@@ -319,9 +316,6 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --no-blur         no blur anywhere, opaque surfaces instead of translucent
                       ones, with the rest of the theme intact (best for low-end
                       GPUs or battery saver)
-    --no-rounded-blur skip gnome-rounded-blur library (popup blur rounds
-                      through a corner shader instead). Without it a failed
-                      build stops the install before anything is changed
     --gdm             theme the GDM login screen with blurred Aura Glass style (requires sudo)
     --gdm-background PATH
                       set custom background image for GDM (default: blurred wallpaper)
@@ -456,9 +450,11 @@ parse_flags() {
         --no-blur)       WANT_BLUR=0; BLUR_EXPLICIT=1; WANT_POPUP_BLUR=0; POPUP_BLUR_EXPLICIT=1
                          WANT_NOTIFICATION_BLUR=0; NOTIFICATION_BLUR_EXPLICIT=1
                          WANT_WINDOW_BLUR=0; WINDOW_BLUR_EXPLICIT=1
-                         WANT_ROUNDED_BLUR=0; EXPLICIT_FLAGS=1; shift ;;
-        --rounded-blur)      WANT_ROUNDED_BLUR=1; ROUNDED_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
-        --no-rounded-blur)   WANT_ROUNDED_BLUR=0; ROUNDED_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+                         EXPLICIT_FLAGS=1; shift ;;
+        # Retired with gnome-rounded-blur, which Blur My Shell v76 no longer
+        # loads: it rounds its blur itself. Still accepted, so a script or an
+        # older settings window that passes one does not stop the run.
+        --rounded-blur|--no-rounded-blur) shift ;;
         --app-transparency|--window-opacity|--window-transparency)
                          APP_TRANSPARENCY="${2:-$TOKEN_APP_TRANSPARENCY_SHIPPED}"; APP_TRANSPARENCY_EXPLICIT=1; EXPLICIT_FLAGS=1; APP_OPACITY_EXPLICIT=1; shift 2 ;;
         --app-transparency=*|--window-opacity=*|--window-transparency=*)
@@ -1045,10 +1041,7 @@ fi
 # Choices that no wizard re-asks on an update or a full reinstall (--gui,
 # --force --gui --yes): a typed flag has already filled the variable and its
 # *_EXPLICIT marker, so the memo is only read when the run was given neither.
-#
-# The three opt-outs only ever move a value down. A remembered 1 leaves the
-# variable alone, because --no-blur forces WANT_ROUNDED_BLUR to 0 for a run
-# without that being a choice, and reading a 1 back over it would undo the mode.
+
 if [ -z "$EXT_PACK_EXPLICIT" ] && [ -r "$CONF_DIR/extension-pack" ]; then
     # Unknown UUIDs are dropped, not fatal: a pack remembered by an older
     # release may name an extension the catalogue has since retired.
@@ -1088,9 +1081,6 @@ fi
 # bms-source is written by install_bms: "ego" is --no-bms-git having been used.
 if [ -z "$BMS_GIT_EXPLICIT" ] && [ "$(cat "$CONF_DIR/bms-source" 2>/dev/null || true)" = ego ]; then
     WANT_BMS_GIT=0
-fi
-if [ -z "$ROUNDED_BLUR_EXPLICIT" ] && [ "$(cat "$CONF_DIR/rounded-blur-choice" 2>/dev/null || true)" = 0 ]; then
-    WANT_ROUNDED_BLUR=0
 fi
 
 # --extensions replaces the pack with a list of your own, which is what the setup
@@ -1527,7 +1517,6 @@ if [ "$SETTINGS_ONLY" = 0 ] && [ "$DEPS_ONLY" = 0 ] \
     progress_plan \
         session "Checking your system" \
         deps "Dependencies" \
-        rounded-blur "Rounded blur library" \
         theme "Aura Glass theme" \
         extensions "Shell extensions" \
         icons "Icons" \
@@ -1552,7 +1541,6 @@ if [ "${SETTINGS_ONLY:-0}" = 0 ] && [ "${DRY_RUN:-0}" = 0 ] && [ "$EUID" -ne 0 ]
     need_root=0
     [ "${WANT_GDM:-0}" = 1 ] && need_root=1
     [ "${WANT_GDM_MONITORS:-0}" = 1 ] && need_root=1
-    rounded_blur_needs_root && need_root=1
     if [ "$need_root" = 1 ]; then
         info "Authenticating sudo upfront for system components..."
         progress_wait "sudo password, for the parts installed outside your home folder"
@@ -1571,8 +1559,7 @@ fi
 
 # Retuning an existing install is the three steps that read a flag and write a
 # setting. Everything skipped here either fetches something (the theme, the
-# extensions, the icon and cursor packs) or wants root (the rounded-blur library,
-# GDM), which is what makes this path fast, offline and unprivileged — and
+# extensions, the icon and cursor packs) or wants root (GDM), which is what makes this path fast, offline and unprivileged — and
 # therefore the one a GUI can drive without a terminal to answer prompts in.
 #
 # The three steps are the same functions a full install runs, in the same order,
@@ -1717,11 +1704,6 @@ else
     fi
 fi
 
-# First, before anything is installed: a failed build stops the run here with
-# nothing changed, rather than leaving a desktop installed without it that only
-# a re-run and a watched build could fix (require_rounded_blur).
-progress_start rounded-blur
-require_rounded_blur
 progress_start theme
 install_theme
 progress_start extensions

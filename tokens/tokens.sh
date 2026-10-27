@@ -328,39 +328,42 @@ radius_preset_matches_shipped() {
     return $rc
 }
 
-# ---------- Blur My Shell sigmas ----------
+# ---------- Blur My Shell blur radii ----------
 #
-# Every pipeline uses the native_static_gaussian_blur effect, whose cost scales
-# with radius. Two things compound that:
+# The unscaled_radius of each surface's Dual Kawase blur, in that surface's own
+# pipeline in dconf/core.ini (matched by pipeline name). Blur My Shell v76 keeps
+# a blur's radius only there; the per-component sigma keys these tokens used to
+# be are read once, by its settings migration.
 #
-#   1. hacks-level=2 (dconf/core.ini) turns off clipped redraws, which is the
-#      fix for blur actors going stale when what is behind them moves. The cost
-#      is a full-screen repaint every frame, for everything.
-#   2. The panel is the only surface that is both always visible and always
-#      blurred, so it is the only one paying that multiplier continuously
-#      rather than for the few seconds a popup is open.
+# Each value is the v73 look carried over by upstream's own mapping
+# (settings_updater.js): a dynamic surface's sigma becomes radius 2 x sigma,
+# a static pipeline's radius stays as it was. v73's popups, app windows, dock,
+# app folders and window list were dynamic and read their sigma key; the top bar
+# was static and read its pipeline, which is why its old sigma (30) never showed.
+# Retune against the live desktop and say why here when one moves.
 #
-# Sigma changes here are design decisions with a measurable cost. Change one,
-# measure it in the preview harness, and record the number — do not batch them.
+# Radius changes here are design decisions with a measurable cost. Change one,
+# measure it with tools/gpu-sample.py, and record the number — do not batch them.
 
-# Measured, not assumed: dropping this to 20 and back over three preview runs
-# moved the median not at all (22/22/22) and the p90 by less than the noise
-# between two identical runs (28/29/31). The panel being always-on makes it the
-# most expensive *pipeline*, but the cost that matters is Blur My Shell running
-# at all — which is what --no-blur removes and what actually measures. Do not
-# lower this expecting a GPU win; lower it only if you want a softer panel.
-TOKEN_SIGMA_PANEL=30
-TOKEN_SIGMA_APPFOLDER=50        # transient, but an outlier above every other
-                                # pipeline's ~30 ceiling for no recorded reason.
-TOKEN_SIGMA_POPUP=30
-TOKEN_SIGMA_WINDOW_LIST=30
-# Only ever applied when --app-transparency is on: the window blur is off in
-# dconf/core.ini and install.sh turns it on to follow that flag. Leaving it on
-# by default was the single most expensive thing in this preset — overview p90
-# GPU busy 99% against 28% with it off, on an RX 7600 — and with the window at
-# 94% opacity almost none of it reached the screen.
-TOKEN_SIGMA_APPLICATIONS=12
-TOKEN_SIGMA_DASH_TO_DOCK=4      # the cheap end of the range, kept as reference.
+# Static, from the panel pipeline v73 actually drew. On v73 lowering the sigma
+# key (30 to 20) moved the median not at all (22/22/22) and the p90 by less than
+# run-to-run noise: the panel is static, so that key was never read. Blur My
+# Shell running at all is the cost that measures, and --no-blur removes it.
+TOKEN_BLUR_RADIUS_PANEL=12
+TOKEN_BLUR_RADIUS_APPFOLDER=100     # sigma 50: transient, an outlier above every
+                                    # other surface for no recorded reason. 100 is
+                                    # v76's ceiling, so this cannot go higher.
+TOKEN_BLUR_RADIUS_POPUP=60          # sigma 30
+TOKEN_BLUR_RADIUS_WINDOW_LIST=60    # sigma 30
+# Sigma 12. Only ever applied when --app-transparency is on: the window blur is
+# off in dconf/core.ini and install.sh turns it on to follow that flag. Leaving
+# it on by default was the single most expensive thing in this preset on v73 —
+# overview p90 GPU busy 99% against 28% with it off, on an RX 7600 — and with the
+# window at 94% opacity almost none of it reached the screen. On v76, a
+# maximized window with this blur dynamic measured median 16% / p90 20% against
+# 11% / 13% static (RX 7600, 20 s, 2026-10-27).
+TOKEN_BLUR_RADIUS_APPLICATIONS=24
+TOKEN_BLUR_RADIUS_DASH_TO_DOCK=8    # sigma 4, the cheap end of the range.
 
 # ---------- App transparency ----------
 #

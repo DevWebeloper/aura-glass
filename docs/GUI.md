@@ -63,10 +63,10 @@ command line the window can produce is accepted.
 
 Opened detached by `progress_begin` (`lib/progress.sh`) after the GTK wizard
 answers, or for `--progress-window` (the settings window adds it to the GDM,
-monitor-sync and rounded-blur runs it opens in a terminal). The terminal stays
+and monitor-sync runs it opens in a terminal). The terminal stays
 the installer: sudo and every question are asked there, and the window shows a
 banner while the terminal waits (`progress_wait`, called from `confirm`,
-`confirm_always`, the rounded-blur retry and the sudo prompts).
+`confirm_always` and the sudo prompts).
 
 ### Contract
 
@@ -169,7 +169,7 @@ is decided by `select_apply_actions`. See
 | Per-app blur | Appearance | A switch per installed app, live "Open now" windows (D-Bus), a default for unchosen apps, **fullscreen performance games** (written straight to `adaptive-fullscreen-apps`), wildcard patterns |
 | Extensions | System | Every catalogued extension: switch, install/remove, settings button (when it has `prefs.js`), recommended and full packs, via `bin/aura-glass-ext` |
 | Packages | System | Disk cost per pack and removal (`$HOME` packs deleted in place, `/usr` packs handed to a terminal) |
-| System | System | Dependencies, rounded-blur, login screen, monitor sync |
+| System | System | Dependencies, login screen, monitor sync |
 | Updates | System | Two tabs. **Updates**: version, check, install update; one list, newest first by date, of **Tags** (every commit on main, named `v0.3.5+N`) and **Releases** (`vX.Y.Z`, with notes): the 5 newest of each plus the installed one when older. One badge per row. Only the newest (main's tip, a release if tagged, else a tag) has Install; older rows are read-only. History graph of everything. **Maintenance**: daily update check; reapply settings; reset theme to defaults (`--reset --force --gui --interactive`). No channel row: the line follows what was installed from the list; `--update-channel` stays for the CLI |
 | Uninstall | none | Built into the stack (other code needs its widgets), opened from the primary menu, not the sidebar |
 
@@ -186,7 +186,7 @@ as a quick apply and its steps or a full reapply and why. Under the list, **Disc
 
 - **Extension switches** apply immediately through `aura-glass-ext`, streamed into the same log.
 - **Packages**: a filesystem delete under `$HOME`, or the package manager in a terminal for `/usr`.
-- **Anything needing root** (deps `--deps-only`, rounded-blur, GDM, monitor sync, uninstall scopes) and the long operations (reapply settings, reset to defaults, update) **open a real terminal** from `TERMINALS` (ptyxis, kgx, gnome-terminal, konsole, alacritty, kitty, foot, wezterm, x-terminal-emulator, xterm). `sudo` down a pipe would block forever. If no terminal is found, the command is shown to copy. Terminals aren't waited on, so those rows show the last state read.
+- **Anything needing root** (deps `--deps-only`, GDM, monitor sync, uninstall scopes) and the long operations (reapply settings, reset to defaults, update) **open a real terminal** from `TERMINALS` (ptyxis, kgx, gnome-terminal, konsole, alacritty, kitty, foot, wezterm, x-terminal-emulator, xterm). `sudo` down a pipe would block forever. If no terminal is found, the command is shown to copy. Terminals aren't waited on, so those rows show the last state read.
 - **Reapply CSS** runs `aura-glass-apply --force-reload` in a terminal.
 - **Games list** writes `$CONF_DIR/adaptive-fullscreen-apps`, then `aura-glass-adaptive refresh`.
 

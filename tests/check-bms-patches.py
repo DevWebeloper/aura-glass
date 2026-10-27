@@ -19,10 +19,7 @@ with tempfile.TemporaryDirectory(prefix="aura-bms-test-") as directory:
     archive = subprocess.run(["git", "-C", str(source), "archive", revision],
                              check=True, capture_output=True).stdout
     subprocess.run(["tar", "-x", "-C", directory], input=archive, check=True)
-    for name in ("overview", "subwindows", "notifications", "static-maximized", "panel-refit"):
-        subprocess.run(["git", "apply",
-                        str(ROOT / "patches" / f"blur-my-shell-{name}.patch")],
-                       cwd=target, check=True)
+    subprocess.run(["git", "apply",
+                    str(ROOT / "patches" / "blur-my-shell-subwindows.patch")],
+                   cwd=target, check=True)
     subprocess.run(["node", str(ROOT / "tests" / "bms-patches.cjs"), directory], check=True)
-
-    subprocess.run(["node", str(ROOT / "tests" / "application-lifecycle.cjs"), directory], check=True)

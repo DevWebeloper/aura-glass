@@ -16,104 +16,62 @@ function test(name, fn) {
     try { fn(); console.log('PASS', name); }
     catch (error) { failures++; console.error('FAIL', name, error.message); }
 }
-class BlurEffect { static supports_corner_radius = false; }
-class CornerEffect {}
-const Stacks = load('src/components/popup/message_stacks.js', 'PopupBlurMessageStacks', {
-    NativeDynamicBlurEffect: BlurEffect, CornerEffect,
-});
-test('history cards get fallback corners and release both effects', () => {
-    const stacks = new Stacks(null, {popup: {NOTIFICATION: true, SIGMA: 30, NOTIFICATION_CORNER_RADIUS: 20}});
-    const effects = new Map();
-    const card = {
-        has_style_class_name: () => false,
-        get_effect: name => effects.get(name),
-        add_effect_with_name: (name, effect) => effects.set(name, effect),
-        remove_effect_by_name: name => effects.delete(name),
+
+const FrameType = { NORMAL: 0, DIALOG: 1, MODAL_DIALOG: 2, UTILITY: 3, MENU: 4, ATTACHED: 5 };
+const WindowRules = load('src/components/applications/window_rules.js', 'WindowRules',
+    { Meta: { FrameType } });
+
+function win(wm_class, { app_id = null, parent = null, frame = FrameType.NORMAL } = {}) {
+    return {
+        get_wm_class: () => wm_class,
+        get_gtk_application_id: () => app_id,
+        get_transient_for: () => parent,
+        get_frame_type: () => frame,
     };
-    stacks.attach_blur(card);
-    assert.equal(effects.size, 2, 'fallback must install blur and corner effects');
-    stacks.detach_blur(card);
-    assert.equal(effects.size, 0, 'both effects must be removed');
-});
-const ExtensionClass = load('src/extension.js', 'BlurMyShell', {Extension: class {}});
-const pending = [];
-const PopupClass = load('src/components/popup/index.js', 'PopupBlur', {
-    GLib: {idle_add: (_priority, callback) => { pending.push(callback); return pending.length; }},
-});
-for (const notification of [false, true]) {
-    test(`popup toggle retargets surfaces (notifications=${notification})`, () => {
-        const callbacks = {};
-        const component = name => new Proxy({}, {get: (_object, key) => {
-            if (key.endsWith('_changed')) return fn => { callbacks[name + '.' + key] = fn; };
-            return false;
-        }});
-        let blur = false;
-        const popupSettings = new Proxy(component('popup'), {get: (object, key) => {
-            if (key === 'BLUR') return blur;
-            if (key === 'NOTIFICATION') return notification;
-            return object[key];
-        }});
-        const settings = new Proxy({}, {get: (_object, key) => {
-            if (key === 'popup') return popupSettings;
-            if (key.endsWith('_changed')) return () => {};
-            return component(key);
-        }});
-        const extension = Object.create(ExtensionClass.prototype);
-        extension._settings = settings;
-        // Use the real reset(): it intentionally does nothing when disabled.
-        // Stub only actor creation/destruction and the GLib event loop.
-        const popup = Object.create(PopupClass.prototype);
-        popup.settings = settings;
-        popup.enabled = notification;
-        popup.liveMenuBlur = false;
-        popup.cancel_queued_blurs = () => {};
-        popup.enable = function () {
-            if (this.enabled) return;
-            this.enabled = true;
-            this.liveMenuBlur = blur;
-        };
-        popup.disable = function () { this.enabled = false; this.liveMenuBlur = false; };
-        extension._popup = popup;
-        extension._connect_to_settings();
-        for (const value of [true, false, true, false]) {
-            blur = value;
-            callbacks['popup.BLUR_changed']();
-            while (pending.length) pending.shift()();
-            assert.equal(popup.liveMenuBlur, value, 'existing menu surfaces must follow their switch');
-            assert.equal(popup.enabled, value || notification, 'notifications retain the shared component');
-        }
-    });
 }
-const Connections = load('src/conveniences/connections.js', 'Connections', {
-    GObject: {Object: class {}},
+function rules(enable_all, whitelist, blacklist) {
+    return new WindowRules({ applications: {
+        ENABLE_ALL: enable_all, WHITELIST: whitelist, BLACKLIST: blacklist,
+    } });
+}
+
+test('an attached dialog inherits its app through transient-for', () => {
+    const app = win('org.gnome.TextEditor');
+    const dialog = win('xdg-desktop-portal-gnome', { parent: app, frame: FrameType.ATTACHED });
+    assert.equal(rules(false, ['org.gnome.TextEditor'], []).matches(dialog), true);
 });
-for (const workspaceCount of [1, 2]) test(`application refresh releases old tracking (workspaces=${workspaceCount})`, () => {
-    let nextId = 1;
-    const handlers = new Map();
-    const window = {
-        connect: (signal, callback) => { const id = nextId++; handlers.set(id, {signal, callback}); return id; },
-        disconnect: id => handlers.delete(id),
-        get_compositor_private: () => null,
-    };
-    const Applications = load('src/components/applications.js', 'ApplicationsBlur', {
-        PaintSignals: class {},
-        global: {workspace_manager: {
-            get_n_workspaces: () => workspaceCount,
-            // A sticky window can appear in more than one workspace list.
-            get_workspace_by_index: () => ({list_windows: () => [window]}),
-        }},
-    });
-    const applications = new Applications(new Connections(), {applications: {}}, null);
-    applications.check_blur = () => {}; // No rendering in this tracking-only test.
-    applications.update_all_windows();
-    assert.equal(applications.meta_window_map.size, 1, 'sticky windows must only be tracked once');
-    const count = handlers.size;
-    for (let i = 0; i < 20; i++) applications.update_all_windows();
-    assert.equal(applications.meta_window_map.size, 1, 'refresh must release old window entries');
-    assert.equal(handlers.size, count, 'refresh must release old Meta.Window signal handlers');
-    for (const {signal, callback} of [...handlers.values()])
-        if (signal === 'unmanaging') callback();
-    assert.equal(applications.meta_window_map.size, 0, 'closing a window releases all tracking');
-    assert.equal(handlers.size, 0, 'closing a window releases its signal handlers');
+
+test('a utility palette is blurred like its app', () => {
+    const app = win('gimp');
+    const palette = win('gimp', { parent: app, frame: FrameType.UTILITY });
+    assert.equal(rules(true, [], []).matches(palette), true);
 });
-process.exitCode = failures ? 1 : 0;
+
+test('the GTK application id matches when the wm_class does not', () => {
+    const window = win('', { app_id: 'org.gnome.Nautilus' });
+    assert.equal(rules(false, ['org.gnome.Nautilus'], []).matches(window), true);
+});
+
+test('the allow list wins over the block list in all mode', () => {
+    const window = win('io.github.DevWebeloper.AuraGlassSettings');
+    assert.equal(rules(true, ['io.github.DevWebeloper.AuraGlassSettings'], ['*aura*']).matches(window), true);
+});
+
+test('a blocked app stays unblurred, dialogs included', () => {
+    const app = win('firefox');
+    const dialog = win('firefox', { parent: app, frame: FrameType.ATTACHED });
+    assert.equal(rules(true, [], ['*firefox*']).matches(dialog), false);
+});
+
+test('menus are never blurred', () => {
+    assert.equal(rules(true, [], []).matches(win('org.gnome.Nautilus', { frame: FrameType.MENU })), false);
+});
+
+test('a transient-for loop ends', () => {
+    const a = win('a'), b = win('b', { parent: a });
+    a.get_transient_for = () => b;
+    assert.equal(rules(false, ['b'], []).matches(a), true);
+});
+
+if (failures)
+    process.exit(1);

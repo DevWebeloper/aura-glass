@@ -7,9 +7,8 @@
 #
 #   lib/steps.sh              the upstream pins, the paths, the extension lists,
 #                             preflight, the theme itself, and the closing note
-#   lib/steps-extensions.sh   every extension: the ones fetched from EGO, the
-#                             three built from a pinned commit, and the
-#                             rounded-blur library
+#   lib/steps-extensions.sh   every extension: the ones fetched from EGO and
+#                             the ones built from a pinned commit
 #   lib/steps-assets.sh       icon and cursor themes
 #   lib/steps-css.sh          the CSS tweaks and the display-density correction
 #   lib/steps-dconf.sh        the dconf preset, and the gsettings beside it
@@ -33,7 +32,9 @@ UPSTREAM_THEME_NAME="Tahoe-Dark"
 THEME_NAME="Aura-Glass"
 
 BMS_REPO="https://github.com/aunetx/blur-my-shell.git"
-BMS_REF="425761d55049"            # v73; upstream release with the popup component
+BMS_REF="19ce844b8ca3"            # v76; replaces the native gaussian effects, which
+                                  # lost their radius after a resume from suspend
+                                  # (upstream #700, #850)
 BMS_UUID="blur-my-shell@aunetx"
 
 # First-party — no upstream repo or ref, since the source lives in
@@ -41,64 +42,23 @@ BMS_UUID="blur-my-shell@aunetx"
 # lib/steps-extensions.sh. It provides adaptive performance profile controls,
 # the focused window/fullscreen D-Bus bridge, and the window-menu blur toggle.
 AURA_EXT_UUID="aura-glass-blur@aura-glass.local"
-# Applied on top of that pin: `blur-on-overview: false` does not take the blur
-# out of the overview's window previews upstream, it only stops forcing window
-# actors visible. See the patch's own comments.
-BMS_PATCH="blur-my-shell-overview.patch"
-# Applied after BMS_PATCH: upstream's check_blur matches only get_wm_class()
-# against one frame-type set that excludes ATTACHED (which is what an attached
-# modal dialog reports once org.gnome.mutter attach-modal-dialogs is true, the
-# GNOME default) and UTILITY. Together those left a blurred app's own dialogs
-# and tool palettes unblurred. See the patch's own comments.
+# Applied on top of that pin: upstream's window_rules.js matches only
+# get_wm_class() against one frame-type set that excludes ATTACHED (which is
+# what an attached modal dialog reports once org.gnome.mutter
+# attach-modal-dialogs is true, the GNOME default) and UTILITY. Together those
+# left a blurred app's own dialogs and tool palettes unblurred. Re-cut for v76,
+# which already re-checks a window on gtk-application-id and keeps one set of
+# listeners per window, both of which the v73 patch had to add itself. See the
+# patch's own comments.
+#
+# v73 needed four more patches. v76 was checked live without them on
+# 2026-10-27 and they were dropped: the overview previews no longer show a
+# frozen window blur, notification blur now simply follows the popup blur (the
+# separate `popup/notification` key is gone with its patch), the top bar's blur
+# stays aligned after login on two monitors, and a maximized window keeps the
+# dynamic blur, which costs about five points of GPU busy over static.
 BMS_SUBWIN_PATCH="blur-my-shell-subwindows.patch"
-# Applied after BMS_SUBWIN_PATCH: upstream's popup component blurs
-# notification banners under the same single `blur` switch as menus and
-# dialogs, with no way to keep one on without the other. This splits
-# notification banners and history cards onto their own `notification` key,
-# gated independently in extension.js and components/popup/targets.js. See
-# the patch's own comments.
-BMS_NOTIF_PATCH="blur-my-shell-notifications.patch"
-# Applied after BMS_NOTIF_PATCH: upstream picks static or dynamic window blur
-# once, for every window, from `applications/static-blur`. This makes a window
-# that covers its monitor (maximized both ways, fullscreen, or sized over the
-# whole work area, which is how Tiling Assistant's drag-to-top with
-# maximize-with-gap leaves it) static while it does, and leaves smaller windows
-# dynamic. Behind a full-screen window there
-# is only the wallpaper, so the cached static blur looks the same there and
-# stops the largest blurred area being re-blurred every frame it redraws. See
-# the patch's own comments.
-BMS_STATIC_PATCH="blur-my-shell-static-maximized.patch"
-# Applied after BMS_STATIC_PATCH: upstream's top-bar blur is a copy of the
-# monitor's wallpaper sized when it is built, and its only answer to a monitor
-# change is reset(), which drops the bar's style classes for a frame (the flash
-# the retired aura-glass-panel-blur rebuild caused too) and is skipped when no
-# work-area change follows. That left a strip of misaligned blur after login on
-# a laptop with a second monitor. This swaps a stale copy in place, in one
-# frame, after every layout change and once after startup. See the patch's own
-# comments.
-BMS_PANEL_PATCH="blur-my-shell-panel-refit.patch"
 
-ROUNDEDBLUR_REPO="https://github.com/kancko/gnome-rounded-blur.git"
-ROUNDEDBLUR_REF="a4db9e5947b1"    # v1.0.2
-ROUNDEDBLUR_PKGVER="1.0.2"        # the release ROUNDEDBLUR_REF is, for the Arch package
-# In an off-stage paint (a screenshot) upstream's BACKGROUND blur has no stage
-# view, so it maps the actor box at scale 1 from the stage origin. Mutter paints
-# a capture with the viewport at -(rect.x * scale), -(rect.y * scale), so with
-# mixed-scale monitors, or a capture of one monitor that does not start at 0,0,
-# the blur behind a window sampled another part of the screen in the
-# screenshot. The patch reads scale and origin back from that viewport. Blur My
-# Shell's dynamic blur goes through this library whenever it loads, so this is
-# where the fix has to be: patching GNOME Shell's copy changes nothing. See the
-# patch's own comment.
-ROUNDEDBLUR_PATCH="gnome-rounded-blur-offstage.patch"
-
-# For ensure_aur_helper in lib/distro.sh. Unpinned, unlike everything else
-# here: an AUR PKGBUILD's checksums point at a specific upstream release
-# tarball, and those get pruned from GitHub releases over time — an old
-# PKGBUILD commit is a 404 waiting to happen, not stability. The -bin
-# packages, so bootstrapping a helper does not need a Rust or Go toolchain.
-PARU_AUR_REPO="https://aur.archlinux.org/paru-bin.git"
-YAY_AUR_REPO="https://aur.archlinux.org/yay-bin.git"
 
 CUSTOMOSD_REPO="https://github.com/neuromorph/custom-osd.git"
 CUSTOMOSD_REF="334ac17e9348"     # last upstream commit; patched for GNOME 50
@@ -360,9 +320,6 @@ install_theme() {
 # -------------------------------------------------------------- extensions --
 
 finish() {
-    # Runs whether or not --rounded-blur was passed, so a machine whose library
-    # went stale after a mutter update finds out on the next install either way.
-    rounded_blur_staleness_check
     # Here rather than beside install_gui in the main sequence, because this is
     # the one thing that is about the logout below rather than about the
     # install: everything that reaches finish() ends with one, and nothing that

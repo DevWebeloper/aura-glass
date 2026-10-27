@@ -38,7 +38,7 @@ upstream pieces and then ties them together so they agree with each other:
 | Piece | Where it comes from | What Aura Glass does to it |
 |---|---|---|
 | Shell + GTK theme | [GNOME-macOS-Tahoe](https://github.com/kayozxo/GNOME-macOS-Tahoe), pinned | installs it as `Aura-Glass`, flattens its shadows/gradients, swaps its hard-coded blues for your GNOME accent, splices in its own stylesheets |
-| Blur | [Blur My Shell](https://github.com/aunetx/blur-my-shell) v73, built from a pinned commit | three patches (overview, sub-windows, separate notification blur) plus a tuned preset |
+| Blur | [Blur My Shell](https://github.com/aunetx/blur-my-shell) v76, built from a pinned commit | one patch (a blurred app's dialogs and tool palettes blur too) plus a tuned preset |
 | Volume / brightness OSD | [Custom OSD](https://github.com/neuromorph/custom-osd), pinned and patched for GNOME 50/51 | a compact pill that sits on the blur |
 | Aura Glass Helper | first-party extension in `extensions/` | "Blur This App" in the window menu, the adaptive-performance menu in the top bar, a D-Bus bridge for the settings app |
 | Icons, pointers, fonts | Colloid / Reversal / Hatter icons; Adwaita / AOSP / MacTahoe / Moga pointers; Inter / MiSans / SF Pro | optional, picked in the wizard, accent-matched where the pack supports it |
@@ -144,8 +144,8 @@ aura-glass-update-check              # is there a newer release?
 | Arch / CachyOS / EndeavourOS | the tested path. `./install.sh`. An AUR recipe lives in [packaging/aur](packaging/aur/) |
 | Fedora, Debian / Ubuntu, openSUSE | dependency mappings exist and the installer runs, but preflight reports them as untested |
 
-Nothing outside `$HOME` is touched except three opt-in steps: the dependency
-install, the `gnome-rounded-blur` fallback build, and the GDM login screen.
+Nothing outside `$HOME` is touched except two opt-in steps: the dependency
+install and the GDM login screen.
 
 ## Troubleshooting
 

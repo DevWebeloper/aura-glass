@@ -66,31 +66,12 @@ memo_snapshot() {
     for name in $MEMOS; do printf '%s=%s\n' "$name" "$(memo "$name")"; done
 }
 
-# The corner effect inside the `windows` pipeline — the second place Blur My
-# Shell rounds the blur behind an app window, and the one a preset used to miss.
-# Read through the same manifest pattern apply_pipeline_radius writes with, so
-# this checks the value rather than a second guess at where it lives.
-pipeline_radius() {
-    REPO_ROOT="$REPO_ROOT" python3 - <<'PIPELINE_PY'
-import os, re, subprocess, sys
-sys.path.insert(0, os.path.join(os.environ["REPO_ROOT"], "tools"))
-from token_manifest import raw_entries
-cur = subprocess.run(
-    ["dconf", "read", "/org/gnome/shell/extensions/blur-my-shell/pipelines"],
-    capture_output=True, text=True).stdout.strip()
-for _t, _k, _r, pattern in raw_entries({"TOKEN_RADIUS_WINDOW"}):
-    m = re.search(pattern, cur, re.M)
-    print(m.group(1) if m else "(absent)")
-PIPELINE_PY
-}
-
 failures=0
 fail() { printf '  FAIL: %s\n' "$*" >&2; failures=$((failures + 1)); }
 
 BASELINE_HASH="$(hash_sheets)"
 BASELINE_MEMOS="$(memo_snapshot)"
 BASELINE_RADIUS_DCONF="$(dconf read /org/gnome/shell/extensions/blur-my-shell/applications/corner-radius 2>/dev/null || true)"
-BASELINE_PIPELINE_RADIUS="$(pipeline_radius)"
 
 app_tint="$(memo app-tint-color)"; [ "$app_tint" = "(absent)" ] && app_tint="#000000"
 shell_tint="$(memo shell-tint-color)"; [ "$shell_tint" = "(absent)" ] && shell_tint="#000000"
@@ -133,12 +114,6 @@ other_radius="rounded"; [ "$radius_preset" = "rounded" ] && other_radius="flat"
 got="$(dconf read /org/gnome/shell/extensions/blur-my-shell/applications/corner-radius 2>/dev/null || true)"
 [ -n "$got" ] && [ "$got" != "$BASELINE_RADIUS_DCONF" ] \
     || fail "switching the radius preset did not move the blur-my-shell corner-radius key"
-# The same corner in the other place it is kept. Both halves or neither: a
-# window painted at one radius with its blur rounded at another is the fault
-# this pairing exists to catch.
-got_pipeline="$(pipeline_radius)"
-[ "$got_pipeline" = "$got" ] \
-    || fail "the windows pipeline corner is $got_pipeline but applications/corner-radius is $got"
 [ "$(memo_snapshot)" = "$BASELINE_MEMOS" ] \
     || fail "a set that changed the desktop still left a \$CONF_DIR memo touched"
 
@@ -194,8 +169,6 @@ echo "5) revert restores every sheet, every memo and the dconf subtree byte-for-
 got="$(dconf read /org/gnome/shell/extensions/blur-my-shell/applications/corner-radius 2>/dev/null || true)"
 [ "$got" = "$BASELINE_RADIUS_DCONF" ] \
     || fail "revert did not restore the blur-my-shell corner-radius key"
-[ "$(pipeline_radius)" = "$BASELINE_PIPELINE_RADIUS" ] \
-    || fail "revert did not restore the windows pipeline corner effect"
 [ -e "$CONF_DIR/preview-active" ] && fail "revert left the preview-active marker behind"
 [ -d "$CONF_DIR/preview-backup" ] && fail "revert left preview-backup behind"
 

@@ -17,7 +17,7 @@ exactly the code that resolved it last time.
 
 --settings-only is what makes that safe to drive from a window: it reapplies the
 dconf preset, the CSS and the gsettings, and skips the theme, the extensions and
-everything that wants root (the rounded-blur library, GDM). So Apply needs no
+everything that wants root (GDM). So Apply needs no
 password and no terminal to answer a prompt in.
 
 The icon pack, the pointer and the interface font are the exceptions, and only
@@ -49,8 +49,8 @@ Not everything here rides on Apply. Three kinds of thing cannot:
                        files are a package's and deleting them out from under
                        it would leave its database describing files that are
                        gone
-  anything root        the dependency install, the rounded-blur library, the
-                       login screen, the monitor sync, the uninstall scopes
+  anything root        the dependency install, the login screen, the
+                       monitor sync, the uninstall scopes
 
 The last of those used to be absent for a good reason: sudo down a pipe that
 nothing can type into blocks forever. The answer is not to run it here but to
@@ -620,7 +620,7 @@ SEARCH_INDEX = {
     "extensions": ["gnome extensions", "blur my shell", "space-bar",
                   "vitals", "custom osd", "open bar"],
     "packages": ["icon pack", "cursor pack", "remove pack", "disk"],
-    "system": ["dependencies", "rounded blur library", "gdm", "login screen",
+    "system": ["dependencies", "gdm", "login screen",
               "monitor", "password", "sudo"],
     "updates": ["release", "version", "changelog", "history", "tag",
                 "downgrade", "maintenance", "update check", "notification",
@@ -5790,19 +5790,6 @@ class Window(Adw.ApplicationWindow):
         self._deps_row.add_suffix(self._deps_install)
         group.add(self._deps_row)
 
-        # Its state is a stamp file rather than a setting, so it is a button
-        # that acts rather than a switch Apply would collect. Nothing here goes
-        # through Settings or flags_against.
-        self._rounded_row = Adw.ActionRow(
-            title="Rounded blur library",
-            subtitle="Popup blur follows their rounded corners, instead of "
-                     "falling back to a static one")
-        self._rounded_button = Gtk.Button(label="Install",
-                                          valign=Gtk.Align.CENTER)
-        self._rounded_button.connect("clicked", self._on_install_rounded_blur)
-        self._rounded_row.add_suffix(self._rounded_button)
-        group.add(self._rounded_row)
-
         self._gdm_monitors_row = Adw.ActionRow(
             title="Sync the monitor layout to the login screen",
             subtitle="Copies ~/.config/monitors.xml so GDM opens on the same "
@@ -5823,11 +5810,11 @@ class Window(Adw.ApplicationWindow):
         self._check_deps()
         return page
 
-    # The three stamp files _sync_system reads. Anything else changing under
+    # The two stamp files _sync_system reads. Anything else changing under
     # $CONF_DIR — a CSS sheet mid-preview, a memo Apply just wrote — is not
     # this page's business, so the monitor filters to these rather than
     # re-syncing on every unrelated write.
-    _SYSTEM_STAMPS = ("rounded-blur", "gdm-monitors-synced", "gdm-installed")
+    _SYSTEM_STAMPS = ("gdm-monitors-synced", "gdm-installed")
 
     # Watched on the same debounce, for a different reason: a wm_class toggled
     # from the titlebar's "Blur This App" writes these two memos directly
@@ -5964,14 +5951,6 @@ class Window(Adw.ApplicationWindow):
         window cannot see — so nothing here can know the moment one finishes.
         The rows say so rather than implying otherwise.
         """
-        installed = os.path.exists(os.path.join(CONF_DIR, "rounded-blur"))
-        self._rounded_row.set_subtitle(
-            "Installed. Reinstall if a mutter update stopped it loading"
-            if installed else
-            "Lets the blur behind popups follow their rounded corners instead "
-            "of falling back to a static one")
-        self._rounded_button.set_label("Reinstall" if installed else "Install")
-
         synced = os.path.exists(os.path.join(CONF_DIR, "gdm-monitors-synced"))
         self._gdm_monitors_button.set_label("Remove" if synced else "Sync")
         self._gdm_monitors_row.set_subtitle(
@@ -6019,14 +5998,6 @@ class Window(Adw.ApplicationWindow):
     def _on_install_deps(self, _button):
         self.run_in_terminal(self._install_cmd("--deps-only"),
                              "Installing dependencies")
-
-    def _on_install_rounded_blur(self, _button):
-        # No --yes. install_rounded_blur asks with confirm_always, which asks
-        # even under --yes because it is a root package — and a real terminal is
-        # exactly where that question can be answered, so it is left to ask
-        # rather than pre-answered on the user's behalf.
-        self.run_in_terminal(self._install_cmd("--rounded-blur --force --progress-window"),
-                             "Installing the rounded blur library")
 
     # The three scopes uninstall.sh already has, in the order it offers them.
     # Each is its own row and its own confirmation rather than a dropdown with
