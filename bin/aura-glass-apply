@@ -510,7 +510,7 @@ for path in snippets:
         continue
     for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
         keep = [s.strip() for s in selectors.split(",")
-                if any(name in s for name in OWNED)]
+                if any(name in s for name in OWNED) or s.strip() == "#panel"]
         if keep:
             decls = "\n".join("  " + d.strip() + ";" for d in body.split(";") if d.strip())
             rules.append(",\n".join(keep) + " {\n" + decls + "\n}\n")

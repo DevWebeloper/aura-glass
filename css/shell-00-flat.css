@@ -82,15 +82,21 @@ StDrawingArea {
  * equal specificity loses; the second selector out-ranks it. The fade is the
  * theme's own 250ms #panel transition.
  */
+#panel {
+  transition-duration: 150ms !important;
+}
+
 #panel.aura-glass-maximized,
 #panel.transparent-panel.aura-glass-maximized {
   background: #000000 !important;
   background-color: #000000 !important;
+  transition-duration: 150ms !important;
 }
 
 #panel.aura-glass-maximized-shaded,
 #panel.transparent-panel.aura-glass-maximized-shaded {
   background-color: rgba(0, 0, 0, 0.6) !important;
+  transition-duration: 150ms !important;
 }
 
 
