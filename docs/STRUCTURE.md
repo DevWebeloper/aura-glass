@@ -85,7 +85,7 @@ For "which file draws this button / owns this setting", use
 | `blur-my-shell-full-size-buffers.patch` | BMS: a `full-size-buffers` key that keeps blur textures at monitor size instead of reallocating them while an actor animates (`--smooth-animations`) |
 | `custom-osd-gnome50.patch` | Custom OSD on GNOME 50/51 |
 | `copyous-gnome51.patch` | Copyous on GNOME 51 |
-| `wiggly-follow-cursor.patch` | Wiggly: measure the pointer in logical pixels before every shake, grow and shrink about its hotspot, and follow the cursor theme itself (`theme.js`) |
+| `wiggly-follow-cursor.patch` | Wiggly: measure the pointer in logical pixels before every shake, grow and shrink about its hotspot, follow the cursor theme itself (`theme.js`), and magnify the shape on screen: the theme's busy loop played, else the static shape named by its pixels and drawn from its largest frame or SVG |
 
 ### `bin/`: commands (most installed into `~/.local/bin`)
 

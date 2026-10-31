@@ -385,7 +385,10 @@ install_extensions() {
 # pixels before every shake, pins the pivot on the hotspot, and adds theme.js,
 # which finds the active cursor theme's pointer itself, in the order GNOME
 # Shell draws it (St's SVG set, built-in Adwaita included, else the Xcursor
-# file), on every cursor-theme change, from any tool.
+# file), on every cursor-theme change, from any tool. The magnified copy is
+# the shape on screen: the theme's busy loop when the sprite animates (Mutter
+# stops animating a hidden pointer), else the static shape the live pixels
+# match, drawn from its largest frame or its SVG.
 # Applied to the EGO download, so a Wiggly update that moves the code skips
 # the patch with a warning rather than half-applying it.
 patch_wiggly_extension() {
