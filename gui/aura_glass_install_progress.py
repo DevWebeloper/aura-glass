@@ -38,7 +38,7 @@ import gi
 
 gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango  # noqa: E402
 
 APP_ID = "io.github.DevWebeloper.AuraGlassInstall"
 
@@ -52,11 +52,80 @@ LOG_TAIL_BYTES = 200_000
 
 # The bar is green whatever the accent: it says "this is going well", and a red
 # accent made a healthy install read like a failing one.
+#
+# Each step and check is a card with a round status badge: green for done
+# (an "already in place" skip is done too), yellow for a warning, red for a
+# failure, grey only for a step this run chose not to do. Cards fade in as
+# their revealer slides them open, and a finished badge's icon pops in.
 CSS = b"""
 progressbar.install-progress > trough > progress {
     background-color: @success_color;
 }
+.step-card {
+    padding: 8px 8px 8px 10px;
+    min-height: 36px;
+    border-radius: 12px;
+    background-color: alpha(currentColor, 0.05);
+}
+.step-card button {
+    min-height: 26px;
+    padding: 2px 12px;
+    font-size: smaller;
+}
+.step-card.appear { animation: aura-appear 420ms ease-out; }
+.step-card.warn { background-color: alpha(@warning_color, 0.10); }
+.step-card.fail { background-color: alpha(@error_color, 0.12); }
+.step-card.running { background-color: alpha(currentColor, 0.09); }
+.status-badge {
+    min-width: 28px;
+    min-height: 28px;
+    border-radius: 999px;
+}
+.status-badge.ok { background-color: alpha(@success_color, 0.18); color: @success_color; }
+.status-badge.warn { background-color: alpha(@warning_color, 0.20); color: @warning_color; }
+.status-badge.fail { background-color: alpha(@error_color, 0.20); color: @error_color; }
+.status-badge.running { background-color: alpha(currentColor, 0.10); }
+.status-badge.skip, .status-badge.pending {
+    background-color: alpha(currentColor, 0.08);
+    color: alpha(currentColor, 0.45);
+}
+.status-badge image.pop, image.hero-pop { animation: aura-pop 360ms ease-out; }
+.release-card {
+    padding: 14px 16px;
+    border-radius: 14px;
+    background-color: alpha(currentColor, 0.06);
+}
+.changelog-pane, .changelog-pane-narrow { border-radius: 0; }
+.changelog-pane { border-right: 1px solid alpha(currentColor, 0.10); }
+.changelog-pane-narrow { border-bottom: 1px solid alpha(currentColor, 0.10); }
+.version-pill {
+    padding: 3px 10px;
+    border-radius: 999px;
+    background-color: alpha(currentColor, 0.10);
+    font-weight: bold;
+}
+.latest-pill {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background-color: alpha(@success_color, 0.18);
+    color: @success_color;
+    font-size: smaller;
+    font-weight: bold;
+}
+@keyframes aura-appear {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes aura-pop {
+    from { -gtk-icon-transform: scale(0.3); opacity: 0; }
+    70% { -gtk-icon-transform: scale(1.15); opacity: 1; }
+    to { -gtk-icon-transform: scale(1); }
+}
 """
+
+# How long a card takes to slide open, and the bar to move to its new value.
+REVEAL_MS = 350
+BAR_MS = 400
 
 ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]")
 
@@ -66,6 +135,16 @@ STATUS_ICONS = {
     "warn": ("dialog-warning-symbolic", "warning"),
     "fail": ("dialog-error-symbolic", "error"),
     "skip": ("action-unavailable-symbolic", "dim-label"),
+}
+
+# What a badge shows for a status: a skip with no reason was "already in
+# place", which is as good as done.
+BADGE_ICONS = {
+    "pending": "content-loading-symbolic",
+    "ok": "object-select-symbolic",
+    "warn": "dialog-warning-symbolic",
+    "fail": "process-stop-symbolic",
+    "skip": "action-unavailable-symbolic",
 }
 
 FINISHED = {
@@ -124,16 +203,103 @@ class Step:
         self.start = None
         self.end = None
         self.notes = []          # (level, text)
-        self.row = None
-        self.prefix = None
+        self.card = None
         self.button = None
+
+
+class Card(Gtk.Revealer):
+    """One step or check: a status badge, a title, a line under it, a button.
+
+    It is a revealer so it can slide open when it first appears; reveal()
+    does that, fading the card in as it opens.
+    """
+
+    def __init__(self, title, button_label=None, on_button=None):
+        super().__init__(transition_type=Gtk.RevealerTransitionType.SLIDE_DOWN,
+                         transition_duration=REVEAL_MS)
+        self.box = Gtk.Box(spacing=12)
+        self.box.add_css_class("step-card")
+        self.badge = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        self.badge.add_css_class("status-badge")
+        # The stack fills the badge so the icon is centred in the circle; the
+        # badge's own expand is set so it does not pass that on to the card.
+        self.badge.set_hexpand(False)
+        self.badge.set_vexpand(False)
+        self.stack = Gtk.Stack(hexpand=True, vexpand=True)
+        self.stack.add_named(Adw.Spinner(width_request=18, height_request=18,
+                                         halign=Gtk.Align.CENTER,
+                                         valign=Gtk.Align.CENTER), "running")
+        self.image = None
+        self.badge.append(self.stack)
+        self.box.append(self.badge)
+
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2,
+                       hexpand=True, valign=Gtk.Align.CENTER)
+        self.title = Gtk.Label(label=title, xalign=0, wrap=True,
+                               halign=Gtk.Align.START)
+        text.append(self.title)
+        self.subtitle = Gtk.Label(xalign=0, wrap=True, visible=False,
+                                  halign=Gtk.Align.START)
+        self.subtitle.add_css_class("caption")
+        self.subtitle.add_css_class("dim-label")
+        text.append(self.subtitle)
+        self.box.append(text)
+
+        self.button = Gtk.Button(label=button_label or "", visible=False,
+                                 valign=Gtk.Align.CENTER)
+        self.button.add_css_class("flat")
+        if on_button is not None:
+            self.button.connect("clicked", lambda _b: on_button())
+        self.box.append(self.button)
+        self.set_child(self.box)
+        self.status = None
+
+    def reveal(self):
+        if self.get_reveal_child():
+            return
+        self.box.add_css_class("appear")
+        # Opened on the next idle, once the card is in the tree, so the slide
+        # is drawn instead of the card simply being there.
+        GLib.idle_add(lambda: self.set_reveal_child(True) and False)
+
+    def set_status(self, status, look=None):
+        """status picks the card's tint; look (default status) the badge."""
+        look = look or status
+        if (status, look) == self.status:
+            return
+        self.status = (status, look)
+        for name in ("ok", "warn", "fail", "skip", "pending", "running"):
+            self.badge.remove_css_class(name)
+            self.box.remove_css_class(name)
+        self.badge.add_css_class(look)
+        self.box.add_css_class(status)
+        if status == "running":
+            self.stack.set_visible_child_name("running")
+            return
+        # A new image each time, so its pop animation plays from the start.
+        image = Gtk.Image.new_from_icon_name(
+            BADGE_ICONS.get(look, BADGE_ICONS["pending"]))
+        image.set_halign(Gtk.Align.CENTER)
+        image.set_valign(Gtk.Align.CENTER)
+        if look != "pending":
+            image.add_css_class("pop")
+        self.stack.add_child(image)
+        self.stack.set_visible_child(image)
+        if self.image is not None:
+            self.stack.remove(self.image)
+        self.image = image
+
+    def set_subtitle(self, text):
+        self.subtitle.set_label(text)
+        self.subtitle.set_visible(bool(text))
 
 
 class Window(Adw.ApplicationWindow):
     def __init__(self, app, run_dir, update=False):
         super().__init__(application=app, title="Aura Glass",
-                         default_width=640 if update else 600,
-                         default_height=820 if update else 720)
+                         default_width=1040 if update else 600,
+                         default_height=720,
+                         width_request=360, height_request=480)
         self.update = update
         self.dir = run_dir
         self.events_path = os.path.join(run_dir, "events")
@@ -150,6 +316,9 @@ class Window(Adw.ApplicationWindow):
         self.verifying = False
         self.log_pos = 0
         self.log_view = None
+        self.follow = True
+        self.bar_target = 0.0
+        self.bar_animation = None
         self.changelog = self._read_changelog() if update else {}
 
         self._write_pid()
@@ -293,7 +462,7 @@ class Window(Adw.ApplicationWindow):
             self.title.set_subtitle("")
         elif kind == "verify-begin":
             for check in self.checks:
-                self.checks_group.remove(check["row"])
+                self.checks_list.remove(check["row"])
             self.checks = []
         elif kind == "check":
             self._add_check(event)
@@ -329,17 +498,15 @@ class Window(Adw.ApplicationWindow):
         self.banner = Adw.Banner(title="", revealed=False)
         view.add_top_bar(self.banner)
 
-        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18,
-                       margin_top=18, margin_bottom=18,
-                       margin_start=12, margin_end=12)
-
         # The bar, the step running now and, when it ends, the outcome. On
-        # top of the checklist for an install; between the changelog and the
-        # live log for an update, which is the layout that page asks for.
-        size = 32 if self.update else 48
+        # top of the checklist for an install; at the head of the right-hand
+        # column, above the steps, for an update.
+        size = 40 if self.update else 48
         hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
                        spacing=6 if self.update else 8)
-        self.hero_icon = Gtk.Stack()
+        self.hero_icon = Gtk.Stack(
+            transition_type=Gtk.StackTransitionType.CROSSFADE,
+            transition_duration=250)
         spinner = Adw.Spinner(width_request=size, height_request=size)
         self.hero_icon.add_named(spinner, "running")
         self.hero_image = Gtk.Image(pixel_size=size)
@@ -350,7 +517,7 @@ class Window(Adw.ApplicationWindow):
             label="Updating Aura Glass" if self.update
             else "Installing Aura Glass",
             wrap=True, justify=Gtk.Justification.CENTER)
-        self.heading.add_css_class("title-4" if self.update else "title-2")
+        self.heading.add_css_class("title-3" if self.update else "title-2")
         hero.append(self.heading)
 
         self.current = Gtk.Label(label="Starting…", wrap=True,
@@ -358,13 +525,12 @@ class Window(Adw.ApplicationWindow):
         self.current.add_css_class("dim-label")
         hero.append(self.current)
 
-        self.bar = Gtk.ProgressBar(show_text=True, margin_top=6)
+        self.bar = Gtk.ProgressBar(show_text=True, margin_top=8)
         self.bar.add_css_class("install-progress")
         hero.append(self.bar)
 
-        self.last_line = Gtk.Label(label="", xalign=0,
-                                   ellipsize=Pango.EllipsizeMode.END,
-                                   visible=not self.update)
+        self.last_line = Gtk.Label(label="", xalign=0.5 if self.update else 0,
+                                   ellipsize=Pango.EllipsizeMode.END)
         self.last_line.add_css_class("monospace")
         self.last_line.add_css_class("caption")
         self.last_line.add_css_class("dim-label")
@@ -379,61 +545,42 @@ class Window(Adw.ApplicationWindow):
         self.hint = hint
         hero.append(hint)
 
-        if self.update:
-            self._build_changelog(body)
-        else:
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18,
+                       margin_top=16 if self.update else 18, margin_bottom=18,
+                       margin_start=20 if self.update else 12,
+                       margin_end=20 if self.update else 12)
+        if not self.update:
             body.append(hero)
 
-        self.steps_group = Adw.PreferencesGroup(title="Steps")
-        body.append(self.steps_group)
+        steps_section, self.steps_list = self._section("Steps")
+        body.append(steps_section)
 
-        self.checks_group = Adw.PreferencesGroup(
-            title="Checks",
-            description="What is on disk and in your settings now.")
         self.check_again = Gtk.Button(label="Check again",
                                       valign=Gtk.Align.CENTER)
         self.check_again.add_css_class("flat")
         self.check_again.connect("clicked", self._on_check_again)
-        self.checks_group.set_header_suffix(self.check_again)
-        self.checks_group.set_visible(False)
-        body.append(self.checks_group)
+        self.checks_section, self.checks_list = self._section(
+            "Checks", "What is on disk and in your settings now.",
+            self.check_again)
+        self.checks_section.set_visible(False)
+        body.append(self.checks_section)
 
-        clamp = Adw.Clamp(maximum_size=560, child=body)
-        scroller = Gtk.ScrolledWindow(child=clamp, vexpand=True,
-                                      hscrollbar_policy=Gtk.PolicyType.NEVER)
+        scroller = Gtk.ScrolledWindow(
+            child=Adw.Clamp(maximum_size=560, child=body), vexpand=True,
+            hscrollbar_policy=Gtk.PolicyType.NEVER)
         if self.update:
-            # Changelog above, progress in the middle, the log at the bottom,
-            # live: the update window shows its output rather than hiding it
-            # behind a button, since following it is the point of the window.
-            column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-            column.append(scroller)
-            column.append(Gtk.Separator())
-            column.append(Adw.Clamp(maximum_size=560, child=hero,
-                                    margin_top=12, margin_bottom=12,
-                                    margin_start=12, margin_end=12))
-            self.log_view = Gtk.TextView(
-                editable=False, cursor_visible=False, monospace=True,
-                wrap_mode=Gtk.WrapMode.WORD_CHAR, top_margin=6,
-                bottom_margin=6, left_margin=10, right_margin=10)
-            self.log_view.add_css_class("caption")
-            self.log_scroller = Gtk.ScrolledWindow(child=self.log_view,
-                                                   min_content_height=170)
-            self.log_scroller.add_css_class("view")
-            column.append(Gtk.Separator())
-            column.append(self.log_scroller)
-            view.set_content(column)
+            self._build_update(view, hero, scroller)
         else:
             view.set_content(scroller)
 
         bottom = Gtk.Box(spacing=12, margin_top=12, margin_bottom=12,
                          margin_start=12, margin_end=12)
-        log_button = Gtk.Button(label="Show log")
-        log_button.connect("clicked", self._on_show_log)
         if self.update:
-            log_button.set_label("Open log")
-            log_button.disconnect_by_func(self._on_show_log)
-            log_button.connect("clicked", lambda _b: open_uri(
-                GLib.filename_to_uri(self.log_path)))
+            log_button = Gtk.ToggleButton(label="Show log")
+            log_button.connect("toggled", self._on_toggle_log)
+        else:
+            log_button = Gtk.Button(label="Show log")
+            log_button.connect("clicked", self._on_show_log)
         bottom.append(log_button)
         bottom.append(Gtk.Box(hexpand=True))
         self.later = Gtk.Button(label="Later", visible=False)
@@ -447,6 +594,93 @@ class Window(Adw.ApplicationWindow):
 
         self.set_content(view)
 
+    def _build_update(self, view, hero, scroller):
+        """Two columns: what's new on the left, how it is going on the right.
+
+        The steps appear one by one as they start, and the right column keeps
+        the newest in view unless it was scrolled up to read. The log is
+        followed all along but hidden in a drawer under both columns, opened
+        by Show log: the steps already say what is happening, and the log is
+        there for when one of them did not go cleanly. Narrower than 760sp
+        the columns stack, changelog first.
+        """
+        # Equal halves whatever each holds, so neither column jumps in width
+        # as the steps and checks come in.
+        columns = Gtk.Box(vexpand=True, homogeneous=True)
+
+        changelog = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
+                            margin_top=20, margin_bottom=20,
+                            margin_start=20, margin_end=20)
+        self._build_changelog(changelog)
+        left = Gtk.ScrolledWindow(
+            child=Adw.Clamp(maximum_size=560, child=changelog), vexpand=True,
+            hscrollbar_policy=Gtk.PolicyType.NEVER)
+        left.add_css_class("changelog-pane")
+        columns.append(left)
+
+        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        right.append(Adw.Clamp(maximum_size=560, child=hero,
+                               margin_top=20, margin_bottom=14,
+                               margin_start=20, margin_end=20))
+        right.append(Gtk.Separator())
+        right.append(scroller)
+        self.steps_scroller = scroller
+        adj = scroller.get_vadjustment()
+        adj.connect("value-changed", self._on_steps_scrolled)
+        adj.connect("notify::upper", self._on_steps_grew)
+
+        columns.append(right)
+
+        self.log_view = Gtk.TextView(
+            editable=False, cursor_visible=False, monospace=True,
+            wrap_mode=Gtk.WrapMode.WORD_CHAR, top_margin=6,
+            bottom_margin=6, left_margin=10, right_margin=10)
+        self.log_view.add_css_class("caption")
+        self.log_scroller = Gtk.ScrolledWindow(child=self.log_view,
+                                               min_content_height=220)
+        self.log_scroller.add_css_class("view")
+        drawer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        drawer.append(Gtk.Separator())
+        drawer.append(self.log_scroller)
+        self.log_drawer = Gtk.Revealer(
+            child=drawer, reveal_child=False,
+            transition_type=Gtk.RevealerTransitionType.SLIDE_UP,
+            transition_duration=REVEAL_MS)
+
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        content.append(columns)
+        content.append(self.log_drawer)
+        view.set_content(content)
+
+        narrow = Adw.Breakpoint.new(
+            Adw.BreakpointCondition.parse("max-width: 760sp"))
+        narrow.add_setter(columns, "orientation", Gtk.Orientation.VERTICAL)
+        narrow.add_setter(left, "css-classes", GObject.Value(
+            GObject.TYPE_STRV, ["changelog-pane-narrow"]))
+        self.add_breakpoint(narrow)
+
+    def _section(self, title, description=None, suffix=None):
+        """A heading, an optional line under it, and a list of cards."""
+        section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        head = Gtk.Box(spacing=12)
+        words = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True,
+                        valign=Gtk.Align.CENTER)
+        label = Gtk.Label(label=title, xalign=0)
+        label.add_css_class("heading")
+        words.append(label)
+        if description:
+            line = Gtk.Label(label=description, xalign=0, wrap=True)
+            line.add_css_class("caption")
+            line.add_css_class("dim-label")
+            words.append(line)
+        head.append(words)
+        if suffix is not None:
+            head.append(suffix)
+        section.append(head)
+        cards = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        section.append(cards)
+        return section, cards
+
     def _update_span(self):
         old, new = self.changelog.get("from"), self.changelog.get("to")
         if old and new:
@@ -454,69 +688,80 @@ class Window(Adw.ApplicationWindow):
         return new or ""
 
     def _build_changelog(self, body):
-        """One group per release the update brings, newest first."""
+        """What's new, then one card per release the update brings, newest
+        first."""
         sections = self.changelog.get("sections") or []
-        intro = Adw.PreferencesGroup(
-            title="What's new",
-            description=(
-                "%d release%s and the commits after them, from %s to %s."
-                % (len(sections), "" if len(sections) == 1 else "s",
-                   self.changelog.get("from") or "your version",
-                   self.changelog.get("to") or "the newest")
-                if sections else
-                "Nothing new between the installed version and this one — "
-                "the update reinstalls it, or goes back to it."))
+        heading = Gtk.Label(label="What's new", xalign=0)
+        heading.add_css_class("title-2")
+        body.append(heading)
+        span = self._update_span()
+        if span:
+            pill = Gtk.Label(label=span, halign=Gtk.Align.START)
+            pill.add_css_class("version-pill")
+            body.append(pill)
+        intro = Gtk.Label(
+            label=("%d release%s and the commits after them."
+                   % (len(sections), "" if len(sections) == 1 else "s")
+                   if sections else
+                   "Nothing new between the installed version and this one — "
+                   "the update reinstalls it, or goes back to it."),
+            xalign=0, wrap=True)
+        intro.add_css_class("dim-label")
         body.append(intro)
-        for section in sections:
+        for index, section in enumerate(sections):
             count = section.get("count") or 0
-            group = Adw.PreferencesGroup(
-                title=GLib.markup_escape_text(section.get("title", "")),
-                description="%s · %d commit%s" % (
-                    section.get("date", ""), count, "" if count == 1 else "s"))
+            card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            card.add_css_class("release-card")
+            top = Gtk.Box(spacing=8)
+            title = Gtk.Label(label=section.get("title", ""), xalign=0)
+            title.add_css_class("title-4")
+            top.append(title)
+            if index == 0:
+                latest = Gtk.Label(label="Newest", valign=Gtk.Align.CENTER)
+                latest.add_css_class("latest-pill")
+                top.append(latest)
+            top.append(Gtk.Box(hexpand=True))
+            date = Gtk.Label(label=section.get("date", ""))
+            date.add_css_class("caption")
+            date.add_css_class("dim-label")
+            top.append(date)
+            card.append(top)
+            commits = Gtk.Label(
+                label="%d commit%s" % (count, "" if count == 1 else "s"),
+                xalign=0)
+            commits.add_css_class("caption")
+            commits.add_css_class("dim-label")
+            card.append(commits)
             label = Gtk.Label(xalign=0, wrap=True, selectable=True,
-                              margin_top=12, margin_bottom=12,
-                              margin_start=12, margin_end=12)
+                              margin_top=6)
             try:
                 label.set_markup(section.get("markup", ""))
             except GLib.Error:
                 label.set_text(clean(section.get("markup", "")))
-            card = Gtk.Box()
-            card.add_css_class("card")
             card.append(label)
-            group.add(card)
-            body.append(group)
+            body.append(card)
 
     def _add_step(self, ident, title):
         if ident in self.steps:
             return
         step = Step(ident, title)
-        step.row = Adw.ActionRow(title=GLib.markup_escape_text(title))
-        step.prefix = Gtk.Stack()
-        step.prefix.add_named(Adw.Spinner(), "running")
-        step.prefix.add_named(Gtk.Box(), "icon")
-        step.row.add_prefix(step.prefix)
-        step.button = Gtk.Button(label="Details", valign=Gtk.Align.CENTER,
-                                 visible=False)
-        step.button.add_css_class("flat")
-        step.button.connect("clicked", lambda _b, s=step: self._step_details(s))
-        step.row.add_suffix(step.button)
-        self.steps_group.add(step.row)
+        step.card = Card(title, "Details", lambda s=step: self._step_details(s))
+        step.button = step.card.button
+        self.steps_list.append(step.card)
         self.steps[ident] = step
         self.order.append(ident)
         self._refresh_step(step)
+        # An install lists every step from the start; an update shows each
+        # one as it starts, so the column fills in as the run goes.
+        if not self.update:
+            step.card.reveal()
 
     def _refresh_step(self, step):
-        if step.status == "running":
-            step.prefix.set_visible_child_name("running")
-        else:
-            old = step.prefix.get_child_by_name("icon")
-            step.prefix.remove(old)
-            step.prefix.add_named(status_icon(step.status), "icon")
-            step.prefix.set_visible_child_name("icon")
-
         subtitle = ""
         problems = [text for level, text in step.notes
                     if level in ("warn", "error")]
+        infos = [text for level, text in step.notes if level == "info"]
+        look = step.status
         if step.status == "running":
             subtitle = "Running…"
         elif step.status == "fail":
@@ -526,11 +771,17 @@ class Window(Adw.ApplicationWindow):
             if len(problems) > 1:
                 subtitle += " (and %d more)" % (len(problems) - 1)
         elif step.status == "skip":
-            infos = [text for level, text in step.notes if level == "info"]
             # Without a reason, every line it printed was a skip: what it
-            # would install was already there.
+            # would install was already there, which is as good as done.
             subtitle = infos[0] if infos else "Already in place"
-        step.row.set_subtitle(GLib.markup_escape_text(subtitle))
+            if not infos:
+                look = "ok"
+        elif step.status == "pending" and self.finished == "fail":
+            subtitle = "Not reached"
+        step.card.set_status(step.status, look)
+        step.card.set_subtitle(subtitle)
+        if step.status != "pending" or self.finished is not None:
+            step.card.reveal()
 
         step.button.set_visible(step.status not in ("pending", "running"))
         step.button.set_label("Why?" if step.status in ("warn", "fail")
@@ -539,17 +790,34 @@ class Window(Adw.ApplicationWindow):
     def _add_check(self, event):
         status = event.get("status", "ok")
         title = "%s — %s" % (event.get("group", ""), event.get("title", ""))
-        row = Adw.ActionRow(title=GLib.markup_escape_text(title))
-        row.add_prefix(status_icon(status))
+        card = Card(title, "Why?", lambda e=event: self._check_details(e))
+        card.set_status(status if status in BADGE_ICONS else "fail")
         if status != "ok":
-            row.set_subtitle(GLib.markup_escape_text(event.get("why", "")))
-            button = Gtk.Button(label="Why?", valign=Gtk.Align.CENTER)
-            button.add_css_class("flat")
-            button.connect("clicked", lambda _b, e=event: self._check_details(e))
-            row.add_suffix(button)
-        self.checks_group.add(row)
-        self.checks_group.set_visible(True)
-        self.checks.append({"row": row, "status": status})
+            card.set_subtitle(event.get("why", ""))
+            card.button.set_visible(True)
+        self.checks_list.append(card)
+        self.checks_section.set_visible(True)
+        card.reveal()
+        self.checks.append({"row": card, "status": status})
+
+    # ---- following the newest step -------------------------------------------
+
+    def _on_steps_scrolled(self, adj):
+        # Following until scrolled up to read; back at the bottom, again.
+        self.follow = adj.get_value() >= adj.get_upper() - adj.get_page_size() - 24
+
+    def _on_steps_grew(self, adj, _pspec):
+        # A card sliding open grows the column a little every frame; keeping
+        # the bottom in view each time makes the scroll as smooth as the slide.
+        if self.follow:
+            adj.set_value(adj.get_upper() - adj.get_page_size())
+
+    def _on_toggle_log(self, button):
+        shown = button.get_active()
+        button.set_label("Hide log" if shown else "Show log")
+        self.log_drawer.set_reveal_child(shown)
+        if shown:
+            GLib.idle_add(self._scroll_to_end, self.log_view)
 
     def _update_progress(self):
         total = len(self.order)
@@ -567,8 +835,19 @@ class Window(Adw.ApplicationWindow):
         fraction = (done + (0.5 if running else 0)) / total
         if self.finished is not None:
             fraction = 1.0 if self.finished != "fail" else fraction
-        self.bar.set_fraction(min(fraction, 1.0))
         self.bar.set_text("%d of %d" % (done, total))
+        fraction = min(fraction, 1.0)
+        if abs(fraction - self.bar_target) < 1e-6:
+            return
+        # The bar glides to its new value rather than jumping.
+        self.bar_target = fraction
+        if self.bar_animation is not None:
+            self.bar_animation.skip()
+        self.bar_animation = Adw.TimedAnimation(
+            widget=self.bar, value_from=self.bar.get_fraction(),
+            value_to=fraction, duration=BAR_MS,
+            target=Adw.PropertyAnimationTarget.new(self.bar, "fraction"))
+        self.bar_animation.play()
 
     def _finish(self, event):
         if self.finished is not None:
@@ -579,11 +858,12 @@ class Window(Adw.ApplicationWindow):
         if status == "ok" and any(c["status"] != "ok" for c in self.checks):
             status = "warn"
         self.finished = status
+        # Every step is shown now, the ones a stopped run never reached too.
         for ident in self.order:
             step = self.steps[ident]
             if step.status == "running":
                 step.status = "fail"
-                self._refresh_step(step)
+            self._refresh_step(step)
 
         icon, css, heading, text = FINISHED[status]
         if self.update:
@@ -601,6 +881,7 @@ class Window(Adw.ApplicationWindow):
         for name in ("success", "warning", "error"):
             self.hero_image.remove_css_class(name)
         self.hero_image.add_css_class(css)
+        self.hero_image.add_css_class("hero-pop")
         self.hero_icon.set_visible_child_name("done")
         self.heading.set_label(heading)
         self.current.set_label(text)
@@ -646,7 +927,7 @@ class Window(Adw.ApplicationWindow):
                 row = Adw.ActionRow(title=GLib.markup_escape_text(text),
                                     title_lines=0)
                 row.add_prefix(status_icon(
-                    {"warn": "warn", "error": "fail"}.get(level, "skip")))
+                    {"warn": "warn", "error": "warn"}.get(level, "skip")))
                 group.add(row)
             box.append(group)
 
@@ -796,9 +1077,11 @@ class Application(Adw.Application):
         if window is None:
             provider = Gtk.CssProvider()
             provider.load_from_data(CSS)
+            # Above the user's gtk.css, which is Aura Glass's own and sizes
+            # every button: the cards' small buttons would lose to it.
             Gtk.StyleContext.add_provider_for_display(
                 Gdk.Display.get_default(), provider,
-                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+                Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
             window = Window(self, self.run_dir, self.update)
         window.present()
 

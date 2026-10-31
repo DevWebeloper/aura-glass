@@ -96,8 +96,13 @@ window makes a run directory under `$XDG_RUNTIME_DIR`, writes
 the installed commit and the target, newest first, each with its GitHub notes
 and every commit it brought in, then the commits after the last release), opens
 the terminal with `AURA_GLASS_PROGRESS_DIR=<dir> aura-glass-update <target>`
-and starts this window. The layout is changelog above, bar in the middle, the
-log live at the bottom. `aura-glass-update` reports its fetch and switch steps
+and starts this window. The layout is two columns: the changelog on the left
+(one card per release, newest first), the bar and the steps on the right. Each
+step slides in as it starts and the column follows the newest unless scrolled
+up. The log is followed live but hidden in a drawer under both columns, opened
+by **Show log**. Below 760sp the columns stack. Status badges are green for
+done (an "already in place" skip too), yellow for a warning, red for a failure,
+grey for a step the run chose not to do. `aura-glass-update` reports its fetch and switch steps
 and owns `begin`; the `install.sh` it runs sees the variable, adds its own
 steps and the finish, and opens no second window.
 
