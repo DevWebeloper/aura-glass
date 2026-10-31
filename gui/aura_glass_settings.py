@@ -5136,10 +5136,11 @@ class Window(Adw.ApplicationWindow):
         motion = Adw.PreferencesGroup(title="Animations")
         self._smooth_animations_row = Adw.SwitchRow(
             title="Smooth animations",
-            subtitle="Keeps a monitor-sized buffer for every blur so menus, "
-                     "folders and banners open without a dropped frame. "
-                     "Uses about 50 MB of video memory per blurred surface; "
-                     "fully applies at next login",
+            subtitle="Menus, folders and notifications open faster, with "
+                     "no stutter. No extra CPU or GPU load, but it uses a "
+                     "lot of video memory: switch to Performance mode "
+                     "before playing games. Off by default; fully applies "
+                     "at next login",
             active=self._applied.smooth_animations)
         self._smooth_animations_row.connect("notify::active", self._on_changed,
                                             "smooth_animations")

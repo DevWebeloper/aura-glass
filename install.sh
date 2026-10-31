@@ -222,14 +222,12 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       a fullscreen window (a video, a game) drops its blur
                       and goes opaque until it leaves fullscreen (the default)
     --smooth-animations
-                      trade VRAM for smoother animation starts: every blur
-                      keeps a monitor-sized buffer instead of reallocating
-                      while a menu, folder or banner animates in (about 50 MB
-                      per blurred surface at 1440p), and the compositor
-                      always gives a frame its whole budget. The frame
-                      budget part takes effect at next login (remembered)
+                      menus, folders and notifications open faster, with no
+                      stutter. No extra CPU or GPU load, but it uses a lot
+                      of video memory: switch to Performance mode before
+                      playing games. Fully applies at next login (remembered)
     --no-smooth-animations
-                      stock buffer sizing and frame timing (the default)
+                      off (the default)
     --blur-strength P how far every blur reaches, as a percentage of the tuned
                       radii: 25-200, 100 is the tuned look (remembered)
     --popup-brightness P
