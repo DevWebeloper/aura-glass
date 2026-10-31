@@ -74,6 +74,7 @@ banner while the terminal waits (`progress_wait`, called from `confirm`,
 argv     --dir <run dir>          events + log, written by lib/progress.sh
 reads    events (JSON lines, listed at the top of lib/progress.sh), log
 writes   <run dir>/window         its pid; prompt_logout leaves the logout to it while it is open
+         <run dir>/window-layout  WINDOW_LAYOUT (2); an update swaps a window without it, or with less (below)
 runs     install.sh --verify --progress-dir <run dir>   ("Check again")
          gnome-session-quit --logout --no-prompt         ("Log out now")
 ```
@@ -104,7 +105,15 @@ by **Show log**. Below 760sp the columns stack. Status badges are green for
 done (an "already in place" skip too), yellow for a warning, red for a failure,
 grey for a step the run chose not to do. `aura-glass-update` reports its fetch and switch steps
 and owns `begin`; the `install.sh` it runs sees the variable, adds its own
-steps and the finish, and opens no second window.
+steps and the finish, and opens no second window, except for one case. The
+window was started from beside the settings window, so it is the release being
+updated *from*. When that is older than the checkout just switched to (no
+`window-layout`, or a lower one than this file's `WINDOW_LAYOUT`), the
+installer's `progress_replace_update_window` opens this checkout's window on the
+same run directory and closes the old one once the new one has written
+`window-layout`. The new one replays `events` from the start, so the fetch and
+switch steps are still there. An update from v0.3.8 shows the new layout from
+the installer's first step on, not only from the next update.
 
 ---
 

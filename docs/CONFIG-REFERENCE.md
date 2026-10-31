@@ -212,7 +212,7 @@ by `save_glass_mode_memos`.
 | `accent-from-wallpaper` | opt-in marker for the (currently uncatalogued) auto-accent extension | `bin/aura-glass-ext` writes it; `lib/steps-extensions.sh` reads it |
 | `preview-active`, `preview-backup/` | live preview marker and journal (sheets, BMS dump, memos, session id) | `aura-glass-preview` |
 | `uninstalled` | written by `uninstall.sh`, removed by the next install | |
-| `last-install/` | `events` (JSON lines), `log` (the terminal's output), `window` (the progress window's pid) for the last full install that had a progress window. Replaced each such run; a dry run uses a temp dir instead. Removed by uninstall | `progress_begin` (`lib/progress.sh`); read by the progress window |
+| `last-install/` | `events` (JSON lines), `log` (the terminal's output), `window` (the progress window's pid), `window-layout` (its `WINDOW_LAYOUT`) for the last full install that had a progress window. Replaced each such run; a dry run uses a temp dir instead. Removed by uninstall | `progress_begin` (`lib/progress.sh`); read by the progress window |
 | `shell-*.css`, `gtk4-*.css`, `gtk3-*.css` | installed, rewritten copies spliced by `aura-glass-apply` | `install_css` |
 
 ### `$C/backups/`

@@ -19,8 +19,10 @@ changelog the settings window wrote to changelog.json above, the bar in the
 middle, and the log live at the bottom (docs/GUI.md §2b).
 
 The contract is the two files in --dir, described at the top of
-lib/progress.sh. This reads them and writes one file of its own, `window`, its
-pid, which is how prompt_logout knows to leave the logout to this window. It
+lib/progress.sh. This reads them and writes two files of its own: `window`, its
+pid, which is how prompt_logout knows to leave the logout to this window, and
+`window-layout`, which is how an update's install.sh knows whether the window
+already open is this one or an older release's (progress_begin). It
 installs and configures nothing; "Check again" runs `install.sh --verify`, and
 "Log out now" runs gnome-session-quit, the same command prompt_logout runs.
 
@@ -45,6 +47,11 @@ APP_ID = "io.github.DevWebeloper.AuraGlassInstall"
 # How often the two files are read. Appended to by a shell script a few times a
 # second at most, so polling is simpler than a file monitor and as quick.
 POLL_MS = 250
+
+# Written to window-layout. 2 is the two-column update window. Raise it when
+# the layout changes enough that an update should swap an open older window
+# for this one (progress_begin compares it).
+WINDOW_LAYOUT = 2
 
 # The most of a step's log a "Why?" shows. A font or icon pack download can
 # print a lot; the end of it is where the failure is.
@@ -330,17 +337,23 @@ class Window(Adw.ApplicationWindow):
     # ---- files ---------------------------------------------------------------
 
     def _write_pid(self):
+        # window-layout after window: progress_begin waits for it to know this
+        # window is up, and an update window without it (v0.3.8 and before)
+        # is the old single-column one it replaces with this one.
         try:
             with open(os.path.join(self.dir, "window"), "w") as handle:
                 handle.write("%d\n" % os.getpid())
+            with open(os.path.join(self.dir, "window-layout"), "w") as handle:
+                handle.write("%s\n" % WINDOW_LAYOUT)
         except OSError:
             pass
 
     def _on_close(self, _window):
-        try:
-            os.unlink(os.path.join(self.dir, "window"))
-        except OSError:
-            pass
+        for name in ("window", "window-layout"):
+            try:
+                os.unlink(os.path.join(self.dir, name))
+            except OSError:
+                pass
         if self._timer:
             GLib.source_remove(self._timer)
             self._timer = 0

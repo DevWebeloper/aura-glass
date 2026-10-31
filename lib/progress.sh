@@ -14,7 +14,8 @@
 # opens in a terminal, and for an update: the settings window opens the window
 # itself in update mode and bin/aura-glass-update passes its run directory down
 # in AURA_GLASS_PROGRESS_DIR, so this install adds its steps to that window
-# instead of opening a second one. Everything else — a scripted install, --settings-only,
+# instead of opening a second one (or swaps it for this checkout's, when it is an
+# older release's: progress_replace_update_window). Everything else — a scripted install, --settings-only,
 # --deps-only — never calls progress_begin, and every function here is then a
 # no-op.
 #
@@ -99,6 +100,41 @@ progress_window_open() {
     [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
 }
 
+# progress_replace_update_window — an update's window is the one the settings
+# window opened from beside itself, so it is the release being updated *from*:
+# moving to a release with a new window still showed the old one for that whole
+# update, and the new one only on the next. This install.sh is the first code
+# from the new checkout to run, so it puts this checkout's window on the same
+# run directory, which replays events from the start and so loses nothing, and
+# closes the old one once the new one is up. window-layout is how it tells
+# them apart: a window that writes none, or a lower number, is older. If the
+# new window does not come up, the old one is left open and the update carries
+# on in it.
+progress_replace_update_window() {
+    [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] || return 0
+    gui_toolkit_present || return 0
+    local window="$REPO_ROOT/gui/aura_glass_install_progress.py"
+    [ -r "$window" ] || return 0
+    progress_window_open || return 0
+    local old layout want
+    old="$(cat "$PROGRESS_DIR/window" 2>/dev/null || true)"
+    layout="$(cat "$PROGRESS_DIR/window-layout" 2>/dev/null || echo 0)"
+    want="$(sed -n 's/^WINDOW_LAYOUT = \([0-9]*\)$/\1/p' "$window")"
+    [ -n "$want" ] && [ "${layout:-0}" -lt "$want" ] 2>/dev/null || return 0
+
+    rm -f "$PROGRESS_DIR/window-layout"
+    setsid -f python3 "$window" --dir "$PROGRESS_DIR" --update \
+        </dev/null >/dev/null 2>&1 || return 0
+    # Up to 5 s: the new window writes window-layout once it has a pid file.
+    local i
+    for i in $(seq 50); do
+        [ -r "$PROGRESS_DIR/window-layout" ] && break
+        sleep 0.1
+    done
+    [ -r "$PROGRESS_DIR/window-layout" ] || return 0
+    kill "$old" 2>/dev/null || true
+}
+
 # progress_begin — start recording this run and open the window on it.
 #
 # The record goes to $CONF_DIR/last-install, replaced each run, so the log of
@@ -112,6 +148,7 @@ progress_begin() {
     if [ -n "${AURA_GLASS_PROGRESS_DIR:-}" ] && [ -d "$AURA_GLASS_PROGRESS_DIR" ]; then
         PROGRESS_DIR="$AURA_GLASS_PROGRESS_DIR"
         add_exit_trap 'progress_exit "$?"'
+        progress_replace_update_window
         return 0
     fi
     [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] || return 0
