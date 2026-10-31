@@ -167,7 +167,24 @@ diff -ruN a/extension.js b/extension.js
  import GLib from 'gi://GLib';
  import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
  
-@@ -114,9 +115,29 @@
+@@ -44,7 +45,15 @@
+ 
+     _checkCursorHiddenByProgram() {
+         // different program might take other methods to hide the cursor, so this check should contain more conditions
+-        if (!this._effect.cursor.sprite) {
++        // A fullscreen window on the pointer's monitor counts as one: games
++        // can keep a cursor sprite while aiming flicks the pointer or warps
++        // it back to the centre, and those jumps pass for a shake, so the
++        // pointer grew in game. Treated like a hidden cursor, the watcher
++        // stops, any magnify ends and the history is dropped until the
++        // window leaves fullscreen.
++        const display = global.display;
++        if (!this._effect.cursor.sprite ||
++            display.get_monitor_in_fullscreen(display.get_current_monitor())) {
+             if (!this._isHiddenByProgram) {
+                 this._togglePointerWatcher(false);
+                 this._isHiddenByProgram = true;
+@@ -114,9 +123,29 @@
              [Field.CHCK, 'i', (r) => this._onCheckIntervalChange(r)],
              [Field.DRAW, 'i', (r) => this._onDrawIntervalChange(r)],
          ]);
