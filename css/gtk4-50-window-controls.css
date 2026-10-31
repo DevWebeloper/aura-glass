@@ -237,6 +237,30 @@ windowcontrols > button.titlebutton.maximize:hover {
   color: #ffffff;
 }
 
+/* The size above never reaches GTK4's own controls: the theme sizes them with
+ * `windowcontrols > button { min-width: 12px }`, which no `button.titlebutton`
+ * selector here matches, so they stayed at the theme's 12px. Same 34px as the
+ * rule above and as GTK3.
+ */
+windowcontrols > button,
+windowcontrols > button.close,
+windowcontrols > button.minimize,
+windowcontrols > button.maximize {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+
+/* The minimal look paints no disc, so the glyph is all that shows and a bigger
+ * button alone looked unchanged. 20px, up from the 16px default, scales the
+ * glyph with the button. GTK3 mirrors it with -gtk-icon-transform: scale(1.25).
+ */
+windowcontrols > button > image,
+headerbar button.titlebutton > image,
+.titlebar button.titlebutton > image {
+  -gtk-icon-size: 20px;
+}
+
 button.titlebutton:backdrop {
   opacity: 0.45;
 }

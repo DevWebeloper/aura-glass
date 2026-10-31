@@ -231,3 +231,12 @@ headerbar.default-decoration button.titlebutton:backdrop,
   box-shadow: none;
 }
 
+
+/* The minimal look paints no disc, so the glyph is all that shows and the
+ * 34px button alone looked unchanged. GTK3 has no -gtk-icon-size; scale(1.25)
+ * takes the 16px titlebutton glyph to the 20px GTK4 sets.
+ */
+headerbar button.titlebutton image,
+.titlebar button.titlebutton image {
+  -gtk-icon-transform: scale(1.25);
+}
