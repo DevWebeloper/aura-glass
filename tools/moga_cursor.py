@@ -64,13 +64,17 @@ XCURSOR_IMAGE = 0xfffd0002
 MARKER = ".aura-glass-spinner"
 # The stamp's suffix changes with the design, so packs built to an older one
 # are rebuilt.
-DESIGN = "material-spinner-1 badges-1 round-1"
+DESIGN = "material-spinner-2 badges-1 round-1"
+# The pointer's own border, 0.035 of the frame (3 px at 96), measured off
+# Moga's arrow. The spinner's stroke and the round cursors' border are drawn
+# this thick, so every mark reads as the pointer's outline.
+POINTER_BORDER = 0.035
 # Outer radius 0.195 of the frame keeps the spinner small beside a pointer
-# 0.47 of the frame wide. The stroke is a third of the outer radius, the
-# proportion of the Material spinner (4 of a 44 diameter, rounded up so it
-# stays 2 px wide at size 32).
+# 0.47 of the frame wide. The stroke is the pointer's border rather than
+# Material's third of the radius (0.065), which drew the ring twice as heavy
+# as the outline beside it.
 RING_OUTER = 0.195
-RING_STROKE = 0.065
+RING_STROKE = POINTER_BORDER
 # The gap between the pointer's edge and the spinner: 2 px at size 32.
 EDGE_GAP = 0.06
 # A soft drop shadow to match the one under Moga's pointer.
@@ -119,7 +123,7 @@ GLYPHS = {
 # The disc is 0.38 of the frame in radius, a little under Moga's 0.44, so it
 # weighs about as much as the pointer does.
 ROUND_RADIUS = 0.38
-ROUND_BORDER = 0.035
+ROUND_BORDER = POINTER_BORDER
 ROUND_STROKE = 0.1
 ROUND_GLYPHS = {
     "x": GLYPHS["no-drop"],
