@@ -39,7 +39,7 @@ For "which file draws this button / owns this setting", use
 | `steps-assets.sh` | Icon packs (Colloid, Reversal, Hatter, MacTahoe) and accent mapping (`icon_base`, `accent_to_*`); pointers (Adwaita, AOSP, MacTahoe, Moga, original); `install_wallpapers`. |
 | `steps-fonts.sh` | `--font` installs: Inter, MiSans (Latin + Arabic), SF Pro. |
 | `steps-modes.sh` | Glass modes: `resolve_glass_mode`, `apply_glass_mode`, the drawers (`seed_glass_mode`, `load_glass_mode_memos`, `save_glass_mode_memos`), `remember_glass_mode`. |
-| `steps-css.sh` | `install_css` and the rewriter wrappers (transparency, tints, popup transparency, notification opacity, radius), `install_window_control_style`, display density (`measure_logical_ppi`, `density_css`). |
+| `steps-css.sh` | `install_css` and the rewriter wrappers (transparency, tints, popup transparency, notification opacity, radius), `install_window_control_style`, display density (`measure_logical_ppi`, `density_css`), top bar height for the scale (`measure_primary_scale`, `panel_height_css`). |
 | `steps-dconf.sh` | `load_dconf` and every `apply_*` that writes a dconf/gsettings key: radii, pipelines, app blur and lists, popup/notification blur, grain, brightnesses, blur strength, `apply_adaptive_blur`, window buttons, cursor theme/size, accent, Moga variants, `apply_gsettings`, `apply_font`. |
 | `steps-integration.sh` | `install_icon_sync`, `flatpak_override`, `remove_panel_blur_unit` (retired service), `install_adaptive_performance`. |
 | `steps-gdm.sh` | Login screen theme, wallpaper generation, monitor sync, and the GDM sync unit (all opt-in, root). |
@@ -67,7 +67,7 @@ For "which file draws this button / owns this setting", use
 | `shell-80-solid` opaque ladder (Performance / `--no-blur`) | `gtk4-60-controls` switches, checks, radios, sliders | |
 | `shell-popup-blur` popup alphas over real blur | `gtk4-70-surfaces` surfaces, Nautilus status, sidebars | |
 | `shell-notification-blur` notification alphas over real blur | `gtk4-transparency` translucent windows (rescaled, tinted) | |
-| *(generated)* `shell-90-density` panel icon scale for this display | `gtk4-window-controls-{adwaita,material,flat}` one, by style | |
+| *(generated)* `shell-90-density` panel icon scale and top bar height for this display | `gtk4-window-controls-{adwaita,material,flat}` one, by style | |
 
 ### `dconf/`
 

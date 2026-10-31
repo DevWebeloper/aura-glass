@@ -21,8 +21,17 @@ TUNED_PPI=109
 
 # Logical PPI of the primary output, or nothing if it cannot be measured.
 measure_logical_ppi() {
-    python3 - <<'PY' 2>/dev/null
-import glob, math, os, re, subprocess
+    measure_primary_display ppi
+}
+
+# Scale of the primary logical monitor, or nothing if mutter cannot be asked.
+measure_primary_scale() {
+    measure_primary_display scale
+}
+
+measure_primary_display() {
+    python3 - "$1" <<'PY' 2>/dev/null
+import glob, math, os, re, subprocess, sys
 
 def primary_and_scale():
     """Connector name and scale of the primary logical monitor, per mutter."""
@@ -48,6 +57,11 @@ def primary_and_scale():
     return None, 1.0
 
 conn, scale = primary_and_scale()
+
+if sys.argv[1] == "scale":
+    if conn:
+        print(scale)
+    sys.exit(0)
 
 def ppi_of(path):
     try:
@@ -118,6 +132,42 @@ print(f"""
 #panel .panel-button {{
   -natural-hpadding: {hpad}px;
   -minimum-hpadding: {max(hpad - 2, 3)}px;
+}}""")
+PY
+}
+
+# The theme's top bar is `height: 40px`, and mutter's work area starts at that
+# logical 40, so a maximized window's top edge lands exactly there. At a scale
+# where 40 is not whole device pixels, both edges fall mid-pixel: at 1.33 they
+# are 53.33 device px down, and device row 53 is under neither the bar's fill
+# nor the window. It shows the blur behind them, unshaded, as a 1px light line
+# between the bar and the window (seen on DP-1 at 1.33, 2026-10-27). Thirds
+# scales (1.33, 1.67) are the ones 40 misses; 1.25, 1.5, 1.75 and 2 land whole.
+#
+# Snap the bar to the nearest height that is whole device pixels at the
+# primary scale (39 at thirds: 52 and 65 px), so the bar's fill and the window
+# meet on a pixel edge. Ties go to the shorter bar. Like the density block it is
+# measured once per run, so a later scale or primary change needs a retune.
+panel_height_css() {
+    local scale="$1"
+    python3 - "$scale" <<'PY'
+import sys
+scale, tuned = float(sys.argv[1]), 40
+for h in sorted(range(tuned - 4, tuned + 5), key=lambda h: (abs(h - tuned), h)):
+    if abs(h * scale - round(h * scale)) < 1e-3:
+        break
+else:
+    sys.exit(0)
+if h == tuned:
+    sys.exit(0)
+print(f"""
+/* ---------- Top bar height for this scale -----------------------------
+ * The theme's 40px top bar is {tuned * scale:.2f} device pixels at scale {scale:.2f},
+ * so a maximized window meets it mid-pixel and leaves a 1px seam of
+ * unshaded blur. {h}px is {round(h * scale)} whole device pixels. Generated at
+ * install time by install.sh. */
+#panel {{
+  height: {h}px !important;
 }}""")
 PY
 }
@@ -635,6 +685,22 @@ install_css() {
         else
             printf '%s\n' "$extra" > "$CONF_DIR/shell-90-density.css"
             ok "scaled panel icons for ${ppi} logical PPI (tuned at ${TUNED_PPI})"
+        fi
+    fi
+
+    # Same sheet, appended after the density rules: both are per-screen and
+    # both go when the sheet is removed above.
+    local scale
+    scale="$(measure_primary_scale || true)"
+    if [ -n "$scale" ]; then
+        extra="$(panel_height_css "$scale")"
+        if [ -z "$extra" ]; then
+            :
+        elif [ "${DRY_RUN:-0}" = 1 ]; then
+            info "dry-run: snap the top bar to whole pixels at scale ${scale}"
+        else
+            printf '%s\n' "$extra" >> "$CONF_DIR/shell-90-density.css"
+            ok "snapped the top bar to whole pixels at scale ${scale}"
         fi
     fi
 

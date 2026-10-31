@@ -19,6 +19,7 @@ a restart.
 | Top bar shaded behind a maximized window | `shell-00-flat` (`#panel.aura-glass-maximized`, 60% black shipped, alpha rewritten by `apply_maximized_panel_brightness` from `--maximized-panel-brightness`, settings app → Appearance → Top bar; 250ms fade both ways) | none | none | Aura Glass Helper `_syncPanelShade`: focused window on the primary monitor that is maximized, fullscreen or covers the work area (Tiling Assistant `maximize-with-gap`), outside the overview |
 | Panel blur after monitor changes | none | none | none | Blur My Shell v76 keeps it aligned itself. The old `aura-glass-panel-blur.service` is removed by `remove_panel_blur_unit` |
 | Panel icon size for this display | generated `shell-90-density` | none | `TUNED_PPI` (in `steps-css.sh`) | `measure_logical_ppi`, `density_css` |
+| Top bar height for this scale (no seam under a maximized window) | generated `shell-90-density` (`#panel { height }`, 39px at 1.33/1.67, absent where 40 is whole pixels) | none | the theme's 40px (in `panel_height_css`) | `measure_primary_scale`, `panel_height_css` |
 | Quick Settings panel | `shell-20-popup-menus`, `shell-popup-blur` | `[blur-my-shell/popup] quick-settings-corner-radius` | `TOKEN_RADIUS_QUICK_SETTINGS` | `install_css`, `apply_radius_*` |
 | Quick Settings sliders | `shell-10-quick-settings` | none | none | `install_css` |
 | Quick toggles and switches | `shell-40-quick-toggles` | none | none (follows `-st-accent-color`) | `install_css` |

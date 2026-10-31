@@ -225,7 +225,8 @@ stays at the shipped `default` state so `check-tokens.sh` has one baseline.
 
 The tint rewriters own a literal's colour channels and the opacity rewriters own
 its alpha, so they're order-independent. `shell-90-density.css` is generated per
-display by `measure_logical_ppi` and `density_css`.
+display by `measure_logical_ppi` and `density_css`, plus a top bar height snapped to
+whole device pixels at the primary scale (`measure_primary_scale`, `panel_height_css`).
 
 ### Splicing: `bin/aura-glass-apply`
 
