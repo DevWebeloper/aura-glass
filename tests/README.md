@@ -10,7 +10,8 @@ python3 tests/check-bms-patches.py /path/to/blur-my-shell-upstream-clone
 The second check requires Python, Git, tar, Node.js, and an existing Blur My
 Shell clone containing `BMS_REF` from `lib/steps.sh`. It archives that commit
 into a temporary directory and applies `patches/blur-my-shell-subwindows.patch`
-and then `patches/blur-my-shell-full-size-buffers.patch`. It never fetches or
+then `patches/blur-my-shell-full-size-buffers.patch` and
+`patches/blur-my-shell-overview-fade.patch`. It never fetches or
 modifies the clone.
 
 The patched `components/applications/window_rules.js` runs against simulated

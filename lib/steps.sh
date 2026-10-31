@@ -63,6 +63,19 @@ BMS_SUBWIN_PATCH="blur-my-shell-subwindows.patch"
 # resizes or fades its actor. Off unless --smooth-animations asks; see
 # apply_smooth_animations and the patch's own comments.
 BMS_BUFFERS_PATCH="blur-my-shell-full-size-buffers.patch"
+# Applied last: opening the overview fades the window blur out and the window
+# content back to opaque, where the blur went in one frame and let the
+# unblurred desktop through the windows still in place (a dark flash, seen
+# frame by frame in a screencast on 2026-10-31). Leaving it fades the blur
+# back in and eases the content to its translucent opacity, where both used
+# to switch in one frame. Both ways take 200 ms (the fade upstream already
+# gives a preview dropped in the overview) and run with the overview's own
+# animation. The blur leads on the way in and trails on the way out, so GTK's
+# own translucency never shows the desktop sharp before the blur is there.
+# Painting it in the zooming previews made BMS allocate a capture texture per
+# window per frame (clone captures were keyed by exact size), so opening the
+# overview repeatedly lagged; the patch keys them by 1.25x size steps.
+BMS_FADE_PATCH="blur-my-shell-overview-fade.patch"
 
 
 CUSTOMOSD_REPO="https://github.com/neuromorph/custom-osd.git"
