@@ -103,8 +103,8 @@ install_ext_ego() {
 
 # Blur My Shell carries the popup component upstream: menus, quick settings,
 # notifications, dialogs and the OSD get blur directly. We build from pinned
-# release v76 with the subwindow patch applied on top (see BMS_SUBWIN_PATCH in
-# lib/steps.sh).
+# release v76 with the subwindow and full-size-buffers patches applied on top
+# (see BMS_SUBWIN_PATCH and BMS_BUFFERS_PATCH in lib/steps.sh).
 # gnome-extensions pack and gnome-extensions install both write under $HOME, so
 # this needs no root.
 install_bms() {
@@ -126,12 +126,13 @@ install_bms() {
        && [ -f "$EXT_DIR/$BMS_UUID/components/popup/index.js" ] \
        && [ "$(cat "$CONF_DIR/bms-ref" 2>/dev/null || true)" = "$BMS_REF" ] \
        && patch_stamp_current bms-subwindow-patch "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH" \
+       && patch_stamp_current bms-buffers-patch "$REPO_ROOT/patches/$BMS_BUFFERS_PATCH" \
        && ext_supports_shell "$EXT_DIR/$BMS_UUID" "$GNOME_MAJOR"; then
         skip "$BMS_UUID already built from $BMS_REF"
         return 0
     fi
 
-    info "building Blur My Shell from $BMS_REF + patches/$BMS_SUBWIN_PATCH"
+    info "building Blur My Shell from $BMS_REF + patches/$BMS_SUBWIN_PATCH + patches/$BMS_BUFFERS_PATCH"
     local src="$SRC_CACHE/blur-my-shell"
     if [ -d "$src/.git" ]; then
         run git -C "$src" checkout --quiet -- . 2>/dev/null || true
@@ -147,6 +148,8 @@ install_bms() {
     if [ "${DRY_RUN:-0}" != 1 ]; then
         git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH" \
             || die "the Blur My Shell subwindow patch did not apply — upstream may have moved"
+        git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_BUFFERS_PATCH" \
+            || die "the Blur My Shell full-size-buffers patch did not apply — upstream may have moved"
     fi
 
     local podir=(--podir=../po)
@@ -156,7 +159,7 @@ install_bms() {
     fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: apply patches/$BMS_SUBWIN_PATCH, bundle the stylesheets, gnome-extensions pack in $src/src, then install the zip"
+        info "dry-run: apply patches/$BMS_SUBWIN_PATCH and patches/$BMS_BUFFERS_PATCH, bundle the stylesheets, gnome-extensions pack in $src/src, then install the zip"
         return 0
     fi
 
@@ -222,7 +225,8 @@ install_bms() {
     printf '%s\n' "$BMS_REF" > "$CONF_DIR/bms-ref"
     printf 'git\n' > "$CONF_DIR/bms-source"
     patch_stamp_write bms-subwindow-patch "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH"
-    ok "$BMS_UUID (built from $BMS_REF, with the subwindow patch)"
+    patch_stamp_write bms-buffers-patch "$REPO_ROOT/patches/$BMS_BUFFERS_PATCH"
+    ok "$BMS_UUID (built from $BMS_REF, with the subwindow and full-size-buffers patches)"
 }
 
 # aura-glass-blur@aura-glass.local — "Blur This App" in the window right-click

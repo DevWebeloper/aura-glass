@@ -81,6 +81,7 @@ implementation view.
 | `--glass-style S` | `frosted` (default), `liquid`, `vibrant`, `tinted` (accent colour), `smoked`. Liquid: top bar and dock, and makes the dock's blur static. The others: top bar, overview and lock screen; the dock stays frosted | `glass-style` | | full |
 | `--liquid-windows` / `--no-liquid-windows` | off. Liquid or vibrant behind app windows too (ignored under tinted and smoked); makes `[applications] static-blur` true | `liquid-windows` | | full |
 | `--fullscreen-blur` / `--no-fullscreen-blur` | off. On keeps the window blur behind a fullscreen window; off drops it and puts the window at opacity 255 (`[applications] unblur-when-fullscreen`) | `fullscreen-blur` | | `fullscreen-blur` |
+| `--smooth-animations` / `--no-smooth-animations` | off. On sets Blur My Shell's patched `full-size-buffers` (blur textures allocated once at the largest monitor's size and kept, about 50 MB per blurred surface at 3440×1440) and writes `~/.config/environment.d/aura-glass.conf` with `CLUTTER_PAINT=disable-dynamic-max-render-time` (read at next login). Off clears the key and removes the file | `smooth-animations` | | `smooth-animations` |
 | `--radius-preset P` | `flat sharp adwaita soft medium default rounded` (`pill` → `rounded`). Default `default` | `radius-preset` | | full |
 | `--radius-custom W,M,Q,N,D,P,O,B` | 8 integers within `radius_bounds`. Implies `custom` | `radius-custom` (a 7-field memo is widened with `,9999`) | | full |
 | `--window-buttons close\|all` | unset = leave GNOME's layout | `window-buttons` | | `window-buttons` |
@@ -144,6 +145,7 @@ not adaptive).
 | `glass-style` | `frosted\|liquid\|vibrant\|tinted\|smoked` | `apply_glass_style` |
 | `liquid-windows` | `0\|1`, kept under frosted | `apply_glass_style` |
 | `fullscreen-blur` | `0\|1`, top-level | `apply_fullscreen_blur` |
+| `smooth-animations` | `0\|1`, top-level | `apply_smooth_animations` |
 | `titlebutton-style` | `minimal\|adwaita\|material\|flat` | `install_window_control_style` |
 | `window-buttons` | `close\|all` | `apply_window_buttons` |
 
@@ -246,7 +248,8 @@ cursor-size and font keys (what `original` / `system` restore).
 
 ```
 /org/gnome/shell/extensions/blur-my-shell/   pipelines, panel, popup (+ patched notification key), applications,
-                                             overview, appfolder, lockscreen, window-list, screenshot, dash-to-dock, …
+                                             overview, appfolder, lockscreen, window-list, screenshot, dash-to-dock, …,
+                                             patched full-size-buffers (--smooth-animations)
 /org/gnome/shell/extensions/custom-osd/
 /org/gnome/shell/extensions/{vitals,hotedge,appindicator}/   (extras.ini)
 ```
@@ -273,6 +276,7 @@ cursor-size and font keys (what `original` / `system` restore).
 | `AURA_GPU_LOG` | `gpu-live.sh` | measurement log |
 | `DRY_RUN=1`, `PREVIEW_MODE=1` | `lib/common.sh` | `run` prints only / `remembering()` false |
 | `NO_COLOR` | `lib/common.sh` | plain output |
+| `CLUTTER_PAINT=disable-dynamic-max-render-time` | Mutter (gnome-shell), from `~/.config/environment.d/aura-glass.conf` | written by `--smooth-animations`: every frame gets the whole refresh interval instead of a deadline guessed from recent frames |
 
 ---
 
@@ -287,6 +291,7 @@ cursor-size and font keys (what `original` / `system` restore).
 | `~/.local/bin/` | the commands in [STRUCTURE.md](STRUCTURE.md) §1 |
 | `~/.local/share/aura-glass/` | GUI copy, the three Python workers |
 | `~/.config/systemd/user/` | the units |
+| `~/.config/environment.d/aura-glass.conf` | only with `--smooth-animations` |
 | `~/.cache/aura-glass/src/` | pinned checkouts (`$SRC_CACHE`) |
 | `~/.cache/aura-glass/operation.lock` | the writer lock |
 | `~/.local/share/fonts/aura-glass/` | downloaded fonts |

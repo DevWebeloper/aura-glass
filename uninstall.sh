@@ -454,6 +454,9 @@ run rm -f "$HOME/.local/share/gnome-background-properties/aura-glass.xml"
 # it yet. Left behind it would open a window that is no longer installed, on
 # every login, forever — the entry only deletes itself when it manages to run.
 run rm -f "$HOME/.config/autostart/aura-glass-open-once.desktop"
+# --smooth-animations' frame-timing variable (apply_smooth_animations). Its
+# Blur My Shell key goes with the dconf reset above.
+run rm -f "$HOME/.config/environment.d/aura-glass.conf"
 # Stamps describing artifacts that have just been removed, rather than choices
 # the user made — so they go now instead of waiting on the $CONF_DIR prompt.
 #
@@ -482,6 +485,7 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/shell-tint-color" \
           "$CONF_DIR/blur-strength" \
           "$CONF_DIR/glass-style" "$CONF_DIR/liquid-windows" "$CONF_DIR/fullscreen-blur" "$CONF_DIR/blur-refresh" \
+          "$CONF_DIR/smooth-animations" \
           "$CONF_DIR/gdm-installed" "$CONF_DIR/gdm-gresource" \
           "$CONF_DIR/gdm-monitors-synced" \
           "$CONF_DIR/radius-preset" \

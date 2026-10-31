@@ -136,6 +136,8 @@ LIQUID_WINDOWS=""   # empty = remembered choice, then 0
 LIQUID_WINDOWS_EXPLICIT=""
 FULLSCREEN_BLUR=""  # empty = remembered choice, then 0
 FULLSCREEN_BLUR_EXPLICIT=""
+SMOOTH_ANIMATIONS=""  # empty = remembered choice, then 0
+SMOOTH_ANIMATIONS_EXPLICIT=""
 BLUR_STRENGTH=""    # empty = remembered choice, then the tuned radii (100)
 ADAPTIVE_BLUR=""     # private transient writer: active | restore, never memoed
 POPUP_BRIGHTNESS=""      # empty = remembered choice, then the preset (115)
@@ -219,6 +221,15 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --no-fullscreen-blur
                       a fullscreen window (a video, a game) drops its blur
                       and goes opaque until it leaves fullscreen (the default)
+    --smooth-animations
+                      trade VRAM for smoother animation starts: every blur
+                      keeps a monitor-sized buffer instead of reallocating
+                      while a menu, folder or banner animates in (about 50 MB
+                      per blurred surface at 1440p), and the compositor
+                      always gives a frame its whole budget. The frame
+                      budget part takes effect at next login (remembered)
+    --no-smooth-animations
+                      stock buffer sizing and frame timing (the default)
     --blur-strength P how far every blur reaches, as a percentage of the tuned
                       radii: 25-200, 100 is the tuned look (remembered)
     --popup-brightness P
@@ -384,6 +395,8 @@ parse_flags() {
         --no-liquid-windows) LIQUID_WINDOWS=0; LIQUID_WINDOWS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --fullscreen-blur)    FULLSCREEN_BLUR=1; FULLSCREEN_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-fullscreen-blur) FULLSCREEN_BLUR=0; FULLSCREEN_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --smooth-animations)    SMOOTH_ANIMATIONS=1; SMOOTH_ANIMATIONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-smooth-animations) SMOOTH_ANIMATIONS=0; SMOOTH_ANIMATIONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --blur-strength) BLUR_STRENGTH="${2:-100}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --blur-strength=*) BLUR_STRENGTH="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --adaptive-blur) ADAPTIVE_BLUR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
@@ -1610,6 +1623,7 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
                     css) install_css ;;
                     app-opacity) apply_app_opacity ;;
                     fullscreen-blur) apply_fullscreen_blur ;;
+                    smooth-animations) apply_smooth_animations ;;
                     glass-style) apply_glass_style ;;
                     adaptive-blur)
                         apply_adaptive_blur "$ADAPTIVE_BLUR"

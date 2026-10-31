@@ -331,7 +331,8 @@ RESET_MEMOS=(
     glass-mode modes accent radius-preset radius-custom
     app-transparency app-opacity app-tint-color shell-tint-color
     notification-opacity blur-strength popup-brightness window-brightness grain
-    glass-style liquid-windows fullscreen-blur titlebutton-style window-buttons
+    glass-style liquid-windows fullscreen-blur smooth-animations
+    titlebutton-style window-buttons
     window-blur app-blur-scope app-blur-allow app-blur-block
     popup-blur notification-blur
     adaptive-profile adaptive-fullscreen-apps

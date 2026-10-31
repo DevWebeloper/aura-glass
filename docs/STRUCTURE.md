@@ -82,6 +82,7 @@ For "which file draws this button / owns this setting", use
 | Patch | Target |
 |---|---|
 | `blur-my-shell-subwindows.patch` | BMS: blur a blurred app's ATTACHED dialogs and UTILITY palettes too |
+| `blur-my-shell-full-size-buffers.patch` | BMS: a `full-size-buffers` key that keeps blur textures at monitor size instead of reallocating them while an actor animates (`--smooth-animations`) |
 | `custom-osd-gnome50.patch` | Custom OSD on GNOME 50/51 |
 | `copyous-gnome51.patch` | Copyous on GNOME 51 |
 | `wiggly-follow-cursor.patch` | Wiggly: measure the pointer in logical pixels before every shake, grow and shrink about its hotspot, and follow the cursor theme itself (`theme.js`) |
@@ -206,6 +207,7 @@ the GPU. **Agents never run these.** Humans only: `preview.sh`,
 ~/.local/share/gnome-background-properties/aura-glass.xml   lists them in Settings > Appearance
 ~/.config/systemd/user/aura-glass-*.service|timer
 ~/.config/autostart/aura-glass-open-once.desktop   (until the first login spends it)
+~/.config/environment.d/aura-glass.conf       only with --smooth-animations
 ~/.cache/aura-glass/src/                      pinned upstream checkouts ($SRC_CACHE)
 ~/.cache/aura-glass/operation.lock            the writer lock
 /usr/share/gdm/…, /etc/…                      only with --gdm / --gdm-monitors (root)

@@ -326,9 +326,11 @@ Catalogued in `lib/steps.sh`:
 
 - Upstreams are **pinned by commit** (table in §12). A theme that changes under
   the CSS gives a half-applied look with no error.
-- Blur My Shell gets one patch, `blur-my-shell-subwindows.patch` (a blurred
+- Blur My Shell gets two patches: `blur-my-shell-subwindows.patch` (a blurred
   app's dialogs and tool palettes match through their transient-for app and
-  GTK application id; ATTACHED and UTILITY frame types). v73's overview,
+  GTK application id; ATTACHED and UTILITY frame types), then
+  `blur-my-shell-full-size-buffers.patch` (the `full-size-buffers` key
+  `--smooth-animations` sets). Each has its own stamp in `$C`. v73's overview,
   notification, static-maximized and panel-refit patches were dropped with v76,
   which was checked live without them. Custom OSD gets
   `custom-osd-gnome50.patch`. Copyous gets `copyous-gnome51.patch`. Wiggly gets

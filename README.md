@@ -115,6 +115,11 @@ Open **Aura Glass** from the app grid, or run `aura-glass-settings`.
 **Blur fullscreen windows** (`--fullscreen-blur`) is off by default, so a
 fullscreen video or game drops the blur behind it and turns opaque.
 
+**Smooth animations** (`--smooth-animations`) is off by default. On, every
+blur keeps a monitor-sized buffer, so menus, folders and banners open without a
+dropped frame, for about 50 MB of video memory per blurred surface. It also
+gives the compositor its whole frame budget from the next login.
+
 **Glass style behind app windows** (`--liquid-windows`) puts liquid or vibrant
 behind Files and every other blurred window too. Those then blur the wallpaper, not the window under them.
 Changes can be previewed live and are applied with one button.

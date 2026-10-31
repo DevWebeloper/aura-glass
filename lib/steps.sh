@@ -58,6 +58,11 @@ AURA_EXT_UUID="aura-glass-blur@aura-glass.local"
 # stays aligned after login on two monitors, and a maximized window keeps the
 # dynamic blur, which costs about five points of GPU busy over static.
 BMS_SUBWIN_PATCH="blur-my-shell-subwindows.patch"
+# Applied after it: a `full-size-buffers` key that keeps every blur texture at
+# the largest monitor's size instead of reallocating it while an animation
+# resizes or fades its actor. Off unless --smooth-animations asks; see
+# apply_smooth_animations and the patch's own comments.
+BMS_BUFFERS_PATCH="blur-my-shell-full-size-buffers.patch"
 
 
 CUSTOMOSD_REPO="https://github.com/neuromorph/custom-osd.git"

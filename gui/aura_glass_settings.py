@@ -651,6 +651,8 @@ FLAG_LABELS = {
     "--no-liquid-windows": ("glass", "Glass style behind app windows"),
     "--fullscreen-blur": ("glass", "Blur fullscreen windows"),
     "--no-fullscreen-blur": ("glass", "Blur fullscreen windows"),
+    "--smooth-animations": ("glass", "Smooth animations"),
+    "--no-smooth-animations": ("glass", "Smooth animations"),
     "--update-check": ("updates", "Daily update check"),
     "--no-update-check": ("updates", "Daily update check"),
     "--update-channel": ("updates", "Update channel"),
@@ -2711,6 +2713,8 @@ class Settings:
         self.liquid_windows = read_memo("liquid-windows", "0") == "1"
         # Off unless asked, as apply_fullscreen_blur defaults it.
         self.fullscreen_blur = read_memo("fullscreen-blur", "0") == "1"
+        # Off unless asked, as apply_smooth_animations defaults it.
+        self.smooth_animations = read_memo("smooth-animations", "0") == "1"
 
         self.update_check = read_memo("update-check", "1") != "0"
         self.update_channel = read_memo("update-channel", "release")
@@ -2879,6 +2883,9 @@ class Settings:
         if self.fullscreen_blur != other.fullscreen_blur:
             args.append("--fullscreen-blur" if self.fullscreen_blur
                         else "--no-fullscreen-blur")
+        if self.smooth_animations != other.smooth_animations:
+            args.append("--smooth-animations" if self.smooth_animations
+                        else "--no-smooth-animations")
         # --radius-custom implies the custom preset, so it stands in for
         # --radius-preset rather than joining it. Sent when the eight values
         # moved even if the preset name did not, because "custom" says nothing
@@ -5123,6 +5130,22 @@ class Window(Adw.ApplicationWindow):
         reach.add(self._notification_row)
         page.add(reach)
 
+        # Not a look, a trade: VRAM and a few ms of latency for animations
+        # that start without a dropped frame. See apply_smooth_animations for
+        # both halves and what each costs.
+        motion = Adw.PreferencesGroup(title="Animations")
+        self._smooth_animations_row = Adw.SwitchRow(
+            title="Smooth animations",
+            subtitle="Keeps a monitor-sized buffer for every blur so menus, "
+                     "folders and banners open without a dropped frame. "
+                     "Uses about 50 MB of video memory per blurred surface; "
+                     "fully applies at next login",
+            active=self._applied.smooth_animations)
+        self._smooth_animations_row.connect("notify::active", self._on_changed,
+                                            "smooth_animations")
+        motion.add(self._smooth_animations_row)
+        page.add(motion)
+
         # Last on the page rather than first: the cost is worth knowing, but
         # not the reason anyone opened this tab.
         page.add(tip_card(
@@ -7365,6 +7388,7 @@ class Window(Adw.ApplicationWindow):
             self._glass_style_row.get_selected()]
         s.liquid_windows = self._liquid_windows_row.get_active()
         s.fullscreen_blur = self._fullscreen_blur_row.get_active()
+        s.smooth_animations = self._smooth_animations_row.get_active()
         s.update_check = self._update_check_row.get_active()
         # Not settings, so they never differ and never produce a flag. Carried so
         # flags_against sees a complete object either way.
@@ -7640,6 +7664,7 @@ class Window(Adw.ApplicationWindow):
             self._applied.glass_style, "glass_style")
         self._liquid_windows_row.set_active(self._applied.liquid_windows)
         self._fullscreen_blur_row.set_active(self._applied.fullscreen_blur)
+        self._smooth_animations_row.set_active(self._applied.smooth_animations)
         self._update_check_row.set_active(self._applied.update_check)
         self._loading = False
         self._rebuild_app_list()
