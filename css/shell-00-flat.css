@@ -80,8 +80,10 @@ StDrawingArea {
  * copy (apply_maximized_panel_brightness, 40% brightness = 0.6 black).
  *
  * Blur My Shell's `#panel.transparent-panel { background: transparent
- * !important }` comes from an extension stylesheet loaded after this one, so
- * equal specificity loses; the second selector out-ranks it.
+ * !important }` comes from an extension stylesheet, and St ranks those above
+ * the theme whatever the specificity, so aura-glass-apply copies this rule
+ * into extension-overrides.css (as with Copyous's dialog), where the second
+ * selector out-ranks it.
  *
  * The fade: St cross-fades a widget between its old and new style for the
  * transition-duration of the new one. Blur My Shell's same sheet sets 500ms on
