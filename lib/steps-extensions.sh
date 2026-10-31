@@ -130,6 +130,7 @@ install_bms() {
        && patch_stamp_current bms-buffers-patch "$REPO_ROOT/patches/$BMS_BUFFERS_PATCH" \
        && patch_stamp_current bms-fade-patch "$REPO_ROOT/patches/$BMS_FADE_PATCH" \
        && ext_supports_shell "$EXT_DIR/$BMS_UUID" "$GNOME_MAJOR"; then
+        pin_bms_version
         skip "$BMS_UUID already built from $BMS_REF"
         return 0
     fi
@@ -231,7 +232,26 @@ install_bms() {
     patch_stamp_write bms-subwindow-patch "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH"
     patch_stamp_write bms-buffers-patch "$REPO_ROOT/patches/$BMS_BUFFERS_PATCH"
     patch_stamp_write bms-fade-patch "$REPO_ROOT/patches/$BMS_FADE_PATCH"
+    pin_bms_version
     ok "$BMS_UUID (built from $BMS_REF, with the subwindow, full-size-buffers and overview-fade patches)"
+}
+
+# GNOME Shell checks every user-installed extension against extensions.gnome.org
+# (extensionDownloader.js checkForUpdates, at login and every few hours) by
+# posting its metadata "version", and downloads whatever EGO answers "upgrade"
+# for, to replace it at the next login. Our v76 build is older than EGO's v77,
+# so the next login swapped in the stock extension, with none of the patches
+# and none of the popup blur, while bms-ref and the patch stamps still said
+# "current". EGO answers nothing for a version at or above its latest (probed:
+# 76 -> upgrade, 77, 78 and 99999 -> {}), so the installed copy claims 99999.
+# The only per-extension lever: allow-extension-installation=false would also
+# stop the installer's own EGO installs. Re-applied on every run, built or
+# skipped, and read by the shell at login.
+pin_bms_version() {
+    local meta="$EXT_DIR/$BMS_UUID/metadata.json"
+    [ "${DRY_RUN:-0}" = 1 ] && return 0
+    [ -f "$meta" ] || return 0
+    grep -q '"version": 99999' "$meta" || sed -i 's/"version": [0-9]*/"version": 99999/' "$meta"
 }
 
 # aura-glass-blur@aura-glass.local — "Blur This App" in the window right-click
