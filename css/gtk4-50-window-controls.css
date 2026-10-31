@@ -46,8 +46,10 @@ headerbar.default-decoration button.titlebutton.maximize,
 .solid-csd headerbar:not(.default-decoration) button.titlebutton.close,
 .solid-csd headerbar:not(.default-decoration) button.titlebutton.minimize,
 .solid-csd headerbar:not(.default-decoration) button.titlebutton.maximize {
-  min-width: 28px;
-  min-height: 28px;
+  /* 34px, up from 28: 28 read as undersized next to the headerbar's own
+   * buttons. Keep in step with the GTK3/GTK4 twin of this rule. */
+  min-width: 34px;
+  min-height: 34px;
   padding: 0;
   margin: 0 2px;
   border-radius: 9999px;
