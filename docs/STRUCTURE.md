@@ -138,7 +138,7 @@ install or retune. Don't move or rename one without updating its callers.
 | `apply-radius-preset.py` | `apply_radius_css` (imports `token_manifest.py`) |
 | `apply-popup-brightness.py` | `apply_popup_brightness` |
 | `token_manifest.py` | `apply-radius-preset.py`, `check-tokens.sh` |
-| `moga_cursor.py` | `install_moga_cursors` (resolves official release metadata) |
+| `moga_cursor.py` | `install_moga_cursors` (resolves official release metadata, rebuilds the busy cursors (a small Material-style spinner) and the copy, link, menu, help and no-drop cursors (a flat glyph badge) as the full pointer with that mark off its top-right edge, and the round X, what's-this and not-allowed cursors as flat discs in the pointer's material, all in the pointer's border colour) |
 | `aura_glass_operation.py` | `bin/aura-glass-operation` (copied to `~/.local/share/aura-glass/`) |
 | `aura_glass_adaptive.py` | `bin/aura-glass-adaptive` (copied to `~/.local/share/aura-glass/`) |
 
