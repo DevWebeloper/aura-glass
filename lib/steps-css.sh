@@ -122,6 +122,52 @@ print(f"""
 PY
 }
 
+# How bright the top bar is while a maximized window fills its monitor: the
+# shade css/shell-00-flat.css paints on #panel.aura-glass-maximized. Brightness
+# rather than the shade's own alpha, so the slider reads like the blur
+# brightness ones beside it: 0 is solid black, 100 no shade (the clear glass the
+# bar is everywhere else), and the default 40 is that sheet's shipped 60% black,
+# picked by the user. The settings app keeps its own copy of these three
+# (MAXIMIZED_PANEL_BRIGHTNESS_* in gui/aura_glass_settings.py).
+MAXIMIZED_PANEL_BRIGHTNESS_MIN=0
+MAXIMIZED_PANEL_BRIGHTNESS_MAX=100
+MAXIMIZED_PANEL_BRIGHTNESS_SHIPPED=40
+
+# The brightness this run asks for: the flag, then the memo, then the shipped 40.
+resolve_maximized_panel_brightness() {
+    local want="${MAXIMIZED_PANEL_BRIGHTNESS:-}" shipped="$MAXIMIZED_PANEL_BRIGHTNESS_SHIPPED"
+    [ -n "$want" ] || want="$(cat "$CONF_DIR/maximized-panel-brightness" 2>/dev/null || true)"
+    case "$want" in
+        '') want="$shipped" ;;
+        *[!0-9]*) warn "--maximized-panel-brightness '$want' is not a whole percentage — using ${shipped}" >&2
+                  want="$shipped" ;;
+        *) if [ "$want" -lt "$MAXIMIZED_PANEL_BRIGHTNESS_MIN" ] || [ "$want" -gt "$MAXIMIZED_PANEL_BRIGHTNESS_MAX" ]; then
+               warn "--maximized-panel-brightness $want is outside ${MAXIMIZED_PANEL_BRIGHTNESS_MIN}-${MAXIMIZED_PANEL_BRIGHTNESS_MAX} — using ${shipped}" >&2
+               want="$shipped"
+           fi ;;
+    esac
+    printf '%s\n' "$want"
+}
+
+# Rewrites the shade's alpha in the installed copy of shell-00-flat.css, inside
+# the maximized rule only: the sheet has other rgba() literals that are not
+# this one. Only the alpha is replaced and the channels are kept as found,
+# because apply_shell_tint_color has already run over this copy and can have
+# turned the shipped black into the tint (rgba(18, 18, 23, 0.6) under a
+# #101014 shell tint, seen 2026-10-31): matching rgba(0, 0, 0, …) missed it and
+# left every brightness at 40.
+apply_maximized_panel_brightness() {
+    local want alpha sheet="$CONF_DIR/shell-00-flat.css"
+    want="$(resolve_maximized_panel_brightness)"
+    if remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$want" > "$CONF_DIR/maximized-panel-brightness"
+    fi
+    alpha="$(awk -v b="$want" 'BEGIN { printf "%g", (100 - b) / 100 }')"
+    run sed -i "/^#panel\.transparent-panel\.aura-glass-maximized {/,/^}/ s/background-color: rgba(\([0-9]*, *[0-9]*, *[0-9]*\), *[0-9.]*)/background-color: rgba(\1, ${alpha})/" "$sheet"
+    ok "top bar over a maximized window at ${want}% brightness (remembered for later runs)"
+}
+
 # css/gtk4-transparency.css is written at the shipped level — the sheet is
 # readable on its own that way. That level is TOKEN_APP_TRANSPARENCY_SHIPPED in
 # tokens/tokens.sh, which is also what the scaling below measures from, so the
@@ -565,6 +611,7 @@ install_css() {
     # them: both rewriters edit what install_css just laid down, so neither can
     # run before the file it edits exists.
     apply_radius_css
+    apply_maximized_panel_brightness
     ok "css -> $CONF_DIR"
     ok "re-apply command -> ~/.local/bin/aura-glass-apply"
 

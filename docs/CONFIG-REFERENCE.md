@@ -73,6 +73,7 @@ implementation view.
 | `--app-transparency L` (`--window-opacity`, `--window-transparency`); `--no-app-transparency` (+ the two `--no-` aliases) | `0.70–1.00`, `%`, or `0–255`. 0 = off. Fresh default 0.90 (0.95 without window blur, 1.00 in performance). Buckets snap to 0.82, 0.90 and 0.95 | `app-transparency` (`app-opacity` is always 255 now) | ✓ | `css` for the primary spelling, full for the aliases |
 | `--app-tint-color HEX` | `#000000` | `app-tint-color` | ✓ | `css` |
 | `--shell-tint-color HEX` | `#000000` (inherits app tint if unset) | `shell-tint-color` | ✓ | `css` |
+| `--maximized-panel-brightness P` | 0–100, default 40 (the sheet's 60% black). 0 solid black, 100 no shade. Rewrites the shade's alpha in the installed `shell-00-flat.css` (`apply_maximized_panel_brightness`) | `maximized-panel-brightness` | | `css` |
 | `--notification-opacity P` | 10–85, default 40 | `notification-opacity` | ✓ | `css` |
 | `--blur-strength P` | 25–200, default 100 | `blur-strength` | ✓ | full |
 | `--popup-brightness P` | 50–150, default 115 (preset) | `popup-brightness` | ✓ | full |
@@ -138,6 +139,7 @@ not adaptive).
 | `app-transparency` | `0` or `0.70`–`1.00` | `install_transparency_css` |
 | `app-opacity` | BMS applications actor opacity (follows the transparency level, level × 255) | `apply_app_opacity` |
 | `app-tint-color`, `shell-tint-color` | `#rrggbb` | `apply_app_tint_color`, `apply_shell_tint_color` |
+| `maximized-panel-brightness` | 0–100 | `install_css` |
 | `notification-opacity` | 10–85 | `apply_notification_opacity` |
 | `blur-strength` | 25–200 | `apply_blur_strength` |
 | `popup-brightness`, `window-brightness` | 50–150 | `apply_popup_brightness`, `apply_window_brightness` |

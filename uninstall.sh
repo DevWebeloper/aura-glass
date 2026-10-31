@@ -483,6 +483,7 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/app-opacity" \
           "$CONF_DIR/app-tint-color" \
           "$CONF_DIR/shell-tint-color" \
+          "$CONF_DIR/maximized-panel-brightness" \
           "$CONF_DIR/blur-strength" \
           "$CONF_DIR/glass-style" "$CONF_DIR/liquid-windows" "$CONF_DIR/fullscreen-blur" "$CONF_DIR/blur-refresh" \
           "$CONF_DIR/smooth-animations" \

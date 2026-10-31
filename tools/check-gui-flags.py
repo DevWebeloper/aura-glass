@@ -70,6 +70,7 @@ def state(**kw):
     s.glass_style = kw.get("glass_style", "frosted")
     s.liquid_windows = kw.get("liquid_windows", False)
     s.fullscreen_blur = kw.get("fullscreen_blur", False)
+    s.maximized_panel_brightness = kw.get("maximized_panel_brightness", 40)
     s.smooth_animations = kw.get("smooth_animations", False)
     s.update_check = kw.get("update_check", True)
     s.update_channel = kw.get("update_channel", "release")
@@ -360,6 +361,10 @@ CASES = [
     ("app windows back to frosted",
      state(glass_style="liquid", liquid_windows=True),
      state(glass_style="liquid"), ["--no-liquid-windows"]),
+
+    ("top bar solid black over a maximized window", FROSTED,
+     state(maximized_panel_brightness=0),
+     ["--maximized-panel-brightness", "0"]),
 
     ("blur kept on fullscreen windows", FROSTED,
      state(fullscreen_blur=True), ["--fullscreen-blur"]),

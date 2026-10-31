@@ -144,6 +144,7 @@ POPUP_BRIGHTNESS=""      # empty = remembered choice, then the preset (115)
 NOTIFICATION_OPACITY=""  # empty = remembered choice, then the sheet (40)
 APP_TINT_COLOR=""   # empty = remembered choice, then black (#000000)
 SHELL_TINT_COLOR="" # empty = remembered choice, then black (#000000)
+MAXIMIZED_PANEL_BRIGHTNESS="" # empty = remembered choice, then 40 (60% black)
 RADIUS_PRESET=""       # empty = remembered choice, then default
 RADIUS_PRESET_EXPLICIT=""
 RADIUS_CUSTOM=""       # eight comma-separated pixel values, in RADIUS_TOKENS order
@@ -247,6 +248,9 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --shell-tint-color HEX
                       the same, for the panel, menus and notifications.
                       Default #000000 (remembered)
+    --maximized-panel-brightness P
+                      how bright the top bar is over a maximized window: 0-100,
+                      0 solid black, 100 clear glass, 40 the default (remembered)
     --radius-preset P corner rounding for windows, menus, dialogs and
                       notifications. One of: $RADIUS_PRESETS (default: default,
                       and remembered for later runs)
@@ -411,6 +415,8 @@ parse_flags() {
         --app-tint-color=*) APP_TINT_COLOR="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --shell-tint-color) SHELL_TINT_COLOR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --shell-tint-color=*) SHELL_TINT_COLOR="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --maximized-panel-brightness) MAXIMIZED_PANEL_BRIGHTNESS="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --maximized-panel-brightness=*) MAXIMIZED_PANEL_BRIGHTNESS="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --radius-custom) RADIUS_CUSTOM="${2:-}"; RADIUS_CUSTOM_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --radius-custom=*) RADIUS_CUSTOM="${1#*=}"; RADIUS_CUSTOM_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --radius-preset) RADIUS_PRESET="${2:-}"; RADIUS_PRESET_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;

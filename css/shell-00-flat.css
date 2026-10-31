@@ -75,16 +75,31 @@ StDrawingArea {
  * window fills the panel's monitor (maximized, fullscreen, or Tiling
  * Assistant's gapless resize to the work area). Over a maximized window the
  * clear glass bar reads as a gap above the app; 60% black, picked by the user,
- * joins it to the window while the blur still shows through.
+ * joins it to the window while the blur still shows through. The 0.6 is the
+ * shipped level: --maximized-panel-brightness rewrites it in the installed
+ * copy (apply_maximized_panel_brightness, 40% brightness = 0.6 black).
  *
  * Blur My Shell's `#panel.transparent-panel { background: transparent
  * !important }` comes from an extension stylesheet loaded after this one, so
- * equal specificity loses; the second selector out-ranks it. The fade is the
- * theme's own 250ms #panel transition.
+ * equal specificity loses; the second selector out-ranks it.
+ *
+ * The fade: St cross-fades a widget between its old and new style for the
+ * transition-duration of the new one. Blur My Shell's same sheet sets 500ms on
+ * #panel.transparent-panel, so the shade fell in over 500ms and back out over
+ * 500ms, twice the 250ms the shell takes to grow a window to maximized
+ * (WINDOW_ANIMATION_TIME in windowManager.js): the window landed and the bar
+ * was still half clear. 250ms both ways, so the bar darkens with the window
+ * and clears with it. !important for the same reason as the colour: the plain
+ * 500ms is in the sheet that wins on load order.
  */
+#panel.transparent-panel {
+  transition-duration: 250ms !important;
+}
+
 #panel.aura-glass-maximized,
 #panel.transparent-panel.aura-glass-maximized {
   background-color: rgba(0, 0, 0, 0.6) !important;
+  transition-duration: 250ms !important;
 }
 
 

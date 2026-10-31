@@ -29,7 +29,7 @@ select_apply_actions() {
             # the sheet and left the actor at its old value, so Chrome stopped
             # showing the blur while GTK apps still did.
             --app-transparency|--app-transparency=*|--no-app-transparency) _apply_add css; _apply_add app-opacity ;;
-            --app-tint-color|--app-tint-color=*|--shell-tint-color|--shell-tint-color=*|--notification-opacity|--notification-opacity=*|--titlebar-button-style|--titlebar-button-style=*) _apply_add css ;;
+            --app-tint-color|--app-tint-color=*|--shell-tint-color|--shell-tint-color=*|--notification-opacity|--notification-opacity=*|--maximized-panel-brightness|--maximized-panel-brightness=*|--titlebar-button-style|--titlebar-button-style=*) _apply_add css ;;
             *) APPLY_FALLBACK_REASON="unclassified flag: $flag"; APPLY_ACTIONS=(full); return ;;
         esac
     done

@@ -317,6 +317,19 @@ NOTIFICATION_OPACITY_MARKS = [
 
 NOTIFICATION_OPACITY_SNAP = 4
 
+# --maximized-panel-brightness, the top bar over a maximized window: 0 solid
+# black, 100 clear glass. MAXIMIZED_PANEL_BRIGHTNESS_MIN, _MAX and _SHIPPED in
+# lib/steps-css.sh, where the reasoning is; 40 is the sheet's 60% black.
+MAXIMIZED_PANEL_BRIGHTNESS_MIN = 0
+MAXIMIZED_PANEL_BRIGHTNESS_MAX = 100
+MAXIMIZED_PANEL_BRIGHTNESS_SHIPPED = 40
+
+MAXIMIZED_PANEL_BRIGHTNESS_MARKS = [
+    (MAXIMIZED_PANEL_BRIGHTNESS_MIN, "black"),
+    (MAXIMIZED_PANEL_BRIGHTNESS_SHIPPED, "tuned"),
+    (MAXIMIZED_PANEL_BRIGHTNESS_MAX, "clear"),
+]
+
 # What both tint memos hold, and the shipped answer for each. Black is not a
 # colour anyone picked — it is the sheets as written, which is why choosing it
 # again restores them byte-for-byte rather than approximately.
@@ -650,6 +663,7 @@ FLAG_LABELS = {
     "--liquid-windows": ("glass", "Glass style behind app windows"),
     "--no-liquid-windows": ("glass", "Glass style behind app windows"),
     "--fullscreen-blur": ("glass", "Blur fullscreen windows"),
+    "--maximized-panel-brightness": ("appearance", "Top bar over a maximized window"),
     "--no-fullscreen-blur": ("glass", "Blur fullscreen windows"),
     "--smooth-animations": ("glass", "Smooth animations"),
     "--no-smooth-animations": ("glass", "Smooth animations"),
@@ -2713,6 +2727,16 @@ class Settings:
         self.liquid_windows = read_memo("liquid-windows", "0") == "1"
         # Off unless asked, as apply_fullscreen_blur defaults it.
         self.fullscreen_blur = read_memo("fullscreen-blur", "0") == "1"
+        # Top-level, and out of bounds is the shipped 40, as
+        # resolve_maximized_panel_brightness has it.
+        try:
+            self.maximized_panel_brightness = int(
+                read_memo("maximized-panel-brightness", ""))
+        except ValueError:
+            self.maximized_panel_brightness = MAXIMIZED_PANEL_BRIGHTNESS_SHIPPED
+        if not (MAXIMIZED_PANEL_BRIGHTNESS_MIN <= self.maximized_panel_brightness
+                <= MAXIMIZED_PANEL_BRIGHTNESS_MAX):
+            self.maximized_panel_brightness = MAXIMIZED_PANEL_BRIGHTNESS_SHIPPED
         # Off unless asked, as apply_smooth_animations defaults it.
         self.smooth_animations = read_memo("smooth-animations", "0") == "1"
 
@@ -2883,6 +2907,9 @@ class Settings:
         if self.fullscreen_blur != other.fullscreen_blur:
             args.append("--fullscreen-blur" if self.fullscreen_blur
                         else "--no-fullscreen-blur")
+        if self.maximized_panel_brightness != other.maximized_panel_brightness:
+            args += ["--maximized-panel-brightness",
+                     str(self.maximized_panel_brightness)]
         if self.smooth_animations != other.smooth_animations:
             args.append("--smooth-animations" if self.smooth_animations
                         else "--no-smooth-animations")
@@ -3803,6 +3830,7 @@ class Window(Adw.ApplicationWindow):
         "--blur-strength",
         "--window-brightness",
         "--popup-brightness", "--notification-opacity",
+        "--maximized-panel-brightness",
         "--popup-blur", "--no-popup-blur",
         "--notification-blur", "--no-notification-blur",
     )) | _APP_ONLY_FLAGS
@@ -3865,6 +3893,7 @@ class Window(Adw.ApplicationWindow):
                   "--transparency %s --radius-custom %s --blur-strength %s "
                   "--window-brightness %s "
                   "--popup-brightness %s --notification-opacity %s "
+                  "--maximized-panel-brightness %s "
                   "--popup-blur %s --notification-blur %s "
                   "--window-blur %s --scope %s "
                   "--app-blur-allow %s --app-blur-block %s"
@@ -3875,6 +3904,7 @@ class Window(Adw.ApplicationWindow):
                      q(str(current.window_brightness)),
                      q(str(current.popup_brightness)),
                      q(str(current.notification_opacity)),
+                     q(str(current.maximized_panel_brightness)),
                      q("1" if current.popup_blur else "0"),
                      q("1" if current.notification_blur else "0"),
                      q(window_blur),
@@ -4349,6 +4379,20 @@ class Window(Adw.ApplicationWindow):
             self._applied.titlebutton_style, "titlebutton_style")
         buttons.add(self._titlebutton_style_row)
         page.add(buttons)
+
+        # One bar, kept in a registry of one so it goes through the same
+        # percent group as the brightness and ground bars.
+        self._maximized_panel_scales = {}
+        page.add(self._build_percent_group(
+            "panel", "Top bar",
+            "Shaded while a window fills the screen, so the bar joins the app "
+            "instead of reading as a gap above it.",
+            "Brightness over a maximized window",
+            "0% is solid black, 100% the clear glass it is everywhere else",
+            MAXIMIZED_PANEL_BRIGHTNESS_MIN, MAXIMIZED_PANEL_BRIGHTNESS_MAX,
+            MAXIMIZED_PANEL_BRIGHTNESS_MARKS, 10, 4,
+            self._applied.maximized_panel_brightness,
+            self._maximized_panel_scales))
 
         return page
 
@@ -7388,6 +7432,8 @@ class Window(Adw.ApplicationWindow):
             self._glass_style_row.get_selected()]
         s.liquid_windows = self._liquid_windows_row.get_active()
         s.fullscreen_blur = self._fullscreen_blur_row.get_active()
+        s.maximized_panel_brightness = int(round(
+            self._maximized_panel_scales["panel"].get_value()))
         s.smooth_animations = self._smooth_animations_row.get_active()
         s.update_check = self._update_check_row.get_active()
         # Not settings, so they never differ and never produce a flag. Carried so
@@ -7664,6 +7710,8 @@ class Window(Adw.ApplicationWindow):
             self._applied.glass_style, "glass_style")
         self._liquid_windows_row.set_active(self._applied.liquid_windows)
         self._fullscreen_blur_row.set_active(self._applied.fullscreen_blur)
+        self._maximized_panel_scales["panel"].set_value(
+            self._applied.maximized_panel_brightness)
         self._smooth_animations_row.set_active(self._applied.smooth_animations)
         self._update_check_row.set_active(self._applied.update_check)
         self._loading = False

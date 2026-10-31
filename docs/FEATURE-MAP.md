@@ -16,7 +16,7 @@ a restart.
 | Feature | Stylesheet(s) (`css/`) | Blur / dconf (`dconf/core.ini`) | Token(s) | Applied by |
 |---|---|---|---|---|
 | Top panel | `shell-00-flat` | `[blur-my-shell/panel]`, pipeline `panel` | `TOKEN_BLUR_RADIUS_PANEL` | `install_css`, `load_dconf` |
-| Top bar shaded behind a maximized window | `shell-00-flat` (`#panel.aura-glass-maximized`, 60% black) | none | none | Aura Glass Helper `_syncPanelShade`: focused window on the primary monitor that is maximized, fullscreen or covers the work area (Tiling Assistant `maximize-with-gap`), outside the overview |
+| Top bar shaded behind a maximized window | `shell-00-flat` (`#panel.aura-glass-maximized`, 60% black shipped, alpha rewritten by `apply_maximized_panel_brightness` from `--maximized-panel-brightness`, settings app → Appearance → Top bar; 250ms fade both ways) | none | none | Aura Glass Helper `_syncPanelShade`: focused window on the primary monitor that is maximized, fullscreen or covers the work area (Tiling Assistant `maximize-with-gap`), outside the overview |
 | Panel blur after monitor changes | none | none | none | Blur My Shell v76 keeps it aligned itself. The old `aura-glass-panel-blur.service` is removed by `remove_panel_blur_unit` |
 | Panel icon size for this display | generated `shell-90-density` | none | `TUNED_PPI` (in `steps-css.sh`) | `measure_logical_ppi`, `density_css` |
 | Quick Settings panel | `shell-20-popup-menus`, `shell-popup-blur` | `[blur-my-shell/popup] quick-settings-corner-radius` | `TOKEN_RADIUS_QUICK_SETTINGS` | `install_css`, `apply_radius_*` |
