@@ -5989,8 +5989,7 @@ class Window(Adw.ApplicationWindow):
             "Blurs and darkens your wallpaper behind the login screen. Needs "
             "your password, and keeps GNOME's accent rather than this theme's")
 
-        for widget in (self._rounded_button, self._gdm_monitors_button,
-                       self._gdm_button):
+        for widget in (self._gdm_monitors_button, self._gdm_button):
             widget.set_sensitive(self._repo is not None)
 
     def _check_deps(self):
