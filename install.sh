@@ -138,6 +138,9 @@ FULLSCREEN_BLUR=""  # empty = remembered choice, then 0
 FULLSCREEN_BLUR_EXPLICIT=""
 SMOOTH_ANIMATIONS=""  # empty = remembered choice, then 0
 SMOOTH_ANIMATIONS_EXPLICIT=""
+WINDOW_ANIMATION_SPEED=""       # empty = remembered choice, then 100 (GNOME's pace)
+NOTIFICATION_ANIMATION_SPEED="" # empty = remembered choice, then 100
+MENU_ANIMATION_SPEED=""         # empty = remembered choice, then 100
 BLUR_STRENGTH=""    # empty = remembered choice, then the tuned radii (100)
 ADAPTIVE_BLUR=""     # private transient writer: active | restore, never memoed
 POPUP_BRIGHTNESS=""      # empty = remembered choice, then the preset (115)
@@ -229,6 +232,15 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       playing games. Fully applies at next login (remembered)
     --no-smooth-animations
                       off (the default)
+    --window-animation-speed P
+                      how fast windows open, close, minimize and maximize, as
+                      a percentage of GNOME's own pace: 50-300, 200 twice as
+                      fast, 100 the default (remembered)
+    --notification-animation-speed P
+                      the same, for notification banners sliding in and out
+    --menu-animation-speed P
+                      the same, for the top bar's menus, Quick Settings and
+                      right-click menus
     --blur-strength P how far every blur reaches, as a percentage of the tuned
                       radii: 25-200, 100 is the tuned look (remembered)
     --popup-brightness P
@@ -399,6 +411,12 @@ parse_flags() {
         --no-fullscreen-blur) FULLSCREEN_BLUR=0; FULLSCREEN_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --smooth-animations)    SMOOTH_ANIMATIONS=1; SMOOTH_ANIMATIONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-smooth-animations) SMOOTH_ANIMATIONS=0; SMOOTH_ANIMATIONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --window-animation-speed) WINDOW_ANIMATION_SPEED="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --window-animation-speed=*) WINDOW_ANIMATION_SPEED="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --notification-animation-speed) NOTIFICATION_ANIMATION_SPEED="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --notification-animation-speed=*) NOTIFICATION_ANIMATION_SPEED="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --menu-animation-speed) MENU_ANIMATION_SPEED="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --menu-animation-speed=*) MENU_ANIMATION_SPEED="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --blur-strength) BLUR_STRENGTH="${2:-100}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --blur-strength=*) BLUR_STRENGTH="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --adaptive-blur) ADAPTIVE_BLUR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
@@ -1628,6 +1646,7 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
                     app-opacity) apply_app_opacity ;;
                     fullscreen-blur) apply_fullscreen_blur ;;
                     smooth-animations) apply_smooth_animations ;;
+                    animation-speed) apply_animation_speed ;;
                     glass-style) apply_glass_style ;;
                     adaptive-blur)
                         apply_adaptive_blur "$ADAPTIVE_BLUR"

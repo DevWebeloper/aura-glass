@@ -324,6 +324,7 @@ load_dconf() {
     apply_app_opacity
     apply_fullscreen_blur
     apply_smooth_animations
+    apply_animation_speed
     apply_radius_dconf
     apply_glass_style
     sync_osd_profile
@@ -842,6 +843,50 @@ apply_smooth_animations() {
         [ ! -e "$env_file" ] || run rm -f "$env_file"
         ok "stock blur buffer sizing and frame timing"
     fi
+}
+
+# --window-, --notification- and --menu-animation-speed: how fast each of the
+# three animates, as a percentage of GNOME's own pace, so 200 is twice as fast
+# and 50 half. Memos only, no dconf: the Aura Glass Helper reads them live
+# through its config monitor and scales the shell's own durations
+# (_readAnimationSpeeds in its extension.js), so an Apply lands at once with no
+# reload. Here rather than in install_aura_ext because that only runs on a full
+# install, and a --settings-only retune has to remember these too. 50 is as
+# slow as is still useful (a 400ms minimize at 800ms already drags), and 300
+# leaves the shortest, a 100ms dialog, at a still-visible 33ms. The extension
+# and the settings app keep their own copy of these three (ANIMATION_SPEED_*).
+ANIMATION_SPEED_MIN=50
+ANIMATION_SPEED_MAX=300
+ANIMATION_SPEED_SHIPPED=100
+
+# One speed: the flag, then the memo, then the shipped 100.
+resolve_animation_speed() {
+    local flag="$1" want="$2" memo="$3" shipped="$ANIMATION_SPEED_SHIPPED"
+    [ -n "$want" ] || want="$(cat "$CONF_DIR/$memo" 2>/dev/null || true)"
+    case "$want" in
+        '') want="$shipped" ;;
+        *[!0-9]*) warn "$flag '$want' is not a whole percentage — using ${shipped}" >&2
+                  want="$shipped" ;;
+        *) if [ "$want" -lt "$ANIMATION_SPEED_MIN" ] || [ "$want" -gt "$ANIMATION_SPEED_MAX" ]; then
+               warn "$flag $want is outside ${ANIMATION_SPEED_MIN}-${ANIMATION_SPEED_MAX} — using ${shipped}" >&2
+               want="$shipped"
+           fi ;;
+    esac
+    printf '%s\n' "$want"
+}
+
+apply_animation_speed() {
+    local window notification menu
+    window="$(resolve_animation_speed --window-animation-speed "${WINDOW_ANIMATION_SPEED:-}" window-animation-speed)"
+    notification="$(resolve_animation_speed --notification-animation-speed "${NOTIFICATION_ANIMATION_SPEED:-}" notification-animation-speed)"
+    menu="$(resolve_animation_speed --menu-animation-speed "${MENU_ANIMATION_SPEED:-}" menu-animation-speed)"
+    if remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$window" > "$CONF_DIR/window-animation-speed"
+        printf '%s\n' "$notification" > "$CONF_DIR/notification-animation-speed"
+        printf '%s\n' "$menu" > "$CONF_DIR/menu-animation-speed"
+    fi
+    ok "animation speed: windows ${window}%, notifications ${notification}%, menus ${menu}% of GNOME's pace (remembered for later runs)"
 }
 
 # The popup keys themselves ship in dconf/core.ini so the whole preset stays

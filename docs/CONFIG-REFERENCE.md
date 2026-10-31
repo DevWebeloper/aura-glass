@@ -83,6 +83,7 @@ implementation view.
 | `--liquid-windows` / `--no-liquid-windows` | off. Liquid or vibrant behind app windows too (ignored under tinted and smoked); makes `[applications] static-blur` true | `liquid-windows` | | full |
 | `--fullscreen-blur` / `--no-fullscreen-blur` | off. On keeps the window blur behind a fullscreen window; off drops it and puts the window at opacity 255 (`[applications] unblur-when-fullscreen`) | `fullscreen-blur` | | `fullscreen-blur` |
 | `--smooth-animations` / `--no-smooth-animations` | off. On sets Blur My Shell's patched `full-size-buffers` (blur textures allocated once at the largest monitor's size and kept, about 50 MB per blurred surface at 3440×1440) and writes `~/.config/environment.d/aura-glass.conf` with `CLUTTER_PAINT=disable-dynamic-max-render-time` (read at next login). Off clears the key and removes the file | `smooth-animations` | | `smooth-animations` |
+| `--window-animation-speed P`, `--notification-animation-speed P`, `--menu-animation-speed P` | 50–300, default 100 (GNOME's pace; 200 twice as fast). Memos only: the Aura Glass Helper reads them live and scales the shell's own `ease()` durations for window actors (map, destroy, minimize, size change, tile preview), the notification banner and every `BoxPointer` menu, opening and closing alike. Not previewable | `window-animation-speed`, `notification-animation-speed`, `menu-animation-speed` | | `animation-speed` |
 | `--radius-preset P` | `flat sharp adwaita soft medium default rounded` (`pill` → `rounded`). Default `default` | `radius-preset` | | full |
 | `--radius-custom W,M,Q,N,D,P,O,B` | 8 integers within `radius_bounds`. Implies `custom` | `radius-custom` (a 7-field memo is widened with `,9999`) | | full |
 | `--window-buttons close\|all` | unset = leave GNOME's layout | `window-buttons` | | `window-buttons` |
@@ -111,6 +112,7 @@ implementation view.
 | `app-blur` | `apply_app_blur` |
 | `css` | `install_css` (the whole CSS pipeline + `aura-glass-apply`) |
 | `glass-style` | `apply_glass_style` (an accent edit under the tinted style) |
+| `animation-speed` | `apply_animation_speed` (the three memos; the helper picks them up live) |
 | `adaptive-blur` | `apply_adaptive_blur active\|restore` |
 
 These are ignored by the classifier: `--settings-only --incremental --plan-json --yes -y --dry-run -n`.
@@ -148,6 +150,7 @@ not adaptive).
 | `liquid-windows` | `0\|1`, kept under frosted | `apply_glass_style` |
 | `fullscreen-blur` | `0\|1`, top-level | `apply_fullscreen_blur` |
 | `smooth-animations` | `0\|1`, top-level | `apply_smooth_animations` |
+| `window-animation-speed`, `notification-animation-speed`, `menu-animation-speed` | 50–300, top-level | `apply_animation_speed` |
 | `titlebutton-style` | `minimal\|adwaita\|material\|flat` | `install_window_control_style` |
 | `window-buttons` | `close\|all` | `apply_window_buttons` |
 

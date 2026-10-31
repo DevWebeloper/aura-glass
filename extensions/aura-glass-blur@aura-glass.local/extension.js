@@ -13,11 +13,14 @@
  * It answers ListWindows (for the settings app's "Open now" list), GetFocusState,
  * and emits WindowsChanged and FocusChanged signals.
  *
- * It also shades the top bar while the focused window fills the panel's
- * monitor (PANEL_SHADE_CLASS, painted by css/shell-00-flat.css).
+ * It also shades the top bar while a window on the active workspace fills
+ * the panel's monitor (PANEL_SHADE_CLASS, painted by css/shell-00-flat.css).
  *
  * And it lets the mouse wheel switch workspaces while a window or app icon
  * is held in the overview (_attachDragScroll).
+ *
+ * And it sets how fast windows, notification banners and menus animate
+ * (_syncEaseHook), from the three *-animation-speed memos.
  *
  * It stays installed and enabled in every mode, Performance included.
  */
@@ -29,10 +32,12 @@ import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
+import {BoxPointer} from 'resource:///org/gnome/shell/ui/boxpointer.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {WindowMenu} from 'resource:///org/gnome/shell/ui/windowMenu.js';
+import {TilePreview} from 'resource:///org/gnome/shell/ui/windowManager.js';
 import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const BMS_UUID = 'blur-my-shell@aunetx';
@@ -91,6 +96,21 @@ const OPACITY_STATE_FILES = new Set([
 // extension-loaded sheet above the shell theme, so these only win when they
 // are loaded as one too, which is what this extension does with it.
 const OVERRIDE_SHEET = 'extension-overrides.css';
+// --window-, --notification- and --menu-animation-speed, written by
+// apply_animation_speed in lib/steps-dconf.sh: a percentage of GNOME's own
+// pace, so 200 halves every duration and 50 doubles it. The bounds and the
+// shipped 100 are duplicated there (ANIMATION_SPEED_*) and in
+// gui/aura_glass_settings.py; a memo outside them reads as 100, as the
+// installer resolves it.
+const ANIMATION_SPEED_FILES = {
+    window: 'window-animation-speed',
+    notification: 'notification-animation-speed',
+    menu: 'menu-animation-speed',
+};
+const ANIMATION_SPEED_STATE_FILES = new Set(Object.values(ANIMATION_SPEED_FILES));
+const ANIMATION_SPEED_MIN = 50;
+const ANIMATION_SPEED_MAX = 300;
+const ANIMATION_SPEED_SHIPPED = 100;
 const PROFILE_ICONS = {
     auto: 'view-refresh-symbolic',
     full: 'weather-clear-symbolic',
@@ -248,6 +268,16 @@ export default class AuraGlassBlurExtension extends Extension {
         ];
         this._monitorsChangedId = Main.layoutManager.connect(
             'monitors-changed', () => this._syncPanelShade());
+        // A maximized window behind a smaller focused one (the settings app
+        // over Chrome) still fills the screen, so the shade follows every
+        // window on the workspace, not only the focused one: restacked
+        // covers a raise, a minimize, an unminimize and a close, and a
+        // workspace switch brings a different set.
+        this._shadeStackIds = [
+            global.display.connect('restacked', () => this._syncPanelShade()),
+            global.workspace_manager.connect('active-workspace-changed',
+                () => this._syncPanelShade()),
+        ];
 
         this._focusWindowId = global.display.connect(
             'focus-window', (_display, window) => this._watchFocusedWindow(window));
@@ -273,6 +303,7 @@ export default class AuraGlassBlurExtension extends Extension {
         this._buildPanelMenu();
         this._initOpacityMonitor();
         this._loadOverrideSheet();
+        this._readAnimationSpeeds();
     }
 
     _attachDragScroll() {
@@ -378,6 +409,7 @@ export default class AuraGlassBlurExtension extends Extension {
         }
         this._confMonitors = null;
         this._unloadOverrideSheet();
+        this._unhookEase();
 
         if (!this._isBmsApplicationsActive()) {
             this.setWindowOpacityAll(255);
@@ -403,6 +435,12 @@ export default class AuraGlassBlurExtension extends Extension {
             Main.layoutManager.disconnect(this._monitorsChangedId);
             this._monitorsChangedId = 0;
         }
+        const [restackedId, workspaceId] = this._shadeStackIds ?? [];
+        if (restackedId)
+            global.display.disconnect(restackedId);
+        if (workspaceId)
+            global.workspace_manager.disconnect(workspaceId);
+        this._shadeStackIds = null;
 
         if (this._windowsChangedTimer) {
             GLib.source_remove(this._windowsChangedTimer);
@@ -469,10 +507,11 @@ export default class AuraGlassBlurExtension extends Extension {
     // The panel lives on the primary monitor, so a window filling another
     // monitor leaves it alone.
     _syncPanelShade(overviewVisible = Main.overview.visible) {
-        const window = this._focusedWindow;
-        const shade = Boolean(window) && !overviewVisible &&
-            window.get_monitor() === Main.layoutManager.primaryIndex &&
-            coversMonitor(window);
+        const primary = Main.layoutManager.primaryIndex;
+        const workspace = global.workspace_manager.get_active_workspace();
+        const shade = !overviewVisible && workspace.list_windows().some(window =>
+            !window.minimized && !window.skip_taskbar &&
+            window.get_monitor() === primary && coversMonitor(window));
         if (shade)
             Main.panel.add_style_class_name(PANEL_SHADE_CLASS);
         else
@@ -852,6 +891,89 @@ export default class AuraGlassBlurExtension extends Extension {
             });
     }
 
+    // ---- Animation speed ------------------------------------------------------
+
+    // GNOME Shell connects its window effects with handlers bound when
+    // Main.wm is built, and hardcodes each duration in the ease() call
+    // (WINDOW_ANIMATION_TIME and the rest in windowManager.js,
+    // POPUP_ANIMATION_TIME in boxpointer.js, ANIMATION_TIME in messageTray.js),
+    // so neither a method patch nor a constant can reach them. ease() itself
+    // can: every one of those calls goes through Clutter.Actor.prototype.ease,
+    // and the actor it is called on says which of the three it is. Opening and
+    // closing go through the same calls, so each speed holds both ways.
+    _readAnimationSpeeds() {
+        this._animationScale = {};
+        for (const [kind, file] of Object.entries(ANIMATION_SPEED_FILES)) {
+            let speed = parseInt(readState(file), 10);
+            if (isNaN(speed) || speed < ANIMATION_SPEED_MIN || speed > ANIMATION_SPEED_MAX)
+                speed = ANIMATION_SPEED_SHIPPED;
+            this._animationScale[kind] = ANIMATION_SPEED_SHIPPED / speed;
+        }
+        this._syncEaseHook();
+    }
+
+    // Hooked only while a speed is not GNOME's own, so the default costs
+    // nothing on the shell's busiest call.
+    _syncEaseHook() {
+        if (Object.values(this._animationScale).some(scale => scale !== 1))
+            this._hookEase();
+        else
+            this._unhookEase();
+    }
+
+    _hookEase() {
+        if (this._origEase)
+            return;
+        const self = this;
+        this._sizeChangeClones = new WeakSet();
+        this._origEase = Clutter.Actor.prototype.ease;
+        Clutter.Actor.prototype.ease = function (props) {
+            const scale = self._easeScaleFor(this);
+            if (scale !== 1 && typeof props?.duration === 'number')
+                props = {...props, duration: Math.round(props.duration * scale)};
+            return self._origEase.call(this, props);
+        };
+        // A maximize or unmaximize fades a still of the old frame out over the
+        // window growing in. The still is a bare St.Widget, so it is marked
+        // here, where _sizeChangeWindow makes it, to keep it in step with the
+        // window. Looked up on Main.wm at call time, so an own property wins.
+        const wm = Main.wm;
+        if (typeof wm._prepareAnimationInfo === 'function') {
+            this._origPrepareAnimationInfo = wm._prepareAnimationInfo;
+            wm._prepareAnimationInfo = function (shellwm, actor, ...rest) {
+                self._origPrepareAnimationInfo.call(this, shellwm, actor, ...rest);
+                const clone = actor?.__animationInfo?.clone;
+                if (clone)
+                    self._sizeChangeClones.add(clone);
+            };
+        }
+    }
+
+    _unhookEase() {
+        if (!this._origEase)
+            return;
+        Clutter.Actor.prototype.ease = this._origEase;
+        this._origEase = null;
+        if (this._origPrepareAnimationInfo) {
+            delete Main.wm._prepareAnimationInfo;
+            this._origPrepareAnimationInfo = null;
+        }
+        this._sizeChangeClones = null;
+    }
+
+    _easeScaleFor(actor) {
+        if (actor instanceof Meta.WindowActor || actor instanceof TilePreview ||
+            this._sizeChangeClones.has(actor))
+            return this._animationScale.window;
+        // Every shell menu opens and closes through its BoxPointer: the top
+        // bar's, Quick Settings, the calendar, right-click and window menus.
+        if (actor instanceof BoxPointer)
+            return this._animationScale.menu;
+        if (actor === Main.messageTray?._bannerBin)
+            return this._animationScale.notification;
+        return 1;
+    }
+
     // ---- Window actor opacity (live without restart) -----------------------
 
     _initOpacityMonitor() {
@@ -883,6 +1005,8 @@ export default class AuraGlassBlurExtension extends Extension {
                         this._syncWindowMenu();
                     else if (name === OVERRIDE_SHEET)
                         this._loadOverrideSheet();
+                    else if (ANIMATION_SPEED_STATE_FILES.has(name))
+                        this._readAnimationSpeeds();
                 });
                 this._confMonitors.push([monitor, id]);
             } catch (e) {

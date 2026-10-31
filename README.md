@@ -106,8 +106,10 @@ Your saved settings are never changed by this.
 
 Open **Aura Glass** from the app grid, or run `aura-glass-settings`.
 
-- **Glass.** Mode, tints, transparency, blur strength, popup and window blur brightness, notification ground.
-- **Appearance.** Accent, icons, pointer and its size, font, titlebar buttons and their style.
+- **Glass.** Mode, tints, transparency, blur strength, glass style.
+- **Blur.** Two tabs: which surfaces are blurred, and how bright the window blur, popup blur and notification ground come out.
+- **Animations.** How fast windows, notifications and menus open and close, each its own slider (50–300 % of GNOME's pace), and smooth animations.
+- **Appearance.** Three tabs: accent and font; icons, pointer and its size; titlebar buttons, their style and the top bar.
 - **Corner rounding.** Seven presets or eight per-surface values. The blur behind always matches the corner painted on top.
 - **Per-app blur.** A switch per app, the windows open right now, wildcard patterns, and the games that trigger Performance.
 - **Extensions, Packages, System, Updates, Uninstall.**

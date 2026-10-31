@@ -487,6 +487,7 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/blur-strength" \
           "$CONF_DIR/glass-style" "$CONF_DIR/liquid-windows" "$CONF_DIR/fullscreen-blur" "$CONF_DIR/blur-refresh" \
           "$CONF_DIR/smooth-animations" \
+          "$CONF_DIR/window-animation-speed" "$CONF_DIR/notification-animation-speed" "$CONF_DIR/menu-animation-speed" \
           "$CONF_DIR/gdm-installed" "$CONF_DIR/gdm-gresource" \
           "$CONF_DIR/gdm-monitors-synced" \
           "$CONF_DIR/radius-preset" \

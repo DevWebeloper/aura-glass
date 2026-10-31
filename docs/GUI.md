@@ -177,8 +177,10 @@ is decided by `select_apply_actions`. See
 
 | Page | Group | Holds |
 |---|---|---|
-| Glass | Appearance | A status group on top: the mode in force plus any adaptive overlay and its reason, a "Switch to X" button (the ordinary Apply), and an "Adaptive performance" combo running `aura-glass-adaptive profile` like the panel menu. It's watched live (`$C`, `$C/adaptive-performance`), and the header subtitle repeats it on every page. Then two mode tabs (Frosted, Performance) in an `Adw.ViewStack`, with a "Switch now" banner when the tab differs from the installed mode. **Frosted**: tints, transparency (an off switch plus a 70–100 % scale), blur strength, window and popup blur brightness, notification ground, popup and notification blur switches, and the scope as two switches ("Blur behind app windows", then "all application windows", which defaults on). **Performance**: tints and one opacity scale. |
-| Appearance | Appearance | Accent (nine names plus a link to GNOME Settings; there's no hex picker, by design), icon pack and colour, pointer and size, font, titlebar buttons and style |
+| Glass | Appearance | A status group on top: the mode in force plus any adaptive overlay and its reason, a "Switch to X" button (the ordinary Apply), and an "Adaptive performance" combo running `aura-glass-adaptive profile` like the panel menu. It's watched live (`$C`, `$C/adaptive-performance`), and the header subtitle repeats it on every page. Then two mode tabs (Frosted, Performance) in an `Adw.ViewStack`, with a "Switch now" banner when the tab differs from the installed mode. **Frosted**: tints, transparency (an off switch plus a 70–100 % scale), blur strength, glass style. **Performance**: tints and one opacity scale. |
+| Blur | Appearance | Frosted's other rows, in two tabs (`_tab_stack`). **Surfaces**: the scope as two switches ("Blur behind app windows", then "all application windows", which defaults on), fullscreen blur, popup and notification blur, the GPU cost note. **Brightness**: window and popup blur brightness, notification ground. Seeded from the frosted drawer like the Frosted tab, and insensitive under a "Switch to Frosted" banner while the Glass tabs ask for Performance (`_sync_blur_page`), since `flags_against` drops these there |
+| Animations | Appearance | Window, notification and menu speed (three 50–300 % scales, `--*-animation-speed`, not previewable), smooth animations |
+| Appearance | Appearance | Three tabs. **Look**: accent (nine names plus a link to GNOME Settings; there's no hex picker, by design), font. **Icons & pointer**: icon pack and colour, pointer and size. **Titlebar & top bar**: titlebar buttons and style, top bar brightness over a maximized window |
 | Corner rounding | Appearance | Seven preset cards drawn with their own corners, reset, or eight per-surface spin rows with a live drawing |
 | Per-app blur | Appearance | A switch per installed app, live "Open now" windows (D-Bus), a default for unchosen apps, **fullscreen performance games** (written straight to `adaptive-fullscreen-apps`), wildcard patterns |
 | Extensions | System | Every catalogued extension: switch, install/remove, settings button (when it has `prefs.js`), recommended and full packs, via `bin/aura-glass-ext` |
@@ -187,9 +189,12 @@ is decided by `select_apply_actions`. See
 | Updates | System | Two tabs. **Updates**: version, check, install update; one list, newest first by date, of **Tags** (every commit on main, named `v0.3.5+N`) and **Releases** (`vX.Y.Z`, with notes): the 5 newest of each plus the installed one when older. One badge per row. Only the newest (main's tip, a release if tagged, else a tag) has Install; older rows are read-only. History graph of everything. **Maintenance**: daily update check; reapply settings; reset theme to defaults (`--reset --force --gui --interactive`). No channel row: the line follows what was installed from the list; `--update-channel` stays for the CLI |
 | Uninstall | none | Built into the stack (other code needs its widgets), opened from the primary menu, not the sidebar |
 
-The order matters: Glass is built before Per-app blur, because the app list asks
-the blur rows which list is active. `SEARCH_INDEX` is a hand-kept set of extra
-search words per page. `FLAG_LABELS` maps flags to pages and labels for the
+The order matters: Glass is built before Blur, because the Blur page's banner
+asks the mode tabs which mode is being asked for, and Blur before Per-app blur,
+because the app list asks the blur rows which list is active. `SEARCH_INDEX` is
+a hand-kept set of extra search words per page; titles are matched before it.
+`SEARCH_TABS` says which tab of a tabbed page a word is on, so the search opens
+that tab too. `FLAG_LABELS` maps flags to pages and labels for the
 "N changes pending" popover and the sidebar dots. The popover's first row is
 what Apply will run: `_ask_plan` sends the same flags to `install.sh
 --settings-only --incremental --dry-run --plan-json` 300 ms after the last edit,

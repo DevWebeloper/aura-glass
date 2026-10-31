@@ -330,6 +330,27 @@ MAXIMIZED_PANEL_BRIGHTNESS_MARKS = [
     (MAXIMIZED_PANEL_BRIGHTNESS_MAX, "clear"),
 ]
 
+# --window-, --notification- and --menu-animation-speed, as a percentage of
+# GNOME's own pace. ANIMATION_SPEED_MIN, _MAX and _SHIPPED in
+# lib/steps-dconf.sh, where the reasoning is; the helper extension keeps a
+# third copy. Keyed by the memo's first word, which is also the registry key
+# the Animations page files each bar under.
+ANIMATION_SPEED_MIN = 50
+ANIMATION_SPEED_MAX = 300
+ANIMATION_SPEED_SHIPPED = 100
+ANIMATION_SPEED_KINDS = ("window", "notification", "menu")
+# GNOME's own duration at 100%, in ms, for the readout beside each bar:
+# WINDOW_ANIMATION_TIME in windowManager.js, ANIMATION_TIME in messageTray.js
+# and POPUP_ANIMATION_TIME in boxpointer.js. The shell's other window effects
+# (minimize 200, destroy 150) scale by the same factor from their own base.
+ANIMATION_BASE_MS = {"window": 250, "notification": 200, "menu": 150}
+
+ANIMATION_SPEED_MARKS = [
+    (ANIMATION_SPEED_MIN, "slower"),
+    (ANIMATION_SPEED_SHIPPED, "GNOME"),
+    (ANIMATION_SPEED_MAX, "faster"),
+]
+
 # What both tint memos hold, and the shipped answer for each. Black is not a
 # colour anyone picked — it is the sheets as written, which is why choosing it
 # again restores them byte-for-byte rather than approximately.
@@ -581,11 +602,16 @@ CONTEXTUAL_CHOICE_METADATA = {
 # The sidebar: (id, title, icon, builder method), in the order shown.
 #
 # Order is not only presentation — the builders run in it, and a page whose
-# widgets another page's builder reads has to come first. Glass before Apps is
-# the live case: the per-app list asks the blur rows which list is active.
-# ident, title, icon, builder, sidebar group. Two groups rather than eleven
-# flat rows: Appearance is everything that changes what the desktop looks
-# like, System is everything about the install itself. Uninstall carries no
+# widgets another page's builder reads has to come first. Glass before Blur
+# and Blur before Apps are the live cases: the Blur page's banner asks the
+# Glass page's mode tabs which mode is being asked for, and the per-app list
+# asks the Blur page's rows which list is active.
+# ident, title, icon, builder, sidebar group. Two groups rather than one
+# flat list: Appearance is everything that changes what the desktop looks
+# like, System is everything about the install itself. A page with more
+# than one kind of thing on it splits into tabs (_tab_stack) rather than
+# growing past a screen, so the sidebar names what each page is for and a
+# page never has to be scrolled to find what it holds. Uninstall carries no
 # group — it is still built into the stack (_reload and _mark_dirty still
 # need every widget to exist), but it does not get a sidebar row, because a
 # destructive page has no business sitting in the same list as Look used to.
@@ -593,6 +619,10 @@ CONTEXTUAL_CHOICE_METADATA = {
 NAV_SECTIONS = [
     ("glass", "Glass", "weather-fog-symbolic", "_build_glass_page",
      "Appearance"),
+    ("blur", "Blur", "view-reveal-symbolic", "_build_blur_page",
+     "Appearance"),
+    ("animations", "Animations", "media-playback-start-symbolic",
+     "_build_animations_page", "Appearance"),
     ("appearance", "Appearance", "applications-graphics-symbolic",
      "_build_appearance_page", "Appearance"),
     ("radius", "Corner rounding", "circle-outline-thick-symbolic",
@@ -620,14 +650,19 @@ NAV_SECTIONS = [
 # simply saying what is on it, the same trade-off EXT_TIERS already makes
 # elsewhere in this file.
 SEARCH_INDEX = {
-    "glass": ["frosted", "performance", "blur", "tint", "opacity",
-             "transparency", "popup blur", "window blur", "scope",
-             "notification", "notifications", "banner"],
+    "glass": ["frosted", "performance", "tint", "opacity", "transparency",
+             "blur amount", "blur strength", "glass style", "liquid",
+             "vibrant", "smoked", "tinted"],
+    "blur": ["popup blur", "window blur", "scope", "fullscreen",
+             "notification", "notifications", "banner", "brightness",
+             "ground", "menus", "electron", "browser"],
+    "animations": ["animation", "speed", "fast", "slow", "smooth", "motion",
+                   "minimize", "maximize", "open", "close"],
     "appearance": ["accent", "colour", "color", "font", "icon", "cursor",
                   "pointer", "cursor size", "pointer size", "titlebar",
                   "window buttons", "colloid", "reversal", "hatter",
                   "mactahoe", "aosp", "traffic lights", "button style",
-                  "close button"],
+                  "close button", "top bar", "panel", "maximized"],
     "radius": ["corner", "rounding", "square", "rounded", "pill"],
     "apps": ["allow", "block", "per-app", "whitelist", "blacklist"],
     "extensions": ["gnome extensions", "blur my shell", "space-bar",
@@ -639,6 +674,26 @@ SEARCH_INDEX = {
                 "downgrade", "maintenance", "update check", "notification",
                 "repair", "reapply", "reinstall", "reset", "defaults"],
     "uninstall": ["remove", "revert", "delete"],
+}
+
+# Which tab of a tabbed page (_tab_stack) a search word is on, so the search
+# opens the tab and not only the page. A word not listed here leaves the page
+# on whichever tab it was showing. Every word here is also in SEARCH_INDEX
+# under the same page, which is what found the page in the first place.
+SEARCH_TABS = {
+    "blur": {
+        "surfaces": ["popup blur", "window blur", "scope", "fullscreen",
+                     "menus", "electron", "browser"],
+        "brightness": ["brightness", "ground"],
+    },
+    "appearance": {
+        "look": ["accent", "colour", "color", "font"],
+        "packs": ["icon", "cursor", "pointer", "colloid", "reversal",
+                  "hatter", "mactahoe", "aosp"],
+        "bars": ["titlebar", "window buttons", "traffic lights",
+                 "button style", "close button", "top bar", "panel",
+                 "maximized"],
+    },
 }
 
 # install.sh flag -> (page ident, plain-words label), for the "N changes
@@ -662,32 +717,36 @@ FLAG_LABELS = {
     "--glass-style": ("glass", "Glass style"),
     "--liquid-windows": ("glass", "Glass style behind app windows"),
     "--no-liquid-windows": ("glass", "Glass style behind app windows"),
-    "--fullscreen-blur": ("glass", "Blur fullscreen windows"),
+    "--fullscreen-blur": ("blur", "Blur fullscreen windows"),
     "--maximized-panel-brightness": ("appearance", "Top bar over a maximized window"),
-    "--no-fullscreen-blur": ("glass", "Blur fullscreen windows"),
-    "--smooth-animations": ("glass", "Smooth animations"),
-    "--no-smooth-animations": ("glass", "Smooth animations"),
+    "--no-fullscreen-blur": ("blur", "Blur fullscreen windows"),
+    "--smooth-animations": ("animations", "Smooth animations"),
+    "--no-smooth-animations": ("animations", "Smooth animations"),
+    "--window-animation-speed": ("animations", "Window animation speed"),
+    "--notification-animation-speed": ("animations",
+                                       "Notification animation speed"),
+    "--menu-animation-speed": ("animations", "Menu animation speed"),
     "--update-check": ("updates", "Daily update check"),
     "--no-update-check": ("updates", "Daily update check"),
     "--update-channel": ("updates", "Update channel"),
     "--radius-preset": ("radius", "Corner rounding"),
     "--radius-custom": ("radius", "Corner rounding"),
     "--glass-mode": ("glass", "Glass mode"),
-    "--gtk-apps-blur": ("glass", "Blur scope"),
-    "--all-apps-blur": ("glass", "Blur scope"),
-    "--no-window-blur": ("glass", "Window blur"),
+    "--gtk-apps-blur": ("blur", "Blur scope"),
+    "--all-apps-blur": ("blur", "Blur scope"),
+    "--no-window-blur": ("blur", "Window blur"),
     "--app-transparency": ("glass", "Window transparency"),
     "--no-app-transparency": ("glass", "Window transparency"),
-    "--popup-blur": ("glass", "Popup blur"),
-    "--no-popup-blur": ("glass", "Popup blur"),
-    "--notification-blur": ("glass", "Notification blur"),
-    "--no-notification-blur": ("glass", "Notification blur"),
+    "--popup-blur": ("blur", "Popup blur"),
+    "--no-popup-blur": ("blur", "Popup blur"),
+    "--notification-blur": ("blur", "Notification blur"),
+    "--no-notification-blur": ("blur", "Notification blur"),
     "--app-tint-color": ("glass", "App tint"),
     "--shell-tint-color": ("glass", "Shell tint"),
     "--blur-strength": ("glass", "Blur strength"),
-    "--window-brightness": ("glass", "Window blur brightness"),
-    "--popup-brightness": ("glass", "Popup blur brightness"),
-    "--notification-opacity": ("glass", "Notification ground"),
+    "--window-brightness": ("blur", "Window blur brightness"),
+    "--popup-brightness": ("blur", "Popup blur brightness"),
+    "--notification-opacity": ("blur", "Notification ground"),
     "--app-blur-allow": ("apps", "Blur allow list"),
     "--app-blur-block": ("apps", "Blur block list"),
 }
@@ -2739,6 +2798,17 @@ class Settings:
             self.maximized_panel_brightness = MAXIMIZED_PANEL_BRIGHTNESS_SHIPPED
         # Off unless asked, as apply_smooth_animations defaults it.
         self.smooth_animations = read_memo("smooth-animations", "0") == "1"
+        # Top-level, and out of bounds is the shipped 100, as
+        # resolve_animation_speed has it.
+        self.animation_speed = {}
+        for kind in ANIMATION_SPEED_KINDS:
+            try:
+                speed = int(read_memo("%s-animation-speed" % kind, ""))
+            except ValueError:
+                speed = ANIMATION_SPEED_SHIPPED
+            if not ANIMATION_SPEED_MIN <= speed <= ANIMATION_SPEED_MAX:
+                speed = ANIMATION_SPEED_SHIPPED
+            self.animation_speed[kind] = speed
 
         self.update_check = read_memo("update-check", "1") != "0"
         self.update_channel = read_memo("update-channel", "release")
@@ -2913,6 +2983,10 @@ class Settings:
         if self.smooth_animations != other.smooth_animations:
             args.append("--smooth-animations" if self.smooth_animations
                         else "--no-smooth-animations")
+        for kind in ANIMATION_SPEED_KINDS:
+            if self.animation_speed[kind] != other.animation_speed[kind]:
+                args += ["--%s-animation-speed" % kind,
+                         str(self.animation_speed[kind])]
         # --radius-custom implies the custom preset, so it stands in for
         # --radius-preset rather than joining it. Sent when the eight values
         # moved even if the preset name did not, because "custom" says nothing
@@ -3497,6 +3571,10 @@ class Window(Adw.ApplicationWindow):
         # They live here rather than in that builder because a dict created
         # inside the first tab's build would not be there for the second's.
         self._tints = {}
+        # Tabbed pages' stacks, by page ident, for SEARCH_TABS. Filled by
+        # _tab_stack as each one is built.
+        self._page_stacks = {}
+        self._speed_scales = {}
         self._tint_rows = {}
         self._strength_scales = {}
         self._window_brightness_scales = {}
@@ -4216,13 +4294,44 @@ class Window(Adw.ApplicationWindow):
         text = entry.get_text().strip().lower()
         if not text:
             return
-        for ident, title, _icon, _builder, group in NAV_SECTIONS:
-            if group is None:
-                continue
-            haystack = [title.lower()] + SEARCH_INDEX.get(ident, [])
-            if any(text in h for h in haystack):
-                self._sidebar.select_row(self._sidebar_rows[ident])
+        # Titles before the extra words, so "blur" opens the Blur page rather
+        # than the first page whose index happens to say "blur amount".
+        sections = [s for s in NAV_SECTIONS if s[4] is not None]
+        for haystack_of in (lambda ident, title: [title.lower()],
+                            lambda ident, title: SEARCH_INDEX.get(ident, [])):
+            for ident, title, _icon, _builder, _group in sections:
+                if any(text in h for h in haystack_of(ident, title)):
+                    self._sidebar.select_row(self._sidebar_rows[ident])
+                    self._open_search_tab(ident, text)
+                    return
+
+    def _open_search_tab(self, ident, text):
+        stack = self._page_stacks.get(ident)
+        for tab, words in SEARCH_TABS.get(ident, {}).items():
+            if stack is not None and any(text in w for w in words):
+                stack.set_visible_child_name(tab)
                 return
+
+    def _tab_stack(self, ident, tabs):
+        """A sidebar page as tabs, from (name, title, icon, page) each.
+
+        The switcher over a stack the Glass and Updates pages build for
+        themselves, kept under the page's ident in self._page_stacks so a
+        search can open the tab its word is on (SEARCH_TABS), not only the
+        page. Returns the box, so a page can put a banner above the tabs.
+        """
+        stack = Adw.ViewStack(vexpand=True)
+        for name, title, icon, page in tabs:
+            stack.add_titled_with_icon(page, name, title, icon)
+        self._page_stacks[ident] = stack
+        switcher = Adw.ViewSwitcher(stack=stack,
+                                    policy=Adw.ViewSwitcherPolicy.WIDE,
+                                    halign=Gtk.Align.CENTER,
+                                    margin_top=12)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        box.append(switcher)
+        box.append(stack)
+        return box
 
     def _on_copy_command(self, *_a):
         args = self._current().flags_against(self._applied)
@@ -4292,14 +4401,15 @@ class Window(Adw.ApplicationWindow):
             row.set_subtitle(row._subs[i])
 
     def _build_appearance_page(self):
-        """Accent, font, icons, pointer and titlebar buttons — one page.
+        """Accent, font, icons, pointer, titlebar buttons and the top bar.
 
         These were three separate sidebar rows (Look, Icons and pointer,
         Window controls) for no reason stronger than having been added at
-        different times: none of the three holds more than a handful of
-        rows, and a sidebar someone has to read past eight other rows to find
-        "where is the icon pack" is worse than one where Appearance is where
-        everything that changes what the desktop looks like lives.
+        different times, then one page, so that a sidebar did not have to be
+        read past eight other rows to find "where is the icon pack". The
+        page then grew a top bar group and had to be scrolled instead, so it
+        is three tabs on the one sidebar row now: the sidebar stays as short
+        as the merge made it, and each tab holds one kind of thing.
         """
         page = Adw.PreferencesPage()
 
@@ -4326,6 +4436,8 @@ class Window(Adw.ApplicationWindow):
             "Interface font", "", FONTS, self._applied.font, "font")
         look.add(self._font_row)
         page.add(look)
+        look_page = page
+        page = Adw.PreferencesPage()
 
         # A pack you have already installed applies instantly. One you have
         # not is downloaded first, so Apply can take a minute and needs the
@@ -4364,6 +4476,8 @@ class Window(Adw.ApplicationWindow):
             "notify::value", self._on_changed, "cursor_size")
         packs.add(self._cursor_size_row)
         page.add(packs)
+        packs_page = page
+        page = Adw.PreferencesPage()
 
         buttons = Adw.PreferencesGroup(
             title="Titlebar buttons",
@@ -4394,7 +4508,13 @@ class Window(Adw.ApplicationWindow):
             self._applied.maximized_panel_brightness,
             self._maximized_panel_scales))
 
-        return page
+        return self._tab_stack("appearance", [
+            ("look", "Look", "preferences-color-symbolic", look_page),
+            ("packs", "Icons & pointer", "view-app-grid-symbolic",
+             packs_page),
+            ("bars", "Titlebar & top bar",
+             "preferences-desktop-display-symbolic", page),
+        ])
 
     def _build_radius_page(self):
         page = Adw.PreferencesPage()
@@ -5031,6 +5151,7 @@ class Window(Adw.ApplicationWindow):
         # banners have to follow the applied mode even when _reload was what
         # moved it.
         self._sync_mode_banner()
+        self._sync_blur_page()
         if self._loading:
             return
         # Which list the blur consults is a property of the mode, so the
@@ -5050,11 +5171,10 @@ class Window(Adw.ApplicationWindow):
         the top-level memos instead would show a machine in Performance its
         own forced zeroes under a Frosted heading.
 
-        Tint, opacity and blur amount lead the page: they are the three things
-        someone opens this tab to move. The switches that decide *which*
-        surfaces get blurred, and the GPU cost note, are worth knowing but are
-        not what brought anyone here, so both sit below the controls rather
-        than gating them.
+        Tint, opacity, blur amount and glass style: what the glass looks
+        like. Which surfaces it reaches and how bright it comes out are the
+        Blur page's, and smooth animations the Animations page's — they made
+        this tab a long scroll, and none of them is what brings anyone here.
         """
         frosted = self._applied.modes["frosted"]
         page = Adw.PreferencesPage()
@@ -5118,12 +5238,28 @@ class Window(Adw.ApplicationWindow):
                                          "liquid_windows")
         style.add(self._liquid_windows_row)
         page.add(style)
-        page.add(self._build_window_brightness_group("frosted"))
-        page.add(self._build_popup_brightness_group("frosted"))
-        page.add(self._build_notification_ground_group("frosted"))
 
-        # Which surfaces the blur reaches, once the tint/opacity/amount above
-        # have already answered what it looks like. Two switches, not the
+        return self._mode_tab("frosted", page)
+
+    # ---- blur -------------------------------------------------------------
+
+    def _build_blur_page(self):
+        """Which surfaces the frosted blur reaches, and how bright it comes out.
+
+        Frosted glass's own rows, off its tab so that tab is short enough to
+        read. They still belong to the frosted drawer, seeded from it as the
+        tab's are, and flags_against sends them only while Frosted is the mode
+        being asked for (the fullscreen switch aside, which is top-level but
+        means nothing without blur). So while the Glass page's Performance tab
+        is showing the page says so and goes insensitive, rather than taking
+        edits Apply would drop — the same banner the Per-app blur page shows
+        there.
+        """
+        frosted = self._applied.modes["frosted"]
+        surfaces = Adw.PreferencesPage()
+
+        # Which surfaces the blur reaches, once the Glass page's tint, opacity
+        # and amount have answered what it looks like. Two switches, not the
         # dropdown this was — they are two settings in install.sh,
         # WANT_WINDOW_BLUR and APP_BLUR_SCOPE, and the dropdown was the only
         # thing that ever made them one question.
@@ -5172,12 +5308,77 @@ class Window(Adw.ApplicationWindow):
         self._notification_row.connect("notify::active", self._on_changed,
                                        "notification_blur")
         reach.add(self._notification_row)
-        page.add(reach)
+        surfaces.add(reach)
+
+        # Under the switches: the cost is worth knowing, but not the reason
+        # anyone opened this tab.
+        surfaces.add(tip_card(
+            "<b>Blur is the most expensive thing in this window.</b> It costs "
+            "GPU and battery — more on integrated graphics or a 4K screen. If "
+            "the desktop feels slow, turn off <b>Blur behind all application "
+            "windows</b> first, or switch to Performance."))
+
+        brightness = Adw.PreferencesPage()
+        brightness.add(self._build_window_brightness_group("frosted"))
+        brightness.add(self._build_popup_brightness_group("frosted"))
+        brightness.add(self._build_notification_ground_group("frosted"))
+
+        box = self._tab_stack("blur", [
+            ("surfaces", "Surfaces", "preferences-desktop-multitasking-symbolic",
+             surfaces),
+            ("brightness", "Brightness", "display-brightness-symbolic",
+             brightness),
+        ])
+        self._blur_banner = Adw.Banner(
+            title="Performance mode has no blur at all — turn on Frosted to "
+                  "change these",
+            button_label="Switch to Frosted", revealed=False)
+        self._blur_banner.connect(
+            "button-clicked",
+            lambda _b: self._mode_stack.set_visible_child_name("frosted"))
+        box.prepend(self._blur_banner)
+        self._sync_blur_page()
+        return box
+
+    def _sync_blur_page(self):
+        """Banner and sensitivity, off the mode the Glass tabs are asking for."""
+        perf = self._glass_mode() == "performance"
+        self._blur_banner.set_revealed(perf)
+        self._page_stacks["blur"].set_sensitive(not perf)
+
+    # ---- animations -------------------------------------------------------
+
+    def _build_animations_page(self):
+        """How fast windows, banners and menus move, and how smoothly.
+
+        Three bars rather than one: a window's open and close is the shell's
+        longest animation and a menu's its shortest, so one speed for all is
+        either a sluggish menu or a window that snaps. Each is a percentage of
+        GNOME's own pace, read live by the helper extension, so Apply lands
+        without a reload or a logout. Not previewable: aura-glass-preview
+        never writes a memo, and a memo is all these are.
+        """
+        page = Adw.PreferencesPage()
+        for kind, title, description in (
+                ("window", "Windows",
+                 "Opening, closing, minimizing and maximizing."),
+                ("notification", "Notifications",
+                 "A banner sliding in, and back out."),
+                ("menu", "Menus",
+                 "The top bar's menus, Quick Settings, the calendar and "
+                 "right-click menus, opening and closing.")):
+            page.add(self._build_percent_group(
+                kind, title, description, "Speed",
+                "100% is GNOME's own pace — over is faster, under slower",
+                ANIMATION_SPEED_MIN, ANIMATION_SPEED_MAX,
+                ANIMATION_SPEED_MARKS, 25, 4,
+                self._applied.animation_speed[kind], self._speed_scales,
+                ANIMATION_BASE_MS[kind]))
 
         # Not a look, a trade: VRAM and a few ms of latency for animations
         # that start without a dropped frame. See apply_smooth_animations for
         # both halves and what each costs.
-        motion = Adw.PreferencesGroup(title="Animations")
+        motion = Adw.PreferencesGroup(title="Smoothness")
         self._smooth_animations_row = Adw.SwitchRow(
             title="Smooth animations",
             subtitle="Menus, folders and notifications open faster, with "
@@ -5190,16 +5391,7 @@ class Window(Adw.ApplicationWindow):
                                             "smooth_animations")
         motion.add(self._smooth_animations_row)
         page.add(motion)
-
-        # Last on the page rather than first: the cost is worth knowing, but
-        # not the reason anyone opened this tab.
-        page.add(tip_card(
-            "<b>Blur is the most expensive thing in this window.</b> It costs "
-            "GPU and battery — more on integrated graphics or a 4K screen. If "
-            "the desktop feels slow, turn off <b>Blur behind all application "
-            "windows</b> first, or switch to Performance."))
-
-        return self._mode_tab("frosted", page)
+        return page
 
     def _opacity_scale(self, percent):
         """One opacity bar, with the label that reports it kept on its side.
@@ -5441,7 +5633,7 @@ class Window(Adw.ApplicationWindow):
     # constraint the amount's own group is built around.
     def _build_percent_group(self, mode, title, description, row_title,
                              row_subtitle, low, high, marks, page, snap,
-                             value, registry):
+                             value, registry, base_ms=None):
         group = Adw.PreferencesGroup(title=title, description=description)
 
         readout = Gtk.Label(valign=Gtk.Align.CENTER)
@@ -5464,6 +5656,7 @@ class Window(Adw.ApplicationWindow):
         # leaves the stop next to it reachable.
         tame_scale(scale, marks, 5, page, snap)
         scale._readout = readout
+        scale._base_ms = base_ms
         scale.set_value(value)
         self._sync_percent_value(scale)
         scale.connect("value-changed", self._on_percent_changed)
@@ -5476,7 +5669,12 @@ class Window(Adw.ApplicationWindow):
         return group
 
     def _sync_percent_value(self, scale):
-        scale._readout.set_label("%d%%" % round(scale.get_value()))
+        percent = round(scale.get_value())
+        if scale._base_ms:
+            scale._readout.set_label(
+                "%d ms · %d%%" % (round(scale._base_ms * 100 / percent), percent))
+        else:
+            scale._readout.set_label("%d%%" % percent)
 
     def _on_percent_changed(self, scale):
         self._sync_percent_value(scale)
@@ -6683,10 +6881,13 @@ class Window(Adw.ApplicationWindow):
             self._blur_all_row.set_active(False)
 
     def _on_app_banner_clicked(self, _banner):
-        self._sidebar.select_row(self._sidebar_rows["glass"])
         self._mode_stack.set_visible_child_name("frosted")
         if self._app_banner_action == "window-blur":
+            self._sidebar.select_row(self._sidebar_rows["blur"])
+            self._page_stacks["blur"].set_visible_child_name("surfaces")
             self._window_blur_row.set_active(True)
+        else:
+            self._sidebar.select_row(self._sidebar_rows["glass"])
 
     def _sync_app_controls(self):
         """The banner, the default toggle, and which parts of the page are
@@ -7435,6 +7636,9 @@ class Window(Adw.ApplicationWindow):
         s.maximized_panel_brightness = int(round(
             self._maximized_panel_scales["panel"].get_value()))
         s.smooth_animations = self._smooth_animations_row.get_active()
+        s.animation_speed = {
+            kind: int(round(self._speed_scales[kind].get_value()))
+            for kind in ANIMATION_SPEED_KINDS}
         s.update_check = self._update_check_row.get_active()
         # Not settings, so they never differ and never produce a flag. Carried so
         # flags_against sees a complete object either way.
@@ -7444,8 +7648,9 @@ class Window(Adw.ApplicationWindow):
     def _sync_sensitivity(self):
         """Only the rows that depend on another row in the same tab.
 
-        Every glass row here is the frosted tab's, and is named as that tab's
-        rather than looked up through whichever tab is showing.
+        Every glass row here is the frosted drawer's — on the frosted tab or
+        the Blur page — and is named as that drawer's rather than looked up
+        through whichever tab is showing.
         """
         # Nothing to widen when there is no window blur to widen.
         self._blur_all_row.set_sensitive(self._window_blur_row.get_active())
@@ -7713,6 +7918,9 @@ class Window(Adw.ApplicationWindow):
         self._maximized_panel_scales["panel"].set_value(
             self._applied.maximized_panel_brightness)
         self._smooth_animations_row.set_active(self._applied.smooth_animations)
+        for kind in ANIMATION_SPEED_KINDS:
+            self._speed_scales[kind].set_value(
+                self._applied.animation_speed[kind])
         self._update_check_row.set_active(self._applied.update_check)
         self._loading = False
         self._rebuild_app_list()

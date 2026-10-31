@@ -332,6 +332,7 @@ RESET_MEMOS=(
     app-transparency app-opacity app-tint-color shell-tint-color
     notification-opacity blur-strength popup-brightness window-brightness grain
     glass-style liquid-windows fullscreen-blur smooth-animations
+    window-animation-speed notification-animation-speed menu-animation-speed
     titlebutton-style window-buttons
     window-blur app-blur-scope app-blur-allow app-blur-block
     popup-blur notification-blur

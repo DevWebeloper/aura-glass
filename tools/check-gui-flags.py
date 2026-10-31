@@ -72,6 +72,8 @@ def state(**kw):
     s.fullscreen_blur = kw.get("fullscreen_blur", False)
     s.maximized_panel_brightness = kw.get("maximized_panel_brightness", 40)
     s.smooth_animations = kw.get("smooth_animations", False)
+    s.animation_speed = kw.get(
+        "animation_speed", {"window": 100, "notification": 100, "menu": 100})
     s.update_check = kw.get("update_check", True)
     s.update_channel = kw.get("update_channel", "release")
     s.update_available = kw.get("update_available", None)
@@ -365,6 +367,10 @@ CASES = [
     ("top bar solid black over a maximized window", FROSTED,
      state(maximized_panel_brightness=0),
      ["--maximized-panel-brightness", "0"]),
+
+    ("menus twice as fast, windows and banners left alone", FROSTED,
+     state(animation_speed={"window": 100, "notification": 100, "menu": 200}),
+     ["--menu-animation-speed", "200"]),
 
     ("blur kept on fullscreen windows", FROSTED,
      state(fullscreen_blur=True), ["--fullscreen-blur"]),

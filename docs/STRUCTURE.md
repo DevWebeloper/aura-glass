@@ -117,7 +117,8 @@ For "which file draws this button / owns this setting", use
 ### `extensions/aura-glass-blur@aura-glass.local/`
 
 `extension.js` and `metadata.json`. This is "Aura Glass Helper": Blur This App,
-the D-Bus bridge and the adaptive profile menu. Shell versions 48–51.
+the D-Bus bridge, the adaptive profile menu and the window, notification and
+menu animation speeds. Shell versions 48–51.
 
 ### `systemd/`
 
@@ -266,3 +267,4 @@ the subject of [CONSISTENCY.md](CONSISTENCY.md).
 | BMS dconf subtree | `load_dconf` + `apply_*`, `apply_adaptive_blur`, preview `revert` | Blur My Shell |
 | The 4 CSS targets | `aura-glass-apply` only | GNOME Shell (User Themes), GTK |
 | `$CONF_DIR/extension-overrides.css` | `aura-glass-apply` only | Aura Glass Helper (loads it as an extension sheet, reloads on rename) |
+| `{window,notification,menu}-animation-speed` | `apply_animation_speed` (full and `--incremental` runs) | `install.sh` resolution, `Settings()`, Aura Glass Helper (live, through its config monitor) |
