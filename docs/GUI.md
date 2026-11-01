@@ -90,7 +90,7 @@ is shown as stopped.
 
 ### Update mode (`--update`)
 
-The settings window's **Install update** opens it at once, with no confirm
+The settings window's **Install** (on the version row) opens it at once, with no confirm
 dialog (a version picked from the Releases list still asks). The settings
 window makes a run directory under `$XDG_RUNTIME_DIR`, writes
 `changelog.json` there (`update_changelog`: one section per release between
@@ -185,7 +185,7 @@ is decided by `select_apply_actions`. See
 | Extensions | System | Every catalogued extension: switch, install/remove, settings button (when it has `prefs.js`), recommended and full packs, via `bin/aura-glass-ext` |
 | Packages | System | Disk cost per pack and removal (`$HOME` packs deleted in place, `/usr` packs handed to a terminal) |
 | System | System | Dependencies, login screen, monitor sync |
-| Updates | System | Two tabs. **Updates**: version, check, install update; one list, newest first by date, of **Tags** (every commit on main, named `v0.3.5+N`) and **Releases** (`vX.Y.Z`, with notes): the 5 newest of each plus the installed one when older. One badge per row. Only the newest (main's tip, a release if tagged, else a tag) has Install; older rows are read-only. History graph of everything. **Maintenance**: daily update check; reapply settings; reset theme to defaults (`--reset --force --gui --interactive`). No channel row: the line follows what was installed from the list; `--update-channel` stays for the CLI |
+| Updates | System | Two tabs. **Updates**: version, check, and one Install on the version row for the update on offer; one list, newest first by date, of **Tags** (every commit on main, named `v0.3.5+N`) and **Releases** (`vX.Y.Z`, with notes): the 5 newest of each plus the installed one when older. One badge per row. Only the newest (main's tip, a release if tagged, else a tag) has Install, and not when it is the update the version row already offers; older rows are read-only. History graph of everything. **Maintenance**: daily update check; reapply settings; reset theme to defaults (`--reset --force --gui --interactive`). No channel row: the line follows what was installed from the list; `--update-channel` stays for the CLI |
 | Uninstall | none | Built into the stack (other code needs its widgets), opened from the primary menu, not the sidebar |
 
 The order matters: Glass is built before Blur, because the Blur page's banner

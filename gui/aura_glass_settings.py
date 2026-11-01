@@ -7442,12 +7442,12 @@ class Window(Adw.ApplicationWindow):
         self._version_row.add_suffix(self._check_button)
         updates.add(self._version_row)
 
-        self._update_button_row = Adw.ActionRow(
-            title="Install update",
-            subtitle="Installs the new release")
-        self._update_button_row.add_prefix(Gtk.Image.new_from_icon_name(
-            "software-update-available-symbolic"))
-        self._update_button = Gtk.Button(valign=Gtk.Align.CENTER)
+        # The one Install for the update on offer, on the row that already says
+        # it is available. It used to have a row of its own, and the newest
+        # release in the list below wore a second Install for the same thing;
+        # that one now shows its Latest badge instead (_release_row).
+        self._update_button = Gtk.Button(valign=Gtk.Align.CENTER,
+                                         visible=False)
         self._update_button.add_css_class("suggested-action")
         self._update_button.connect("clicked", self._on_install_update)
         self._update_spinner = Adw.Spinner(width_request=16, height_request=16,
@@ -7457,8 +7457,7 @@ class Window(Adw.ApplicationWindow):
         pressed.append(self._update_spinner)
         pressed.append(self._update_text)
         self._update_button.set_child(pressed)
-        self._update_button_row.add_suffix(self._update_button)
-        updates.add(self._update_button_row)
+        self._version_row.add_suffix(self._update_button)
         page.add(updates)
 
         # ---- every release, and the history they were cut from
@@ -7985,19 +7984,16 @@ class Window(Adw.ApplicationWindow):
             self._version_row.set_subtitle("%s — up to date" % version)
 
         self._check_button.set_sensitive(self._repo is not None)
-        self._update_button_row.set_visible(bool(pending))
+        self._update_button.set_visible(bool(pending))
 
         if pending and blockers:
             # Shown rather than hidden. Someone whose install cannot be updated
             # from here should find out why the button is off, not wonder
             # whether the update notification was wrong.
-            self._update_button_row.set_subtitle(blockers[0])
+            self._version_row.set_subtitle(
+                "%s\n%s" % (self._version_row.get_subtitle(), blockers[0]))
             self._update_button.set_sensitive(False)
-        if pending:
-            self._update_button_row.set_title("%s is available" % pending)
         elif pending:
-            self._update_button_row.set_subtitle(
-                "Installs %s in a terminal" % pending)
             self._update_button.set_sensitive(not self._running)
 
     # ---- the release list -------------------------------------------------
@@ -8180,11 +8176,13 @@ class Window(Adw.ApplicationWindow):
         """One version: its name and badge, and a click opens what changed.
 
         The newest, when it is not installed yet, wears Install on the row
-        itself rather than a Latest badge — the button is the news.
+        itself rather than a Latest badge — the button is the news. Not when
+        it is the update on offer: the Version row above has that Install.
         """
         row = Adw.ExpanderRow(title_lines=1, subtitle_lines=1)
         plain_row(row, title, subtitle)
-        offer = can_install and not installed
+        offer = (can_install and not installed
+                 and title != self._applied.update_available)
         if offer:
             pills = [p for p in pills if p[1] != "latest"]
             button = Gtk.Button(label="Install", valign=Gtk.Align.CENTER)
@@ -8472,7 +8470,7 @@ class Window(Adw.ApplicationWindow):
         if self.run_in_terminal(script, "Theme update"):
             if run_dir:
                 self._open_update_window(run_dir)
-            self._update_button_row.set_subtitle(
+            self._version_row.set_subtitle(
                 "Updating — see the update window")
             self._apply_status.remove_css_class("error")
             self._apply_status.set_label(
