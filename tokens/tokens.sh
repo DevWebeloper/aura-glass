@@ -345,11 +345,9 @@ radius_preset_matches_shipped() {
 # Radius changes here are design decisions with a measurable cost. Change one,
 # measure it with tools/gpu-sample.py, and record the number — do not batch them.
 
-# Static, from the panel pipeline v73 actually drew. On v73 lowering the sigma
-# key (30 to 20) moved the median not at all (22/22/22) and the p90 by less than
-# run-to-run noise: the panel is static, so that key was never read. Blur My
-# Shell running at all is the cost that measures, and --no-blur removes it.
-TOKEN_BLUR_RADIUS_PANEL=12
+# No token for the top bar: it draws through the lock screen pipeline, the
+# overview background's, so the two match when the overview opens (the comment
+# above [blur-my-shell/panel] in dconf/core.ini says why).
 TOKEN_BLUR_RADIUS_APPFOLDER=100     # sigma 50: transient, an outlier above every
                                     # other surface for no recorded reason. 100 is
                                     # v76's ceiling, so this cannot go higher.
