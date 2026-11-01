@@ -110,4 +110,16 @@ StDrawingArea {
   transition-duration: 250ms !important;
 }
 
+/* ---------- Top bar: Copyous's clipboard indicator --------------------
+ * Copyous's own sheet sets padding: 0 on its panel icon, so it sat 8px
+ * narrower than every other status icon and crowded the button edges.
+ * Restated at the theme's 4px (the density sheet keeps 4px at every scale).
+ * St ranks extension sheets above the theme, so aura-glass-apply copies
+ * this into extension-overrides.css (.copyous-indicator-box is in its list),
+ * where #panel out-weighs Copyous's selector. The glyph itself is the icon
+ * pack's: patch_copyous_extension. */
+#panel .panel-button .copyous-indicator-box .system-status-icon {
+  padding: 4px;
+}
+
 

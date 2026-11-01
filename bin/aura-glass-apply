@@ -402,7 +402,7 @@ apply "$SHELL_CSS"     1 "${SHELL_SNIPPETS[@]}"
 # other: Blur My Shell's #panel.transparent-panel { background: transparent
 # !important } is in its extension sheet, so the shade in shell-00-flat.css
 # lost to it at every brightness and no setting or preview showed (seen
-# 2026-10-31). Its rules are copied out of the same snippets, in the
+# 2026-10-31). Copyous's panel icon padding is a third. Their rules are copied out of the same snippets, in the
 # same cascade order and with the same tint and radius already rewritten into
 # them, into a sheet Aura Glass Helper loads as an extension sheet. Written
 # before the reload below, through a rename, and only when it changed: the
@@ -413,7 +413,7 @@ python3 - "$DIR/extension-overrides.css" "${SHELL_SNIPPETS[@]}" <<'PY'
 import os, re, sys, tempfile
 
 destination, snippets = sys.argv[1], sys.argv[2:]
-OWNED = (".clipboard-dialog", ".aura-glass-maximized")
+OWNED = (".clipboard-dialog", ".aura-glass-maximized", ".copyous-indicator-box")
 
 rules = []
 for path in snippets:

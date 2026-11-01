@@ -474,6 +474,21 @@ patch_copyous_extension() {
         run sed -i "s|entry\.connectObject('notify::content', this\.updateTextInfo\.bind(this));|entry.connectObject('notify::content', this.updateTextInfo.bind(this), this);|" "$text"
     fi
 
+    # The top bar icon. Copyous draws its own clipboard from a bundled SVG,
+    # a heavy full-height Adwaita glyph, so it stood out big and dark-edged
+    # beside every other status icon, which comes from the icon pack. It now
+    # asks the icon theme for edit-paste-symbolic, a name every pack and
+    # Adwaita carry, so it is drawn in the pack's own hand. Incognito keeps
+    # Copyous's crossed-out clipboard: no theme has a standard name for it.
+    # Its padding is css/shell-00-flat.css's.
+    local indicator="$target/lib/ui/indicator.js"
+    if [ -f "$indicator" ] && grep -qF "loadIcon(this.ext, value ? Icon.ClipboardDisabled : Icon.Clipboard)" "$indicator"; then
+        run sed -i \
+            -e "s|gicon: loadIcon(ext, Icon\.Clipboard),|gicon: Gio.ThemedIcon.new('edit-paste-symbolic'),|" \
+            -e "s|this\._icon\.gicon = loadIcon(this\.ext, value ? Icon\.ClipboardDisabled : Icon\.Clipboard);|this._icon.gicon = value ? loadIcon(this.ext, Icon.ClipboardDisabled) : Gio.ThemedIcon.new('edit-paste-symbolic');|" \
+            "$indicator"
+    fi
+
     local file="$target/lib/ui/items/clipboardItem.js"
     [ -f "$file" ] || return 0
     if grep -q "Shell.GLSLEffect || Clutter.Effect" "$file"; then
