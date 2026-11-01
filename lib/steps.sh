@@ -208,8 +208,12 @@ EXT_CORE=(
 # install that has one keeps it, installed and enabled, and only stops being
 # checked and updated by our runs, because a remembered pack drops a UUID the
 # catalogue no longer names.
+#
+# Status Tray replaced AppIndicator Support as the tray: two watchers on the one
+# StatusNotifierItem bus would fight over every icon, so an update takes the old
+# one away once the new one is in (replace_appindicator).
 EXT_EXTRA_RECOMMENDED=(
-    appindicatorsupport@rgcjonas.gmail.com
+    status-tray@keithvassallo.com
     tiling-assistant@leleat-on-github
     hotedge@jonathan.jdoda.ca
     kiwimenu@kemma
@@ -218,7 +222,7 @@ EXT_EXTRA_RECOMMENDED=(
 )
 
 EXT_EXTRA_ALL=(
-    appindicatorsupport@rgcjonas.gmail.com
+    status-tray@keithvassallo.com
     tiling-assistant@leleat-on-github
     hotedge@jonathan.jdoda.ca
     kiwimenu@kemma
@@ -236,6 +240,7 @@ EXT_EXTRA_ALL=(
 # these.
 EXT_EXTRA_ADDED_LATER=(
     wiggly@mojarch
+    status-tray@keithvassallo.com
 )
 
 # Catalogued and installable, but never switched on by a pack.
@@ -258,8 +263,8 @@ ext_description() {
             printf 'Custom OSD — the volume and brightness pill' ;;
         aura-glass-blur@aura-glass.local)
             printf 'Aura Glass helper — adaptive performance profile menu and per-app blur toggle' ;;
-        appindicatorsupport@rgcjonas.gmail.com)
-            printf 'AppIndicator Support — System tray icons (Steam, Discord, Slack, etc.)' ;;
+        status-tray@keithvassallo.com)
+            printf 'Status Tray — System tray icons (Steam, Discord, Slack, etc.)' ;;
         tiling-assistant@leleat-on-github)
             printf 'Tiling Assistant — Window snap assist and 2x2 quarter tiling' ;;
         hotedge@jonathan.jdoda.ca)

@@ -265,7 +265,7 @@ cursor-size and font keys (what `original` / `system` restore).
                                              overview, appfolder, lockscreen, window-list, screenshot, dash-to-dock, …,
                                              patched full-size-buffers (--smooth-animations)
 /org/gnome/shell/extensions/custom-osd/
-/org/gnome/shell/extensions/{vitals,hotedge,appindicator}/   (extras.ini)
+/org/gnome/shell/extensions/{vitals,hotedge,status-tray}/   (extras.ini)
 ```
 
 `/org/gnome/shell/extensions/tiling-assistant/maximize-with-gap` is reset on every

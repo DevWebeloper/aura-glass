@@ -249,6 +249,7 @@ run dconf reset -f /org/gnome/shell/extensions/clipboard-indicator/
 run dconf reset -f /org/gnome/shell/extensions/hotedge/
 run dconf reset -f /org/gnome/shell/extensions/wiggly/
 run dconf reset -f /org/gnome/shell/extensions/appindicator/
+run dconf reset -f /org/gnome/shell/extensions/status-tray/
 ok "all extension configs reset to their defaults"
 
 # ------------------------------------------------------------------- units --
@@ -329,6 +330,7 @@ if [ "$REMOVE_EXTENSIONS" = 1 ]; then
              ddterm@amezin.github.com kiwimenu@kemma \
              hotedge@jonathan.jdoda.ca restartto@tiagoporsch.github.io \
              xwayland-indicator@swsnr.de appindicatorsupport@rgcjonas.gmail.com \
+             status-tray@keithvassallo.com \
              compiz-alike-magic-lamp-effect@hermes83.github.com \
              tiling-assistant@leleat-on-github \
              quick-settings-audio-panel@rayzeq.github.io \

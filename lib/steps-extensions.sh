@@ -407,9 +407,35 @@ install_extensions() {
         step "Installing optional extensions (${#EXT_EXTRA[@]} selected)"
         for u in "${EXT_EXTRA[@]}"; do install_ext_ego "$u" || true; done
     fi
+    replace_appindicator
     install_copyous_deps
     patch_copyous_extension
     patch_wiggly_extension
+}
+
+# Status Tray took over from AppIndicator Support as the tray. Not asked the way
+# disable_retired_extensions asks: that one is for extensions the theme merely
+# stopped needing, and a yes-or-no here would leave two trays answering for the
+# same icons on every run that has no terminal (the settings app's Apply).
+# Only once the replacement is on disk, so a failed download never leaves the
+# desktop with no tray, and only for a pack that has it: a Minimal install never
+# got a tray from us, so an AppIndicator there is the user's own. A distro's
+# copy cannot be removed from here and is only switched off.
+replace_appindicator() {
+    local old=appindicatorsupport@rgcjonas.gmail.com new=status-tray@keithvassallo.com
+    [ "${DRY_RUN:-0}" = 1 ] && return 0
+    [ "${WANT_EXTRAS:-0}" = 1 ] || return 0
+    case " ${EXT_EXTRA[*]} " in *" $new "*) ;; *) return 0 ;; esac
+    [ -d "$EXT_DIR/$new" ] || [ -d "/usr/share/gnome-shell/extensions/$new" ] || return 0
+    if is_extension_enabled "$old"; then
+        run gnome-extensions disable "$old" 2>/dev/null || true
+        dequeue_extension "$old" || true
+        ok "AppIndicator Support switched off — Status Tray replaces it"
+    fi
+    if [ -d "$EXT_DIR/$old" ]; then
+        run gnome-extensions uninstall "$old" 2>/dev/null || run rm -rf "$EXT_DIR/$old"
+        ok "removed AppIndicator Support"
+    fi
 }
 
 # Wiggly 10 measures the pointer once, at enable, in texture pixels, and eases

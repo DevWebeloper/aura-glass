@@ -58,7 +58,7 @@ failures = []
 _EMPTY = tempfile.TemporaryDirectory()
 wiz.CONF_DIR = _EMPTY.name
 
-RECOMMENDED = ["appindicatorsupport@rgcjonas.gmail.com",
+RECOMMENDED = ["status-tray@keithvassallo.com",
                "tiling-assistant@leleat-on-github"]
 
 # A small stand-in catalogue for Answers.best, covering all three tiers so the
@@ -66,11 +66,11 @@ RECOMMENDED = ["appindicatorsupport@rgcjonas.gmail.com",
 BEST_CATALOGUE = [
     {"uuid": "user-theme@gnome-shell-extensions.gcampax.github.com",
      "tier": "core"},
-    {"uuid": "appindicatorsupport@rgcjonas.gmail.com",
+    {"uuid": "status-tray@keithvassallo.com",
      "tier": "recommended"},
     {"uuid": "restartto@tiagoporsch.github.io", "tier": "full"},
 ]
-BEST_EXTENSIONS = ["appindicatorsupport@rgcjonas.gmail.com",
+BEST_EXTENSIONS = ["status-tray@keithvassallo.com",
                    "restartto@tiagoporsch.github.io"]
 
 

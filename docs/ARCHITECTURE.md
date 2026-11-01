@@ -325,10 +325,14 @@ Catalogued in `lib/steps.sh`:
 | Tier | Contents |
 |---|---|
 | core | `user-theme@…` (from EGO), plus `blur-my-shell@aunetx` and `custom-osd@neuromorph` built from pinned commits, plus the first-party `aura-glass-blur@aura-glass.local` |
-| `EXT_EXTRA_RECOMMENDED` (6) | AppIndicator, Tiling Assistant, Hot Edge, Kiwi Menu, Copyous, Wiggly |
+| `EXT_EXTRA_RECOMMENDED` (6) | Status Tray, Tiling Assistant, Hot Edge, Kiwi Menu, Copyous, Wiggly |
 | `EXT_EXTRA_ALL` (7) | the six plus Restart To |
 | `EXT_EXTRA_ADDED_LATER` | recommended extensions a remembered pack never offered; added to it on an update (`extension-catalog`) |
 | `EXT_NO_AUTO_ENABLE` | empty right now |
+
+`replace_appindicator` (`install_extensions`) removes AppIndicator Support, unasked,
+once Status Tray is on disk and the pack has it. A retune installs nothing, so it
+changes neither.
 
 - Upstreams are **pinned by commit** (table in §12). A theme that changes under
   the CSS gives a half-applied look with no error.
