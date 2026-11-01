@@ -8221,8 +8221,10 @@ class Window(Adw.ApplicationWindow):
         """
         row = Adw.ExpanderRow(title_lines=1, subtitle_lines=1)
         plain_row(row, title, subtitle)
+        # A test build's update is named branch@commit, its row only branch.
+        pending = self._applied.update_available or ""
         offer = (can_install and not installed
-                 and title != self._applied.update_available)
+                 and title not in (pending, pending.rpartition("@")[0]))
         if offer:
             pills = [p for p in pills if p[1] != "latest"]
             button = Gtk.Button(label="Install", valign=Gtk.Align.CENTER)
@@ -8394,8 +8396,15 @@ class Window(Adw.ApplicationWindow):
             # for the window is the state file it leaves behind. Only the
             # update field: replacing self._applied whole would move the
             # applied mode under tabs and banners that did not move with it.
+            before = self._applied.update_available
             self._applied.update_available = Settings().update_available
             self._sync_updates()
+            # The list was fetched alongside the checker and usually lands
+            # first, when no update was on offer yet, so its newest row wore an
+            # Install of its own. Redrawn now it hands that to the Version row.
+            if self._applied.update_available != before and \
+                    self._updates_data and not self._updates_loading:
+                self._render_updates(self._updates_data)
             self._check_button.set_sensitive(True)
             # 1 is the checker's "could not tell" (offline, no tag, no
             # checkout) — not an answer, so not "Up to date" either.
