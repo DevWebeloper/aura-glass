@@ -160,6 +160,67 @@ ensure_gui_toolkit() {
     gui_toolkit_present
 }
 
+# Copyous (the clipboard history) keeps its history in SQLite through libgda,
+# which it loads as gi://Gda, version 6 or 5, whichever the distro ships.
+# Without it the extension runs but keeps no history. The names are the ones
+# Copyous's own dependencies dialog gives (lib/preferences/dependencies/
+# dependencies.js): Arch ships Gda 6 with SQLite built in; openSUSE ships Gda 6
+# with the SQLite provider and the typelib as packages of their own; Fedora's
+# libgda is Gda 5, SQLite apart; Debian and Ubuntu have Gda 5 only, and its
+# typelib pulls in the library and the SQLite provider.
+COPYOUS_PKGS_ARCH="libgda6"
+COPYOUS_PKGS_FEDORA="libgda libgda-sqlite"
+COPYOUS_PKGS_DEBIAN="gir1.2-gda-5.0"
+COPYOUS_PKGS_SUSE="libgda-6_0-sqlite typelib-1_0-Gda-6_0"
+
+# A Gda typelib where GObject introspection looks for one: /usr/lib (Arch),
+# /usr/lib64 (Fedora, openSUSE) or the multiarch directory (Debian, Ubuntu).
+gda_present() {
+    local d
+    for d in /usr/lib/girepository-1.0 /usr/lib64/girepository-1.0 \
+             /usr/lib/*-linux-gnu/girepository-1.0; do
+        if [ -e "$d/Gda-6.0.typelib" ] || [ -e "$d/Gda-5.0.typelib" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Only when Copyous is one of the extensions being installed. Choosing it is
+# the answer, so nothing is asked; a failed install is a warning, because the
+# rest of the desktop does not depend on it. The sudo password is already held
+# (install.sh asks once before the progress window).
+install_copyous_deps() {
+    [ "${WANT_EXTRAS:-0}" = 1 ] || return 0
+    case " ${EXT_EXTRA[*]:-} " in *" copyous@boerdereinar.dev "*) ;; *) return 0 ;; esac
+    gda_present && return 0
+
+    local pkgs dnf_cmd=dnf
+    case "$DISTRO_FAMILY" in
+        arch)   pkgs="$COPYOUS_PKGS_ARCH" ;;
+        fedora) pkgs="$COPYOUS_PKGS_FEDORA"; have dnf5 && dnf_cmd=dnf5 ;;
+        debian) pkgs="$COPYOUS_PKGS_DEBIAN" ;;
+        suse)   pkgs="$COPYOUS_PKGS_SUSE" ;;
+        *)
+            warn "Copyous needs libgda for its clipboard history — install it yourself"
+            return 0
+            ;;
+    esac
+    info "Copyous's clipboard history needs libgda: $pkgs"
+    local rc=0
+    case "$DISTRO_FAMILY" in
+        arch)   run sudo pacman -S --needed --noconfirm $pkgs || rc=$? ;;
+        fedora) run sudo "$dnf_cmd" install -y $pkgs || rc=$? ;;
+        debian) run sudo apt-get install -y $pkgs || rc=$? ;;
+        suse)   run sudo zypper --non-interactive install $pkgs || rc=$? ;;
+    esac
+    if [ "$rc" = 0 ]; then
+        ok "libgda installed for Copyous"
+    else
+        warn "could not install $pkgs — Copyous will keep no clipboard history"
+    fi
+}
+
 # Nice to have, never fatal. msgfmt compiles Blur My Shell's translations when
 # it is built from git; without it the extension works and its preferences are
 # simply untranslated. Kept out of REQUIRED_CMDS so a missing gettext cannot

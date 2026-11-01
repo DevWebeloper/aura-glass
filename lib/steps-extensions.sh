@@ -398,6 +398,7 @@ install_extensions() {
         step "Installing optional extensions (${#EXT_EXTRA[@]} selected)"
         for u in "${EXT_EXTRA[@]}"; do install_ext_ego "$u" || true; done
     fi
+    install_copyous_deps
     patch_copyous_extension
     patch_wiggly_extension
 }
