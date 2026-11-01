@@ -156,7 +156,7 @@ RADIUS_PRESET_ALIASES = {"pill": "rounded"}
 # actually turns is narrower: see BUTTON_SPIN_MAX below.
 RADIUS_SURFACES = [
     ("window", "Windows", 6, 38,
-     "Every app window, and the blur behind it"),
+     "Every app window, the blur behind it, and workspaces in the overview"),
     ("menu", "Menus", 5, 32,
      "Right-click menus and app menus"),
     ("quick_settings", "Quick Settings", 6, 40,

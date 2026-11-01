@@ -57,6 +57,11 @@ MANIFEST = [
      r"^window,\nwindow\.background,\nwindow\.csd \{[^}]*?border-radius: (\d+)px"),
     ("TOKEN_RADIUS_WINDOW", "ini", "dconf/core.ini",
      "blur-my-shell/applications", "corner-radius"),
+    # Blur My Shell v77 replaces GNOME's hardcoded overview workspace corner with
+    # this key, and nothing in css/ paints against it. Without an entry here every
+    # preset would leave workspaces at the shipped 30 while the windows moved.
+    ("TOKEN_RADIUS_WINDOW", "ini", "dconf/core.ini",
+     "blur-my-shell/overview", "workspace-corner-radius"),
 
     ("TOKEN_RADIUS_MENU", "css", "css/shell-20-popup-menus.css",
      r"^\.popup-menu-content(?:,[^{]*)? \{[^}]*?border-radius: (\d+)px"),
