@@ -1,6 +1,6 @@
 diff --color -ruN a/cursor.js b/cursor.js
---- a/cursor.js	2026-10-31 22:23:05.372399691 +0200
-+++ b/cursor.js	2026-10-31 22:25:11.866591410 +0200
+--- a/cursor.js	2026-11-01 03:03:16.194067183 +0200
++++ b/cursor.js	2026-10-31 22:45:02.009099603 +0200
 @@ -36,6 +36,14 @@
          return this._tracker.get_sprite();
      }
@@ -40,8 +40,8 @@ diff --color -ruN a/cursor.js b/cursor.js
  
      hide() {
 diff --color -ruN a/effect.js b/effect.js
---- a/effect.js	2026-10-31 22:23:05.372399691 +0200
-+++ b/effect.js	2026-10-31 22:44:46.669214915 +0200
+--- a/effect.js	2026-11-01 03:03:16.194067183 +0200
++++ b/effect.js	2026-11-01 03:03:41.832355519 +0200
 @@ -1,24 +1,159 @@
  'use strict';
  
@@ -204,7 +204,7 @@ diff --color -ruN a/effect.js b/effect.js
          this.isHidden = true;
          this.magnifyDuration = 250;
          this.unmagnifyDuration = 150;
-@@ -26,33 +161,325 @@
+@@ -26,33 +161,326 @@
          this.isWiggling = false;
          this._isInTransition = false;
          this.cursor = new Cursor();
@@ -277,8 +277,9 @@ diff --color -ruN a/effect.js b/effect.js
          this._ratio = size / this._spriteSize;
      }
  
-+    // A path typed in the preferences wins. Left empty, the icon follows
-+    // the cursor theme; a theme with nothing usable gets the bundled one.
++    // Never called: extension.js keeps cursor-path empty, so the icon
++    // follows the cursor theme, and a theme with nothing usable gets the
++    // bundled one.
      set cursorPath(path) {
 -        this.gicon = Gio.Icon.new_for_string(path || GLib.build_filenamev([extensionDir(), 'icons', 'cursor.svg']));
 +        this._userPath = path;
@@ -536,7 +537,7 @@ diff --color -ruN a/effect.js b/effect.js
          Main.uiGroup.add_child(this);
          if (this.isHidden) {
              this.cursor.hide();
-@@ -89,6 +516,8 @@
+@@ -89,6 +517,8 @@
                  pivot_point: this._pivot,
                  onComplete: () => {
                      Main.uiGroup.remove_child(this);
@@ -545,7 +546,7 @@ diff --color -ruN a/effect.js b/effect.js
                      if (this.isHidden) this.cursor.show();
  
                      this.isWiggling = false;
-@@ -108,6 +537,11 @@
+@@ -108,6 +538,11 @@
              this._unmagnifyDelayId = null;
          }
          this.remove_all_transitions();
@@ -558,8 +559,8 @@ diff --color -ruN a/effect.js b/effect.js
  
          if (this.get_parent()) {
 diff --color -ruN a/extension.js b/extension.js
---- a/extension.js	2026-10-31 22:23:05.372399691 +0200
-+++ b/extension.js	2026-10-31 22:23:05.367429804 +0200
+--- a/extension.js	2026-11-01 03:03:16.194067183 +0200
++++ b/extension.js	2026-11-01 03:03:41.832209552 +0200
 @@ -1,5 +1,6 @@
  'use strict';
  
@@ -584,7 +585,20 @@ diff --color -ruN a/extension.js b/extension.js
              if (!this._isHiddenByProgram) {
                  this._togglePointerWatcher(false);
                  this._isHiddenByProgram = true;
-@@ -114,9 +123,29 @@
+@@ -103,7 +112,11 @@
+         initSettings(this._settings, [
+             [Field.HIDE, 'b', (r) => {this._effect.isHidden = r}],
+             [Field.SIZE, 'i', (r) => {this._effect.cursorSize = r}],
+-            [Field.PATH, 's', (r) => {this._effect.cursorPath = r}],
++            // Kept empty. A picture typed here replaces the shape matched
++            // from the screen with one fixed file, drawn at its own size
++            // and tip, so the magnified pointer stops matching the one on
++            // screen. A value written anyway is cleared as it lands.
++            [Field.PATH, 's', (r) => {if (r) this._settings.reset(Field.PATH)}],
+             [Field.MAGN, 'i', (r) => {this._effect.magnifyDuration = r}],
+             [Field.UMGN, 'i', (r) => {this._effect.unmagnifyDuration = r}],
+             [Field.DLAY, 'i', (r) => {this._effect.unmagnifyDelay = r}],
+@@ -114,9 +127,29 @@
              [Field.CHCK, 'i', (r) => this._onCheckIntervalChange(r)],
              [Field.DRAW, 'i', (r) => this._onDrawIntervalChange(r)],
          ]);
@@ -615,8 +629,8 @@ diff --color -ruN a/extension.js b/extension.js
              GLib.Source.remove(this._checkTimeoutId);
              this._checkTimeoutId = null;
 diff --color -ruN a/theme.js b/theme.js
---- a/theme.js	2026-10-31 22:23:05.372399691 +0200
-+++ b/theme.js	2026-10-31 22:44:46.669292471 +0200
+--- a/theme.js	1970-01-01 02:00:00.000000000 +0200
++++ b/theme.js	2026-10-31 22:45:02.009099603 +0200
 @@ -0,0 +1,508 @@
 +'use strict';
 +

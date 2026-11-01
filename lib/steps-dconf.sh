@@ -1874,10 +1874,12 @@ apply_cursor_theme() {
 # The magnified pointer is no longer chosen here. Patched by
 # patch_wiggly_extension, Wiggly finds the active theme's pointer itself on
 # every cursor-theme change, which also covers a theme set from GNOME Settings,
-# Tweaks or gsettings, where this code never runs. It does that only while
-# cursor-path is empty (a path typed in its preferences still wins), so a path
-# an earlier run wrote is cleared: one under $CONF_DIR/wiggly-cursor, or a
-# theme's cursors_scalable/default. An unpatched Wiggly keeps whatever is there.
+# Tweaks or gsettings, where this code never runs. cursor-path is reset on
+# every run, whoever wrote it: a fixed picture there (an earlier run's copy
+# under $CONF_DIR/wiggly-cursor, a theme's cursors_scalable/default, or one
+# typed in Wiggly's preferences) replaces the shape matched from the screen and
+# is drawn at its own size and tip. The patched extension also clears it as it
+# is written, for a value typed while the session runs.
 apply_wiggly_cursor() {
     [ "${DRY_RUN:-0}" = 1 ] && return 0
     case " ${EXT_EXTRA[*]:-} " in *" wiggly@mojarch "*) ;; *) return 0 ;; esac
@@ -1889,13 +1891,7 @@ apply_wiggly_cursor() {
             || dconf write "$base/$key" "$val" 2>/dev/null || true
     done < <(sed -n '/^\[wiggly\]/,/^\[/p' "$REPO_ROOT/dconf/extras.ini")
 
-    grep -qs cursorIconForTheme "$EXT_DIR/wiggly@mojarch/effect.js" || return 0
-    local path
-    path="$(dconf read "$base/cursor-path" 2>/dev/null || true)"
-    case "$path" in
-        "'$CONF_DIR/wiggly-cursor/"*|*/cursors_scalable/default/*)
-            dconf reset "$base/cursor-path" 2>/dev/null || true ;;
-    esac
+    dconf reset "$base/cursor-path" 2>/dev/null || true
     [ -d "$CONF_DIR/wiggly-cursor" ] && run rm -rf "$CONF_DIR/wiggly-cursor"
     return 0
 }
