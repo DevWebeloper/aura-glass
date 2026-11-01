@@ -204,9 +204,34 @@ main() {
     pstart ""
     echo "==> Running the installer"
     bash "$repo/install.sh" --gui
+    pin_settings_to_dock
     # The installer finished, so whatever the update check found is now what is
     # installed — the window stops offering it.
     rm -f "$conf/update-available"
+}
+
+# Put the settings window on the dash, the GNOME dock, after an update. The
+# update was started from that window, so it is the app this person reaches for;
+# pinning it means the next update (and the changelog it shows) is one click
+# away rather than an overview search. Appended, so the user's own order stays,
+# and skipped when it is already there. Only when the installer put the entry
+# on disk: --no-gui or a missing toolkit leaves nothing to pin.
+#
+# Once per machine, recorded in dock-pinned: someone who unpins it has answered,
+# and the next update putting it back would be overriding them.
+pin_settings_to_dock() {
+    local id="io.github.DevWebeloper.AuraGlassSettings.desktop" favs
+    local marker="${AURA_GLASS_CONF:-$HOME/.config/aura-glass}/dock-pinned"
+    [ -e "$marker" ] && return 0
+    [ -f "$HOME/.local/share/applications/$id" ] || return 0
+    favs="$(gsettings get org.gnome.shell favorite-apps 2>/dev/null)" || return 0
+    case "$favs" in
+        *"'$id'"*) ;;
+        "@as []"|"[]") favs="['$id']" ;;
+        *) favs="${favs%]}, '$id']" ;;
+    esac
+    gsettings set org.gnome.shell favorite-apps "$favs" 2>/dev/null || return 0
+    mkdir -p "$(dirname "$marker")" && : > "$marker"
 }
 
 main "$@"

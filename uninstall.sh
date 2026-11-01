@@ -444,6 +444,15 @@ run rm -f "$HOME/.local/bin/aura-glass-apply" "$HOME/.local/bin/aura-glass-icon-
 run rm -f "$HOME/.local/bin/aura-glass-update-check" "$HOME/.local/bin/aura-glass-update"
 run rm -rf "$HOME/.local/share/aura-glass"
 run rm -f "$HOME/.local/share/applications/io.github.DevWebeloper.AuraGlassSettings.desktop"
+# An update pins the window to the dash (bin/aura-glass-update); a pin left
+# behind without its entry is a blank icon.
+favs="$(gsettings get org.gnome.shell favorite-apps 2>/dev/null || true)"
+if [[ "$favs" == *"'io.github.DevWebeloper.AuraGlassSettings.desktop'"* ]]; then
+    favs="$(printf '%s' "$favs" | sed -e "s/'io\.github\.DevWebeloper\.AuraGlassSettings\.desktop'//" \
+        -e 's/, *,/,/; s/\[, */[/; s/, *\]/]/')"
+    [ "$favs" = "[]" ] && favs="@as []"
+    run gsettings set org.gnome.shell favorite-apps "$favs"
+fi
 run rm -f "$HOME/.local/share/icons/hicolor/scalable/apps/io.github.DevWebeloper.AuraGlassSettings.svg"
 # The bundled wallpapers and the entry that lists them in Settings > Appearance.
 # The picture-uri key is left alone: it is the user's choice, not ours, even
