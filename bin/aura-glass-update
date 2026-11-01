@@ -257,6 +257,13 @@ restart_settings_window() {
         sleep 0.2
     done
     [ -x "$app" ] || return 0
+    # The update window stays in front: Aura Glass Helper reads this when the
+    # settings window shows and activates the window with this pid again.
+    local window_pid
+    window_pid="$(cat "$PROGRESS_DIR/window" 2>/dev/null || true)"
+    if [ -n "$window_pid" ] && kill -0 "$window_pid" 2>/dev/null; then
+        printf '%s\n' "$window_pid" > "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/aura-glass-keep-focus" 2>/dev/null || true
+    fi
     setsid -f "$app" --page updates </dev/null >/dev/null 2>&1 || true
 }
 
