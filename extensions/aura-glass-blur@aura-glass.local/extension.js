@@ -28,9 +28,11 @@
  */
 
 import Clutter from 'gi://Clutter';
+import Cogl from 'gi://Cogl';
 import GdkPixbuf from 'gi://GdkPixbuf';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
@@ -54,6 +56,40 @@ const SELF_WM_CLASS = 'io.github.DevWebeloper.AuraGlassSettings';
 // The top-bar indicator uses Aura Glass's own application icon rather than
 // cycling through profile status glyphs, keeping a recognizable identity in the panel.
 const APP_ICON = SELF_WM_CLASS;
+
+// The top bar is drawn in one colour: white glyphs, the way the system icons
+// already are. Tray icons from apps are not. Discord and Claude hand over a
+// coloured PNG, Telegram asks for a symbolic name the icon pack does not have
+// and falls back to its coloured pixmap, and this helper's own indicator is the
+// coloured application icon. So each of those is drawn through this effect: any
+// pixel with colour or darkness in it becomes white, and a near-white pixel
+// becomes a hole. That turns a logo's white details (Telegram's plane,
+// Discord's eyes) into cut-outs instead of losing them in a white blob. The
+// thresholds are where a white detail with anti-aliased edges reads cleanly at
+// 16px: below 0.75 on the darkest channel is ink, above 0.92 is a hole. Icons
+// that are already symbolic are left alone, since they are white already and
+// this would cut them out entirely.
+const WHITE_GLYPH_GLSL = `
+    if (cogl_color_out.a > 0.0) {
+        vec3 rgb = cogl_color_out.rgb / cogl_color_out.a;
+        float lowest = min(min(rgb.r, rgb.g), rgb.b);
+        float ink = cogl_color_out.a * (1.0 - smoothstep(0.75, 0.92, lowest));
+        cogl_color_out = vec4(ink, ink, ink, ink);
+    }
+`;
+
+// A Clutter.ShaderEffect with a static snippet, the way GNOME's own lightbox
+// builds its vignette: Shell.GLSLEffect is not in every Shell this supports.
+// The snippet's code runs after the icon's texture has been sampled into
+// cogl_color_out, which is premultiplied.
+const WhiteGlyphEffect = GObject.registerClass(
+class AuraGlassWhiteGlyphEffect extends Clutter.ShaderEffect {
+    vfunc_get_static_snippet() {
+        return Cogl.Snippet.new(Cogl.SnippetHook.FRAGMENT, '', WHITE_GLYPH_GLSL);
+    }
+});
+
+const WHITE_GLYPH_EFFECT = 'aura-glass-white-glyph';
 
 const DBUS_NAME = 'io.github.DevWebeloper.AuraGlass';
 const DBUS_PATH = '/io/github/DevWebeloper/AuraGlass';
@@ -371,6 +407,7 @@ export default class AuraGlassBlurExtension extends Extension {
         ];
 
         this._buildPanelMenu();
+        this._hookWhiteIcons();
         this._initOpacityMonitor();
         this._loadOverrideSheet();
         this._readAnimationSpeeds();
@@ -540,6 +577,7 @@ export default class AuraGlassBlurExtension extends Extension {
             this._destroyIds = null;
         }
 
+        this._unhookWhiteIcons();
         if (this._indicator) {
             this._indicator.destroy();
             this._indicator = null;
@@ -698,6 +736,78 @@ export default class AuraGlassBlurExtension extends Extension {
             this._dbusImpl.emit_signal('FocusChanged',
                 new GLib.Variant('(bs)', [isFullscreen, wmClass]));
         }
+    }
+
+    // ---- White top bar icons ----------------------------------------------
+
+    // The helper's own icon, and every AppIndicator icon: those that are in
+    // the panel now, and those an app adds later (each lands in one of the
+    // panel's three boxes). An icon is re-judged whenever it changes, because
+    // an app can swap a symbolic icon for a coloured one (Telegram's unread
+    // badge) or back.
+    _hookWhiteIcons() {
+        this._whiteIcons = new Map();
+        this._watchWhiteIcon(this._icon);
+        this._scanTrayIcons();
+        this._panelBoxIds = [Main.panel._leftBox, Main.panel._centerBox,
+            Main.panel._rightBox].map(box => [box,
+            box.connect('child-added', () => this._scanTrayIcons())]);
+    }
+
+    _unhookWhiteIcons() {
+        for (const [box, id] of this._panelBoxIds ?? [])
+            box.disconnect(id);
+        this._panelBoxIds = null;
+        for (const [icon, ids] of this._whiteIcons ?? []) {
+            for (const id of ids)
+                icon.disconnect(id);
+            icon.remove_effect_by_name(WHITE_GLYPH_EFFECT);
+        }
+        this._whiteIcons = null;
+    }
+
+    _scanTrayIcons() {
+        for (const [key, indicator] of Object.entries(Main.panel.statusArea)) {
+            if (!key.startsWith('appindicator-'))
+                continue;
+            // AppIndicator keeps the icon actor as _icon. A legacy X11 tray
+            // icon is a Shell.TrayIcon instead, a window, not an St.Icon:
+            // nothing here can recolour it.
+            if (indicator?._icon instanceof St.Icon)
+                this._watchWhiteIcon(indicator._icon);
+        }
+    }
+
+    _watchWhiteIcon(icon) {
+        if (!icon || this._whiteIcons.has(icon))
+            return;
+        this._whiteIcons.set(icon, [
+            icon.connect('notify::gicon', () => this._syncWhiteIcon(icon)),
+            icon.connect('notify::icon-name', () => this._syncWhiteIcon(icon)),
+            icon.connect('destroy', () => this._whiteIcons?.delete(icon)),
+        ]);
+        this._syncWhiteIcon(icon);
+    }
+
+    _syncWhiteIcon(icon) {
+        const want = !this._isSymbolicIcon(icon);
+        const has = icon.get_effect(WHITE_GLYPH_EFFECT) !== null;
+        if (want && !has)
+            icon.add_effect_with_name(WHITE_GLYPH_EFFECT, new WhiteGlyphEffect());
+        else if (!want && has)
+            icon.remove_effect_by_name(WHITE_GLYPH_EFFECT);
+    }
+
+    // AppIndicator wraps whatever it loaded in an EmblemedIcon. Inside is a
+    // ThemedIcon when the name was found in the icon theme, and a FileIcon or
+    // a pixbuf when it fell back to the app's own image.
+    _isSymbolicIcon(icon) {
+        let gicon = icon.gicon;
+        if (gicon instanceof Gio.EmblemedIcon)
+            gicon = gicon.get_icon();
+        const names = gicon instanceof Gio.ThemedIcon ? gicon.get_names()
+            : !gicon && icon.icon_name ? [icon.icon_name] : [];
+        return names.length > 0 && names[0].endsWith('-symbolic');
     }
 
     // ---- Panel Menu --------------------------------------------------------
