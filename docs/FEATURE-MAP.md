@@ -31,7 +31,7 @@ a restart.
 | Other popups | `shell-popup-blur` | `[blur-my-shell/popup] corner-radius` | `TOKEN_RADIUS_POPUP` | `apply_radius_dconf` |
 | Volume / brightness OSD pill | none (drawn by Custom OSD) | `[custom-osd]`, `[blur-my-shell/popup] osd-corner-radius` | `TOKEN_RADIUS_OSD` | `sync_osd_profile`, `apply_radius_dconf`. Patch: `patches/custom-osd-gnome50.patch` |
 | App folders | `shell-00-flat` | `[blur-my-shell/appfolder]`, pipeline `app folders` | `TOKEN_BLUR_RADIUS_APPFOLDER` | `load_dconf` |
-| Overview | none | `[blur-my-shell/overview]`; window blur kept out by `[applications] blur-on-overview=false`, faded out on opening it and eased back in on leaving it by `patches/blur-my-shell-overview-fade.patch` | none | `load_dconf` |
+| Overview | none | `[blur-my-shell/overview]`; window blur kept out by `[applications] blur-on-overview=false`, faded out on opening it and eased back in on leaving it by `patches/blur-my-shell-overview-fade.patch` (following the overview's progress during a touchpad swipe, both ways) | none | `load_dconf` |
 | Dash to Dock / window list | none | `[blur-my-shell/dash-to-dock]`, `[…/window-list]`, pipelines `dock`, `window list` | `TOKEN_BLUR_RADIUS_DASH_TO_DOCK`, `TOKEN_BLUR_RADIUS_WINDOW_LIST` | `load_dconf` |
 | Lock screen blur | none | `[blur-my-shell/lockscreen]` | none | `load_dconf` |
 | Shell tint (hue of dark surfaces) | every shell sheet (installed copies) | none | none | `apply_shell_tint_color` → `tools/apply-shell-tint.py`. Memo `$C/shell-tint-color` |

@@ -72,6 +72,9 @@ BMS_BUFFERS_PATCH="blur-my-shell-full-size-buffers.patch"
 # gives a preview dropped in the overview) and run with the overview's own
 # animation. The blur leads on the way in and trails on the way out, so GTK's
 # own translucency never shows the desktop sharp before the blur is there.
+# A touchpad swipe can hold or turn back mid-way, and the timed fade left the
+# windows unblurred for the whole of it (reported 2026-11-01), so during a
+# swipe both follow the overview's own progress with the same curves instead.
 # Painting it in the zooming previews made BMS allocate a capture texture per
 # window per frame (clone captures were keyed by exact size), so opening the
 # overview repeatedly lagged; the patch keys them by 1.25x size steps.

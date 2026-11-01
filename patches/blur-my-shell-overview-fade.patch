@@ -1,5 +1,5 @@
 diff --git a/src/components/applications/index.js b/src/components/applications/index.js
-index b3c8343..2e6f08d 100644
+index b3c8343..a5bc277 100644
 --- a/src/components/applications/index.js
 +++ b/src/components/applications/index.js
 @@ -1,3 +1,4 @@
@@ -16,16 +16,61 @@ index b3c8343..2e6f08d 100644
  
  export const ApplicationsBlur = class ApplicationsBlur {
      constructor(connections, settings, effects_manager) {
-@@ -23,6 +24,8 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -23,6 +24,10 @@ export const ApplicationsBlur = class ApplicationsBlur {
  
          this.rules = new WindowRules(settings);
          this.window_opacity = new WindowOpacity();
 +        // blur actors fading out as the overview opens, see reconcile_window_visibility
 +        this.fading_out = new WeakSet();
++        // while a touchpad swipe moves the overview, see follow_overview_gesture
++        this.following_gesture = false;
          this.enabled = false;
  
          this.service = new ApplicationsService;
-@@ -91,9 +94,28 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -88,12 +93,71 @@ export const ApplicationsBlur = class ApplicationsBlur {
+         this.connections.disconnect_all_for(Main.overview);
+         this.overview_visible = Main.overview.visible;
+ 
++        // A touchpad swipe moves the overview with the fingers, and can stop or turn back
++        // anywhere, so a timed fade that ran on its own as the swipe began left the windows
++        // unblurred for the whole of it. From the swipe's start until the overview settles
++        // where it was let go, the blur and the content's opacity follow how far open the
++        // overview is instead, both ways (follow_overview_gesture).
++        const swipe_tracker = Main.overview._swipeTracker;
++        this.state_adjustment = Main.overview._overview?.controls._stateAdjustment;
++        [swipe_tracker, this.state_adjustment].forEach(object =>
++            object && this.connections.disconnect_all_for(object)
++        );
++        this.following_gesture = false;
++        if (swipe_tracker && this.state_adjustment) {
++            const follow_windows = () => this.meta_windows.forEach(
++                meta_window => this.reconcile_window_visibility(meta_window)
++            );
++            // runs after the overview's own handler, which has taken the overview's
++            // animation over by then
++            this.connections.connect(swipe_tracker, 'begin', _ => {
++                this.following_gesture = true;
++                follow_windows();
++            });
++            // the overview's handler has started it easing to where the swipe was let go
++            this.connections.connect(swipe_tracker, 'end', _ => {
++                const settle = this.state_adjustment.get_transition('value');
++                const stop = () => {
++                    this.following_gesture = false;
++                    follow_windows();
++                };
++                // an ease cut short is a new swipe taking over, which goes on following
++                if (settle)
++                    settle.connect('stopped', (_, finished) => finished && stop());
++                else
++                    stop();
++            });
++            this.connections.connect(this.state_adjustment, 'notify::value', _ => {
++                if (this.following_gesture)
++                    follow_windows();
++            });
++        }
++
          const reconcile_windows = () => this.meta_windows.forEach(
              meta_window => this.reconcile_window_visibility(meta_window)
          );
@@ -55,7 +100,7 @@ index b3c8343..2e6f08d 100644
          });
          this.connections.connect(Main.overview, 'hidden', _ => {
              this.overview_visible = false;
-@@ -387,7 +409,9 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -387,7 +451,9 @@ export const ApplicationsBlur = class ApplicationsBlur {
          }
      }
  
@@ -66,11 +111,19 @@ index b3c8343..2e6f08d 100644
          const blur_actor = meta_window.blur_actor;
          if (!blur_actor)
              return;
-@@ -405,15 +429,60 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -405,14 +471,99 @@ export const ApplicationsBlur = class ApplicationsBlur {
              && !is_fullscreen
              && (this.settings.applications.BLUR_ON_OVERVIEW || !this.overview_visible);
  
 -        if (show_blur)
++        if (this.following_gesture && !this.settings.applications.BLUR_ON_OVERVIEW) {
++            this.follow_overview_gesture(
++                meta_window, window_actor,
++                meta_window.showing_on_its_workspace() && !is_focused && !is_fullscreen
++            );
++            return;
++        }
++
 +        const fading_out = this.fading_out.has(blur_actor);
 +        const shown = blur_actor.visible && !fading_out;
 +        const fade = fade_time > 0 && show_blur !== shown;
@@ -85,7 +138,8 @@ index b3c8343..2e6f08d 100644
 +                blur_actor.remove_transition('opacity');
 +            else
 +                blur_actor.opacity = 0;
-+            blur_actor.show();
+             blur_actor.show();
+-        else
 +            blur_actor.ease({
 +                opacity: 255,
 +                duration: fade_time,
@@ -97,8 +151,7 @@ index b3c8343..2e6f08d 100644
 +                blur_actor.opacity = 255;
 +            }
 +            // a fade in is otherwise left to finish
-             blur_actor.show();
--        else
++            blur_actor.show();
 +        } else if (fade) {
 +            this.fading_out.add(blur_actor);
 +            blur_actor.ease({
@@ -124,12 +177,42 @@ index b3c8343..2e6f08d 100644
          this.window_opacity.set(
              window_actor,
              show_blur ? this.settings.applications.OPACITY : 255,
--            blur_actor
 +            blur_actor,
 +            fade ? fade_time : 0
++        );
++    }
++
++    /// Sets the blur and the content's opacity for how far open the overview is, while a swipe
++    /// moves it. `blurred` is whether the window is blurred with the overview closed.
++    follow_overview_gesture(meta_window, window_actor, blurred) {
++        const blur_actor = meta_window.blur_actor;
++        // the app grid lies past the window picker, where the blur is already gone
++        const progress = Math.clamp(this.state_adjustment.value, 0, 1);
++        // The timed fades' curves with the overview's progress in place of time, which comes out
++        // the same both ways: the blur 1 - p³ is EASE_IN_CUBIC out and EASE_OUT_CUBIC back in,
++        // and the content's distance from opaque (1 - p)² is EASE_OUT_QUAD to opaque and
++        // EASE_IN_QUAD back. So the blur still covers whatever the content's own translucency
++        // lets through, as it does in reconcile_window_visibility.
++        const blur = blurred ? 1 - progress ** 3 : 0;
++        const translucency = blurred ? (1 - progress) ** 2 : 0;
++
++        // a timed fade under way when the swipe began gives way to it
++        blur_actor.remove_transition('opacity');
++        if (blur > 0) {
++            blur_actor.opacity = Math.round(255 * blur);
++            blur_actor.show();
++        } else {
++            blur_actor.hide();
++            blur_actor.opacity = 255;
++        }
++
++        const opacity = this.settings.applications.OPACITY;
++        this.window_opacity.set(
++            window_actor,
++            Math.round(255 - (255 - opacity) * translucency),
+             blur_actor
          );
      }
- 
 diff --git a/src/components/applications/overview_drag.js b/src/components/applications/overview_drag.js
 index ba08554..2871fb1 100644
 --- a/src/components/applications/overview_drag.js

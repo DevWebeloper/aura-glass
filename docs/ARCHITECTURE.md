@@ -335,7 +335,9 @@ Catalogued in `lib/steps.sh`:
   `--smooth-animations` sets), then `blur-my-shell-overview-fade.patch`
   (opening the overview fades the window blur out and leaving it fades the
   blur back in, each with the window content easing between opaque and its
-  translucent opacity, over 200 ms; both used to switch in one frame; clone
+  translucent opacity, over 200 ms; both used to switch in one frame; a
+  touchpad swipe makes both follow how far open the overview is instead, so
+  a held or reversed swipe keeps the blur in step with the fingers; clone
   captures are kept per 1.25x size step so the zooming previews reuse them). Each has its own stamp in `$C`. v73's overview,
   notification, static-maximized and panel-refit patches were dropped with v76,
   which was checked live without them. Custom OSD gets
