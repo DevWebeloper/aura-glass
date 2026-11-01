@@ -21,9 +21,10 @@ const FrameType = { NORMAL: 0, DIALOG: 1, MODAL_DIALOG: 2, UTILITY: 3, MENU: 4, 
 const WindowRules = load('src/components/applications/window_rules.js', 'WindowRules',
     { Meta: { FrameType } });
 
-function win(wm_class, { app_id = null, parent = null, frame = FrameType.NORMAL } = {}) {
+function win(wm_class, { app_id = null, parent = null, frame = FrameType.NORMAL, title = null } = {}) {
     return {
         get_wm_class: () => wm_class,
+        get_title: () => title,
         get_gtk_application_id: () => app_id,
         get_transient_for: () => parent,
         get_frame_type: () => frame,
@@ -61,6 +62,41 @@ test('a blocked app stays unblurred, dialogs included', () => {
     const app = win('firefox');
     const dialog = win('firefox', { parent: app, frame: FrameType.ATTACHED });
     assert.equal(rules(true, [], ['*firefox*']).matches(dialog), false);
+});
+
+test('a title rule matches the title, not the class', () => {
+    const pip = win('firefox', { title: 'Picture-in-Picture' });
+    const browser = win('firefox', { title: 'Picture-in-Picture docs' });
+    assert.equal(rules(false, ['title:picture-in-picture'], []).matches(pip), true);
+    assert.equal(rules(false, ['title:picture-in-picture'], []).matches(browser), false);
+    assert.equal(rules(false, ['title:firefox'], []).matches(pip), false);
+    assert.equal(rules(false, ['Picture-in-Picture'], []).matches(pip), false);
+});
+
+test('a title rule follows the transient-for chain like a class rule', () => {
+    const app = win('firefox', { title: 'Docs - Mozilla Firefox' });
+    const middle = win('firefox', { parent: app, frame: FrameType.DIALOG, title: 'Preferences' });
+    const dialog = win('xdg-desktop-portal-gnome', { parent: middle, frame: FrameType.ATTACHED, title: 'Save As' });
+    assert.equal(rules(false, ['title:*Mozilla Firefox'], []).matches(dialog), true);
+    assert.equal(rules(true, [], ['title:*Mozilla Firefox']).matches(dialog), false);
+    assert.equal(rules(false, ['title:Save As'], []).matches(dialog), true);
+    assert.equal(rules(false, ['title:Save As'], []).matches(app), false);
+});
+
+test('class rules still reach the chain and the application id beside title rules', () => {
+    const app = win('', { app_id: 'org.gnome.Nautilus', title: 'Home' });
+    const dialog = win('xdg-desktop-portal-gnome', { parent: app, frame: FrameType.ATTACHED, title: 'Save As' });
+    assert.equal(rules(false, ['title:Nothing', 'org.gnome.Nautilus'], []).matches(dialog), true);
+});
+
+test('the allow list wins over a title on the block list in all mode', () => {
+    const window = win('firefox', { title: 'Picture-in-Picture' });
+    assert.equal(rules(true, ['firefox'], ['title:Picture-in-Picture']).matches(window), true);
+    assert.equal(rules(true, [], ['title:Picture-in-Picture']).matches(window), false);
+});
+
+test('a window with no class anywhere is not blurred, whatever its title', () => {
+    assert.equal(rules(false, ['title:Save As'], []).matches(win('', { title: 'Save As' })), false);
 });
 
 test('menus are never blurred', () => {

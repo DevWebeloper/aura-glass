@@ -103,9 +103,9 @@ install_ext_ego() {
 
 # Blur My Shell carries the popup component upstream: menus, quick settings,
 # notifications, dialogs and the OSD get blur directly. We build from pinned
-# release v77 with the subwindow, full-size-buffers and overview-fade patches
-# applied on top (see BMS_SUBWIN_PATCH, BMS_BUFFERS_PATCH and BMS_FADE_PATCH in
-# lib/steps.sh).
+# release v77 with the upstream-backports, subwindow, full-size-buffers and
+# overview-fade patches applied on top (see BMS_BACKPORTS_PATCH, BMS_SUBWIN_PATCH,
+# BMS_BUFFERS_PATCH and BMS_FADE_PATCH in lib/steps.sh).
 # gnome-extensions pack and gnome-extensions install both write under $HOME, so
 # this needs no root.
 install_bms() {
@@ -126,6 +126,7 @@ install_bms() {
     if [ "${FORCE:-0}" != 1 ] \
        && [ -f "$EXT_DIR/$BMS_UUID/components/popup/index.js" ] \
        && [ "$(cat "$CONF_DIR/bms-ref" 2>/dev/null || true)" = "$BMS_REF" ] \
+       && patch_stamp_current bms-backports-patch "$REPO_ROOT/patches/$BMS_BACKPORTS_PATCH" \
        && patch_stamp_current bms-subwindow-patch "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH" \
        && patch_stamp_current bms-buffers-patch "$REPO_ROOT/patches/$BMS_BUFFERS_PATCH" \
        && patch_stamp_current bms-fade-patch "$REPO_ROOT/patches/$BMS_FADE_PATCH" \
@@ -135,7 +136,7 @@ install_bms() {
         return 0
     fi
 
-    info "building Blur My Shell from $BMS_REF + patches/$BMS_SUBWIN_PATCH + patches/$BMS_BUFFERS_PATCH + patches/$BMS_FADE_PATCH"
+    info "building Blur My Shell from $BMS_REF + patches/$BMS_BACKPORTS_PATCH + patches/$BMS_SUBWIN_PATCH + patches/$BMS_BUFFERS_PATCH + patches/$BMS_FADE_PATCH"
     local src="$SRC_CACHE/blur-my-shell"
     if [ -d "$src/.git" ]; then
         run git -C "$src" checkout --quiet -- . 2>/dev/null || true
@@ -149,6 +150,8 @@ install_bms() {
     # The checkout above is reset by the `git checkout -- .` that precedes it,
     # so this always applies to a clean tree.
     if [ "${DRY_RUN:-0}" != 1 ]; then
+        git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_BACKPORTS_PATCH" \
+            || die "the Blur My Shell upstream-backports patch did not apply — upstream may have moved"
         git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH" \
             || die "the Blur My Shell subwindow patch did not apply — upstream may have moved"
         git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_BUFFERS_PATCH" \
@@ -164,7 +167,7 @@ install_bms() {
     fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: apply patches/$BMS_SUBWIN_PATCH, patches/$BMS_BUFFERS_PATCH and patches/$BMS_FADE_PATCH, bundle the stylesheets, gnome-extensions pack in $src/src, then install the zip"
+        info "dry-run: apply patches/$BMS_BACKPORTS_PATCH, patches/$BMS_SUBWIN_PATCH, patches/$BMS_BUFFERS_PATCH and patches/$BMS_FADE_PATCH, bundle the stylesheets, gnome-extensions pack in $src/src, then install the zip"
         return 0
     fi
 
@@ -229,11 +232,12 @@ install_bms() {
     mkdir -p "$CONF_DIR"
     printf '%s\n' "$BMS_REF" > "$CONF_DIR/bms-ref"
     printf 'git\n' > "$CONF_DIR/bms-source"
+    patch_stamp_write bms-backports-patch "$REPO_ROOT/patches/$BMS_BACKPORTS_PATCH"
     patch_stamp_write bms-subwindow-patch "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH"
     patch_stamp_write bms-buffers-patch "$REPO_ROOT/patches/$BMS_BUFFERS_PATCH"
     patch_stamp_write bms-fade-patch "$REPO_ROOT/patches/$BMS_FADE_PATCH"
     pin_bms_version
-    ok "$BMS_UUID (built from $BMS_REF, with the subwindow, full-size-buffers and overview-fade patches)"
+    ok "$BMS_UUID (built from $BMS_REF, with the upstream-backports, subwindow, full-size-buffers and overview-fade patches)"
 }
 
 # GNOME Shell checks every user-installed extension against extensions.gnome.org

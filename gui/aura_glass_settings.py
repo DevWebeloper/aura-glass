@@ -1267,6 +1267,9 @@ def read_cursor_size():
     return max(CURSOR_SIZE_MIN, min(CURSOR_SIZE_MAX, value))
 
 
+TITLE_PREFIX = "title:"
+
+
 def pattern_matches(pattern, wm_class):
     """Whether one Blur My Shell pattern covers a wm_class.
 
@@ -1278,7 +1281,14 @@ def pattern_matches(pattern, wm_class):
     the two things this is asked — does the allow list already cover this
     window, and would the block list exclude it — are both about a name that
     does not.
+
+    A title: entry (upstream #1217) tests the window title, so it covers no
+    class, and no class wildcard covers it: on this page it is its own row
+    with its own switch, and *code* on the block list says nothing about
+    title:Code. Its own row comes in as wm_class, prefix and all.
     """
+    if pattern.strip().lower().startswith(TITLE_PREFIX) != wm_class.lower().startswith(TITLE_PREFIX):
+        return False
     return fnmatch.fnmatchcase(wm_class.lower(), pattern.strip().lower())
 
 
@@ -1433,18 +1443,22 @@ def describe_pattern(text):
     if "," in text:
         return ("Commas separate entries, so they cannot be part of one. This "
                 "will be added with them dropped.")
+    subject = "class"
+    if text.lower().startswith(TITLE_PREFIX):
+        subject = "title"
+        text = text[len(TITLE_PREFIX):]
     core = text.strip("*")
     if not core:
         return "Only wildcards — that matches every window. Add something to it."
     lead, trail = text.startswith("*"), text.endswith("*")
     if lead and trail:
-        return 'Matches any window whose class contains "%s".' % core
+        return 'Matches any window whose %s contains "%s".' % (subject, core)
     if trail:
-        return 'Matches any window whose class starts with "%s".' % core
+        return 'Matches any window whose %s starts with "%s".' % (subject, core)
     if lead:
-        return 'Matches any window whose class ends with "%s".' % core
-    return ('Matches only windows whose class is exactly "%s" — put a * on '
-            'either side to widen it.' % text)
+        return 'Matches any window whose %s ends with "%s".' % (subject, core)
+    return ('Matches only windows whose %s is exactly "%s" — put a * on '
+            'either side to widen it.' % (subject, text))
 
 
 # Shown in the picker above the entry. Three, because they are the three shapes

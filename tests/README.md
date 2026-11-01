@@ -9,8 +9,10 @@ python3 tests/check-bms-patches.py /path/to/blur-my-shell-upstream-clone
 
 The second check requires Python, Git, tar, Node.js, and an existing Blur My
 Shell clone containing `BMS_REF` from `lib/steps.sh`. It archives that commit
-into a temporary directory and applies `patches/blur-my-shell-subwindows.patch`
-then `patches/blur-my-shell-full-size-buffers.patch` and
+into a temporary directory and applies
+`patches/blur-my-shell-upstream-backports.patch`, then
+`patches/blur-my-shell-subwindows.patch`, then
+`patches/blur-my-shell-full-size-buffers.patch` and
 `patches/blur-my-shell-overview-fade.patch`. It never fetches or
 modifies the clone.
 
@@ -22,6 +24,10 @@ Meta windows. The checks cover:
 - The allow list winning over the block list in all mode.
 - Blocked apps staying unblurred, dialogs included, and menus never blurred.
 - A transient-for loop ending.
+- `title:` entries matching the window title and not its class, up the
+  transient-for chain as class entries do, the allow list still winning over a
+  title on the block list, and class entries still reaching the chain beside
+  them.
 
 The patched `render/shader/texture_region.js` runs with `full-size-buffers` off
 (exact first size, 1.25x growth, shrink below half) and on (largest monitor

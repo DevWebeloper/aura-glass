@@ -32,7 +32,7 @@ a restart.
 | Volume / brightness OSD pill | none (drawn by Custom OSD) | `[custom-osd]`, `[blur-my-shell/popup] osd-corner-radius` | `TOKEN_RADIUS_OSD` | `sync_osd_profile`, `apply_radius_dconf`. Patch: `patches/custom-osd-gnome50.patch` |
 | App folders | `shell-00-flat` | `[blur-my-shell/appfolder]`, pipeline `app folders` | `TOKEN_BLUR_RADIUS_APPFOLDER` | `load_dconf` |
 | Overview | none | `[blur-my-shell/overview]`; window blur kept out by `[applications] blur-on-overview=false`, faded out on opening it and eased back in on leaving it by `patches/blur-my-shell-overview-fade.patch` (following the overview's progress during a touchpad swipe, both ways) | none | `load_dconf` |
-| Dash to Dock / window list | none | `[blur-my-shell/dash-to-dock]`, `[…/window-list]`, pipelines `dock`, `window list` | `TOKEN_BLUR_RADIUS_DASH_TO_DOCK`, `TOKEN_BLUR_RADIUS_WINDOW_LIST` | `load_dconf` |
+| Overview dash, Dash to Dock / window list | none | `[blur-my-shell/dash-to-dock]`, `[…/window-list]`, pipelines `dock`, `window list`. The overview dash blurs the app grid under it (`patches/blur-my-shell-upstream-backports.patch`, #1211) because `unblur-in-overview=false` | `TOKEN_BLUR_RADIUS_DASH_TO_DOCK`, `TOKEN_BLUR_RADIUS_WINDOW_LIST` | `load_dconf` |
 | Lock screen blur | none | `[blur-my-shell/lockscreen]` | none | `load_dconf` |
 | Shell tint (hue of dark surfaces) | every shell sheet (installed copies) | none | none | `apply_shell_tint_color` → `tools/apply-shell-tint.py`. Memo `$C/shell-tint-color` |
 | Performance mode shell look | `shell-80-solid` (opaque ladder) | `dconf/solid.ini` (fresh preset loads only) | `TOKEN_RADIUS_NOTIFICATION` | `install_css` (when `WANT_BLUR=0`), `apply_popup_transparency` |
@@ -55,7 +55,7 @@ a restart.
 | Window corners and surfaces | `gtk4-70-surfaces` | `[blur-my-shell/applications] corner-radius` | `TOKEN_RADIUS_WINDOW` | `apply_radius_css`, `apply_radius_dconf` |
 | Window transparency | `gtk4-transparency` (installed only if level ≠ 0) | `[blur-my-shell/applications] opacity` (the level × 255, so non-GTK apps like Chrome show the blur too) | `TOKEN_APP_TRANSPARENCY_SHIPPED` | `install_transparency_css` → `tools/rescale-transparency.py`. Memo `$C/app-transparency` |
 | App tint | `gtk4-transparency` | none | `TOKEN_APP_TINT` | `apply_app_tint_color` → `tools/apply-tint-color.py`. Memo `$C/app-tint-color` |
-| Blur behind app windows | none | `[blur-my-shell/applications] blur, enable-all, whitelist, blacklist`, pipeline `windows`. Dialogs and tool palettes follow their app (`patches/blur-my-shell-subwindows.patch`) | `TOKEN_BLUR_RADIUS_APPLICATIONS` | `apply_app_blur` (`app_blur_literal`), `apply_blur_pipelines` |
+| Blur behind app windows | none | `[blur-my-shell/applications] blur, enable-all, whitelist, blacklist`, pipeline `windows`. Dialogs and tool palettes follow their app (`patches/blur-my-shell-subwindows.patch`). A `title:` entry matches the window title instead of its class, up the same chain (`patches/blur-my-shell-upstream-backports.patch`, #1217). The window menu checkmark reads them too; its toggle only writes classes | `TOKEN_BLUR_RADIUS_APPLICATIONS` | `apply_app_blur` (`app_blur_literal`), `apply_blur_pipelines` |
 | Accent colour in GTK | substituted by `aura-glass-apply` (`@accent_bg_color`) | none | none | `apply_accent` |
 
 ## 3. GTK3 apps

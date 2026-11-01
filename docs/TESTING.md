@@ -89,7 +89,7 @@ Use a throwaway `HOME` as well. The checks don't need the real one.
 | `check-adaptive-installer.sh` | `--adaptive-blur active` turns blur off without touching memos, and `restore` brings back the saved state. Uses a fabricated `modes/frosted/blur` memo (KI-02) |
 | `check-apply-lifecycle.py` | committing a live preview from the settings window |
 | `check-overview-blur.sh` | overview blur lifecycle regression fixture |
-| `check-bms-patches.sh` | the Blur My Shell subwindow patch applies to `BMS_REF`, the JS it touches parses, and no touched file uses an UPPER_SNAKE name it never declares or imports (KI-27, KI-29). Skips without the cache |
+| `check-bms-patches.sh` | the four Blur My Shell patches apply to `BMS_REF` in order, the JS it touches parses, and no touched file uses an UPPER_SNAKE name it never declares or imports (KI-27, KI-29). Skips without the cache |
 | `check-moga-cursors.sh` | Moga variant selection, checksum handling, and a `--cursors moga` dry run against a fixture `HOME` |
 
 ### Live: humans only
@@ -133,10 +133,11 @@ OK). When you do write one:
 
 `python3 tests/check-performance.py` covers the Packages page's empty system
 group. `python3 tests/check-bms-patches.py /path/to/blur-my-shell-clone` applies
-the subwindow patch to the pinned upstream source in a temporary directory and
-runs the patched window rules against simulated windows: dialogs and tool
-palettes matched through their app, the GTK application id, the allow list
-winning in all mode, and a transient-for loop. See [tests/README.md](../tests/README.md). Set `BMS_TEST_SOURCE` to run
+the four Blur My Shell patches to the pinned upstream source in a temporary
+directory and runs the patched window rules against simulated windows: dialogs
+and tool palettes matched through their app, the GTK application id, the allow
+list winning in all mode, `title:` entries up the transient-for chain, and a
+transient-for loop. See [tests/README.md](../tests/README.md). Set `BMS_TEST_SOURCE` to run
 patched-source checks from the commit hook. The tests never fetch or access
 the running desktop.
 
