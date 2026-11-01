@@ -35,6 +35,37 @@ check_gresource() {
     fi
 }
 
+# install_gdm copies the desktop's cursor and icons for the login screen, which
+# takes root, so a later change of pack or accent stops there. It only warns, the
+# same way. Light and dark of one pack count as the same: icon-sync swaps between
+# them with the colour scheme, and the choice install_gdm made still stands.
+check_look() {
+    local memo="$CONF_DIR/gdm-look" icon cursor size want_icon want_cursor want_size repo cmd
+    [ -r "$memo" ] || return 0
+    { read -r want_icon; read -r want_cursor; read -r want_size; } < "$memo" || true
+    icon="$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d "'")"
+    cursor="$(gsettings get org.gnome.desktop.interface cursor-theme 2>/dev/null | tr -d "'")"
+    size="$(gsettings get org.gnome.desktop.interface cursor-size 2>/dev/null || true)"
+    size="${size##* }"
+    [ -n "$icon" ] && [ -n "$cursor" ] || return 0
+    icon="${icon%-dark}"; want_icon="${want_icon%-dark}"
+    [ "$icon" = "$want_icon" ] && [ "$cursor" = "$want_cursor" ] && [ "$size" = "$want_size" ] && return 0
+
+    repo="$(cat "$CONF_DIR/repo-path" 2>/dev/null || true)"
+    cmd="./install.sh --gdm"
+    [ -n "$repo" ] && cmd="$repo/install.sh --gdm"
+    echo "aura-glass-gdm-sync: the login screen's cursor and icons no longer match the desktop; run $cmd" >&2
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send \
+            --app-name="Aura Glass" \
+            --icon=preferences-desktop-appearance \
+            --hint=string:x-canonical-private-synchronous:aura-glass-gdm-look \
+            "Login screen cursor and icons differ" \
+            "Your cursor or icons changed since the login screen was themed. Run $cmd to match them." \
+            || true
+    fi
+}
+
 get_wallpaper() {
     local uri
     uri="$(gsettings get org.gnome.desktop.background picture-uri-dark 2>/dev/null || true)"
@@ -201,6 +232,7 @@ sync_monitors() {
 # One-shot sync mode
 if [ "${1:-}" = "--once" ] || [ "${1:-}" = "-1" ]; then
     check_gresource || true
+    check_look || true
     sync_wallpaper || true
     sync_monitors || true
     exit 0
@@ -208,6 +240,7 @@ fi
 
 # Initial sync on session start
 check_gresource || true
+check_look || true
 sync_wallpaper || true
 sync_monitors || true
 

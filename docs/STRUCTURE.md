@@ -42,7 +42,7 @@ For "which file draws this button / owns this setting", use
 | `steps-css.sh` | `install_css` and the rewriter wrappers (transparency, tints, popup transparency, notification opacity, radius), `install_window_control_style`, display density (`measure_logical_ppi`, `density_css`), top bar height for the scale (`measure_primary_scale`, `panel_height_css`). |
 | `steps-dconf.sh` | `load_dconf` and every `apply_*` that writes a dconf/gsettings key: radii, pipelines, app blur and lists, popup blur, grain, `apply_blur_pipelines` (every blur amount and brightness), `apply_adaptive_blur`, window buttons, cursor theme/size, accent, Moga variants, `apply_gsettings`, `apply_font`. |
 | `steps-integration.sh` | `install_icon_sync`, `flatpak_override`, `remove_panel_blur_unit` (retired service), `install_adaptive_performance`. |
-| `steps-gdm.sh` | Login screen theme, wallpaper generation, monitor sync, and the GDM sync unit (all opt-in, root). |
+| `steps-gdm.sh` | Login screen theme, cursor and icons, wallpaper generation, monitor sync, and the GDM sync unit (all opt-in, root). |
 | `steps-gui.sh` | `install_gui` (settings window, launcher, preview, desktop entry, icon, the `repo-path` memo), `install_first_open_autostart`, `install_update_check`. |
 | `steps-wizard.sh` | `run_setup_wizard`, which runs the GTK wizard and reads its flags back. |
 | `progress.sh` | The progress window's side of a full install: `progress_begin` (tee to the log, launch the window), `progress_plan`/`progress_start`/`progress_end`/`progress_skip`, `progress_finish`, the `progress_note`/`progress_wait`/`progress_resume` hooks `common.sh` calls as no-ops otherwise, and `verify_install` (the checklist, also `--verify`). Sourced last. |

@@ -503,6 +503,7 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/smooth-animations" \
           "$CONF_DIR/window-animation-speed" "$CONF_DIR/notification-animation-speed" "$CONF_DIR/menu-animation-speed" \
           "$CONF_DIR/gdm-installed" "$CONF_DIR/gdm-gresource" \
+          "$CONF_DIR/gdm-look" "$CONF_DIR/gdm-dconf-profile" \
           "$CONF_DIR/gdm-monitors-synced" \
           "$CONF_DIR/radius-preset" \
           "$CONF_DIR/repo-path" \

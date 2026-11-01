@@ -23,6 +23,15 @@ GDM_GRESOURCE_CANDIDATES=(
     /usr/share/gnome-shell/gnome-shell-theme.gresource
 )
 
+# Where the login screen's cursor and icons live. GDM runs as its own user and
+# can't read a home directory, and its theme keys come from its own dconf profile.
+GDM_ICON_ROOT="/usr/share/icons"
+GDM_DCONF_DIR="/etc/dconf"
+GDM_DCONF_DEFAULT_PROFILE="/usr/share/dconf/profile/gdm"
+# In each copy, so only what this project put in the shared directory is replaced
+# or removed: a pack from a distribution package has the same shape and no marker.
+GDM_THEME_MARKER=".aura-glass-gdm"
+
 get_desktop_wallpaper() {
     local uri
     uri="$(gsettings get org.gnome.desktop.background picture-uri-dark 2>/dev/null || true)"
@@ -292,6 +301,139 @@ record_gdm_gresource() {
     warn "could not find the installed GDM theme; a gnome-shell update that reverts it will go unnoticed"
 }
 
+# The name, plus what its links and lookups reach in the same directory:
+# Reversal-red-dark is mostly relative links into ../Reversal-red, and index.theme
+# names the packs a lookup falls through to.
+gdm_theme_closure() {
+    local name="$1" base="$1" dir="$HOME/.local/share/icons" parent
+    base="${base%-dark}"; base="${base%-Dark}"; base="${base%-light}"; base="${base%-Light}"
+    printf '%s\n' "$name"
+    [ "$base" = "$name" ] || printf '%s\n' "$base"
+    sed -n 's/^Inherits=//p' "$dir/$name/index.theme" 2>/dev/null | tr -d '"' | tr ',' '\n' \
+        | while read -r parent; do [ -n "$parent" ] && printf '%s\n' "$parent"; done
+}
+
+copy_gdm_theme() {
+    local name="$1" root="$HOME/.local/share/icons" dest="$GDM_ICON_ROOT/$1" tmp link target
+    [ -d "$root/$name" ] || return 0
+    # A package's copy is what the login screen should use, and isn't ours to replace.
+    if [ -d "$dest" ] && [ ! -e "$dest/$GDM_THEME_MARKER" ]; then
+        return 0
+    fi
+    tmp="$dest.aura-glass-tmp"
+    sudo rm -rf "$tmp"
+    sudo cp -a "$root/$name" "$tmp"
+    # Reversal has an absolute link or two into the install's own home directory.
+    while IFS= read -r -d '' link; do
+        target="$(sudo readlink "$link")"
+        case "$target" in
+            "$root"/*) sudo ln -sfn "$GDM_ICON_ROOT/${target#"$root"/}" "$link" ;;
+        esac
+    done < <(sudo find "$tmp" -type l -lname '/*' -print0)
+    sudo chown -R root:root "$tmp"
+    sudo chmod -R a+rX "$tmp"
+    sudo touch "$tmp/$GDM_THEME_MARKER"
+    sudo rm -rf "$dest"
+    sudo mv "$tmp" "$dest"
+}
+
+# Marked copies not in the arguments: a pack from before the cursor or accent moved,
+# or all of them with no arguments.
+remove_gdm_themes() {
+    local dir keep name
+    for dir in "$GDM_ICON_ROOT"/*/; do
+        dir="${dir%/}"
+        [ -e "$dir/$GDM_THEME_MARKER" ] || continue
+        name="${dir##*/}"
+        for keep in "$@"; do
+            [ "$keep" = "$name" ] && continue 2
+        done
+        sudo rm -rf "$dir"
+    done
+}
+
+# dconf only reads /etc/dconf/db/gdm when the profile names it, and not every
+# distribution's does (Arch's has no system-db line). /etc/dconf/profile outranks
+# the packaged profile, so that's where the line goes. Created is remembered:
+# uninstall removes only a file this project made.
+ensure_gdm_dconf_profile() {
+    local profile="$GDM_DCONF_DIR/profile/gdm" from
+    from="$profile"
+    [ -r "$from" ] || from="$GDM_DCONF_DEFAULT_PROFILE"
+    if grep -qs '^system-db:gdm$' "$from"; then
+        return 0
+    fi
+    local content
+    if [ -r "$from" ]; then
+        content="$(sed '/^user-db:/a system-db:gdm' "$from")"
+    else
+        content="$(printf 'user-db:user\nsystem-db:gdm')"
+    fi
+    if [ ! -e "$profile" ] && remembering; then
+        mkdir -p "$CONF_DIR"
+        : > "$CONF_DIR/gdm-dconf-profile"
+    fi
+    sudo mkdir -p "$GDM_DCONF_DIR/profile"
+    printf '%s\n' "$content" | sudo tee "$profile" >/dev/null
+}
+
+# The login screen's cursor and icons, as the desktop has them now. The settings
+# are the resolved answer to --cursors, --icons and the accent, and this runs after
+# apply_gsettings. A later change needs root to get here, so the choice is left in
+# the gdm-look memo for aura-glass-gdm-sync to compare at login.
+sync_gdm_look() {
+    local icon cursor size name
+    icon="$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d "'")"
+    cursor="$(gsettings get org.gnome.desktop.interface cursor-theme 2>/dev/null | tr -d "'")"
+    size="$(gsettings get org.gnome.desktop.interface cursor-size 2>/dev/null || true)"
+    size="${size##* }"
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: copy $icon and $cursor to $GDM_ICON_ROOT and set them in $GDM_DCONF_DIR/db/gdm.d/90-aura-glass"
+        return 0
+    fi
+
+    local names=()
+    while IFS= read -r name; do
+        [ -n "$name" ] && names+=("$name")
+    done < <({ gdm_theme_closure "$icon"; gdm_theme_closure "$cursor"; } | sort -u)
+    for name in "${names[@]}"; do
+        copy_gdm_theme "$name"
+    done
+    remove_gdm_themes "${names[@]}"
+
+    ensure_gdm_dconf_profile
+    sudo mkdir -p "$GDM_DCONF_DIR/db/gdm.d"
+    {
+        printf '[org/gnome/desktop/interface]\n'
+        printf "icon-theme='%s'\ncursor-theme='%s'\n" "$icon" "$cursor"
+        [ -n "$size" ] && printf 'cursor-size=%s\n' "$size"
+    } | sudo tee "$GDM_DCONF_DIR/db/gdm.d/90-aura-glass" >/dev/null
+    sudo dconf update
+
+    if remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n%s\n%s\n' "$icon" "$cursor" "$size" > "$CONF_DIR/gdm-look"
+    fi
+    ok "login screen uses $icon icons and the $cursor cursor"
+}
+
+unsync_gdm_look() {
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: remove $GDM_DCONF_DIR/db/gdm.d/90-aura-glass and the theme copies in $GDM_ICON_ROOT"
+        return 0
+    fi
+    remove_gdm_themes
+    if [ -e "$GDM_DCONF_DIR/db/gdm.d/90-aura-glass" ]; then
+        sudo rm -f "$GDM_DCONF_DIR/db/gdm.d/90-aura-glass"
+        sudo dconf update 2>/dev/null || true
+    fi
+    if [ -e "$CONF_DIR/gdm-dconf-profile" ]; then
+        sudo rm -f "$GDM_DCONF_DIR/profile/gdm"
+    fi
+    rm -f "$CONF_DIR/gdm-dconf-profile" "$CONF_DIR/gdm-look"
+}
+
 uninstall_gdm_sync_unit() {
     for u in aura-glass-gdm-sync.service tahoe-glass-gdm-sync.service; do
         if [ -f "$HOME/.config/systemd/user/$u" ]; then
@@ -401,7 +543,10 @@ install_gdm() {
         fi
     fi
 
-    # 4. Install and start user daemon for live wallpaper updates
+    # 4. Same cursor and icons as the desktop
+    sync_gdm_look
+
+    # 5. Install and start user daemon for live wallpaper updates
     install_gdm_sync_unit
 }
 
@@ -449,6 +594,8 @@ uninstall_gdm() {
             fi
         fi
     done
+
+    unsync_gdm_look
 
     # Disable sync unit
     uninstall_gdm_sync_unit
