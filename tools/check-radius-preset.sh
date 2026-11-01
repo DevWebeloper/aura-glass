@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
 # Assert that tools/apply-radius-preset.py rewrites exactly the radii it is
-# meant to and nothing else.
+# meant to and nothing else, and that apply_radius_dconf does the same for keys.
 #
 # The writer runs a regex substitution over installed stylesheets, which is the
 # same shape as the mistake tools/check-tokens.sh exists to catch — except a
 # checker that is too broad merely reports noise, while a writer that is too
 # broad silently restyles something unrelated. So this exercises the writer
-# against throwaway copies and asserts three things:
+# against throwaway copies and asserts four things:
 #
 #   1. every radius the manifest names comes out at the preset's value
 #   2. every radius it does NOT name is untouched — the 9999px pills, the 10px
 #      fields, the 12px menu items
 #   3. sharp-then-default returns each file byte-for-byte to what the repo ships
+#   4. apply_radius_dconf writes every dconf key the manifest names at the
+#      preset's value, and no key it does not name. check-tokens.sh only reads
+#      core.ini, which stays at `default`, so a key shipped there and never
+#      written here would stay at 30 under every preset with the check passing.
 #
 # (3) is the one that would have caught a substitution that reformats or drops a
 # trailing newline, which no per-value assertion can see.
@@ -42,11 +46,12 @@ import tempfile
 
 ROOT = os.environ["REPO_ROOT"]
 sys.path.insert(0, os.path.join(ROOT, "tools"))
-from token_manifest import RADIUS_TOKENS, css_entries  # noqa: E402
+from token_manifest import RADIUS_TOKENS, css_entries, ini_entries  # noqa: E402
 
 WRITER = os.path.join(ROOT, "tools", "apply-radius-preset.py")
 RADIUS_CSS = css_entries(set(RADIUS_TOKENS))
 SHEETS = sorted({rel for _, _, rel, _ in RADIUS_CSS})
+RADIUS_INI = ini_entries(set(RADIUS_TOKENS))
 
 presets = {}
 for line in os.environ["PRESETS"].split("\n"):
@@ -165,6 +170,34 @@ with tempfile.TemporaryDirectory() as tmp:
                     "%s: round trip via '%s' did not restore the shipped file "
                     "byte-for-byte" % (base, other))
 
+
+def dconf_writes(name):
+    """(4) What the real apply_radius_dconf writes for a preset, with `run`
+    stubbed to print so nothing reaches dconf."""
+    script = (
+        '. "$1/tokens/tokens.sh"; . "$1/lib/steps-dconf.sh"\n'
+        'run() { printf "%s\\n" "$*"; }; ok() { :; }; skip() { :; }\n'
+        'radius_preset_values "$2"; WANT_BLUR=1; apply_radius_dconf\n')
+    res = subprocess.run(["bash", "-euc", script, "bash", ROOT, name],
+                         capture_output=True, text=True)
+    if res.returncode != 0:
+        failures.append("%s: apply_radius_dconf exited %d:\n    %s"
+                        % (name, res.returncode, res.stderr.strip()))
+    return set(res.stdout.splitlines())
+
+
+for name, values in presets.items():
+    want_values = dict(zip(RADIUS_TOKENS, values))
+    want = {"dconf write /org/gnome/shell/extensions/%s/%s %s"
+            % (section, key, want_values[token])
+            for token, _, _, section, key in RADIUS_INI}
+    got = dconf_writes(name)
+    for line in sorted(want - got):
+        failures.append("%s: apply_radius_dconf did not run `%s`" % (name, line))
+    for line in sorted(got - want):
+        failures.append("%s: apply_radius_dconf ran `%s`, which the manifest does "
+                        "not name at that value" % (name, line))
+
 if failures:
     print("radius preset check FAILED\n")
     for f in failures:
@@ -172,8 +205,10 @@ if failures:
     print("\n%d problem%s" % (len(failures), "" if len(failures) == 1 else "s"))
     sys.exit(1)
 
-print("radius preset check passed — %d preset%s rewrite %d site%s in %d sheet%s"
+print("radius preset check passed — %d preset%s rewrite %d site%s in %d sheet%s "
+      "and %d dconf key%s"
       % (len(presets), "" if len(presets) == 1 else "s",
          len(RADIUS_CSS), "" if len(RADIUS_CSS) == 1 else "s",
-         len(SHEETS), "" if len(SHEETS) == 1 else "s"))
+         len(SHEETS), "" if len(SHEETS) == 1 else "s",
+         len(RADIUS_INI), "" if len(RADIUS_INI) == 1 else "s"))
 PY

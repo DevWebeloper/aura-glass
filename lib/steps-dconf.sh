@@ -214,6 +214,7 @@ apply_dconf_merge() {
 # migrating are reset. Every writer above then shapes core.ini's pipelines as
 # on a fresh install. Custom pipelines a user built in Blur My Shell's own
 # preferences on v73 are lost; no component of this preset pointed at one.
+# v77's version 8 only adds stock pipelines, so 7 stays this function's line.
 upgrade_bms_settings() {
     local base=/org/gnome/shell/extensions/blur-my-shell
     local version migrated=0 section
@@ -341,11 +342,18 @@ load_dconf() {
 # the blur half, and the two read the same TOKEN_RADIUS_* variables from the same
 # call to radius_preset_values so they cannot disagree.
 #
-# Two of these have no painted counterpart at all. `corner-radius` under popup is
-# the generic fallback for surfaces the specific keys do not claim, and
+# Three of these have no painted counterpart at all. `corner-radius` under popup
+# is the generic fallback for surfaces the specific keys do not claim,
 # `osd-corner-radius` belongs to a pill Custom OSD draws rather than to any
 # stylesheet — see TOKEN_RADIUS_OSD for why that one does not simply scale with
-# the rest.
+# the rest — and `workspace-corner-radius` is the corner Blur My Shell v77 clips
+# overview workspaces at, which follows the window's token.
+#
+# That last key only works while the overview component is on: with its blur off
+# (performance, an adaptive overlay, a user's own switch) Blur My Shell hands the
+# workspace back to GNOME's hardcoded 30, and neither the key nor the theme's
+# `.workspace-background` rule can move that clip. So the early return below loses
+# nothing, and the next run in frosted writes the current preset's value.
 apply_radius_dconf() {
     local base=/org/gnome/shell/extensions/blur-my-shell
 
@@ -358,6 +366,7 @@ apply_radius_dconf() {
     fi
 
     run dconf write "$base/applications/corner-radius" "$TOKEN_RADIUS_WINDOW"
+    run dconf write "$base/overview/workspace-corner-radius" "$TOKEN_RADIUS_WINDOW"
     run dconf write "$base/popup/menu-corner-radius" "$TOKEN_RADIUS_MENU"
     run dconf write "$base/popup/quick-settings-corner-radius" "$TOKEN_RADIUS_QUICK_SETTINGS"
     run dconf write "$base/popup/notification-corner-radius" "$TOKEN_RADIUS_NOTIFICATION"
@@ -803,10 +812,11 @@ apply_fullscreen_blur() {
 # grows with every blurred surface and window. Two halves:
 #
 # full-size-buffers is the key patches/blur-my-shell-full-size-buffers.patch
-# adds. Stock v76 sizes each blur's textures to its actor, grows them 1.25x at
-# a time and drops them below half size or at opacity 0, so a menu scaling in,
-# an app folder zooming from its icon or a banner fading in reallocated the
-# capture and the whole kawase chain in its first frames. With the key on they
+# adds. Stock v77 sizes each blur's textures to its actor and grows them 1.25x at
+# a time, shrinking them after 2 s below half size and freeing them 5 s after
+# opacity 0, so the first open of a menu scaling in, an app folder zooming from
+# its icon or a banner fading in still reallocates the capture and the whole
+# kawase chain in its first frames. With the key on they
 # are allocated once at the largest monitor's size (about 50 MB per blurred
 # surface at 3440x1440) and kept. Blur My Shell reads it live.
 #
@@ -958,7 +968,9 @@ APP_BLUR_SELF="io.github.DevWebeloper.AuraGlassSettings"
 # at both ends, turns * into .* and ? into ., and compiles case-insensitively —
 # which is what a bash glob under nocasematch does. The one difference is [abc]:
 # the extension escapes the brackets and matches them literally. No wm_class has
-# brackets in it, and this one certainly does not.
+# brackets in it, and this one certainly does not. A title: entry never covers it
+# (the literal prefix does not match the class), which is right: it tests the
+# window title, so it says nothing about this class.
 app_blur_covers_self() {
     local pattern="$1" matched=0 restore
     restore="$(shopt -p nocasematch)"
@@ -1711,6 +1723,37 @@ apply_window_buttons() {
     fi
 }
 
+# Tiling Assistant's maximize-with-gap, on with no screen gap for it to keep.
+#
+# Off, which is upstream's default, drag-to-top and tile-maximize really
+# maximize the window. On, they resize it to the work area instead (tile() in
+# its tilingWindowManager.js), so it fills the screen while Mutter and GTK never
+# see it as maximized: the titlebar button stays maximize and the corners stay
+# rounded. A gap is the one thing that is worth that for. A rect on all four
+# work-area edges takes only the screen gaps (addGaps in its utility.js;
+# window-gap goes between windows), so with those at 0 the key does nothing else.
+#
+# A screen gap above 0 was set on purpose, and the key stays. No preset can do
+# this: no release shipped the key, so merge_dconf_preset would keep a true as
+# the user's own, and a load would take the key from someone with a gap.
+#
+# Reset rather than written false, so nothing is left behind for uninstall, and
+# read first: an unset key, which is also Tiling Assistant not being installed
+# (dconf wants no schema for this), returns here. In apply_gsettings rather than
+# load_dconf because the adaptive worker goes through load_dconf (C10).
+apply_tiling_maximize() {
+    local base=/org/gnome/shell/extensions/tiling-assistant gap
+    [ "$(dconf read "$base/maximize-with-gap" 2>/dev/null || true)" = true ] || return 0
+    for gap in single-screen-gap screen-top-gap screen-left-gap screen-right-gap screen-bottom-gap; do
+        case "$(dconf read "$base/$gap" 2>/dev/null || true)" in
+            ''|0) ;;
+            *) return 0 ;;
+        esac
+    done
+    run dconf reset "$base/maximize-with-gap"
+    ok "Tiling Assistant maximizes for real (maximize-with-gap had no gap to keep)"
+}
+
 # Same shape as apply_window_buttons and for the same reason: cursor-size is
 # a GNOME preference shared with Tweaks, not this project's styling, so a
 # flagless install leaves it exactly where it found it.
@@ -1971,6 +2014,7 @@ apply_gsettings() {
     apply_window_buttons
     apply_cursor_size
     apply_font
+    apply_tiling_maximize
     run gsettings set org.gnome.shell disable-extension-version-validation true
 
     # "left alone" rather than a name, because there is no name to give: the

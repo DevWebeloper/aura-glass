@@ -31,8 +31,9 @@ a restart.
 | Other popups | `shell-popup-blur` | `[blur-my-shell/popup] corner-radius` | `TOKEN_RADIUS_POPUP` | `apply_radius_dconf` |
 | Volume / brightness OSD pill | none (drawn by Custom OSD) | `[custom-osd]`, `[blur-my-shell/popup] osd-corner-radius` | `TOKEN_RADIUS_OSD` | `sync_osd_profile`, `apply_radius_dconf`. Patch: `patches/custom-osd-gnome50.patch` |
 | App folders | `shell-00-flat` | `[blur-my-shell/appfolder]`, pipeline `app folders` | `TOKEN_BLUR_RADIUS_APPFOLDER` | `load_dconf` |
+| Overview workspace corners | none | `[blur-my-shell/overview] workspace-corner-radius`. Only while the overview blur is on: with it off (performance, adaptive overlay) Blur My Shell leaves GNOME's hardcoded 30 | `TOKEN_RADIUS_WINDOW` | `apply_radius_dconf` |
 | Overview | none | `[blur-my-shell/overview]`; window blur kept out by `[applications] blur-on-overview=false`, faded out on opening it and eased back in on leaving it by `patches/blur-my-shell-overview-fade.patch` (following the overview's progress during a touchpad swipe, both ways) | none | `load_dconf` |
-| Dash to Dock / window list | none | `[blur-my-shell/dash-to-dock]`, `[…/window-list]`, pipelines `dock`, `window list` | `TOKEN_BLUR_RADIUS_DASH_TO_DOCK`, `TOKEN_BLUR_RADIUS_WINDOW_LIST` | `load_dconf` |
+| Overview dash, Dash to Dock / window list | none | `[blur-my-shell/dash-to-dock]`, `[…/window-list]`, pipelines `dock`, `window list`. The overview dash blurs the app grid under it (`patches/blur-my-shell-upstream-backports.patch`, #1211) because `unblur-in-overview=false` | `TOKEN_BLUR_RADIUS_DASH_TO_DOCK`, `TOKEN_BLUR_RADIUS_WINDOW_LIST` | `load_dconf` |
 | Lock screen blur | none | `[blur-my-shell/lockscreen]` | none | `load_dconf` |
 | Shell tint (hue of dark surfaces) | every shell sheet (installed copies) | none | none | `apply_shell_tint_color` → `tools/apply-shell-tint.py`. Memo `$C/shell-tint-color` |
 | Performance mode shell look | `shell-80-solid` (opaque ladder) | `dconf/solid.ini` (fresh preset loads only) | `TOKEN_RADIUS_NOTIFICATION` | `install_css` (when `WANT_BLUR=0`), `apply_popup_transparency` |
@@ -55,7 +56,7 @@ a restart.
 | Window corners and surfaces | `gtk4-70-surfaces` | `[blur-my-shell/applications] corner-radius` | `TOKEN_RADIUS_WINDOW` | `apply_radius_css`, `apply_radius_dconf` |
 | Window transparency | `gtk4-transparency` (installed only if level ≠ 0) | `[blur-my-shell/applications] opacity` (the level × 255, so non-GTK apps like Chrome show the blur too) | `TOKEN_APP_TRANSPARENCY_SHIPPED` | `install_transparency_css` → `tools/rescale-transparency.py`. Memo `$C/app-transparency` |
 | App tint | `gtk4-transparency` | none | `TOKEN_APP_TINT` | `apply_app_tint_color` → `tools/apply-tint-color.py`. Memo `$C/app-tint-color` |
-| Blur behind app windows | none | `[blur-my-shell/applications] blur, enable-all, whitelist, blacklist`, pipeline `windows`. Dialogs and tool palettes follow their app (`patches/blur-my-shell-subwindows.patch`) | `TOKEN_BLUR_RADIUS_APPLICATIONS` | `apply_app_blur` (`app_blur_literal`), `apply_blur_pipelines` |
+| Blur behind app windows | none | `[blur-my-shell/applications] blur, enable-all, whitelist, blacklist`, pipeline `windows`. Dialogs and tool palettes follow their app (`patches/blur-my-shell-subwindows.patch`). A `title:` entry matches the window title instead of its class, up the same chain (`patches/blur-my-shell-upstream-backports.patch`, #1217). The window menu checkmark reads them too; its toggle only writes classes | `TOKEN_BLUR_RADIUS_APPLICATIONS` | `apply_app_blur` (`app_blur_literal`), `apply_blur_pipelines` |
 | Accent colour in GTK | substituted by `aura-glass-apply` (`@accent_bg_color`) | none | none | `apply_accent` |
 
 ## 3. GTK3 apps
@@ -79,6 +80,7 @@ a restart.
 | Glass style (frosted / liquid / vibrant / tinted / smoked) | a `refraction` effect (id prefix `effect_aura_glass_style_`) after the blur in pipeline `dock` (v76 rounds it from the component's corner; never the top bar, whose pipeline is the overview's); liquid also sets `[dash-to-dock] static-blur=true`. `--liquid-windows` adds pipeline `windows` and `[applications] static-blur=true`. Vibrant is a `luminosity` effect (saturation 1.35, brightness 1.0) ahead of the blur in pipeline `lock screen` (top bar, overview, lock screen), leaving the dock dynamic; with `--liquid-windows` also pipeline `windows` and `[applications] static-blur=true`. Tinted is a `color` effect (accent RGB from `accent_hex`, alpha 0.3, blend Color) and smoked a `luminosity` effect (brightness 0.7, saturation 0.8), both in `lock screen` only, never windows. An `--accent` incremental Apply adds the `glass-style` action under tinted | `apply_glass_style`. Memos `$C/glass-style`, `$C/liquid-windows` (top-level, not drawer fields) |
 | Popup blur on/off | `[popup] blur` + `shell-popup-blur.css` present/absent | `apply_popup_blur`, `install_css` |
 | Notification blur | follows the popup blur: `shell-notification-blur.css` is installed with `shell-popup-blur.css` (`--notification-blur` is retired) | `install_css` |
+| Static or dynamic blur per window | none | `[blur-my-shell/applications] static-blur=false`, with `patches/blur-my-shell-static-maximized.patch` turning a window static while it covers its monitor (shows the wallpaper only, not the windows behind it) and dynamic otherwise. `covers_monitor` is the same test as `coversMonitor` in the helper. `--liquid-windows` sets `static-blur=true`: every window static | none | `apply_glass_style` (`--liquid-windows`), `install_bms` |
 | Per-app blur lists | `[applications] whitelist/blacklist`, memos `app-blur-allow/-block` | `apply_app_blur`. Window menu: `aura-glass-preview app-blur` |
 
 ## 5. Modes and adaptive
@@ -97,8 +99,10 @@ a restart.
 | Pointer packs, size | `lib/steps-assets.sh` (`install_cursors`, `install_moga_cursors`), `tools/moga_cursor.py`, `apply_cursor_theme`, `apply_cursor_size`, Wiggly's magnified pointer: `patch_wiggly_extension` + `patches/wiggly-follow-cursor.patch` |
 | Fonts | `lib/steps-fonts.sh`, `apply_font` |
 | Extension catalogue | `lib/steps.sh` (arrays, `ext_description`), `bin/aura-glass-ext`, `lib/steps-extensions.sh` |
+| Tiling Assistant's drag-to-top and `tile-maximize` really maximize, so the titlebar button shows restore (`maximize-with-gap` reset unless a screen gap needs it) | `lib/steps-dconf.sh` (`apply_tiling_maximize`, from `apply_gsettings`) |
 | Blur This App (window menu) | `extensions/aura-glass-blur@aura-glass.local/extension.js` → `aura-glass-operation app-blur` |
 | Mouse wheel switches workspaces while dragging in the overview | `extensions/aura-glass-blur@aura-glass.local/extension.js` (`_attachDragScroll`, `_onDragScroll`) |
+| A window let go near a workspace or thumbnail in the overview still lands there | `extensions/aura-glass-blur@aura-glass.local/extension.js` (`_hookDropTargets`, `_workspaceNear`, `_delegateOtherScreens`) |
 
 ## 7. Installer / system behaviour
 
@@ -120,7 +124,7 @@ a restart.
 
 | Token (`tokens/tokens.sh`) | Value | Consumers | Checker |
 |---|---|---|---|
-| `TOKEN_RADIUS_WINDOW` | 30 | `gtk3-tweaks.css`, `gtk4-70-surfaces.css`, `core.ini [applications] corner-radius`, the pipeline `windows` corner in `core.ini`, the GUI preset table | `check-tokens.sh`, `check-gui-radius.py` |
+| `TOKEN_RADIUS_WINDOW` | 30 | `gtk3-tweaks.css`, `gtk4-70-surfaces.css`, `core.ini [applications] corner-radius`, `core.ini [overview] workspace-corner-radius`, the pipeline `windows` corner in `core.ini`, the GUI preset table | `check-tokens.sh`, `check-gui-radius.py` |
 | `TOKEN_RADIUS_MENU` | 26 | `shell-20-popup-menus.css`, `shell-popup-blur.css`, `core.ini [popup] menu-corner-radius` | `check-tokens.sh` |
 | `TOKEN_RADIUS_QUICK_SETTINGS` | 33 | `shell-20-popup-menus.css` (2 sites), `shell-popup-blur.css` (2), `core.ini [popup] quick-settings-corner-radius` | `check-tokens.sh` |
 | `TOKEN_RADIUS_NOTIFICATION` | 20 | `shell-30-notifications.css` (4), `shell-80-solid.css` (2), `core.ini [popup] notification-corner-radius` | `check-tokens.sh` |

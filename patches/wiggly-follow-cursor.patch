@@ -42,7 +42,7 @@ diff --color -ruN a/cursor.js b/cursor.js
 diff --color -ruN a/effect.js b/effect.js
 --- a/effect.js	2026-11-01 03:03:16.194067183 +0200
 +++ b/effect.js	2026-11-01 03:03:41.832355519 +0200
-@@ -1,24 +1,159 @@
+@@ -1,24 +1,165 @@
  'use strict';
  
  import Clutter from 'gi://Clutter';
@@ -184,6 +184,12 @@ diff --color -ruN a/effect.js b/effect.js
      constructor() {
 -        super();
 +        super({layout_manager: new Clutter.BinLayout()});
++        // On top of the stage and right under the pointer, so GNOME Shell's
++        // drag and drop, which picks the actor under the pointer in
++        // PickMode.ALL, found this instead of the workspace below it. Nothing
++        // here takes a drop, so a window released in the overview while the
++        // pointer was magnified snapped back to where it came from.
++        Shell.util_set_hidden_from_pick(this, true);
 +        this._icon = new St.Icon({x_expand: true, y_expand: true});
 +        this._picture = new Clutter.Actor({x_expand: true, y_expand: true, visible: false});
 +        this._picture.set_content_scaling_filters(
@@ -204,7 +210,7 @@ diff --color -ruN a/effect.js b/effect.js
          this.isHidden = true;
          this.magnifyDuration = 250;
          this.unmagnifyDuration = 150;
-@@ -26,33 +161,326 @@
+@@ -26,33 +167,326 @@
          this.isWiggling = false;
          this._isInTransition = false;
          this.cursor = new Cursor();
@@ -537,7 +543,7 @@ diff --color -ruN a/effect.js b/effect.js
          Main.uiGroup.add_child(this);
          if (this.isHidden) {
              this.cursor.hide();
-@@ -89,6 +517,8 @@
+@@ -89,6 +523,8 @@
                  pivot_point: this._pivot,
                  onComplete: () => {
                      Main.uiGroup.remove_child(this);
@@ -546,7 +552,7 @@ diff --color -ruN a/effect.js b/effect.js
                      if (this.isHidden) this.cursor.show();
  
                      this.isWiggling = false;
-@@ -108,6 +538,11 @@
+@@ -108,6 +544,11 @@
              this._unmagnifyDelayId = null;
          }
          this.remove_all_transitions();

@@ -271,7 +271,9 @@ bounded per surface by `radius_bounds`). `pill` is a retired name that
 **Project rule:** a painted radius must equal the blur radius behind it, so
 `apply_radius_css` (paint) and `apply_radius_dconf` (blur) always move
 together. Since Blur My Shell v76 a blur's corner comes only from its
-component's corner-radius key; no pipeline carries a `corner` effect.
+component's corner-radius key; no pipeline carries a `corner` effect. Overview
+workspaces have no painted half: `apply_radius_dconf` sets their
+`workspace-corner-radius` key from the window's token.
 
 ---
 
@@ -306,7 +308,9 @@ component's corner-radius key; no pipeline carries a `corner` effect.
 
 `apply_gsettings` writes `color-scheme=prefer-dark`, the accent,
 gtk-theme/shell theme, icon theme, cursor theme/size, window buttons and font.
-It also sets `org.gnome.shell disable-extension-version-validation=true`.
+It also sets `org.gnome.shell disable-extension-version-validation=true`, and
+resets Tiling Assistant's `maximize-with-gap` when no screen gap needs it
+(`apply_tiling_maximize`).
 
 `app_blur_literal` is the one place arbitrary user text (per-app wm_class
 patterns) reaches dconf. `check-app-blur-lists.sh` round-trips it through
@@ -328,19 +332,25 @@ Catalogued in `lib/steps.sh`:
 
 - Upstreams are **pinned by commit** (table in §12). A theme that changes under
   the CSS gives a half-applied look with no error.
-- Blur My Shell gets three patches: `blur-my-shell-subwindows.patch` (a blurred
-  app's dialogs and tool palettes match through their transient-for app and
-  GTK application id; ATTACHED and UTILITY frame types), then
+- Blur My Shell gets five patches: `blur-my-shell-upstream-backports.patch`
+  (upstream #1208, #1211, #1217 and #1218, which v77 does not have and which
+  come without master's GResource build change), then
+  `blur-my-shell-subwindows.patch` (a blurred app's dialogs and tool palettes
+  match through their transient-for app, its GTK application id and its title;
+  ATTACHED and UTILITY frame types), then
   `blur-my-shell-full-size-buffers.patch` (the `full-size-buffers` key
   `--smooth-animations` sets), then `blur-my-shell-overview-fade.patch`
   (opening the overview fades the window blur out and leaving it fades the
   blur back in, each with the window content easing between opaque and its
   translucent opacity, over 200 ms; both used to switch in one frame; a
   touchpad swipe makes both follow how far open the overview is instead, so
-  a held or reversed swipe keeps the blur in step with the fingers; clone
-  captures are kept per 1.25x size step so the zooming previews reuse them). Each has its own stamp in `$C`. v73's overview,
-  notification, static-maximized and panel-refit patches were dropped with v76,
-  which was checked live without them. Custom OSD gets
+  a held or reversed swipe keeps the blur in step with the fingers), then
+  `blur-my-shell-static-maximized.patch` (a window covering its monitor is static
+  and smaller ones dynamic, a crossing rebuilding the blur as the other type once
+  an interactive resize or the overview's motion is over). Each has its own stamp in `$C`. v73's overview,
+  notification and panel-refit patches were dropped with v76, which was checked
+  live without them, and its static-maximized patch with them until it came back
+  re-cut. Custom OSD gets
   `custom-osd-gnome50.patch`. Copyous gets `copyous-gnome51.patch`. Wiggly gets
   `wiggly-follow-cursor.patch` on its EGO download (`patch_wiggly_extension`).
 - `bin/aura-glass-ext` exposes the catalogue one UUID at a time
@@ -423,7 +433,7 @@ after 30 s instead of interleaving.
 | What | Repo | Pin |
 |---|---|---|
 | Base theme | kayozxo/GNOME-macOS-Tahoe | `6dfcd9d941e5` (installed as `Tahoe-Dark`, adopted as `Aura-Glass`) |
-| Blur My Shell | aunetx/blur-my-shell | `19ce844b8ca3` (v76) + 1 patch |
+| Blur My Shell | aunetx/blur-my-shell | `b1e415cc5ff3` (v77) + 4 patches |
 | Custom OSD | neuromorph/custom-osd | `334ac17e9348` + GNOME 50/51 patch |
 | Colloid / Reversal / MacTahoe icons | vinceliuice, yeyushengfan258, vinceliuice | `c9e702beb96f` / `2c8122287e3b` / `b85923bb87f5` |
 | Hatter icons | Mibea/Hatter | full SHA, shallow sparse fetch |

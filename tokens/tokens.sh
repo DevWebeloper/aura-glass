@@ -39,6 +39,9 @@
 #   css/gtk3-tweaks.css       decoration, .titlebar/.titlebar.background
 #   css/gtk4-70-surfaces.css  window, window.background, window.csd
 #   dconf/core.ini            [blur-my-shell/applications] corner-radius
+#   dconf/core.ini            [blur-my-shell/overview] workspace-corner-radius,
+#                             a workspace being a window-shaped piece of desktop
+#                             rather than a surface with a preset column of its own
 TOKEN_RADIUS_WINDOW=30
 
 # Ordinary popup menus.

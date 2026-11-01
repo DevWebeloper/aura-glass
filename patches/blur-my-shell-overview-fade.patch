@@ -1,5 +1,5 @@
 diff --git a/src/components/applications/index.js b/src/components/applications/index.js
-index b3c8343..a5bc277 100644
+index f1f75ff..4ddafea 100644
 --- a/src/components/applications/index.js
 +++ b/src/components/applications/index.js
 @@ -1,3 +1,4 @@
@@ -27,7 +27,7 @@ index b3c8343..a5bc277 100644
          this.enabled = false;
  
          this.service = new ApplicationsService;
-@@ -88,12 +93,71 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -98,12 +103,71 @@ export const ApplicationsBlur = class ApplicationsBlur {
          this.connections.disconnect_all_for(Main.overview);
          this.overview_visible = Main.overview.visible;
  
@@ -100,7 +100,7 @@ index b3c8343..a5bc277 100644
          });
          this.connections.connect(Main.overview, 'hidden', _ => {
              this.overview_visible = false;
-@@ -387,7 +451,9 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -405,7 +469,9 @@ export const ApplicationsBlur = class ApplicationsBlur {
          }
      }
  
@@ -111,7 +111,7 @@ index b3c8343..a5bc277 100644
          const blur_actor = meta_window.blur_actor;
          if (!blur_actor)
              return;
-@@ -405,14 +471,99 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -423,14 +489,99 @@ export const ApplicationsBlur = class ApplicationsBlur {
              && !is_fullscreen
              && (this.settings.applications.BLUR_ON_OVERVIEW || !this.overview_visible);
  
@@ -227,7 +227,7 @@ index ba08554..2871fb1 100644
  /// GNOME moves a window preview dropped in the overview back into its workspace as soon as it is
  /// back in place, which stops its fade one step short of opaque. Until the overview closes, it is
 diff --git a/src/components/applications/window_opacity.js b/src/components/applications/window_opacity.js
-index a0d6095..0364c71 100644
+index 7ed3c43..53fd63c 100644
 --- a/src/components/applications/window_opacity.js
 +++ b/src/components/applications/window_opacity.js
 @@ -1,3 +1,5 @@
@@ -236,7 +236,7 @@ index a0d6095..0364c71 100644
  export const BLUR_ACTOR_NAME = 'bms-application-blurred-widget';
  
  /// Changes the opacity of a window's content above its blur, remembering the original opacity of
-@@ -5,9 +7,12 @@ export const BLUR_ACTOR_NAME = 'bms-application-blurred-widget';
+@@ -5,11 +7,13 @@ export const BLUR_ACTOR_NAME = 'bms-application-blurred-widget';
  export class WindowOpacity {
      constructor() {
          this.originals = new WeakMap();
@@ -244,13 +244,15 @@ index a0d6095..0364c71 100644
 +        this.targets = new WeakMap();
      }
  
+     /// A window has no actor before it is mapped and after it is unmanaged, and then nothing is shown
+-    /// to change.
 -    set(window_actor, opacity, blur_actor) {
-+    /// A duration eases the content to the new opacity instead of setting it at once.
++    /// to change. A duration eases the content to the new opacity instead of setting it at once.
 +    set(window_actor, opacity, blur_actor, duration = 0) {
-         let originals = this.originals.get(window_actor);
-         if (!originals) {
-             originals = new Map();
-@@ -20,27 +25,52 @@ export class WindowOpacity {
+         if (!window_actor)
+             return;
+ 
+@@ -25,27 +29,52 @@ export class WindowOpacity {
  
              if (opacity === 255) {
                  if (originals.has(child)) {
@@ -307,65 +309,3 @@ index a0d6095..0364c71 100644
          child.opacity = originals.get(child);
          originals.delete(child);
          if (originals.size === 0)
-diff --git a/src/render/backdrop/capture.js b/src/render/backdrop/capture.js
-index 726351b..2f56a49 100644
---- a/src/render/backdrop/capture.js
-+++ b/src/render/backdrop/capture.js
-@@ -23,6 +23,21 @@ const PIXEL_EPSILON = 1 / 1024;
- // clones of animated actors change size every frame, and only the last few sizes get painted again
- const CLONE_TARGET_LIFETIME_US = 1000000;
- const CAPTURE_TEXTURE_REGION = 'bms_capture_region';
-+// Aura Glass: clone captures are kept per size step of this ratio, not per exact size; see
-+// cloneCapacity.
-+const CLONE_SIZE_STEP = 1.25;
-+
-+/// Aura Glass: the size a clone's capture is kept and allocated at, the next step of
-+/// CLONE_SIZE_STEP up from its own. Keyed by exact size, a window preview zooming into or out of
-+/// the overview allocated a new window-sized texture for every window on every frame, each kept
-+/// for CLONE_TARGET_LIFETIME_US, which the window blur fading with that zoom (the overview-fade
-+/// patch) made happen on every open and close: opening it repeatedly lagged. Stepped, a zoom
-+/// reuses a few textures, and a preview and its workspace thumbnail, several steps apart, still
-+/// keep separate captures. Never past the largest monitor, as getTextureCapacity does.
-+function cloneCapacity(size, limit) {
-+    const step = Math.ceil(Math.log(size) / Math.log(CLONE_SIZE_STEP));
-+    return Math.max(size, Math.min(Math.ceil(CLONE_SIZE_STEP ** step), limit));
-+}
- 
- function getCaptureSnippet() {
-     return get_snippet(CAPTURE_TEXTURE_REGION, () => {
-@@ -158,7 +173,8 @@ export const BackdropCaptureEffect = GObject.registerClass({
-         contentActor.add_child(this.output);
-     }
- 
--    ensureFramebuffer(targets, key, width, height, sourceFramebuffer, view, fullSize = false) {
-+    ensureFramebuffer(targets, key, width, height, sourceFramebuffer, view, fullSize = false,
-+        capacityWidth = width, capacityHeight = height) {
-         const context = sourceFramebuffer.get_context();
-         const cached = targets.get(key) ?? null;
-         const reusable = cached !== null && cached.context === context
-@@ -174,8 +190,8 @@ export const BackdropCaptureEffect = GObject.registerClass({
-             return;
-         }
- 
--        let textureWidth = width;
--        let textureHeight = height;
-+        let textureWidth = capacityWidth;
-+        let textureHeight = capacityHeight;
-         if (fullSize && !reusable) {
-             // Aura Glass: see full-size-buffers in texture_region.js.
-             const limit = largestViewSize();
-@@ -264,8 +280,12 @@ export const BackdropCaptureEffect = GObject.registerClass({
-         const view = painted_view.get_framebuffer() === sourceFramebuffer ? painted_view : null;
-         const inClone = actor.is_in_clone_paint();
-         if (inClone) {
--            this.ensureFramebuffer(this.cloneTargetsFor(view), `${geometry.width}x${geometry.height}`,
--                geometry.width, geometry.height, sourceFramebuffer, view);
-+            const limit = largestViewSize();
-+            const capacityWidth = cloneCapacity(geometry.width, limit.width);
-+            const capacityHeight = cloneCapacity(geometry.height, limit.height);
-+            this.ensureFramebuffer(this.cloneTargetsFor(view), `${capacityWidth}x${capacityHeight}`,
-+                geometry.width, geometry.height, sourceFramebuffer, view, false,
-+                capacityWidth, capacityHeight);
-         } else {
-             const actorGeometry = actor.get_abs_allocation_vertices()
-                 .flatMap(vertex => [vertex.x, vertex.y, vertex.z]);

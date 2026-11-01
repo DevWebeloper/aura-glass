@@ -38,7 +38,7 @@ upstream pieces and then ties them together so they agree with each other:
 | Piece | Where it comes from | What Aura Glass does to it |
 |---|---|---|
 | Shell + GTK theme | [GNOME-macOS-Tahoe](https://github.com/kayozxo/GNOME-macOS-Tahoe), pinned | installs it as `Aura-Glass`, flattens its shadows/gradients, swaps its hard-coded blues for your GNOME accent, splices in its own stylesheets |
-| Blur | [Blur My Shell](https://github.com/aunetx/blur-my-shell) v76, built from a pinned commit | one patch (a blurred app's dialogs and tool palettes blur too) plus a tuned preset |
+| Blur | [Blur My Shell](https://github.com/aunetx/blur-my-shell) v77, built from a pinned commit | one patch (a blurred app's dialogs and tool palettes blur too) plus a tuned preset |
 | Volume / brightness OSD | [Custom OSD](https://github.com/neuromorph/custom-osd), pinned and patched for GNOME 50/51 | a compact pill that sits on the blur |
 | Aura Glass Helper | first-party extension in `extensions/` | "Blur This App" in the window menu, the adaptive-performance menu in the top bar, a D-Bus bridge for the settings app |
 | Icons, pointers, fonts | Colloid / Reversal / Hatter icons; Adwaita / AOSP / MacTahoe / Moga pointers; Inter / MiSans / SF Pro | optional, picked in the wizard, accent-matched where the pack supports it |
@@ -115,6 +115,10 @@ Open **Aura Glass** from the app grid, or run `aura-glass-settings`.
 
 **Blur fullscreen windows** (`--fullscreen-blur`) is off by default, so a
 fullscreen video or game drops the blur behind it and turns opaque.
+
+A window that fills the screen blurs the wallpaper rather than the windows
+stacked under it, which is cheaper while it redraws. Smaller and half-tiled
+windows keep the live blur.
 
 **Smooth animations** (`--smooth-animations`) is off by default. On, menus,
 folders and notifications open faster, with no stutter. It adds no CPU or GPU

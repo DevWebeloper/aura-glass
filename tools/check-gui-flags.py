@@ -634,6 +634,21 @@ def check_blur_state_model():
             "got allow=%s block=%s widened=%s" % (allow, block, widened))
 
 
+    # A title: entry is its own row: no class wildcard covers it, and it covers
+    # no class, so toggling it never widens to a wildcard on the other list.
+    on, _reason, _pattern = blur_state("title:Code", [], ["*code*"], "all")
+    if not on:
+        failures.append("blur_state: a class wildcard covered a title: entry")
+    on, _reason, _pattern = blur_state("code", ["title:*"], [], "gtk")
+    if on:
+        failures.append("blur_state: a title: entry covered a class")
+    allow, block = [], ["*code*"]
+    widened = set_blur("title:Code", True, allow, block)
+    if allow != ["title:Code"] or block != ["*code*"] or widened:
+        failures.append("set_blur: turning on a title: entry got allow=%s "
+                        "block=%s widened=%s" % (allow, block, widened))
+
+
 check_blur_state_model()
 
 for label, base, target, want in CASES:

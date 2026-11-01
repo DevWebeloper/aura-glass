@@ -66,6 +66,7 @@ check_round_trip "apostrophe" "Bob's App"
 check_round_trip "backslash" 'weird\name'
 check_round_trip "double quote" 'say "hi"'
 check_round_trip "spaces" 'Some App Name'
+check_round_trip "title entries" 'title:Picture-in-Picture' "title:Bob's *"
 check_round_trip "blank lines dropped" org.gnome.Nautilus '' '  ' org.gnome.Console
 
 # --- precedence: flag beats memo beats default ---------------------------
@@ -141,6 +142,16 @@ got="$(printf '*chrome*\n*aura*\nPlank\n' | app_blur_pin_block | tr '\n' ' ')"
 got="$(printf '*chrome*\nPlank\n' | app_blur_pin_block | tr '\n' ' ')"
 [ "$got" = "*chrome* Plank " ] || note \
     "the block list should keep everything else, got: $got"
+
+# A title: entry (upstream #1217) tests the window title, not the class this pin
+# is about, so it is neither coverage for the window nor a block on it.
+got="$(printf 'title:*auraglass*\n' | app_blur_pin_allow | tr '\n' ' ')"
+[ "$got" = "$APP_BLUR_SELF title:*auraglass* " ] || note \
+    "a title: entry should not count as covering the window, got: $got"
+
+got="$(printf 'title:*auraglass*\nPlank\n' | app_blur_pin_block | tr '\n' ' ')"
+[ "$got" = "title:*auraglass* Plank " ] || note \
+    "a title: entry should stay on the block list, got: $got"
 
 if [ "$fail" = 1 ]; then
     printf '\napp blur list check FAILED\n\n'

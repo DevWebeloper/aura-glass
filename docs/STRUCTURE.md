@@ -81,12 +81,14 @@ For "which file draws this button / owns this setting", use
 
 | Patch | Target |
 |---|---|
-| `blur-my-shell-subwindows.patch` | BMS: blur a blurred app's ATTACHED dialogs and UTILITY palettes too |
+| `blur-my-shell-upstream-backports.patch` | BMS: applied first. Four commits from upstream master not in v77: the blur stays up across the lock animations (#1208), the overview dash blurs the app grid under it (#1211), `title:` entries in the blur lists (#1217), a static blur stays still while a window animates (#1218) |
+| `blur-my-shell-subwindows.patch` | BMS: blur a blurred app's ATTACHED dialogs and UTILITY palettes too, and match both class and `title:` entries up the transient-for chain |
 | `blur-my-shell-full-size-buffers.patch` | BMS: a `full-size-buffers` key that keeps blur textures at monitor size instead of reallocating them while an actor animates (`--smooth-animations`) |
 | `blur-my-shell-overview-fade.patch` | BMS: opening the overview fades the window blur out and leaving it fades it back in, the window content easing with it (200 ms each way); both used to switch in one frame. During a touchpad swipe both follow how far open the overview is instead, so a held or reversed swipe keeps them in step with the fingers. Clone captures are kept per 1.25x size step, so the zooming previews reuse textures instead of allocating one per frame |
+| `blur-my-shell-static-maximized.patch` | BMS: applied last. A window covering its monitor (maximized both ways, fullscreen, or sized over the work area) gets static blur and smaller ones dynamic, instead of one type for all; `static-blur=true` still makes every window static. A crossing rebuilds the blur as the other type, after an interactive resize or the overview's motion if one is under way |
 | `custom-osd-gnome50.patch` | Custom OSD on GNOME 50/51 |
 | `copyous-gnome51.patch` | Copyous on GNOME 51 |
-| `wiggly-follow-cursor.patch` | Wiggly: measure the pointer in logical pixels before every shake, grow and shrink about its hotspot, follow the cursor theme itself (`theme.js`), and magnify the shape on screen: the theme's busy loop played, else the static shape named by its pixels and drawn from its largest frame or SVG |
+| `wiggly-follow-cursor.patch` | Wiggly: measure the pointer in logical pixels before every shake, grow and shrink about its hotspot, follow the cursor theme itself (`theme.js`), and magnify the shape on screen: the theme's busy loop played, else the static shape named by its pixels and drawn from its largest frame or SVG. The magnified copy is hidden from pick, so a drop in the overview finds what is under it (KI-41) |
 
 ### `bin/`: commands (most installed into `~/.local/bin`)
 
