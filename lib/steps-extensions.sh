@@ -411,6 +411,7 @@ install_extensions() {
     install_copyous_deps
     patch_copyous_extension
     patch_wiggly_extension
+    patch_status_tray_extension
 }
 
 # Status Tray took over from AppIndicator Support as the tray. Not asked the way
@@ -436,6 +437,38 @@ replace_appindicator() {
         run gnome-extensions uninstall "$old" 2>/dev/null || run rm -rf "$EXT_DIR/$old"
         ok "removed AppIndicator Support"
     fi
+}
+
+# Status Tray hardcodes what an icon with no per-app tuning looks like, once in
+# extension.js and once in prefs.js (the tuner's sliders and its Reset to
+# Default), and has no setting for it. icon-effect-overrides is per app, so it
+# cannot reach an app that has not been seen yet. These are the values tuned by
+# eye in Status Tray's own dialog on the Cachy Update icon, where upstream's are
+# 1.0, -0.25, 0.6 and no tint. Both files are written together so the tuner opens
+# on what the panel draws. Matched on any number, so
+# changing a value here reaches an install already patched. Applied to the EGO
+# download, so an update that moves the code skips this with a warning rather
+# than half-applying it.
+patch_status_tray_extension() {
+    local target="$EXT_DIR/status-tray@keithvassallo.com"
+    [ -d "$target" ] || return 0
+    local ext="$target/extension.js" prefs="$target/prefs.js"
+    local fields='(desaturation = [0-9.]+|brightness = -?[0-9.]+|contrast = [0-9.]+|useTint = (true|false));'
+    if [ "$(grep -cE "let $fields" "$ext" 2>/dev/null)" != 4 ] \
+       || [ "$(grep -cE "this\._$fields" "$prefs" 2>/dev/null)" != 4 ]; then
+        warn "Status Tray changed upstream; tray icons keep its own default effect"
+        return 0
+    fi
+    grep -qF 'let desaturation = 0.29;' "$ext" && grep -qF 'this._desaturation = 0.29;' "$prefs" \
+        && grep -qF 'let brightness = -0.06;' "$ext" && grep -qF 'let contrast = 0.63;' "$ext" \
+        && grep -qF 'let useTint = true;' "$ext" && return 0
+    run sed -i -E \
+        -e 's/(let |this\._)desaturation = [0-9.]+;/\1desaturation = 0.29;/' \
+        -e 's/(let |this\._)brightness = -?[0-9.]+;/\1brightness = -0.06;/' \
+        -e 's/(let |this\._)contrast = [0-9.]+;/\1contrast = 0.63;/' \
+        -e 's/(let |this\._)useTint = (true|false);/\1useTint = true;/' \
+        "$ext" "$prefs"
+    ok "Status Tray icons default to the white-tinted effect"
 }
 
 # Wiggly 10 measures the pointer once, at enable, in texture pixels, and eases

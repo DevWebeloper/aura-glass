@@ -97,6 +97,7 @@ a restart.
 |---|---|
 | Icon packs + accent mapping | `lib/steps-assets.sh` (`install_icons`, `icon_base`, `accent_to_*`), `bin/aura-glass-icon-sync` (light/dark) |
 | Pointer packs, size | `lib/steps-assets.sh` (`install_cursors`, `install_moga_cursors`), `tools/moga_cursor.py`, `apply_cursor_theme`, `apply_cursor_size`, Wiggly's magnified pointer: `patch_wiggly_extension` + `patches/wiggly-follow-cursor.patch` |
+| Tray icon default effect (desaturation, brightness, contrast, tint) | `patch_status_tray_extension` in `lib/steps-extensions.sh`; per-app tuning is Status Tray's `icon-effect-overrides` |
 | Fonts | `lib/steps-fonts.sh`, `apply_font` |
 | Extension catalogue | `lib/steps.sh` (arrays, `ext_description`), `bin/aura-glass-ext`, `lib/steps-extensions.sh` |
 | Tiling Assistant's drag-to-top and `tile-maximize` really maximize, so the titlebar button shows restore (`maximize-with-gap` reset unless a screen gap needs it) | `lib/steps-dconf.sh` (`apply_tiling_maximize`, from `apply_gsettings`) |
