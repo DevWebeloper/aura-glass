@@ -135,9 +135,6 @@ MANIFEST = [
     # The blur radius of each surface, inside the pipeline that surface names
     # in dconf/core.ini. Matched by pipeline name, not the id beside it; the
     # captured number is the whole part of a radius written as N.0.
-    ("TOKEN_BLUR_RADIUS_PANEL", "raw", "dconf/core.ini",
-     r"'name': <'panel'>, 'effects': <\[<\{'type': <'dual_kawase_blur'>, "
-     r"'id': <'[^']*'>, 'params': <\{'unscaled_radius': <(\d+)\.0>"),
     ("TOKEN_BLUR_RADIUS_APPFOLDER", "raw", "dconf/core.ini",
      r"'name': <'app folders'>, 'effects': <\[<\{'type': <'dual_kawase_blur'>, "
      r"'id': <'[^']*'>, 'params': <\{'unscaled_radius': <(\d+)\.0>"),

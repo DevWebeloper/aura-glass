@@ -101,7 +101,7 @@ BMS=/org/gnome/shell/extensions/blur-my-shell
 # stop it. set no longer touches any of them, but begin still snapshots them and
 # revert still restores them: that is what repairs a $CONF_DIR left mid-preview
 # by an older build of this script.
-PREVIEW_MEMOS="app-tint-color shell-tint-color app-transparency radius-preset radius-custom blur-strength blur-brightness window-blur-strength popup-blur-strength panel-blur-strength lockscreen-blur-strength window-blur-brightness popup-blur-brightness panel-blur-brightness lockscreen-blur-brightness popup-opacity panel-height maximized-panel-brightness popup-blur window-blur app-blur-scope app-blur-allow app-blur-block"
+PREVIEW_MEMOS="app-tint-color shell-tint-color app-transparency radius-preset radius-custom blur-strength blur-brightness window-blur-strength popup-blur-strength lockscreen-blur-strength window-blur-brightness popup-blur-brightness lockscreen-blur-brightness popup-opacity panel-height maximized-panel-brightness popup-blur window-blur app-blur-scope app-blur-allow app-blur-block"
 
 usage() {
     printf 'usage: aura-glass-preview begin|set [options]|apps [options]|app-blur --wm-class CLASS --enabled 0|1|commit --session ID -- INSTALLER [ARG...]|revert [--session ID]|status [--json]\n' >&2
@@ -179,11 +179,11 @@ cmd_set() {
             --blur-brightness) blur_brightness="$2"; shift 2 ;;
             # Straight into the variables apply_blur_pipelines reads, which
             # take precedence over the memos it would otherwise fall back to.
-            --window-blur-strength|--popup-blur-strength|--panel-blur-strength|--lockscreen-blur-strength)
+            --window-blur-strength|--popup-blur-strength|--lockscreen-blur-strength)
                 surface_var="${1#--}"; surface_var="${surface_var%-blur-strength}"
                 export "$(printf '%s' "$surface_var" | tr '[:lower:]' '[:upper:]')_BLUR_STRENGTH=$2"
                 shift 2 ;;
-            --window-brightness|--popup-brightness|--panel-brightness|--lockscreen-brightness)
+            --window-brightness|--popup-brightness|--lockscreen-brightness)
                 surface_var="${1#--}"; surface_var="${surface_var%-brightness}"
                 export "$(printf '%s' "$surface_var" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS=$2"
                 shift 2 ;;

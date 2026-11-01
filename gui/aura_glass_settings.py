@@ -290,8 +290,9 @@ BLUR_SURFACES = [
     ("window", "Windows", "Behind app windows"),
     ("popup", "Popups & notifications",
      "Menus, Quick Settings and notifications"),
-    ("panel", "Top bar", "The bar at the top of the screen"),
-    ("lockscreen", "Lock screen", "Also the overview background"),
+    # No top bar row: the bar shares the overview's blur, so it follows this
+    # one (dconf/core.ini, above [blur-my-shell/panel]).
+    ("lockscreen", "Lock screen", "Also the overview and the top bar"),
 ]
 
 # The two brightness memos an earlier release wrote under other names, and the
@@ -542,13 +543,13 @@ TITLEBUTTON_STYLES = [
      "No circle, the icon lights up"),
 ]
 
-# The material on the top bar and the dock. Install-side: apply_glass_style in
-# lib/steps-dconf.sh, whose comment says why it stops at those two and why
-# liquid makes the dock's blur static.
+# The material on the glass. Install-side: apply_glass_style in
+# lib/steps-dconf.sh, whose comment says which surfaces each style reaches, why
+# liquid stays off the top bar and why it makes the dock's blur static.
 GLASS_STYLES = [
     ("frosted", "Frosted", "Blur alone"),
     ("liquid", "Liquid",
-     "Edges bend the view like a lens"),
+     "The dock's edges bend the view like a lens"),
     ("vibrant", "Vibrant",
      "Richer, brighter colours behind the top bar and overview"),
     ("tinted", "Tinted",

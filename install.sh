@@ -141,8 +141,8 @@ BLUR_STRENGTH=""    # empty = remembered choice, then the tuned radii (100)
 BLUR_BRIGHTNESS=""  # empty = remembered choice, then the tuned brightness (100)
 # Each surface's own blur amount and brightness, empty = remembered choice,
 # then main (follow the two above). See BLUR_SURFACES in lib/steps-dconf.sh.
-WINDOW_BLUR_STRENGTH="" POPUP_BLUR_STRENGTH="" PANEL_BLUR_STRENGTH="" LOCKSCREEN_BLUR_STRENGTH=""
-WINDOW_BRIGHTNESS=""    POPUP_BRIGHTNESS=""    PANEL_BRIGHTNESS=""    LOCKSCREEN_BRIGHTNESS=""
+WINDOW_BLUR_STRENGTH="" POPUP_BLUR_STRENGTH="" LOCKSCREEN_BLUR_STRENGTH=""
+WINDOW_BRIGHTNESS=""    POPUP_BRIGHTNESS=""    LOCKSCREEN_BRIGHTNESS=""
 POPUP_OPACITY=""    # empty = remembered choice, then main (follow the windows)
 PANEL_HEIGHT=""     # empty = remembered choice, then the theme's 40px
 ADAPTIVE_BLUR=""     # private transient writer: active | restore, never memoed
@@ -207,15 +207,16 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       wizard's per-extension list sends
     --grain N         film grain over blurred surfaces, 0-1. Default is 0
     --no-grain        no grain at all (same as --grain 0, and the default)
-    --glass-style S   the material on the top bar and the dock: frosted (default,
-                      plain blur), liquid (the edges bend what is behind them
-                      like a lens, with a light rim) or vibrant (the colours
-                      behind come through more saturated and a little
-                      brighter), tinted (toward the accent colour) or smoked
-                      (darker and greyer, for white text). Vibrant, tinted
-                      and smoked reach the overview and lock screen too and
-                      leave the dock frosted. Liquid makes the dock blur the
-                      wallpaper rather than the windows passing behind it. Frosted mode only. Remembered
+    --glass-style S   the material on the glass: frosted (default, plain blur),
+                      liquid (the dock's edges bend what is behind them like a
+                      lens, with a light rim), vibrant (the colours behind come
+                      through more saturated), tinted (toward the accent
+                      colour) or smoked (darker and greyer, for white text).
+                      Vibrant, tinted and smoked reach the top bar, the
+                      overview and the lock screen together and leave the dock
+                      frosted. Liquid reaches the dock alone, which then blurs
+                      the wallpaper rather than the windows passing behind it;
+                      the top bar stays the overview's blur. Frosted mode only. Remembered
                       for later runs
     --liquid-windows  liquid or vibrant behind app windows
                       too. Window blur turns static: a window blurs the
@@ -248,13 +249,13 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       how bright every blur comes out, as a percentage of the
                       tuned brightness: 50-100, 100 is the tuned look (remembered)
     --window-blur-strength P, --popup-blur-strength P,
-    --panel-blur-strength P, --lockscreen-blur-strength P
+    --lockscreen-blur-strength P
                       one surface's own blur amount, in --blur-strength's unit,
                       or main to follow it again. popup is menus, Quick
-                      Settings and notifications; panel the top bar;
-                      lockscreen the lock screen and the overview (remembered)
-    --window-brightness P, --popup-brightness P,
-    --panel-brightness P, --lockscreen-brightness P
+                      Settings and notifications; lockscreen the lock screen,
+                      the overview and the top bar, which share one blur so
+                      the bar matches the overview (remembered)
+    --window-brightness P, --popup-brightness P, --lockscreen-brightness P
                       one surface's own brightness, in --blur-brightness's
                       unit, or main to follow it again (remembered)
     --panel-height PX the top bar's height in logical pixels: 24-48, 40 is the
@@ -429,19 +430,24 @@ parse_flags() {
         --adaptive-blur=*) ADAPTIVE_BLUR="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --blur-brightness) BLUR_BRIGHTNESS="${2:-100}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --blur-brightness=*) BLUR_BRIGHTNESS="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
-        --window-blur-strength|--popup-blur-strength|--panel-blur-strength|--lockscreen-blur-strength)
+        # The top bar's own blur and brightness, retired: the bar shares the
+        # overview's pipeline (dconf/core.ini, above [blur-my-shell/panel]).
+        # Accepted and ignored, so an old command line or memo-era script runs.
+        --panel-blur-strength|--panel-brightness) shift 2 ;;
+        --panel-blur-strength=*|--panel-brightness=*) shift ;;
+        --window-blur-strength|--popup-blur-strength|--lockscreen-blur-strength)
             _surface="${1#--}"; _surface="${_surface%-blur-strength}"
             printf -v "$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BLUR_STRENGTH" '%s' "${2:-main}"
             EXPLICIT_FLAGS=1; shift 2 ;;
-        --window-blur-strength=*|--popup-blur-strength=*|--panel-blur-strength=*|--lockscreen-blur-strength=*)
+        --window-blur-strength=*|--popup-blur-strength=*|--lockscreen-blur-strength=*)
             _surface="${1%%=*}"; _surface="${_surface#--}"; _surface="${_surface%-blur-strength}"
             printf -v "$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BLUR_STRENGTH" '%s' "${1#*=}"
             EXPLICIT_FLAGS=1; shift ;;
-        --popup-brightness|--panel-brightness|--lockscreen-brightness)
+        --popup-brightness|--lockscreen-brightness)
             _surface="${1#--}"; _surface="${_surface%-brightness}"
             printf -v "$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS" '%s' "${2:-main}"
             EXPLICIT_FLAGS=1; shift 2 ;;
-        --popup-brightness=*|--panel-brightness=*|--lockscreen-brightness=*)
+        --popup-brightness=*|--lockscreen-brightness=*)
             _surface="${1%%=*}"; _surface="${_surface#--}"; _surface="${_surface%-brightness}"
             printf -v "$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS" '%s' "${1#*=}"
             EXPLICIT_FLAGS=1; shift ;;
@@ -1332,13 +1338,14 @@ for _flag in "${TYPED_FLAGS[@]}"; do
         --blur-brightness) _typed_percent "$_flag" "$BLUR_BRIGHTNESS" "$BLUR_BRIGHTNESS_MIN" "$BLUR_BRIGHTNESS_MAX" ;;
         --popup-opacity) _typed_percent "$_flag" "$POPUP_OPACITY" "$POPUP_OPACITY_MIN" "$POPUP_OPACITY_MAX" main ;;
         --panel-height) _typed_percent "$_flag" "$PANEL_HEIGHT" "$PANEL_HEIGHT_MIN" "$PANEL_HEIGHT_MAX" ;;
+        --panel-blur-strength|--panel-brightness) ;;   # retired, ignored
         --*-blur-strength)
             _surface="${_flag%%=*}"; _surface="${_surface#--}"; _surface="${_surface%-blur-strength}"
             _var="$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BLUR_STRENGTH"
             _typed_percent "$_flag" "${!_var}" "$BLUR_STRENGTH_MIN" "$BLUR_STRENGTH_MAX" main ;;
         --window-brightness|--app-brightness|--window-blur-brightness)
             _typed_percent "$_flag" "$WINDOW_BRIGHTNESS" "$BLUR_BRIGHTNESS_MIN" "$BLUR_BRIGHTNESS_MAX" main ;;
-        --popup-brightness|--panel-brightness|--lockscreen-brightness)
+        --popup-brightness|--lockscreen-brightness)
             _surface="${_flag%%=*}"; _surface="${_surface#--}"; _surface="${_surface%-brightness}"
             _var="$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS"
             _typed_percent "$_flag" "${!_var}" "$BLUR_BRIGHTNESS_MIN" "$BLUR_BRIGHTNESS_MAX" main ;;

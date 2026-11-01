@@ -367,7 +367,8 @@ apply_radius_dconf() {
     ok "blur corner radii follow the '${RADIUS_PRESET:-default}' preset"
 }
 
-# The material on the top bar and the dock, and optionally behind app windows:
+# The material on the top bar, the overview and the dock, and optionally
+# behind app windows:
 # frosted (the blur alone), liquid (Blur My Shell's refraction effect after
 # the blur: the edge band bends the blurred backdrop like a lens and catches a
 # light rim), vibrant (Blur My Shell's luminosity effect after the blur: the
@@ -394,8 +395,16 @@ apply_radius_dconf() {
 # costs nothing while the desktop repaints. Measured on the panel with
 # tools/gpu-sample.py (amdgpu, 15 s idle): median 20% liquid and frosted alike.
 #
-# Vibrant reaches one surface more than liquid: pipeline `lock screen`, the
-# blurred wallpaper behind the overview and the lock screen. Both are static
+# The top bar has no pipeline of its own: it draws through `lock screen`, the
+# overview background's, so the bar is the overview's blur when the overview
+# opens (dconf/core.ini, above [blur-my-shell/panel]). A style reaches the bar
+# only by reaching `lock screen`, and so the overview and the lock screen with
+# it. Liquid does not: its lens edge and rim would run round the whole screen
+# there, so liquid is the dock (and app windows) alone and the bar stays
+# frosted under it. Vibrant, tinted and smoked reach all three.
+#
+# Vibrant reaches pipeline `lock screen`: the blurred wallpaper behind the
+# overview and the lock screen, and the top bar's blur. It is static
 # blur already, and the luminosity effect draws no edge, so it has no corner
 # radius to match and none of the popup pipeline's trouble. Unlike liquid it
 # leaves the dock alone: the dock keeps its dynamic blur of the windows behind
@@ -406,8 +415,8 @@ apply_radius_dconf() {
 # switch is kept under frosted, so going back to either style brings the
 # windows back the way they were.
 #
-# Tinted and smoked reach what vibrant reaches, the top bar and pipeline
-# `lock screen`, and leave the dock dynamic for the same reason. They never
+# Tinted and smoked reach what vibrant reaches, pipeline `lock screen`, and
+# leave the dock dynamic for the same reason. They never
 # switch app windows to static: --liquid-windows is ignored under them, and
 # a switch from liquid or vibrant with windows on puts the windows' dynamic
 # blur back. Each already has a dynamic-safe counterpart on windows, owned by
@@ -491,14 +500,15 @@ apply_glass_style() {
     fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: glass style $want on the top bar and the dock (app windows: $windows)"
+        info "dry-run: glass style $want (app windows: $windows)"
         return 0
     fi
 
     # An array: `lock screen` has a space in its name.
-    local names=(panel dock)
+    local names=(dock)
     # The others drop the dock: on its dynamic blur the effect would never run.
-    [ "$want" = liquid ] || names=(panel "lock screen")
+    # `lock screen` is the top bar's pipeline too.
+    [ "$want" = liquid ] || names=("lock screen")
     glass_style_takes_windows "$want" && [ "$windows" = 1 ] && names+=(windows)
 
     # Read where install.sh resolves it (flag, memo, default), so a run that
@@ -599,15 +609,14 @@ if want == "liquid":
 #        already reaches the clamp at 1. 1.6 rendered pixel for pixel the
 #        same there, and would only push a muted wallpaper further: at 1.35
 #        a greyish 0.3 becomes 0.4, a colour cast rather than a poster.
-#   brightness_multiplicator 1.06   a small lift, so the colour reads as light
-#        coming through rather than paint on top. In the preview the bar's
-#        mean HSV value went from 0.33 to 0.38 and the white clock and icons
-#        stayed as legible as on frosted.
-#        The lock screen pipeline gets 1.0: its blur is darkened to 0.8 on
-#        purpose so the clock reads, and vibrancy should not undo that. The
-#        windows pipeline gets 1.0 too: its brightness is the user's own
-#        --window-brightness, and a lift here would quietly move it.
-VIBRANT = ("'brightness_shift': <0.0>, 'brightness_multiplicator': <%s>, "
+#   brightness_multiplicator 1.0   no lift. The lock screen pipeline's blur
+#        is darkened to 0.8 on purpose so the clock reads, and vibrancy should
+#        not undo that; the top bar draws through the same pipeline. The
+#        windows pipeline's brightness is the user's own --window-brightness,
+#        and a lift there would quietly move it. (A 1.06 lift on the bar's own
+#        pipeline, before the bar shared the overview's, took its mean HSV value
+#        from 0.33 to 0.38 in the preview.)
+VIBRANT = ("'brightness_shift': <0.0>, 'brightness_multiplicator': <1.0>, "
            "'contrast': <1.0>, 'contrast_center': <0.5>, "
            "'saturation_multiplicator': <1.35>")
 
@@ -639,8 +648,7 @@ SMOKED = ("'brightness_shift': <0.0>, 'brightness_multiplicator': <0.7>, "
 def style_effect(name):
     """This style's effect for the named pipeline, or None for liquid/frosted."""
     if want == "vibrant":
-        lift = "1.0" if name in ("lock screen", "windows") else "1.06"
-        kind, params = "luminosity", VIBRANT % lift
+        kind, params = "luminosity", VIBRANT
     elif want == "smoked":
         kind, params = "luminosity", SMOKED
     elif want == "tinted":
@@ -708,9 +716,9 @@ STYLE_PY
         printf '%s\n' "$windows" > "$windows_memo"
     fi
     if [ "$want" = liquid ] && [ "$windows" = 1 ]; then
-        ok "liquid glass on the top bar, the dock and app windows (remembered for later runs)"
+        ok "liquid glass on the dock and app windows (remembered for later runs)"
     elif [ "$want" = liquid ]; then
-        ok "liquid glass on the top bar and the dock (remembered for later runs)"
+        ok "liquid glass on the dock (remembered for later runs)"
     elif [ "$want" = vibrant ] && [ "$windows" = 1 ]; then
         ok "vibrant glass on the top bar, the overview and app windows (remembered for later runs)"
     elif [ "$want" = vibrant ]; then
@@ -720,7 +728,7 @@ STYLE_PY
     elif [ "$want" = smoked ]; then
         ok "smoked glass on the top bar and the overview (remembered for later runs)"
     else
-        ok "frosted glass on the top bar and the dock"
+        ok "frosted glass on the top bar, the overview and the dock"
     fi
 }
 
@@ -1279,12 +1287,16 @@ PY
 # --blur-strength scales every pipeline's radius and --blur-brightness every
 # pipeline's brightness. Those tuned values are already in proportion to each
 # other, chosen against what each surface sits in front of, so scaling keeps the
-# proportions: the panel stays heavier than the dock at every strength, and the
+# proportions: the top bar stays heavier than the dock at every strength, and the
 # lock screen stays dimmer than the rest at every brightness.
 #
-# Four surfaces can step out of the main numbers: windows, popups (menus, Quick
+# Three surfaces can step out of the main numbers: windows, popups (menus, Quick
 # Settings and the notification banners Blur My Shell v76 blurs through the same
-# pipeline), the top bar and the lock screen (whose pipeline the overview shares).
+# pipeline) and the lock screen (whose pipeline the overview background and the
+# top bar share). The top bar has no override of its own: it has to stay the
+# overview's blur, or opening the overview flashes it (dconf/core.ini, above
+# [blur-my-shell/panel]). --panel-blur-strength and --panel-brightness are
+# accepted and ignored.
 # Each override is in the same unit as its main number and replaces it for that
 # surface alone, and `main` hands the surface back. A surface that was tuned
 # keeps its own value when the main number moves; that is the point of tuning it.
@@ -1313,7 +1325,7 @@ BLUR_BRIGHTNESS_MAX=100
 
 # surface:memo-prefix:dconf component. The memo prefix names the flags too
 # (--window-blur-strength, --window-brightness).
-BLUR_SURFACES="window:applications popup:popup panel:panel lockscreen:lockscreen"
+BLUR_SURFACES="window:applications popup:popup lockscreen:lockscreen"
 
 # A per-surface memo, from its own file or — for the two brightness memos an
 # earlier release wrote under another name — from that one. A legacy value at
