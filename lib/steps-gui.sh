@@ -16,6 +16,10 @@ GUI_DIR="$HOME/.local/share/aura-glass/gui"
 GUI_APP_ID="io.github.DevWebeloper.AuraGlassSettings"
 GUI_DESKTOP="$HOME/.local/share/applications/$GUI_APP_ID.desktop"
 GUI_ICON="$HOME/.local/share/icons/hicolor/scalable/apps/$GUI_APP_ID.svg"
+# The top bar's version: the tile's ring and its glow, one colour, so the shell
+# draws it white like every other status icon. Aura Glass Helper's indicator
+# asks for it by name.
+GUI_ICON_SYMBOLIC="$HOME/.local/share/icons/hicolor/symbolic/apps/$GUI_APP_ID-symbolic.svg"
 
 install_gui() {
     step "Settings window"
@@ -54,6 +58,9 @@ install_gui() {
         "$HOME/.local/bin/aura-glass-preview" 755
     install_if_changed "$REPO_ROOT/gui/icons/$GUI_APP_ID.svg" "$GUI_ICON" 644
     local gui_icon_changed="$INSTALL_CHANGED"
+    install_if_changed "$REPO_ROOT/gui/icons/$GUI_APP_ID-symbolic.svg" \
+        "$GUI_ICON_SYMBOLIC" 644
+    [ "$INSTALL_CHANGED" = 1 ] && gui_icon_changed=1
     if [ "$gui_icon_changed" = 1 ] && [ "${DRY_RUN:-0}" != 1 ] && command -v gtk-update-icon-cache >/dev/null 2>&1; then
         gtk-update-icon-cache -qft "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
     fi

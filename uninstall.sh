@@ -454,6 +454,7 @@ if [[ "$favs" == *"'io.github.DevWebeloper.AuraGlassSettings.desktop'"* ]]; then
     run gsettings set org.gnome.shell favorite-apps "$favs"
 fi
 run rm -f "$HOME/.local/share/icons/hicolor/scalable/apps/io.github.DevWebeloper.AuraGlassSettings.svg"
+run rm -f "$HOME/.local/share/icons/hicolor/symbolic/apps/io.github.DevWebeloper.AuraGlassSettings-symbolic.svg"
 # The bundled wallpapers and the entry that lists them in Settings > Appearance.
 # The picture-uri key is left alone: it is the user's choice, not ours, even
 # when it points at one of these (pick another in Settings > Appearance).

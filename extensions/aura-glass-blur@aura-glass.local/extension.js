@@ -55,7 +55,11 @@ const BMS_SCHEMA_ID = 'org.gnome.shell.extensions.blur-my-shell.applications';
 const SELF_WM_CLASS = 'io.github.DevWebeloper.AuraGlassSettings';
 // The top-bar indicator uses Aura Glass's own application icon rather than
 // cycling through profile status glyphs, keeping a recognizable identity in the panel.
-const APP_ICON = SELF_WM_CLASS;
+// Its symbolic version (gui/icons, installed by install_gui): the full-colour
+// tile through the white-glyph effect below is one solid white square, since
+// none of it is near-white. The symbolic ring is white already, so the effect
+// leaves it alone.
+const APP_ICON = `${SELF_WM_CLASS}-symbolic`;
 
 // The top bar is drawn in one colour: white glyphs, the way the system icons
 // already are. Tray icons from apps are not. Discord and Claude hand over a
@@ -90,6 +94,13 @@ class AuraGlassWhiteGlyphEffect extends Clutter.ShaderEffect {
 });
 
 const WHITE_GLYPH_EFFECT = 'aura-glass-white-glyph';
+
+// Written by bin/aura-glass-update when it reopens the settings window after
+// an install: the pid of the update window that was in front. The reopened
+// settings window would otherwise take the focus from it while the update
+// window still has its Log out / Later question up. A client cannot hand the
+// focus back on Wayland, but the shell can, so the helper does it.
+const KEEP_FOCUS_FILE = 'aura-glass-keep-focus';
 
 const DBUS_NAME = 'io.github.DevWebeloper.AuraGlass';
 const DBUS_PATH = '/io/github/DevWebeloper/AuraGlass';
@@ -1152,7 +1163,39 @@ export default class AuraGlassBlurExtension extends Extension {
             this._scheduleWindowsChanged();
         });
         this._destroyIds.set(window, id);
+        this._keepUpdateWindowFocus(window);
         this._scheduleWindowsChanged();
+    }
+
+    // When the settings window comes back after an update, put the update
+    // window in front again. Read once and removed, on the settings window's
+    // first show (its wm_class is only known by then). 150 ms after it: the
+    // new window's own activation lands first, then this one replaces it.
+    _keepUpdateWindowFocus(window) {
+        const path = GLib.build_filenamev([GLib.get_user_runtime_dir(),
+            KEEP_FOCUS_FILE]);
+        if (!GLib.file_test(path, GLib.FileTest.EXISTS))
+            return;
+        const id = window.connect('shown', () => {
+            window.disconnect(id);
+            if (!this._destroyIds || window.get_wm_class() !== SELF_WM_CLASS)
+                return;
+            let pid = 0;
+            try {
+                const [, bytes] = GLib.file_get_contents(path);
+                pid = parseInt(new TextDecoder().decode(bytes), 10);
+            } catch {
+                return;
+            }
+            GLib.unlink(path);
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
+                const target = global.display.list_all_windows()
+                    .find(w => pid > 0 && w.get_pid() === pid);
+                if (target)
+                    Main.activateWindow(target);
+                return GLib.SOURCE_REMOVE;
+            });
+        });
     }
 
     // Debounced: a window opening or closing is rarely one event by itself —
