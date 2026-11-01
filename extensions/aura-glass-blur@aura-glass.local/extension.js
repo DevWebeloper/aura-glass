@@ -638,7 +638,15 @@ export default class AuraGlassBlurExtension extends Extension {
         }
         this._updateFocusState();
         this._syncPanelShade();
-        this._scheduleTitleSample();
+        // Leaving the overview hands focus back to the window it took it
+        // from, mid-animation, before the window's blur is back behind its
+        // titlebar. A row read then came out another colour than the one
+        // read on the settled desktop, so the shade changed after every
+        // overview round trip. A window already read keeps its colour; its
+        // geometry signals above read it again when it really moves.
+        if (!(Main.overview.animationInProgress &&
+              this._titleColors?.has(this._focusedWindow)))
+            this._scheduleTitleSample();
     }
 
     // The panel lives on the primary monitor, so a window filling another
