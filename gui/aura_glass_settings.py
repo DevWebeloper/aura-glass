@@ -2297,8 +2297,8 @@ def update_blockers(repo):
 # sed keeps. Anything else in refs/tags (a wip, an experiment) is not offered.
 RELEASE_TAG = re.compile(r"^v[0-9][0-9.]*(-beta)?$")
 
-# How many releases the Releases tab lists. The installed one is added when it
-# is older; History shows everything.
+# How many releases the Releases tab lists, after main's tip. The installed one
+# is added when it is older; History shows everything.
 SHOWN_VERSIONS = 5
 
 # The branch every release is cut from, as its remote-tracking ref.
@@ -2525,19 +2525,6 @@ def shown_on_main(sha, subject, head, tip):
     return humanize_change(subject) is not None or sha in (head, tip)
 
 
-def tag_changes(repo, sha):
-    """What one tag (a commit on main's own line) brought in, as subjects.
-
-    A merge brought in a whole branch, so its changes are that branch's
-    commits; anything else is the one commit.
-    """
-    parents = (git_out(repo, "rev-list", "--parents", "-n", "1", sha) or "").split()
-    if len(parents) > 2:
-        return commit_subjects(repo, parents[1], sha, limit=40)
-    subject = git_out(repo, "log", "-1", "--format=%s", sha)
-    return [subject] if subject else []
-
-
 def update_changelog(repo, target, notes):
     """Everything an update to target brings, for the update window.
 
@@ -2630,10 +2617,13 @@ def updates_snapshot(repo, fetch):
             tag["time"] = int(fields[4]) if fields[4].isdigit() else 0
             if not shown_on_main(tag["sha"], tag["subject"], head, tip):
                 continue
-            # Named only where it will be shown: one describe per row.
-            if len(tags) < SHOWN_VERSIONS or tag["sha"] == head:
-                tag["name"] = version_name(repo, tag["sha"])
-                tag["changes"] = tag_changes(repo, tag["sha"])
+            # Only main's tip is shown, so only it is named, and its changes
+            # are everything since the newest release: the one row reads as
+            # the whole changelog of what the next release will be.
+            if tag["sha"] == tip:
+                tag["name"] = version_name(repo, tip)
+                tag["changes"] = commit_subjects(repo, since, MAIN_REF,
+                                                 limit=200)
             tags.append(tag)
         main = {"tip": tip, "tags": tags}
     branch = current_branch(repo)
@@ -8105,9 +8095,11 @@ class Window(Adw.ApplicationWindow):
         if data["test"]:
             head = None
 
+        # Of the tags (v0.3.5+N), only main's tip: its changelog holds every
+        # commit since the newest release, so the older tags would only repeat
+        # parts of it.
         tags = data["main"]["tags"] if data["main"] else []
-        shown_tags = tags[:SHOWN_VERSIONS] + [
-            t for t in tags[SHOWN_VERSIONS:] if t["sha"] == head]
+        shown_tags = [t for t in tags[:1] if t["sha"] == tip]
         # One list, newest first by date, tags and releases side by side.
         entries = [(t["time"], self._tag_row(t, head, tip)) for t in shown_tags]
 
