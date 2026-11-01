@@ -71,7 +71,6 @@ apply_glass_mode() {
                 APP_BLUR_SCOPE="none"
             fi
             [ -n "${POPUP_BLUR_EXPLICIT:-}" ]  || WANT_POPUP_BLUR=0
-            [ -n "${NOTIFICATION_BLUR_EXPLICIT:-}" ] || WANT_NOTIFICATION_BLUR=0
             ;;
         *)  # No mode to apply: a run driven by bare flags, on a machine that
             # has never been told about modes. The flags stand as given.
@@ -126,18 +125,16 @@ seed_glass_mode() {
     [ -d "$dir" ] && return 0
     mkdir -p "$dir"
 
-    local disk_level disk_app disk_shell disk_strength disk_scope disk_popup disk_notification
-    local disk_brightness disk_win_brightness disk_ground
+    local disk_level disk_app disk_shell disk_strength disk_scope disk_popup
+    local disk_brightness disk_popup_opacity entry surface legacy
     disk_level="$(cat "$CONF_DIR/app-transparency" 2>/dev/null || true)"
     disk_app="$(cat "$CONF_DIR/app-tint-color" 2>/dev/null || true)"
     disk_shell="$(cat "$CONF_DIR/shell-tint-color" 2>/dev/null || true)"
     disk_strength="$(cat "$CONF_DIR/blur-strength" 2>/dev/null || true)"
     disk_scope="$(cat "$CONF_DIR/app-blur-scope" 2>/dev/null || true)"
     disk_popup="$(cat "$CONF_DIR/popup-blur" 2>/dev/null || true)"
-    disk_notification="$(cat "$CONF_DIR/notification-blur" 2>/dev/null || true)"
-    disk_brightness="$(cat "$CONF_DIR/popup-brightness" 2>/dev/null || true)"
-    disk_win_brightness="$(cat "$CONF_DIR/window-brightness" 2>/dev/null || true)"
-    disk_ground="$(cat "$CONF_DIR/notification-opacity" 2>/dev/null || true)"
+    disk_brightness="$(cat "$CONF_DIR/blur-brightness" 2>/dev/null || true)"
+    disk_popup_opacity="$(cat "$CONF_DIR/popup-opacity" 2>/dev/null || true)"
 
     if [ "${GLASS_MODE:-}" = performance ]; then
         mode_memo_write app-transparency "1.00"
@@ -145,11 +142,6 @@ seed_glass_mode() {
         mode_memo_write shell-tint-color "#000000"
         mode_memo_write app-blur-scope   "none"
         mode_memo_write popup-blur       "0"
-        mode_memo_write notification-blur "0"
-        mode_memo_write blur-strength    "100"
-        mode_memo_write popup-brightness "115"
-        mode_memo_write window-brightness "100"
-        mode_memo_write notification-opacity "40"
     else
         # With no memo to inherit, the same level install.sh's own resolution
         # falls back to — 0.95 without window blur, 0.90 with it. Seeding 0
@@ -162,11 +154,21 @@ seed_glass_mode() {
         mode_memo_write shell-tint-color "${disk_shell:-#000000}"
         mode_memo_write app-blur-scope   "${disk_scope:-all}"
         mode_memo_write blur-strength    "${disk_strength:-100}"
-        mode_memo_write popup-brightness "${disk_brightness:-115}"
-        mode_memo_write window-brightness "${disk_win_brightness:-100}"
-        mode_memo_write notification-opacity "${disk_ground:-40}"
+        mode_memo_write blur-brightness  "${disk_brightness:-100}"
+        mode_memo_write popup-opacity    "${disk_popup_opacity:-main}"
         mode_memo_write popup-blur       "${disk_popup:-1}"
-        mode_memo_write notification-blur "${disk_notification:-1}"
+        # Each surface's own blur, from the top-level memos (and the two
+        # brightness memos an earlier release wrote under other names) the
+        # same way resolve_blur_pipelines reads them.
+        for entry in $BLUR_SURFACES; do
+            surface="${entry%%:*}"
+            legacy="$(surface_brightness_legacy "$surface")"
+            mode_memo_write "$surface-blur-strength" \
+                "$(surface_memo_read "$CONF_DIR" "$surface-blur-strength")"
+            # shellcheck disable=SC2086 # the legacy name and its defaults, split
+            mode_memo_write "$surface-blur-brightness" \
+                "$(surface_memo_read "$CONF_DIR" "$surface-blur-brightness" $legacy)"
+        done
     fi
 }
 
@@ -204,21 +206,28 @@ load_glass_mode_memos() {
         || SHELL_TINT_COLOR="$(mode_memo_read shell-tint-color '#000000')"
 
     if [ "${GLASS_MODE}" = frosted ]; then
-        [ -n "${BLUR_STRENGTH_EXPLICIT:-}" ] || [ -n "${BLUR_STRENGTH:-}" ] \
+        [ -n "${BLUR_STRENGTH:-}" ] \
             || BLUR_STRENGTH="$(mode_memo_read blur-strength 100)"
-        [ -n "${POPUP_BRIGHTNESS_EXPLICIT:-}" ] || [ -n "${POPUP_BRIGHTNESS:-}" ] \
-            || POPUP_BRIGHTNESS="$(mode_memo_read popup-brightness 115)"
-        [ -n "${WINDOW_BRIGHTNESS_EXPLICIT:-}" ] || [ -n "${WINDOW_BRIGHTNESS:-}" ] \
-            || WINDOW_BRIGHTNESS="$(mode_memo_read window-brightness 100)"
-        [ -n "${NOTIFICATION_OPACITY_EXPLICIT:-}" ] || [ -n "${NOTIFICATION_OPACITY:-}" ] \
-            || NOTIFICATION_OPACITY="$(mode_memo_read notification-opacity 40)"
+        [ -n "${BLUR_BRIGHTNESS:-}" ] \
+            || BLUR_BRIGHTNESS="$(mode_memo_read blur-brightness 100)"
+        [ -n "${POPUP_OPACITY:-}" ] \
+            || POPUP_OPACITY="$(mode_memo_read popup-opacity main)"
+        local entry surface var bvar legacy dir
+        dir="$(modes_root)/$GLASS_MODE"
+        for entry in $BLUR_SURFACES; do
+            surface="${entry%%:*}"
+            var="$(printf '%s' "$surface" | tr '[:lower:]' '[:upper:]')_BLUR_STRENGTH"
+            bvar="$(printf '%s' "$surface" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS"
+            [ -n "${!var:-}" ] \
+                || printf -v "$var" '%s' "$(surface_memo_read "$dir" "$surface-blur-strength")"
+            legacy="$(surface_brightness_legacy "$surface")"
+            # shellcheck disable=SC2086 # the legacy name and its defaults, split
+            [ -n "${!bvar:-}" ] \
+                || printf -v "$bvar" '%s' "$(surface_memo_read "$dir" "$surface-blur-brightness" $legacy)"
+        done
         if [ -z "${POPUP_BLUR_EXPLICIT:-}" ]; then
             WANT_POPUP_BLUR="$(mode_memo_read popup-blur 1)"
             POPUP_BLUR_EXPLICIT=1
-        fi
-        if [ -z "${NOTIFICATION_BLUR_EXPLICIT:-}" ]; then
-            WANT_NOTIFICATION_BLUR="$(mode_memo_read notification-blur 1)"
-            NOTIFICATION_BLUR_EXPLICIT=1
         fi
         if [ -z "${APP_BLUR_SCOPE_EXPLICIT:-}" ]; then
             APP_BLUR_SCOPE="$(mode_memo_read app-blur-scope all)"
@@ -235,14 +244,19 @@ save_glass_mode_memos() {
     if [ "${GLASS_MODE:-}" = performance ]; then
         mode_memo_write app-blur-scope   "none"
         mode_memo_write popup-blur       "0"
-        mode_memo_write notification-blur "0"
     else
         mode_memo_write blur-strength    "${BLUR_STRENGTH:-100}"
-        mode_memo_write popup-brightness "${POPUP_BRIGHTNESS:-115}"
-        mode_memo_write window-brightness "${WINDOW_BRIGHTNESS:-100}"
-        mode_memo_write notification-opacity "${NOTIFICATION_OPACITY:-40}"
+        mode_memo_write blur-brightness  "${BLUR_BRIGHTNESS:-100}"
+        mode_memo_write popup-opacity    "${POPUP_OPACITY:-main}"
+        local entry surface var bvar
+        for entry in $BLUR_SURFACES; do
+            surface="${entry%%:*}"
+            var="$(printf '%s' "$surface" | tr '[:lower:]' '[:upper:]')_BLUR_STRENGTH"
+            bvar="$(printf '%s' "$surface" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS"
+            mode_memo_write "$surface-blur-strength"   "${!var:-main}"
+            mode_memo_write "$surface-blur-brightness" "${!bvar:-main}"
+        done
         mode_memo_write popup-blur       "${WANT_POPUP_BLUR:-1}"
-        mode_memo_write notification-blur "${WANT_NOTIFICATION_BLUR:-1}"
         mode_memo_write app-blur-scope   "${APP_BLUR_SCOPE:-all}"
     fi
     return 0

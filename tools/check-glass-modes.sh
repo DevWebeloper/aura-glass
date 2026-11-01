@@ -128,7 +128,7 @@ printf '#000000\n'  > "$scratch/.config/aura-glass/shell-tint-color"
 # value — so the line itself prints the same popup=0 whether or not the
 # re-read after it was skipped. What actually moves is the dconf write those
 # functions make, echoed here because this is a dry run. blur-strength and
-# shell-tint-color have no such second reader — apply_blur_strength and
+# shell-tint-color have no such second reader — apply_blur_pipelines and
 # apply_shell_tint_color only fall back to the shared memo when the value
 # itself is still empty, which load_glass_mode_memos never leaves it — so
 # their own dry-run lines are asserted on for the same reason: it is where
@@ -148,7 +148,7 @@ case "$raw" in
     *) failures+=("switching back to frosted should keep app-blur-scope all (no 'enable-all true' dry-run write seen)") ;;
 esac
 case "$raw" in
-    *"dry-run: scale every blur radius to 150%"*) ;;
+    *"dry-run: blur at 150%,"*) ;;
     *) failures+=("switching back to frosted should restore blur-strength 150 (line not seen)") ;;
 esac
 case "$raw" in

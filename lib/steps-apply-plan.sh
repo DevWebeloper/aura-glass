@@ -19,7 +19,10 @@ select_apply_actions() {
             --cursor-size|--cursor-size=*) _apply_add cursor-size ;;
             --cursors|--cursors=*|--no-cursors) _apply_add cursor-theme ;;
             --window-buttons|--window-buttons=*) _apply_add window-buttons ;;
-            --window-brightness|--window-brightness=*|--app-brightness|--app-brightness=*) _apply_add window-brightness ;;
+            # Every blur amount and brightness is one rewrite of the pipelines
+            # blob from dconf/core.ini's values (apply_blur_pipelines), so any
+            # of them, alone or together, is that one step.
+            --blur-strength|--blur-strength=*|--blur-brightness|--blur-brightness=*|--*-blur-strength|--*-blur-strength=*|--window-brightness|--window-brightness=*|--app-brightness|--app-brightness=*|--window-blur-brightness|--window-blur-brightness=*|--popup-brightness|--popup-brightness=*|--panel-brightness|--panel-brightness=*|--lockscreen-brightness|--lockscreen-brightness=*) _apply_add blur-pipelines ;;
             --fullscreen-blur|--no-fullscreen-blur) _apply_add fullscreen-blur ;;
             --smooth-animations|--no-smooth-animations) _apply_add smooth-animations ;;
             --window-animation-speed|--window-animation-speed=*|--notification-animation-speed|--notification-animation-speed=*|--menu-animation-speed|--menu-animation-speed=*) _apply_add animation-speed ;;
@@ -30,7 +33,7 @@ select_apply_actions() {
             # the sheet and left the actor at its old value, so Chrome stopped
             # showing the blur while GTK apps still did.
             --app-transparency|--app-transparency=*|--no-app-transparency) _apply_add css; _apply_add app-opacity ;;
-            --app-tint-color|--app-tint-color=*|--shell-tint-color|--shell-tint-color=*|--notification-opacity|--notification-opacity=*|--maximized-panel-brightness|--maximized-panel-brightness=*|--titlebar-button-style|--titlebar-button-style=*) _apply_add css ;;
+            --app-tint-color|--app-tint-color=*|--shell-tint-color|--shell-tint-color=*|--popup-opacity|--popup-opacity=*|--maximized-panel-brightness|--maximized-panel-brightness=*|--panel-height|--panel-height=*|--titlebar-button-style|--titlebar-button-style=*) _apply_add css ;;
             *) APPLY_FALLBACK_REASON="unclassified flag: $flag"; APPLY_ACTIONS=(full); return ;;
         esac
     done

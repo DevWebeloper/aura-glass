@@ -4,7 +4,7 @@
 #
 # Unlike tools/check-radius-preset.sh this cannot run in an isolated tmpdir:
 # aura-glass-preview calls the real install_css / apply_radius_dconf /
-# apply_app_blur / apply_popup_blur / apply_blur_strength, which write real
+# apply_app_blur / apply_popup_blur / apply_blur_pipelines, which write real
 # CSS under $CONF_DIR, real dconf keys under
 # /org/gnome/shell/extensions/blur-my-shell, and — through
 # ~/.local/bin/aura-glass-apply — the real installed theme and
@@ -38,7 +38,7 @@ if ! command -v dconf >/dev/null 2>&1; then
     exit 0
 fi
 
-MEMOS="app-tint-color shell-tint-color app-transparency radius-preset radius-custom blur-strength popup-brightness notification-opacity popup-blur notification-blur window-blur app-blur-scope app-blur-allow app-blur-block"
+MEMOS="app-tint-color shell-tint-color app-transparency radius-preset radius-custom blur-strength blur-brightness popup-opacity popup-blur window-blur app-blur-scope app-blur-allow app-blur-block"
 
 hash_sheets() {
     # shellcheck disable=SC2012
@@ -78,10 +78,9 @@ shell_tint="$(memo shell-tint-color)"; [ "$shell_tint" = "(absent)" ] && shell_t
 transparency="$(memo app-transparency)"; [ "$transparency" = "(absent)" ] && transparency="0"
 radius_preset="$(memo radius-preset)"; [ "$radius_preset" = "(absent)" ] && radius_preset="default"
 blur_strength="$(memo blur-strength)"; [ "$blur_strength" = "(absent)" ] && blur_strength="100"
-popup_brightness="$(memo popup-brightness)"; [ "$popup_brightness" = "(absent)" ] && popup_brightness="115"
-notification_opacity="$(memo notification-opacity)"; [ "$notification_opacity" = "(absent)" ] && notification_opacity="40"
+blur_brightness="$(memo blur-brightness)"; [ "$blur_brightness" = "(absent)" ] && blur_brightness="100"
+popup_opacity="$(memo popup-opacity)"; [ "$popup_opacity" = "(absent)" ] && popup_opacity="main"
 popup_blur="$(memo popup-blur)"; [ "$popup_blur" = "(absent)" ] && popup_blur="1"
-notification_blur="$(memo notification-blur)"; [ "$notification_blur" = "(absent)" ] && notification_blur="1"
 window_blur="$(memo window-blur)"; [ "$window_blur" = "(absent)" ] && window_blur="1"
 scope="$(memo app-blur-scope)"; [ "$scope" = "(absent)" ] && scope="gtk"
 [ "$window_blur" = 1 ] || scope="gtk"   # aura-glass-preview's --scope is meaningless with --window-blur 0
@@ -94,9 +93,9 @@ trap cleanup EXIT
 echo "1) a no-op set changes nothing on disk"
 "$SCRIPT" set --app-tint "$app_tint" --shell-tint "$shell_tint" \
     --transparency "$transparency" --radius-preset "$radius_preset" \
-    --blur-strength "$blur_strength" --popup-brightness "$popup_brightness" \
-    --notification-opacity "$notification_opacity" \
-    --popup-blur "$popup_blur" --notification-blur "$notification_blur" \
+    --blur-strength "$blur_strength" --blur-brightness "$blur_brightness" \
+    --popup-opacity "$popup_opacity" \
+    --popup-blur "$popup_blur" \
     --window-blur "$window_blur" --scope "$scope" >/dev/null
 [ "$(hash_sheets)" = "$BASELINE_HASH" ] \
     || fail "a no-op set changed the installed sheets"
@@ -107,9 +106,9 @@ echo "2) a real candidate reaches the desktop"
 other_radius="rounded"; [ "$radius_preset" = "rounded" ] && other_radius="flat"
 "$SCRIPT" set --app-tint "$app_tint" --shell-tint "$shell_tint" \
     --transparency "$transparency" --radius-preset "$other_radius" \
-    --blur-strength "$blur_strength" --popup-brightness "$popup_brightness" \
-    --notification-opacity "$notification_opacity" \
-    --popup-blur "$popup_blur" --notification-blur "$notification_blur" \
+    --blur-strength "$blur_strength" --blur-brightness "$blur_brightness" \
+    --popup-opacity "$popup_opacity" \
+    --popup-blur "$popup_blur" \
     --window-blur "$window_blur" --scope "$scope" >/dev/null
 got="$(dconf read /org/gnome/shell/extensions/blur-my-shell/applications/corner-radius 2>/dev/null || true)"
 [ -n "$got" ] && [ "$got" != "$BASELINE_RADIUS_DCONF" ] \
@@ -130,9 +129,9 @@ echo "3) a set writes no memo at all, not even one it puts back"
 CTIMES_BEFORE="$(memo_ctimes)"
 "$SCRIPT" set --app-tint "$app_tint" --shell-tint "$shell_tint" \
     --transparency "$transparency" --radius-preset "$other_radius" \
-    --blur-strength "$blur_strength" --popup-brightness "$popup_brightness" \
-    --notification-opacity "$notification_opacity" \
-    --popup-blur "$popup_blur" --notification-blur "$notification_blur" \
+    --blur-strength "$blur_strength" --blur-brightness "$blur_brightness" \
+    --popup-opacity "$popup_opacity" \
+    --popup-blur "$popup_blur" \
     --window-blur "$window_blur" --scope "$scope" >/dev/null
 [ "$(memo_ctimes)" = "$CTIMES_BEFORE" ] \
     || fail "a set wrote a \$CONF_DIR memo and restored it — PREVIEW_MODE did not reach every apply_* function"

@@ -608,9 +608,9 @@ class Window(Adw.ApplicationWindow):
     def page_blur_details(self):
         page = Adw.PreferencesPage()
 
-        popup = Adw.PreferencesGroup(title="Popups and menus")
+        popup = Adw.PreferencesGroup(title="Popups, menus and notifications")
         row = Adw.SwitchRow(
-            title="Blur behind popups, menus and the top bar",
+            title="Blur behind popups, menus, notifications and the top bar",
             subtitle="Off leaves them flat and translucent instead",
             active=self.answers.popup_blur)
         row.connect("notify::active", lambda r, _p: setattr(
