@@ -195,7 +195,11 @@
  *    with a 16px icon, transparent background, and subtle hover/active states,
  *    aligning it harmoniously beside the 16px eye icon with zero overlap.
  */
-.login-dialog-prompt-entry-area {
+/* On the row, not .login-dialog-prompt-entry-area. That area stays hidden until
+ * the first question, and the dialog centers the prompt by its natural height,
+ * so a margin there moved the avatar and username up when the entry appeared.
+ */
+.login-dialog-prompt-layout .login-dialog-button-box {
   margin: 0.5em 0;
 }
 
@@ -288,6 +292,37 @@
   background-color: transparent !important;
   border: none !important;
   box-shadow: none !important;
+}
+
+/* Gaze's Confirm Face Unlock button. It carries the .default class, so the
+ * stock .button.default paints it -st-accent-color. The greeter runs as the gdm
+ * user and never sees the desktop's accent, which left it stock blue on the
+ * glass login screen. It takes the fill of the entry it replaces and the
+ * hover/active steps of .next-button instead. box-shadow needs !important
+ * because the stock :focus ring has it, and Gaze focuses this button on show.
+ */
+.login-dialog .button.modal-dialog-button.default,
+.unlock-dialog .button.modal-dialog-button.default {
+  background-color: rgba(255, 255, 255, 0.10);
+  border: none;
+  box-shadow: none !important;
+  color: #ffffff;
+}
+
+.login-dialog .button.modal-dialog-button.default:focus,
+.unlock-dialog .button.modal-dialog-button.default:focus {
+  background-color: rgba(255, 255, 255, 0.10);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.32) !important;
+}
+
+.login-dialog .button.modal-dialog-button.default:hover,
+.unlock-dialog .button.modal-dialog-button.default:hover {
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+.login-dialog .button.modal-dialog-button.default:active,
+.unlock-dialog .button.modal-dialog-button.default:active {
+  background-color: rgba(255, 255, 255, 0.28);
 }
 
 /* Ensure peek-password eye icon is properly sized and styled */
