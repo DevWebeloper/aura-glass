@@ -96,9 +96,8 @@ StDrawingArea {
  *
  * Aura Glass Helper sets the duration inline for each change, which out-ranks
  * both: the window animation time for a maximize or unmaximize (scaled by
- * --window-animation-speed), the overview's 250ms when it opens or closes. It
- * also paints the shade in the covering window's titlebar colour, at this
- * rule's alpha. These 250ms are what the bar does while the helper is off.
+ * --window-animation-speed), the overview's 250ms when it opens or closes.
+ * These 250ms are what the bar does while the helper is off.
  */
 #panel.transparent-panel {
   transition-duration: 250ms !important;
