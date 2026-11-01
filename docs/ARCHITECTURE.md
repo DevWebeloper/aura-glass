@@ -271,7 +271,9 @@ bounded per surface by `radius_bounds`). `pill` is a retired name that
 **Project rule:** a painted radius must equal the blur radius behind it, so
 `apply_radius_css` (paint) and `apply_radius_dconf` (blur) always move
 together. Since Blur My Shell v76 a blur's corner comes only from its
-component's corner-radius key; no pipeline carries a `corner` effect.
+component's corner-radius key; no pipeline carries a `corner` effect. Overview
+workspaces have no painted half: `apply_radius_dconf` sets their
+`workspace-corner-radius` key from the window's token.
 
 ---
 

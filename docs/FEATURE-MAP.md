@@ -31,6 +31,7 @@ a restart.
 | Other popups | `shell-popup-blur` | `[blur-my-shell/popup] corner-radius` | `TOKEN_RADIUS_POPUP` | `apply_radius_dconf` |
 | Volume / brightness OSD pill | none (drawn by Custom OSD) | `[custom-osd]`, `[blur-my-shell/popup] osd-corner-radius` | `TOKEN_RADIUS_OSD` | `sync_osd_profile`, `apply_radius_dconf`. Patch: `patches/custom-osd-gnome50.patch` |
 | App folders | `shell-00-flat` | `[blur-my-shell/appfolder]`, pipeline `app folders` | `TOKEN_BLUR_RADIUS_APPFOLDER` | `load_dconf` |
+| Overview workspace corners | none | `[blur-my-shell/overview] workspace-corner-radius`. Only while the overview blur is on: with it off (performance, adaptive overlay) Blur My Shell leaves GNOME's hardcoded 30 | `TOKEN_RADIUS_WINDOW` | `apply_radius_dconf` |
 | Overview | none | `[blur-my-shell/overview]`; window blur kept out by `[applications] blur-on-overview=false`, faded out on opening it and eased back in on leaving it by `patches/blur-my-shell-overview-fade.patch` (following the overview's progress during a touchpad swipe, both ways) | none | `load_dconf` |
 | Dash to Dock / window list | none | `[blur-my-shell/dash-to-dock]`, `[…/window-list]`, pipelines `dock`, `window list` | `TOKEN_BLUR_RADIUS_DASH_TO_DOCK`, `TOKEN_BLUR_RADIUS_WINDOW_LIST` | `load_dconf` |
 | Lock screen blur | none | `[blur-my-shell/lockscreen]` | none | `load_dconf` |
@@ -120,7 +121,7 @@ a restart.
 
 | Token (`tokens/tokens.sh`) | Value | Consumers | Checker |
 |---|---|---|---|
-| `TOKEN_RADIUS_WINDOW` | 30 | `gtk3-tweaks.css`, `gtk4-70-surfaces.css`, `core.ini [applications] corner-radius`, the pipeline `windows` corner in `core.ini`, the GUI preset table | `check-tokens.sh`, `check-gui-radius.py` |
+| `TOKEN_RADIUS_WINDOW` | 30 | `gtk3-tweaks.css`, `gtk4-70-surfaces.css`, `core.ini [applications] corner-radius`, `core.ini [overview] workspace-corner-radius`, the pipeline `windows` corner in `core.ini`, the GUI preset table | `check-tokens.sh`, `check-gui-radius.py` |
 | `TOKEN_RADIUS_MENU` | 26 | `shell-20-popup-menus.css`, `shell-popup-blur.css`, `core.ini [popup] menu-corner-radius` | `check-tokens.sh` |
 | `TOKEN_RADIUS_QUICK_SETTINGS` | 33 | `shell-20-popup-menus.css` (2 sites), `shell-popup-blur.css` (2), `core.ini [popup] quick-settings-corner-radius` | `check-tokens.sh` |
 | `TOKEN_RADIUS_NOTIFICATION` | 20 | `shell-30-notifications.css` (4), `shell-80-solid.css` (2), `core.ini [popup] notification-corner-radius` | `check-tokens.sh` |

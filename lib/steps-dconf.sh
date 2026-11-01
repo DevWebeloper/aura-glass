@@ -342,11 +342,18 @@ load_dconf() {
 # the blur half, and the two read the same TOKEN_RADIUS_* variables from the same
 # call to radius_preset_values so they cannot disagree.
 #
-# Two of these have no painted counterpart at all. `corner-radius` under popup is
-# the generic fallback for surfaces the specific keys do not claim, and
+# Three of these have no painted counterpart at all. `corner-radius` under popup
+# is the generic fallback for surfaces the specific keys do not claim,
 # `osd-corner-radius` belongs to a pill Custom OSD draws rather than to any
 # stylesheet — see TOKEN_RADIUS_OSD for why that one does not simply scale with
-# the rest.
+# the rest — and `workspace-corner-radius` is the corner Blur My Shell v77 clips
+# overview workspaces at, which follows the window's token.
+#
+# That last key only works while the overview component is on: with its blur off
+# (performance, an adaptive overlay, a user's own switch) Blur My Shell hands the
+# workspace back to GNOME's hardcoded 30, and neither the key nor the theme's
+# `.workspace-background` rule can move that clip. So the early return below loses
+# nothing, and the next run in frosted writes the current preset's value.
 apply_radius_dconf() {
     local base=/org/gnome/shell/extensions/blur-my-shell
 
@@ -359,6 +366,7 @@ apply_radius_dconf() {
     fi
 
     run dconf write "$base/applications/corner-radius" "$TOKEN_RADIUS_WINDOW"
+    run dconf write "$base/overview/workspace-corner-radius" "$TOKEN_RADIUS_WINDOW"
     run dconf write "$base/popup/menu-corner-radius" "$TOKEN_RADIUS_MENU"
     run dconf write "$base/popup/quick-settings-corner-radius" "$TOKEN_RADIUS_QUICK_SETTINGS"
     run dconf write "$base/popup/notification-corner-radius" "$TOKEN_RADIUS_NOTIFICATION"
