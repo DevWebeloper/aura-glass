@@ -68,10 +68,10 @@ BEST_CATALOGUE = [
      "tier": "core"},
     {"uuid": "appindicatorsupport@rgcjonas.gmail.com",
      "tier": "recommended"},
-    {"uuid": "Vitals@CoreCoding.com", "tier": "full"},
+    {"uuid": "restartto@tiagoporsch.github.io", "tier": "full"},
 ]
 BEST_EXTENSIONS = ["appindicatorsupport@rgcjonas.gmail.com",
-                   "Vitals@CoreCoding.com"]
+                   "restartto@tiagoporsch.github.io"]
 
 
 def answers(**kw):

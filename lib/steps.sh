@@ -165,10 +165,15 @@ EXT_CORE=(
 # /usr/share/gnome-shell/extensions before downloading, so those are enabled in
 # place rather than shadowed by a second copy under $HOME that would then drift
 # from whatever the system ships.
+#
+# Quick Settings Audio Panel and Vitals were catalogued here once and are no
+# longer offered. They are not retired either (disable_retired_extensions): an
+# install that has one keeps it, installed and enabled, and only stops being
+# checked and updated by our runs, because a remembered pack drops a UUID the
+# catalogue no longer names.
 EXT_EXTRA_RECOMMENDED=(
     appindicatorsupport@rgcjonas.gmail.com
     tiling-assistant@leleat-on-github
-    quick-settings-audio-panel@rayzeq.github.io
     hotedge@jonathan.jdoda.ca
     kiwimenu@kemma
     copyous@boerdereinar.dev
@@ -178,12 +183,10 @@ EXT_EXTRA_RECOMMENDED=(
 EXT_EXTRA_ALL=(
     appindicatorsupport@rgcjonas.gmail.com
     tiling-assistant@leleat-on-github
-    quick-settings-audio-panel@rayzeq.github.io
     hotedge@jonathan.jdoda.ca
     kiwimenu@kemma
     copyous@boerdereinar.dev
     wiggly@mojarch
-    Vitals@CoreCoding.com
     restartto@tiagoporsch.github.io
 )
 
@@ -220,8 +223,6 @@ ext_description() {
             printf 'Aura Glass helper — adaptive performance profile menu and per-app blur toggle' ;;
         appindicatorsupport@rgcjonas.gmail.com)
             printf 'AppIndicator Support — System tray icons (Steam, Discord, Slack, etc.)' ;;
-        quick-settings-audio-panel@rayzeq.github.io)
-            printf 'Quick Settings Audio Panel — Per-app volume mixer and audio device switcher in Quick Settings' ;;
         tiling-assistant@leleat-on-github)
             printf 'Tiling Assistant — Window snap assist and 2x2 quarter tiling' ;;
         hotedge@jonathan.jdoda.ca)
@@ -232,8 +233,6 @@ ext_description() {
             printf 'Copyous — Modern clipboard history manager with preview' ;;
         wiggly@mojarch)
             printf 'Wiggly — Shake the mouse to magnify the cursor and find it' ;;
-        Vitals@CoreCoding.com)
-            printf 'Vitals — Live CPU, RAM, temp, load & network monitor in panel' ;;
         restartto@tiagoporsch.github.io)
             printf 'Restart To — Adds UEFI/BIOS reboot entries in power menu' ;;
         *)

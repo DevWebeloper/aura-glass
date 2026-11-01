@@ -640,7 +640,7 @@ SEARCH_INDEX = {
     "radius": ["corner", "rounding", "square", "rounded", "pill"],
     "apps": ["allow", "block", "per-app", "whitelist", "blacklist"],
     "extensions": ["gnome extensions", "blur my shell", "space-bar",
-                  "vitals", "custom osd", "open bar"],
+                  "custom osd", "open bar"],
     "packages": ["icon pack", "cursor pack", "remove pack", "disk"],
     "system": ["dependencies", "gdm", "login screen",
               "monitor", "password", "sudo"],

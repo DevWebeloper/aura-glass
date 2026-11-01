@@ -210,7 +210,7 @@ by `save_glass_mode_memos`.
 | `update-available` | the version a check found: a release `vX.Y.Z`, a tag `vX.Y.Z+N`, or `branch@sha` on a test build | `aura-glass-update-check` |
 | `rounded-blur` | build stamp from an older release; read only by `uninstall.sh` | no longer written |
 | `rounded-blur-choice` | from an older release; no longer read | no longer written |
-| `extension-pack` | comma-separated UUIDs of the optional extensions chosen. Empty file = Minimal. Absent = the Recommended seven | `install_extensions`; read in the resolution block |
+| `extension-pack` | comma-separated UUIDs of the optional extensions chosen. Empty file = Minimal. Absent = the Recommended six | `install_extensions`; read in the resolution block |
 | `extension-catalog` | comma-separated UUIDs of `EXT_EXTRA_ALL` when the pack was chosen. A recommended extension missing from it joins a non-empty pack on an update. Absent = everything but `EXT_EXTRA_ADDED_LATER` | `install_extensions`; read in the resolution block |
 | `dconf-shipped` | `<ini>\t<section/key>\t<value>` lines: every value a preset has been loaded or merged at, appended, never rewritten. An update writes a preset key only when it is missing or still holds one of these, so a value the user set is kept. Seeded from the preset's git history on the first merge. Removed by uninstall | `merge_dconf_preset` (in `load_dconf`) |
 | `kept-extensions` | one UUID per line: retired extensions the user chose to keep when asked. Not asked again | `disable_retired_extensions` |

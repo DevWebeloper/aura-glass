@@ -77,7 +77,7 @@ WANT_EXTRAS=1
 EXT_LIST=""        # comma-separated UUIDs, replacing the pack. Empty = a pack
 EXT_LIST_EXPLICIT=""
 # Set by any flag, or any wizard answer, that picks the pack. Unset, the pack
-# is the remembered one ($CONF_DIR/extension-pack), and then the Recommended seven.
+# is the remembered one ($CONF_DIR/extension-pack), and then the Recommended six.
 EXT_PACK_EXPLICIT=""
 WANT_ICONS=1
 WANT_CURSORS=1
@@ -192,16 +192,16 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --interactive     launch the interactive setup wizard explicitly
     --accent COLOR    accent to build around (default: $ACCENT_DEFAULT, and
                       remembered for later runs). One of: $VALID_ACCENTS
-    --recommended     Core package: the foundation plus seven curated optional
+    --recommended     Core package: the foundation plus six curated optional
                       extensions (the default)
     --full            Complete Experience: every optional piece at once — all
-                      9 extra extensions, plus icons, cursors and OSD
+                      7 extra extensions, plus icons, cursors and OSD
     --extras          alias for --recommended (Core)
-    --all-extras      Complete Experience extension package: all 9 optionals
+    --all-extras      Complete Experience extension package: all 7 optionals
     --no-extras       Minimal package: the foundation only, with no optionals
     --minimal         alias for --no-extras (Minimal)
     --extensions LIST comma-separated extension UUIDs to install instead of a
-                      pack, e.g. 'space-bar@luchrioh,Vitals@CoreCoding.com'.
+                      pack, e.g. 'tiling-assistant@leleat-on-github,restartto@tiagoporsch.github.io'.
                       Each must be one --all-extras would install. An empty list
                       is the same as --no-extras. This is what the setup
                       wizard's per-extension list sends
@@ -1149,7 +1149,7 @@ fi
 
 # --extensions replaces the pack with a list of your own, which is what the setup
 # wizard's per-extension switches send: a pack name cannot say "the recommended
-# six, but not the audio panel".
+# six, but not Hot Edge".
 #
 # Every UUID is checked against what --all-extras would install rather than taken
 # on trust. A misspelled one would otherwise be looked for on the extensions site,
