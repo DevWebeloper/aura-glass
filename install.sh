@@ -1589,6 +1589,23 @@ if [ "$VERIFY_ONLY" = 1 ]; then
     exit 0
 fi
 
+# A full install asks for the sudo password once, here, in its terminal and
+# before the progress window opens over it, then holds it to the end: missing
+# packages, the rounded-blur build and the login screen all want root, and a
+# prompt that comes mid-run lands in a terminal the window is covering. A
+# password that is refused, or no terminal to ask on, leaves each of those to
+# ask for itself as before. bin/aura-glass-update asks the same way before it
+# opens the update window, so this one is answered from sudo's cache there.
+if [ "$SETTINGS_ONLY" = 0 ] && [ "$DEPS_ONLY" = 0 ] \
+   && [ "${DRY_RUN:-0}" = 0 ] && [ "$EUID" -ne 0 ]; then
+    info "Asking for the sudo password once, for the parts installed outside your home folder"
+    if sudo -v; then
+        ( while true; do sudo -n true; sleep 50; kill -0 "$$" || exit; done ) 2>/dev/null &
+        SUDO_KEEP_ALIVE_PID=$!
+        add_exit_trap 'kill $SUDO_KEEP_ALIVE_PID 2>/dev/null || true'
+    fi
+fi
+
 # The progress window is for a full install, which is everything that gets
 # past the --settings-only and --deps-only exits below; those two never start
 # it. The checklist is planned here, from the choices just resolved, so the
@@ -1618,25 +1635,6 @@ printf '\n%s  aura-glass%s  %saccent %s%s\n' \
 
 progress_start session
 preflight
-
-# Request sudo credentials upfront once if any system-wide component requires root
-if [ "${SETTINGS_ONLY:-0}" = 0 ] && [ "${DRY_RUN:-0}" = 0 ] && [ "$EUID" -ne 0 ]; then
-    need_root=0
-    [ "${WANT_GDM:-0}" = 1 ] && need_root=1
-    [ "${WANT_GDM_MONITORS:-0}" = 1 ] && need_root=1
-    if [ "$need_root" = 1 ]; then
-        info "Authenticating sudo upfront for system components..."
-        progress_wait "sudo password, for the parts installed outside your home folder"
-        if sudo -v; then
-            progress_resume
-            ( while true; do sudo -n true; sleep 50; kill -0 "$$" || exit; done ) 2>/dev/null &
-            SUDO_KEEP_ALIVE_PID=$!
-            add_exit_trap 'kill $SUDO_KEEP_ALIVE_PID 2>/dev/null || true'
-        else
-            progress_resume
-        fi
-    fi
-fi
 
 [ -d "$CONF_DIR" ] && rm -f "$CONF_DIR/uninstalled"
 

@@ -8464,39 +8464,31 @@ class Window(Adw.ApplicationWindow):
 
         script = "bash %s %s\n" % (GLib.shell_quote(updater),
                                    GLib.shell_quote(target))
-        if run_dir:
-            script = "AURA_GLASS_PROGRESS_DIR=%s %s" % (
-                GLib.shell_quote(run_dir), script)
+        # Opened by aura-glass-update, not here: it asks for the sudo password
+        # in the terminal first, and the window would cover that prompt.
+        window = self._update_window_path()
+        if run_dir and window:
+            script = "AURA_GLASS_PROGRESS_DIR=%s AURA_GLASS_UPDATE_WINDOW=%s %s" % (
+                GLib.shell_quote(run_dir), GLib.shell_quote(window), script)
         if self.run_in_terminal(script, "Theme update"):
-            if run_dir:
-                self._open_update_window(run_dir)
             self._version_row.set_subtitle(
                 "Updating — see the update window")
             self._apply_status.remove_css_class("error")
             self._apply_status.set_label(
                 "Updating — see the update window")
 
-    def _open_update_window(self, run_dir):
-        """gui/aura_glass_install_progress.py --update, detached.
+    def _update_window_path(self):
+        """gui/aura_glass_install_progress.py, for aura-glass-update to open.
 
-        Its own process, so it outlives this window and an installer that
-        replaces this window's files. The copy beside this file first — the
-        checkout's is about to be moved by the update.
+        The copy beside this file first — the checkout's is about to be moved
+        by the update.
         """
         here = os.path.dirname(os.path.abspath(__file__))
         for folder in (here, os.path.join(self._repo or "", "gui")):
             window = os.path.join(folder, "aura_glass_install_progress.py")
             if os.path.exists(window):
-                break
-        else:
-            return
-        try:
-            subprocess.Popen(["python3", window, "--dir", run_dir, "--update"],
-                             stdin=subprocess.DEVNULL,
-                             stdout=subprocess.DEVNULL,
-                             start_new_session=True)
-        except OSError as exc:
-            print("aura-glass: update window: %s" % exc, file=sys.stderr)
+                return window
+        return None
 
     def _on_reapply_settings(self, _button):
         if self._running:

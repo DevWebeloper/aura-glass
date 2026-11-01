@@ -30,9 +30,10 @@
 # it is run from the repository rather than from ~/.local/bin.
 set -euo pipefail
 
-# The update window. The settings window opens gui/aura_glass_install_progress.py
-# in update mode the moment Install is pressed, with the changelog it read, and
-# names its run directory in AURA_GLASS_PROGRESS_DIR. This script then sends
+# The update window. The settings window writes the changelog it read into a
+# run directory, names it in AURA_GLASS_PROGRESS_DIR and names
+# gui/aura_glass_install_progress.py in AURA_GLASS_UPDATE_WINDOW, which main()
+# opens in update mode once the sudo password is in. This script then sends
 # its output to the window's log and its two steps, fetching and switching, to
 # its events, in the format lib/progress.sh documents; the install.sh it runs
 # inherits the variable and adds its own steps and the finish. Repeated here
@@ -101,6 +102,22 @@ main() {
     local conf="${AURA_GLASS_CONF:-$HOME/.config/aura-glass}"
     local repo
     repo="$(cat "$conf/repo-path" 2>/dev/null || true)"
+
+    # The sudo password, asked once here in the terminal before the update
+    # window opens over it. The install.sh below finds it in sudo's cache and
+    # holds it to the end (its own sudo step says why). Refused, the install
+    # asks again where it needs root.
+    if [ "$install" = 1 ] && [ "$EUID" -ne 0 ]; then
+        echo "==> Asking for the sudo password once, for the parts installed outside your home folder"
+        sudo -v || true
+    fi
+    # The settings window names the update window rather than opening it, so
+    # it appears once the password is in. Its own session, so it outlives this
+    # terminal and the checkout move below.
+    if [ -n "${AURA_GLASS_UPDATE_WINDOW:-}" ] && [ -n "${AURA_GLASS_PROGRESS_DIR:-}" ]; then
+        setsid -f python3 "$AURA_GLASS_UPDATE_WINDOW" --dir "$AURA_GLASS_PROGRESS_DIR" \
+            --update </dev/null >/dev/null 2>&1 || true
+    fi
 
     # Before anything can fail, so the window has a pid to watch and a reason
     # to show for whatever stops the update.

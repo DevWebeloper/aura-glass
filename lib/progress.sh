@@ -11,8 +11,8 @@
 #
 # It is on for a run the setup wizard started (FROM_GUI_WIZARD), for
 # --progress-window, which is what the settings window adds to the full runs it
-# opens in a terminal, and for an update: the settings window opens the window
-# itself in update mode and bin/aura-glass-update passes its run directory down
+# opens in a terminal, and for an update: bin/aura-glass-update opens the window
+# in update mode once the sudo password is in, and passes its run directory down
 # in AURA_GLASS_PROGRESS_DIR, so this install adds its steps to that window
 # instead of opening a second one (or swaps it for this checkout's, when it is an
 # older release's: progress_replace_update_window). Everything else — a scripted install, --settings-only,
