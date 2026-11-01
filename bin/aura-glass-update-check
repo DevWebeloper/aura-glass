@@ -29,7 +29,7 @@
 # Release tags are asked for with git ls-remote, which is one cheap request,
 # needs no API token, is not rate limited, and works for any git remote rather
 # than only for GitHub. Naming main's tip as v0.3.5+16 needs its history, so the
-# released line then fetches origin into .git — refs and objects only; this never
+# released line then fetches the remote into .git — refs and objects only; this never
 # touches the working tree.
 #
 # The update-channel memo used to choose between those two kinds on main. Every
@@ -99,6 +99,27 @@ if [ -z "$REPO" ] || [ ! -d "$REPO/.git" ]; then
     exit 1
 fi
 
+# Which remote an update comes from: the one the checkout's branch tracks, then
+# the one main or master tracks (a detached HEAD has no branch of its own), then
+# origin. Not always origin, because someone who cloned their own fork and added
+# the project as `upstream` has main tracking upstream and a stale fork as origin:
+# asking the fork answers "up to date" forever. A tracked remote that no longer
+# exists falls through. bin/aura-glass-update and gui/aura_glass_settings.py's
+# update_remote say the same, and the three must agree.
+update_remote() {
+    local b r
+    for b in "$(git -C "$REPO" symbolic-ref --quiet --short HEAD 2>/dev/null || true)" main master; do
+        [ -n "$b" ] || continue
+        r="$(git -C "$REPO" config --get "branch.$b.remote" 2>/dev/null || true)"
+        if [ -n "$r" ] && git -C "$REPO" remote get-url "$r" >/dev/null 2>&1; then
+            printf '%s\n' "$r"
+            return
+        fi
+    done
+    echo origin
+}
+REMOTE="$(update_remote)"
+
 # Both lines end the same way, so they say so in one place rather than twice.
 up_to_date() {
     rm -f "$STATE"
@@ -151,12 +172,12 @@ tags)
     # Only vN.N.N tags, optionally -beta. Anything else in refs/tags is not a
     # release of this project, and sort -V would happily rank it above one.
     remote_version="$(
-        git -C "$REPO" ls-remote --tags --refs origin 2>/dev/null \
+        git -C "$REPO" ls-remote --tags --refs "$REMOTE" 2>/dev/null \
             | sed -n 's#.*refs/tags/\(v[0-9][0-9.]*\(-beta\)\?\)$#\1#p' \
             | sort -V | tail -n 1 || true
     )"
     if [ -z "$remote_version" ]; then
-        echo "aura-glass-update-check: could not read tags from origin (offline?)" >&2
+        echo "aura-glass-update-check: could not read tags from $REMOTE (offline?)" >&2
         exit 1
     fi
 
@@ -172,11 +193,11 @@ tags)
         # No newer release. Has main moved on past what is installed? A fetch
         # that fails here is not "could not tell": the release question above
         # was answered, and that answer stands.
-        GIT_TERMINAL_PROMPT=0 git -C "$REPO" fetch --quiet --force --tags origin \
+        GIT_TERMINAL_PROMPT=0 git -C "$REPO" fetch --quiet --force --tags "$REMOTE" \
             2>/dev/null || true
         local_sha="$(git -C "$REPO" rev-parse HEAD)"
-        tip="$(git -C "$REPO" rev-parse -q --verify refs/remotes/origin/main 2>/dev/null \
-            || git -C "$REPO" rev-parse -q --verify refs/remotes/origin/master 2>/dev/null || true)"
+        tip="$(git -C "$REPO" rev-parse -q --verify "refs/remotes/$REMOTE/main" 2>/dev/null \
+            || git -C "$REPO" rev-parse -q --verify "refs/remotes/$REMOTE/master" 2>/dev/null || true)"
         # Level with main, or ahead of it (someone committing on their own
         # main), is nothing to install.
         if [ -z "$tip" ] || [ "$tip" = "$local_sha" ] \
@@ -199,11 +220,11 @@ commits)
     # One ref rather than all of them, and by full name so a tag of the same name
     # cannot answer instead.
     remote_sha="$(
-        git -C "$REPO" ls-remote origin "refs/heads/$branch" 2>/dev/null \
+        git -C "$REPO" ls-remote "$REMOTE" "refs/heads/$branch" 2>/dev/null \
             | awk 'NR == 1 { print $1 }' || true
     )"
     if [ -z "$remote_sha" ]; then
-        echo "aura-glass-update-check: origin has no branch $branch (offline, or it was never pushed?)" >&2
+        echo "aura-glass-update-check: $REMOTE has no branch $branch (offline, or it was never pushed?)" >&2
         exit 1
     fi
 

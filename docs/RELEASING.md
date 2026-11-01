@@ -57,6 +57,10 @@ each daily commit would be offered to every install as a new version.
 | `main`, `master` with `update-channel` = `latest` | `main@shortsha` | has `main` moved? A newer release tag still takes the notification headline |
 | any other branch | `branch@shortsha` | has the branch moved? |
 
+All of it is asked of the remote the branch tracks, then the one `main` or
+`master` tracks, then `origin` (`update_remote`), so a checkout with its own fork
+as `origin` and `main` tracking `upstream` still sees the project's releases.
+
 The two programs that decide this (`aura-glass-update-check`, and
 `current_branch` / `is_test_build` / `installed_version` in the GUI) are held
 together by `check-update-channel.py`. The timer notifies **once per release**

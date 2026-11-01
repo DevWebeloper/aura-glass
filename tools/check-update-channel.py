@@ -39,7 +39,8 @@ except ImportError:
 
 import aura_glass_settings  # noqa: E402
 from aura_glass_settings import (  # noqa: E402
-    current_branch, installed_version, is_test_build, update_blockers)
+    current_branch, installed_version, is_test_build, main_ref, update_blockers,
+    update_remote, updates_snapshot)
 
 fail = 0
 
@@ -254,6 +255,52 @@ with tempfile.TemporaryDirectory() as tmp:
              % (res.stderr.strip() or res.stdout.strip()))
     elif out(repo, "log", "-1", "--format=%s") != "recut":
         note("a re-cut tag did not replace the local one")
+
+with tempfile.TemporaryDirectory() as tmp:
+    # A fork as origin with the project as upstream and main tracking upstream.
+    # The window and aura-glass-update have to ask the remote the check asks:
+    # the release exists only there.
+    repo, conf = build(tmp, tags=("v0.1.7",))
+    fork = os.path.join(tmp, "fork")
+    subprocess.run(["git", "init", "-q", "--bare", fork], check=True)
+    git(repo, "remote", "rename", "origin", "upstream")
+    git(repo, "remote", "add", "origin", fork)
+    git(repo, "push", "-q", "origin", "main")
+    git(repo, "commit", "--allow-empty", "-m", "two")
+    git(repo, "tag", "v0.1.8")
+    git(repo, "push", "-q", "upstream", "main", "v0.1.8")
+    tip = out(repo, "rev-parse", "HEAD")
+    git(repo, "reset", "-q", "--hard", "HEAD~1")
+    git(repo, "tag", "-d", "v0.1.8")
+    if update_remote(repo) != "upstream":
+        note("update_remote on a fork: %r, want upstream" % update_remote(repo))
+    if main_ref(repo) != "refs/remotes/upstream/main":
+        note("main_ref on a fork: %r" % main_ref(repo))
+    if update_blockers(repo):
+        note("a fork checkout was refused: %r" % update_blockers(repo))
+    snapshot = updates_snapshot(repo, True)
+    if not snapshot["main"] or snapshot["main"]["tip"] != tip:
+        note("the Updates page did not read main from upstream")
+    git(repo, "checkout", "-q", "--detach", "HEAD")
+    if update_remote(repo) != "upstream":
+        note("update_remote on a detached HEAD: %r" % update_remote(repo))
+    git(repo, "checkout", "-q", "main")
+    res = update(conf, "v0.1.8")
+    if res.returncode != 0:
+        note("update to a release only upstream has failed: %s"
+             % (res.stderr.strip() or res.stdout.strip()))
+    git(repo, "checkout", "-q", "main")
+    res = update(conf, "main")
+    if res.returncode != 0:
+        note("update of main on a fork failed: %s"
+             % (res.stderr.strip() or res.stdout.strip()))
+    elif out(repo, "rev-parse", "--abbrev-ref", "@{upstream}") != "upstream/main":
+        note("main stopped tracking upstream after the update")
+    elif out(repo, "rev-parse", "HEAD") != tip:
+        note("update of main did not reach upstream's tip")
+    git(repo, "config", "branch.main.remote", "gone")
+    if update_remote(repo) != "origin":
+        note("a tracked remote that is gone: %r, want origin" % update_remote(repo))
 
 if fail:
     print("\nupdate channel FAILED\n")

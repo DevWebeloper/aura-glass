@@ -2331,6 +2331,24 @@ def packaged(repo):
     return (fields[0], fields[1]) if len(fields) >= 2 else None
 
 
+def update_remote(repo):
+    """The remote an update comes from: what the branch tracks, then main, then origin.
+
+    Not always origin, because someone who cloned their own fork and added the
+    project as upstream has main tracking upstream and a stale fork as origin.
+    A detached HEAD has no branch of its own, and a tracked remote that no longer
+    exists falls through. bin/aura-glass-update-check's update_remote says the
+    same, and so does bin/aura-glass-update; the three must agree.
+    """
+    for branch in (current_branch(repo), "main", "master"):
+        if not branch:
+            continue
+        remote = git_out(repo, "config", "--get", "branch.%s.remote" % branch)
+        if remote and git_out(repo, "remote", "get-url", remote) is not None:
+            return remote
+    return "origin"
+
+
 def update_blockers(repo):
     """Why an update cannot be installed from this window. Empty means go ahead.
 
@@ -2350,8 +2368,9 @@ def update_blockers(repo):
                 "manager (for example yay -Syu %s)." % (package[0], package[0])]
     if git_out(repo, "rev-parse", "--is-inside-work-tree") != "true":
         return ["%s is not a git checkout." % repo]
-    if git_out(repo, "remote", "get-url", "origin") is None:
-        return ["The checkout has no origin remote to update from."]
+    remote = update_remote(repo)
+    if git_out(repo, "remote", "get-url", remote) is None:
+        return ["The checkout has no %s remote to update from." % remote]
     return []
 
 
@@ -2363,8 +2382,9 @@ RELEASE_TAG = re.compile(r"^v[0-9][0-9.]*(-beta)?$")
 # is added when it is older; History shows everything.
 SHOWN_VERSIONS = 5
 
-# The branch every release is cut from, as its remote-tracking ref.
-MAIN_REF = "refs/remotes/origin/main"
+def main_ref(repo):
+    """The branch every release is cut from, as its remote-tracking ref."""
+    return "refs/remotes/%s/main" % update_remote(repo)
 
 
 def fetch_releases(repo):
@@ -2378,7 +2398,7 @@ def fetch_releases(repo):
     try:
         res = subprocess.run(
             ["git", "-C", repo, "fetch", "--quiet", "--force", "--tags",
-             "origin"],
+             update_remote(repo)],
             capture_output=True, text=True, timeout=60,
             env=dict(os.environ, GIT_TERMINAL_PROMPT="0"))
     except (OSError, subprocess.SubprocessError):
@@ -2428,7 +2448,7 @@ def count_commits(repo, since, until):
     return int(out) if out and out.isdigit() else 0
 
 
-def history_lines(repo, ref=MAIN_REF, limit=150):
+def history_lines(repo, ref, limit=150):
     """main's history as `git log --graph` draws it, one dict per line.
 
     A commit line has sha, short, date, refs (the release tags on it) and
@@ -2472,8 +2492,8 @@ def first_release_with(repo, sha):
 
 
 def github_slug(repo):
-    """owner/name when origin is on github.com, else None."""
-    url = git_out(repo, "remote", "get-url", "origin") or ""
+    """owner/name when the update remote is on github.com, else None."""
+    url = git_out(repo, "remote", "get-url", update_remote(repo)) or ""
     found = re.match(r"^(?:https://github\.com/|git@github\.com:|"
                      r"ssh://git@github\.com/)([^/]+/[^/]+?)(?:\.git)?/?$", url)
     return found.group(1) if found else None
@@ -2606,7 +2626,7 @@ def update_changelog(repo, target, notes):
             repo, "rev-parse", "-q", "--verify", "refs/tags/%s^{commit}" % target):
         ref = "refs/tags/%s" % target
     else:
-        ref = "refs/remotes/origin/%s" % target
+        ref = "refs/remotes/%s/%s" % (update_remote(repo), target)
     head = git_out(repo, "rev-parse", "HEAD")
     tip = git_out(repo, "rev-parse", "%s^{commit}" % ref)
     sections = []
@@ -2649,7 +2669,7 @@ def update_changelog(repo, target, notes):
 def updates_snapshot(repo, fetch):
     """Everything the Updates page lists, read in one go off the main thread.
 
-    fetch also asks the network: origin's refs, then GitHub's notes. Without it
+    fetch also asks the network: the remote's refs, then GitHub's notes. Without it
     the page shows what the checkout already knows, which is instant and what
     the window opens with.
     """
@@ -2658,18 +2678,19 @@ def updates_snapshot(repo, fetch):
     for older, rel in zip(releases[1:] + [None], releases):
         rel["changes"] = commit_subjects(
             repo, older["sha"] if older else None, rel["sha"])
-    have_main = git_out(repo, "rev-parse", "-q", "--verify", MAIN_REF) is not None
+    main_tip = main_ref(repo)
+    have_main = git_out(repo, "rev-parse", "-q", "--verify", main_tip) is not None
     main = None
     if have_main:
         # main's own line since the newest release, newest first: each commit
         # is a tag (v0.3.5+N). First-parent, so a merged branch counts as the
         # one commit that brought it in rather than as every commit on it.
         since = releases[0]["sha"] if releases else None
-        span = MAIN_REF if since is None else "%s..%s" % (since, MAIN_REF)
+        span = main_tip if since is None else "%s..%s" % (since, main_tip)
         out = git_out(repo, "log", "--first-parent", "--max-count=200",
                       "--format=%H%x00%h%x00%cs%x00%s%x00%ct", span)
         head = git_out(repo, "rev-parse", "HEAD")
-        tip = git_out(repo, "rev-parse", MAIN_REF)
+        tip = git_out(repo, "rev-parse", main_tip)
         tags = []
         for line in (out or "").splitlines():
             fields = line.split("\0")
@@ -2684,14 +2705,14 @@ def updates_snapshot(repo, fetch):
             # the whole changelog of what the next release will be.
             if tag["sha"] == tip:
                 tag["name"] = version_name(repo, tip)
-                tag["changes"] = commit_subjects(repo, since, MAIN_REF,
+                tag["changes"] = commit_subjects(repo, since, main_tip,
                                                  limit=200)
             tags.append(tag)
         main = {"tip": tip, "tags": tags}
     branch = current_branch(repo)
     test = None
     if branch and branch not in RELEASE_BRANCHES:
-        remote = "refs/remotes/origin/%s" % branch
+        remote = "refs/remotes/%s/%s" % (update_remote(repo), branch)
         if git_out(repo, "rev-parse", "-q", "--verify", remote) is not None:
             test = {"branch": branch,
                     "short": git_out(repo, "rev-parse", "--short=7", remote),
@@ -2707,7 +2728,7 @@ def updates_snapshot(repo, fetch):
                             "HEAD"),
         "branch": branch,
         "dirty": bool(git_out(repo, "status", "--porcelain")),
-        "history": history_lines(repo) if have_main else [],
+        "history": history_lines(repo, main_tip) if have_main else [],
         "notes": github_release_notes(repo) if fetch else None,
         "slug": github_slug(repo),
     }

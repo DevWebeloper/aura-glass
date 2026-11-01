@@ -140,26 +140,39 @@ main() {
     fi
     local g=(git -C "$repo")
 
-    if ! "${g[@]}" remote get-url origin >/dev/null 2>&1; then
-        fail "$repo has no origin remote to update from"
+    # The remote bin/aura-glass-update-check asked, by its rule: what the branch
+    # tracks, then what main or master tracks, then origin. See update_remote
+    # there for why it is not always origin; the three must agree.
+    local remote=origin b r
+    for b in "$("${g[@]}" symbolic-ref --quiet --short HEAD 2>/dev/null || true)" main master; do
+        [ -n "$b" ] || continue
+        r="$("${g[@]}" config --get "branch.$b.remote" 2>/dev/null || true)"
+        if [ -n "$r" ] && "${g[@]}" remote get-url "$r" >/dev/null 2>&1; then
+            remote="$r"
+            break
+        fi
+    done
+
+    if ! "${g[@]}" remote get-url "$remote" >/dev/null 2>&1; then
+        fail "$repo has no $remote remote to update from"
     fi
 
     # --force so a tag that was moved on the remote replaces the local one rather
     # than stopping the fetch with "would clobber existing tag". --tags brings
     # the branches too (the default refspec still applies). Nothing is pruned:
     # a tag or branch someone made locally is theirs.
-    echo "==> Fetching releases and branches from origin"
-    "${g[@]}" fetch --force --tags origin
+    echo "==> Fetching releases and branches from $remote"
+    "${g[@]}" fetch --force --tags "$remote"
 
     local kind ref
     if "${g[@]}" rev-parse -q --verify "refs/tags/$target^{commit}" >/dev/null; then
         kind=tag
         ref="refs/tags/$target"
-    elif "${g[@]}" rev-parse -q --verify "refs/remotes/origin/$target^{commit}" >/dev/null; then
+    elif "${g[@]}" rev-parse -q --verify "refs/remotes/$remote/$target^{commit}" >/dev/null; then
         kind=branch
-        ref="refs/remotes/origin/$target"
+        ref="refs/remotes/$remote/$target"
     else
-        fail "origin has no release or branch called $target"
+        fail "$remote has no release or branch called $target"
     fi
     pstart switch
 
@@ -192,7 +205,7 @@ main() {
             echo "==> Your local commits on $target are kept on the branch $backup"
         fi
         echo "==> Switching to the newest commit on $target"
-        "${g[@]}" checkout --quiet -B "$target" --track "origin/$target"
+        "${g[@]}" checkout --quiet -B "$target" --track "$remote/$target"
     fi
     echo "    now at $("${g[@]}" log -1 --format='%h %s')"
 

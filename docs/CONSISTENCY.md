@@ -54,7 +54,7 @@ and the drift found as of this rewrite.
 | Flags the GUI and wizard emit | `flags_against`, `Answers.to_argv`, `parse_flags` | `check-gui-flags.py`, `check-wizard-flags.py` | ✅ (acceptance only, not meaning) |
 | Extension catalogue | `lib/steps.sh` arrays + `ext_description`; `aura-glass-ext list`; GUI page | `check-ext-catalogue.sh` | ✅ for the GUI. ❌ text-wizard prose, `--help` text, uninstall list |
 | App-blur list literal | `app_blur_literal`, extension comment, preview | `check-app-blur-lists.sh` | ✅ |
-| Update channel (release vs branch) | `aura-glass-update-check`, GUI `current_branch`/`is_test_build`/`installed_version` | `check-update-channel.py`, `check-update-check.sh` | ✅ |
+| Update channel (release vs branch) | `aura-glass-update-check`, GUI `current_branch`/`is_test_build`/`installed_version`/`update_remote` | `check-update-channel.py`, `check-update-check.sh` | ✅ |
 | Glass mode names and derivation | `steps-modes.sh`, GUI `GLASS_MODES` + `Settings.__init__`, `apply_adaptive_blur`, adaptive worker | `check-glass-modes.sh` (installer) | ❌ adaptive still keys on `solid` / a `blur` memo (KI-02) |
 | Drawer field list | `seed/load/save_glass_mode_memos`, GUI `Settings.modes`, `apply_adaptive_blur restore` | none | ❌ not saved on the incremental path (KI-01) |
 | Defaults when a memo is missing | `install.sh` / `lib`, `seed_glass_mode`, GUI `Settings()`, setup wizard `Answers()`, text wizard | none | ✅ pointer default settled (§3, KI-05); frosted seed level fixed (KI-18) |

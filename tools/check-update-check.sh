@@ -240,6 +240,47 @@ printf 'aura-glass-git 1.0.0 %s\n' "$TMP/remote" > "$TMP/pkg/.packaged"
 check_run 1 "a pkgver with no commit cannot be compared"
 rm -rf "$TMP/pkg"
 
+# Someone who cloned their own fork and added the project as `upstream`, with main
+# tracking upstream: the update comes from the remote main tracks, not from
+# whatever is called origin. The fork stops at an older release, so asking it
+# reads as up to date forever, which is what a real install hit at v0.3.8 with
+# v0.4.1 out.
+build_fork() {
+    rm -rf "$TMP/fork"
+    build "$@" || return 1
+    git_quiet -C "$TMP/work" remote rename origin upstream
+    git_quiet init --bare "$TMP/fork"
+    git_quiet -C "$TMP/work" remote add origin "$TMP/fork"
+    git_quiet -C "$TMP/work" tag v0.1.6
+    git_quiet -C "$TMP/work" push origin main v0.1.6
+    git_quiet -C "$TMP/work" tag -d v0.1.6
+    git_quiet -C "$TMP/work" config branch.main.remote upstream
+    git_quiet -C "$TMP/work" config branch.main.merge refs/heads/main
+}
+build_fork v0.1.7 v0.1.7 v0.1.8 || note "fork: could not build the fixture"
+check_run 10 "a newer release on the remote main tracks" "v0.1.8"
+# A release install is a detached HEAD, with no branch of its own to ask. main's
+# setting still says where releases come from.
+build_fork v0.1.7 v0.1.7 v0.1.8 || note "fork: could not build the fixture"
+git_quiet -C "$TMP/work" checkout --detach HEAD
+check_run 10 "a detached HEAD follows main's remote" "v0.1.8"
+# The newest-tag half of the question, main's tip on that same remote.
+build_fork v0.1.7 v0.1.7 || note "fork: could not build the fixture"
+( cd "$TMP/work" && git -c user.email=t@t -c user.name=t commit --allow-empty -m two >/dev/null 2>&1 \
+  && git push upstream main >/dev/null 2>&1 \
+  && git reset --hard HEAD~1 >/dev/null 2>&1 ) || note "fork: could not add a commit"
+check_run 10 "main moved on the remote main tracks" "v0.1.7+1"
+# A test branch pushed to that remote only. Asking origin would say it was never
+# pushed.
+build_fork v0.1.7 v0.1.7 || note "fork: could not build the fixture"
+git_quiet -C "$TMP/work" checkout -b feature/on-upstream
+git_quiet -C "$TMP/work" push -u upstream feature/on-upstream
+check_run 0 "a test branch follows its own remote"
+# Tracking a remote that is gone, or main not tracking anything, is origin.
+build_fork v0.1.7 v0.1.7 v0.1.8 || note "fork: could not build the fixture"
+git_quiet -C "$TMP/work" config branch.main.remote gone
+check_run 0 "a tracked remote that is gone falls back to origin"
+
 # A missing repo-path is a broken install, not "up to date" — reporting no
 # update there would hide the breakage forever.
 rm -rf "$TMP/conf"; mkdir -p "$TMP/conf"

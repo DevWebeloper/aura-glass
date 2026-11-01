@@ -77,8 +77,8 @@ Use a throwaway `HOME` as well. The checks don't need the real one.
 | `check-app-blur-lists.sh` | per-app patterns survive flag → memo → GVariant literal → GLib parse |
 | `check-glass-modes.sh` | `--glass-mode` and blur flags resolve as designed (the dry-run `glass-mode:` line plus dconf write lines) |
 | `check-migration.sh` | `tahoe-glass` → `aura-glass` migration, the `backups/` merge, and the solid-era migration (fixture `HOME`s, stub `gnome-extensions`) |
-| `check-update-check.sh` | version ordering (`sort -V`), tag filtering, `-beta` (throwaway repos) |
-| `check-update-channel.py` | the GUI and `aura-glass-update-check` agree on the release vs branch channel |
+| `check-update-check.sh` | version ordering (`sort -V`), tag filtering, `-beta`, which remote is asked on a fork (throwaway repos) |
+| `check-update-channel.py` | the GUI and `aura-glass-update-check` agree on the release vs branch channel, and the GUI and `aura-glass-update` follow the same remote |
 | `check-preview-queue.py` | `PreviewQueue` lifecycle: one active op, one pending, and Apply/Revert/Close priority |
 | `check-operation-recovery.py` | the writer lock: serialization, inheritance, timeout, signal forwarding |
 | `check-apply-publication.py` | `aura-glass-apply` publishes atomically and quietly (identical output isn't rewritten) |
