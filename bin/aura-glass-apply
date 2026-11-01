@@ -398,7 +398,11 @@ apply "$SHELL_CSS"     1 "${SHELL_SNIPPETS[@]}"
 # stylesheet of its own, and St ranks every extension-loaded sheet above the
 # shell theme whatever the specificity (get_origin in st-theme.c). Copyous's
 # Super+V dialog is the one so far: see .modal-dialog.clipboard-dialog in
-# shell-50-dialogs.css. Its rules are copied out of the same snippets, in the
+# shell-50-dialogs.css. The top bar's shade over a maximized window is the
+# other: Blur My Shell's #panel.transparent-panel { background: transparent
+# !important } is in its extension sheet, so the shade in shell-00-flat.css
+# lost to it at every brightness and no setting or preview showed (seen
+# 2026-10-31). Its rules are copied out of the same snippets, in the
 # same cascade order and with the same tint and radius already rewritten into
 # them, into a sheet Aura Glass Helper loads as an extension sheet. Written
 # before the reload below, through a rename, and only when it changed: the
@@ -409,7 +413,7 @@ python3 - "$DIR/extension-overrides.css" "${SHELL_SNIPPETS[@]}" <<'PY'
 import os, re, sys, tempfile
 
 destination, snippets = sys.argv[1], sys.argv[2:]
-OWNED = (".clipboard-dialog",)
+OWNED = (".clipboard-dialog", ".aura-glass-maximized")
 
 rules = []
 for path in snippets:

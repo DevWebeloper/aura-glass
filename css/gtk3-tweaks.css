@@ -152,8 +152,10 @@ headerbar.default-decoration button.titlebutton.maximize,
 .titlebar.default-decoration button.titlebutton.close,
 .titlebar.default-decoration button.titlebutton.minimize,
 .titlebar.default-decoration button.titlebutton.maximize {
-  min-width: 28px;
-  min-height: 28px;
+  /* 34px, up from 28: 28 read as undersized next to the headerbar's own
+   * buttons. Keep in step with the GTK3/GTK4 twin of this rule. */
+  min-width: 34px;
+  min-height: 34px;
   padding: 0;
   margin: 0 2px;
   border-radius: 9999px;
@@ -229,3 +231,12 @@ headerbar.default-decoration button.titlebutton:backdrop,
   box-shadow: none;
 }
 
+
+/* The minimal look paints no disc, so the glyph is all that shows and the
+ * 34px button alone looked unchanged. GTK3 has no -gtk-icon-size; scale(1.25)
+ * takes the 16px titlebutton glyph to the 20px GTK4 sets.
+ */
+headerbar button.titlebutton image,
+.titlebar button.titlebutton image {
+  -gtk-icon-transform: scale(1.25);
+}

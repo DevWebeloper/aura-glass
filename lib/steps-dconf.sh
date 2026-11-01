@@ -320,6 +320,8 @@ load_dconf() {
     apply_app_blur
     apply_app_opacity
     apply_fullscreen_blur
+    apply_smooth_animations
+    apply_animation_speed
     apply_radius_dconf
     apply_glass_style
     sync_osd_profile
@@ -786,6 +788,102 @@ apply_fullscreen_blur() {
         run dconf write "$base/applications/unblur-when-fullscreen" true
         ok "fullscreen windows drop their blur and go opaque"
     fi
+}
+
+# --smooth-animations: VRAM and a little latency traded for animations that
+# start without a dropped frame. Off by default, because the VRAM it takes
+# grows with every blurred surface and window. Two halves:
+#
+# full-size-buffers is the key patches/blur-my-shell-full-size-buffers.patch
+# adds. Stock v76 sizes each blur's textures to its actor, grows them 1.25x at
+# a time and drops them below half size or at opacity 0, so a menu scaling in,
+# an app folder zooming from its icon or a banner fading in reallocated the
+# capture and the whole kawase chain in its first frames. With the key on they
+# are allocated once at the largest monitor's size (about 50 MB per blurred
+# surface at 3440x1440) and kept. Blur My Shell reads it live.
+#
+# CLUTTER_PAINT=disable-dynamic-max-render-time stops Mutter from scheduling
+# the next frame from the cost of the last few. While nothing moves those are
+# cheap, so the first heavy blur frame of an animation missed its deadline;
+# with it every frame gets the whole refresh interval, for a few ms more input
+# latency. An environment.d file, so gnome-shell picks it up at next login.
+# Checked present in libmutter-clutter-51.
+apply_smooth_animations() {
+    local base=/org/gnome/shell/extensions/blur-my-shell
+    local want="${SMOOTH_ANIMATIONS:-}" memo="$CONF_DIR/smooth-animations"
+    local env_file="$HOME/.config/environment.d/aura-glass.conf"
+    local env_line="CLUTTER_PAINT=disable-dynamic-max-render-time"
+
+    if [ -z "${SMOOTH_ANIMATIONS_EXPLICIT:-}" ] || [ -z "$want" ]; then
+        want="$(cat "$memo" 2>/dev/null || true)"
+    fi
+    [ "$want" = 1 ] || want=0
+
+    if remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$want" > "$memo"
+    fi
+
+    if [ "$want" = 1 ]; then
+        run dconf write "$base/full-size-buffers" true
+        if [ "$(cat "$env_file" 2>/dev/null || true)" != "$env_line" ]; then
+            if [ "${DRY_RUN:-0}" = 1 ]; then
+                info "dry-run: write $env_file"
+            else
+                mkdir -p "$(dirname "$env_file")"
+                printf '%s\n' "$env_line" > "$env_file"
+            fi
+        fi
+        ok "smooth animations on: full-size blur buffers, full frame budget from next login (remembered for later runs)"
+    else
+        run dconf write "$base/full-size-buffers" false
+        [ ! -e "$env_file" ] || run rm -f "$env_file"
+        ok "stock blur buffer sizing and frame timing"
+    fi
+}
+
+# --window-, --notification- and --menu-animation-speed: how fast each of the
+# three animates, as a percentage of GNOME's own pace, so 200 is twice as fast
+# and 50 half. Memos only, no dconf: the Aura Glass Helper reads them live
+# through its config monitor and scales the shell's own durations
+# (_readAnimationSpeeds in its extension.js), so an Apply lands at once with no
+# reload. Here rather than in install_aura_ext because that only runs on a full
+# install, and a --settings-only retune has to remember these too. 50 is as
+# slow as is still useful (a 400ms minimize at 800ms already drags), and 300
+# leaves the shortest, a 100ms dialog, at a still-visible 33ms. The extension
+# and the settings app keep their own copy of these three (ANIMATION_SPEED_*).
+ANIMATION_SPEED_MIN=50
+ANIMATION_SPEED_MAX=300
+ANIMATION_SPEED_SHIPPED=100
+
+# One speed: the flag, then the memo, then the shipped 100.
+resolve_animation_speed() {
+    local flag="$1" want="$2" memo="$3" shipped="$ANIMATION_SPEED_SHIPPED"
+    [ -n "$want" ] || want="$(cat "$CONF_DIR/$memo" 2>/dev/null || true)"
+    case "$want" in
+        '') want="$shipped" ;;
+        *[!0-9]*) warn "$flag '$want' is not a whole percentage — using ${shipped}" >&2
+                  want="$shipped" ;;
+        *) if [ "$want" -lt "$ANIMATION_SPEED_MIN" ] || [ "$want" -gt "$ANIMATION_SPEED_MAX" ]; then
+               warn "$flag $want is outside ${ANIMATION_SPEED_MIN}-${ANIMATION_SPEED_MAX} — using ${shipped}" >&2
+               want="$shipped"
+           fi ;;
+    esac
+    printf '%s\n' "$want"
+}
+
+apply_animation_speed() {
+    local window notification menu
+    window="$(resolve_animation_speed --window-animation-speed "${WINDOW_ANIMATION_SPEED:-}" window-animation-speed)"
+    notification="$(resolve_animation_speed --notification-animation-speed "${NOTIFICATION_ANIMATION_SPEED:-}" notification-animation-speed)"
+    menu="$(resolve_animation_speed --menu-animation-speed "${MENU_ANIMATION_SPEED:-}" menu-animation-speed)"
+    if remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$window" > "$CONF_DIR/window-animation-speed"
+        printf '%s\n' "$notification" > "$CONF_DIR/notification-animation-speed"
+        printf '%s\n' "$menu" > "$CONF_DIR/menu-animation-speed"
+    fi
+    ok "animation speed: windows ${window}%, notifications ${notification}%, menus ${menu}% of GNOME's pace (remembered for later runs)"
 }
 
 # The popup keys themselves ship in dconf/core.ini so the whole preset stays

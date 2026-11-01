@@ -9,8 +9,10 @@ python3 tests/check-bms-patches.py /path/to/blur-my-shell-upstream-clone
 
 The second check requires Python, Git, tar, Node.js, and an existing Blur My
 Shell clone containing `BMS_REF` from `lib/steps.sh`. It archives that commit
-into a temporary directory and applies `patches/blur-my-shell-subwindows.patch`.
-It never fetches or modifies the clone.
+into a temporary directory and applies `patches/blur-my-shell-subwindows.patch`
+then `patches/blur-my-shell-full-size-buffers.patch` and
+`patches/blur-my-shell-overview-fade.patch`. It never fetches or
+modifies the clone.
 
 The patched `components/applications/window_rules.js` runs against simulated
 Meta windows. The checks cover:
@@ -20,6 +22,10 @@ Meta windows. The checks cover:
 - The allow list winning over the block list in all mode.
 - Blocked apps staying unblurred, dialogs included, and menus never blurred.
 - A transient-for loop ending.
+
+The patched `render/shader/texture_region.js` runs with `full-size-buffers` off
+(exact first size, 1.25x growth, shrink below half) and on (largest monitor
+first, never shrinks).
 
 Five of the seven fail against unpatched v76. The first check covers the empty
 package-group placeholder rows. The v73 lifecycle tests (window tracking,

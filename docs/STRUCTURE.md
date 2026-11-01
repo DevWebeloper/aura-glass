@@ -82,9 +82,11 @@ For "which file draws this button / owns this setting", use
 | Patch | Target |
 |---|---|
 | `blur-my-shell-subwindows.patch` | BMS: blur a blurred app's ATTACHED dialogs and UTILITY palettes too |
+| `blur-my-shell-full-size-buffers.patch` | BMS: a `full-size-buffers` key that keeps blur textures at monitor size instead of reallocating them while an actor animates (`--smooth-animations`) |
+| `blur-my-shell-overview-fade.patch` | BMS: opening the overview fades the window blur out and leaving it fades it back in, the window content easing with it (200 ms each way); both used to switch in one frame. Clone captures are kept per 1.25x size step, so the zooming previews reuse textures instead of allocating one per frame |
 | `custom-osd-gnome50.patch` | Custom OSD on GNOME 50/51 |
 | `copyous-gnome51.patch` | Copyous on GNOME 51 |
-| `wiggly-follow-cursor.patch` | Wiggly: measure the pointer in logical pixels before every shake, grow and shrink about its hotspot, and follow the cursor theme itself (`theme.js`) |
+| `wiggly-follow-cursor.patch` | Wiggly: measure the pointer in logical pixels before every shake, grow and shrink about its hotspot, follow the cursor theme itself (`theme.js`), and magnify the shape on screen: the theme's busy loop played, else the static shape named by its pixels and drawn from its largest frame or SVG |
 
 ### `bin/`: commands (most installed into `~/.local/bin`)
 
@@ -115,7 +117,8 @@ For "which file draws this button / owns this setting", use
 ### `extensions/aura-glass-blur@aura-glass.local/`
 
 `extension.js` and `metadata.json`. This is "Aura Glass Helper": Blur This App,
-the D-Bus bridge and the adaptive profile menu. Shell versions 48–51.
+the D-Bus bridge, the adaptive profile menu and the window, notification and
+menu animation speeds. Shell versions 48–51.
 
 ### `systemd/`
 
@@ -136,7 +139,7 @@ install or retune. Don't move or rename one without updating its callers.
 | `apply-notification-opacity.py` | `apply_notification_opacity` |
 | `apply-radius-preset.py` | `apply_radius_css` (imports `token_manifest.py`) |
 | `token_manifest.py` | `apply-radius-preset.py`, `check-tokens.sh` |
-| `moga_cursor.py` | `install_moga_cursors` (resolves official release metadata) |
+| `moga_cursor.py` | `install_moga_cursors` (resolves official release metadata, rebuilds the busy cursors (a small Material-style spinner) and the copy, link, menu, help and no-drop cursors (a flat glyph badge) as the full pointer with that mark off its top-right edge, and the round X, what's-this and not-allowed cursors as flat discs in the pointer's material, all in the pointer's border colour) |
 | `aura_glass_operation.py` | `bin/aura-glass-operation` (copied to `~/.local/share/aura-glass/`) |
 | `aura_glass_adaptive.py` | `bin/aura-glass-adaptive` (copied to `~/.local/share/aura-glass/`) |
 
@@ -205,6 +208,7 @@ the GPU. **Agents never run these.** Humans only: `preview.sh`,
 ~/.local/share/gnome-background-properties/aura-glass.xml   lists them in Settings > Appearance
 ~/.config/systemd/user/aura-glass-*.service|timer
 ~/.config/autostart/aura-glass-open-once.desktop   (until the first login spends it)
+~/.config/environment.d/aura-glass.conf       only with --smooth-animations
 ~/.cache/aura-glass/src/                      pinned upstream checkouts ($SRC_CACHE)
 ~/.cache/aura-glass/operation.lock            the writer lock
 /usr/share/gdm/…, /etc/…                      only with --gdm / --gdm-monitors (root)
@@ -262,3 +266,4 @@ the subject of [CONSISTENCY.md](CONSISTENCY.md).
 | BMS dconf subtree | `load_dconf` + `apply_*`, `apply_adaptive_blur`, preview `revert` | Blur My Shell |
 | The 4 CSS targets | `aura-glass-apply` only | GNOME Shell (User Themes), GTK |
 | `$CONF_DIR/extension-overrides.css` | `aura-glass-apply` only | Aura Glass Helper (loads it as an extension sheet, reloads on rename) |
+| `{window,notification,menu}-animation-speed` | `apply_animation_speed` (full and `--incremental` runs) | `install.sh` resolution, `Settings()`, Aura Glass Helper (live, through its config monitor) |

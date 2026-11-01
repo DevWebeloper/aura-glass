@@ -351,6 +351,10 @@ install_moga_cursors() {
         variant="$(moga_variant_for_accent "$accent_name")"
         dest="$HOME/.local/share/icons/Aura-Glass-Moga-$variant"
         if [ "${FORCE:-0}" != 1 ] && [ -d "$dest/cursors" ]; then
+            # Packs installed before the current cursor redesign are redrawn
+            # here; a pack already redrawn returns at once on its marker.
+            python3 "$REPO_ROOT/tools/moga_cursor.py" recolor "$dest" >/dev/null \
+                || warn "could not redraw the Aura-Glass-Moga-$variant cursors"
             skip "Aura-Glass-Moga-$variant already installed"
             continue
         fi
@@ -362,6 +366,8 @@ install_moga_cursors() {
         [ -d "$(dirname "${matches[0]}")/cursors" ] || { rm -f "$meta"; die "Moga archive index.theme has no cursors directory"; }
         stage="$(mktemp -d)"; cp -a "$(dirname "${matches[0]}")/." "$stage/"
         sed -i "s/^Name=.*/Name=Aura Glass Moga $variant/" "$stage/index.theme"
+        python3 "$REPO_ROOT/tools/moga_cursor.py" recolor "$stage" >/dev/null \
+            || { rm -f "$meta"; rm -rf "$stage"; die "could not redraw the Moga $variant cursors"; }
         mkdir -p "$HOME/.local/share/icons"; rm -rf "$dest"; mv "$stage" "$dest"
         ok "Aura-Glass-Moga-$variant"
     done

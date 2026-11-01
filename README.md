@@ -107,13 +107,19 @@ Your saved settings are never changed by this.
 Open **Aura Glass** from the app grid, or run `aura-glass-settings`.
 
 - **Glass.** Mode, tints, and three main sliders (blur amount, brightness, opacity) that move windows, popups and notifications together, with an Advanced group to set windows, popups & notifications, the top bar or the lock screen apart.
-- **Appearance.** Accent, icons, pointer and its size, font, titlebar buttons and their style.
+- **Animations.** How fast windows, notifications and menus open and close, each its own slider in milliseconds, and smooth animations.
+- **Appearance.** Three tabs: accent and font; icons, pointer and its size; titlebar buttons, their style and the top bar (height, and its brightness over a maximized window).
 - **Corner rounding.** Seven presets or eight per-surface values. The blur behind always matches the corner painted on top.
 - **Per-app blur.** A switch per app, the windows open right now, wildcard patterns, and the games that trigger Performance.
 - **Extensions, Packages, System, Updates, Uninstall.**
 
 **Blur fullscreen windows** (`--fullscreen-blur`) is off by default, so a
 fullscreen video or game drops the blur behind it and turns opaque.
+
+**Smooth animations** (`--smooth-animations`) is off by default. On, menus,
+folders and notifications open faster, with no stutter. It adds no CPU or GPU
+load and no extra power draw, only video memory, and a lot of it: switch to
+Performance mode before playing games. Fully applies at the next login.
 
 **Glass style behind app windows** (`--liquid-windows`) puts liquid or vibrant
 behind Files and every other blurred window too. Those then blur the wallpaper, not the window under them.

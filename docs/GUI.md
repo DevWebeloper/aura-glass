@@ -74,6 +74,7 @@ banner while the terminal waits (`progress_wait`, called from `confirm`,
 argv     --dir <run dir>          events + log, written by lib/progress.sh
 reads    events (JSON lines, listed at the top of lib/progress.sh), log
 writes   <run dir>/window         its pid; prompt_logout leaves the logout to it while it is open
+         <run dir>/window-layout  WINDOW_LAYOUT (2); an update swaps a window without it, or with less (below)
 runs     install.sh --verify --progress-dir <run dir>   ("Check again")
          gnome-session-quit --logout --no-prompt         ("Log out now")
 ```
@@ -96,10 +97,23 @@ window makes a run directory under `$XDG_RUNTIME_DIR`, writes
 the installed commit and the target, newest first, each with its GitHub notes
 and every commit it brought in, then the commits after the last release), opens
 the terminal with `AURA_GLASS_PROGRESS_DIR=<dir> aura-glass-update <target>`
-and starts this window. The layout is changelog above, bar in the middle, the
-log live at the bottom. `aura-glass-update` reports its fetch and switch steps
+and starts this window. The layout is two columns: the changelog on the left
+(one card per release, newest first), the bar and the steps on the right. Each
+step slides in as it starts and the column follows the newest unless scrolled
+up. The log is followed live but hidden in a drawer under both columns, opened
+by **Show log**. Below 760sp the columns stack. Status badges are green for
+done (an "already in place" skip too), yellow for a warning, red for a failure,
+grey for a step the run chose not to do. `aura-glass-update` reports its fetch and switch steps
 and owns `begin`; the `install.sh` it runs sees the variable, adds its own
-steps and the finish, and opens no second window.
+steps and the finish, and opens no second window, except for one case. The
+window was started from beside the settings window, so it is the release being
+updated *from*. When that is older than the checkout just switched to (no
+`window-layout`, or a lower one than this file's `WINDOW_LAYOUT`), the
+installer's `progress_replace_update_window` opens this checkout's window on the
+same run directory and closes the old one once the new one has written
+`window-layout`. The new one replays `events` from the start, so the fetch and
+switch steps are still there. An update from v0.3.8 shows the new layout from
+the installer's first step on, not only from the next update.
 
 ---
 
@@ -164,7 +178,8 @@ is decided by `select_apply_actions`. See
 | Page | Group | Holds |
 |---|---|---|
 | Glass | Appearance | A status group on top: the mode in force plus any adaptive overlay and its reason, a "Switch to X" button (the ordinary Apply), and an "Adaptive performance" combo running `aura-glass-adaptive profile` like the panel menu. It's watched live (`$C`, `$C/adaptive-performance`), and the header subtitle repeats it on every page. Then two mode tabs (Frosted, Performance) in an `Adw.ViewStack`, with a "Switch now" banner when the tab differs from the installed mode. **Frosted**: tints; a Glass group of three main sliders (Blur amount, Brightness, Opacity 70–100 %, where 100 % also stands for an opaque `0` install); "Blur behind windows" (All apps / GTK apps only / Off) and the popup blur switch, which covers notifications; the glass style; and a collapsed Advanced group with one expander per surface (Windows, Popups & notifications, Top bar, Lock screen) holding that surface's own blur amount and brightness (plus opacity for popups & notifications), and a More expander for glass style behind app windows and fullscreen blur. A surface bar follows its main slider until moved; then it keeps its value, and a reset button hands it back (`main`). **Performance**: tints and one opacity scale. |
-| Appearance | Appearance | Accent (nine names plus a link to GNOME Settings; there's no hex picker, by design), icon pack and colour, pointer and size, font, titlebar buttons and style, and the top bar height (24–48 px, with a reset to GNOME's 32) |
+| Animations | Appearance | Window, notification and menu speed (three scales read out in ms (50–300 % of GNOME's pace underneath), `--*-animation-speed`, not previewable), smooth animations |
+| Appearance | Appearance | Three tabs. **Look**: accent (nine names plus a link to GNOME Settings; there's no hex picker, by design), font. **Icons & pointer**: icon pack and colour, pointer and size. **Titlebar & top bar**: titlebar buttons and style, top bar height (24–48 px, with a reset to GNOME's 32) and its brightness over a maximized window |
 | Corner rounding | Appearance | Seven preset cards drawn with their own corners, reset, or eight per-surface spin rows with a live drawing |
 | Per-app blur | Appearance | A switch per installed app, live "Open now" windows (D-Bus), a default for unchosen apps, **fullscreen performance games** (written straight to `adaptive-fullscreen-apps`), wildcard patterns |
 | Extensions | System | Every catalogued extension: switch, install/remove, settings button (when it has `prefs.js`), recommended and full packs, via `bin/aura-glass-ext` |
@@ -173,9 +188,12 @@ is decided by `select_apply_actions`. See
 | Updates | System | Two tabs. **Updates**: version, check, install update; one list, newest first by date, of **Tags** (every commit on main, named `v0.3.5+N`) and **Releases** (`vX.Y.Z`, with notes): the 5 newest of each plus the installed one when older. One badge per row. Only the newest (main's tip, a release if tagged, else a tag) has Install; older rows are read-only. History graph of everything. **Maintenance**: daily update check; reapply settings; reset theme to defaults (`--reset --force --gui --interactive`). No channel row: the line follows what was installed from the list; `--update-channel` stays for the CLI |
 | Uninstall | none | Built into the stack (other code needs its widgets), opened from the primary menu, not the sidebar |
 
-The order matters: Glass is built before Per-app blur, because the app list asks
-the blur rows which list is active. `SEARCH_INDEX` is a hand-kept set of extra
-search words per page. `FLAG_LABELS` maps flags to pages and labels for the
+The order matters: Glass is built before Blur, because the Blur page's banner
+asks the mode tabs which mode is being asked for, and Blur before Per-app blur,
+because the app list asks the blur rows which list is active. `SEARCH_INDEX` is
+a hand-kept set of extra search words per page; titles are matched before it.
+`SEARCH_TABS` says which tab of a tabbed page a word is on, so the search opens
+that tab too. `FLAG_LABELS` maps flags to pages and labels for the
 "N changes pending" popover and the sidebar dots. The popover's first row is
 what Apply will run: `_ask_plan` sends the same flags to `install.sh
 --settings-only --incremental --dry-run --plan-json` 300 ms after the last edit,

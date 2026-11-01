@@ -132,6 +132,11 @@ LIQUID_WINDOWS=""   # empty = remembered choice, then 0
 LIQUID_WINDOWS_EXPLICIT=""
 FULLSCREEN_BLUR=""  # empty = remembered choice, then 0
 FULLSCREEN_BLUR_EXPLICIT=""
+SMOOTH_ANIMATIONS=""  # empty = remembered choice, then 0
+SMOOTH_ANIMATIONS_EXPLICIT=""
+WINDOW_ANIMATION_SPEED=""       # empty = remembered choice, then 100 (GNOME's pace)
+NOTIFICATION_ANIMATION_SPEED="" # empty = remembered choice, then 100
+MENU_ANIMATION_SPEED=""         # empty = remembered choice, then 100
 BLUR_STRENGTH=""    # empty = remembered choice, then the tuned radii (100)
 BLUR_BRIGHTNESS=""  # empty = remembered choice, then the tuned brightness (100)
 # Each surface's own blur amount and brightness, empty = remembered choice,
@@ -143,6 +148,7 @@ PANEL_HEIGHT=""     # empty = remembered choice, then the theme's 40px
 ADAPTIVE_BLUR=""     # private transient writer: active | restore, never memoed
 APP_TINT_COLOR=""   # empty = remembered choice, then black (#000000)
 SHELL_TINT_COLOR="" # empty = remembered choice, then black (#000000)
+MAXIMIZED_PANEL_BRIGHTNESS="" # empty = remembered choice, then 40 (60% black)
 RADIUS_PRESET=""       # empty = remembered choice, then default
 RADIUS_PRESET_EXPLICIT=""
 RADIUS_CUSTOM=""       # eight comma-separated pixel values, in RADIUS_TOKENS order
@@ -220,6 +226,22 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --no-fullscreen-blur
                       a fullscreen window (a video, a game) drops its blur
                       and goes opaque until it leaves fullscreen (the default)
+    --smooth-animations
+                      menus, folders and notifications open faster, with no
+                      stutter. No extra CPU or GPU load, but it uses a lot
+                      of video memory: switch to Performance mode before
+                      playing games. Fully applies at next login (remembered)
+    --no-smooth-animations
+                      off (the default)
+    --window-animation-speed P
+                      how fast windows open, close, minimize and maximize, as
+                      a percentage of GNOME's own pace: 50-300, 200 twice as
+                      fast, 100 the default (remembered)
+    --notification-animation-speed P
+                      the same, for notification banners sliding in and out
+    --menu-animation-speed P
+                      the same, for the top bar's menus, Quick Settings and
+                      right-click menus
     --blur-strength P how far every blur reaches, as a percentage of the tuned
                       radii: 25-200, 100 is the tuned look (remembered)
     --blur-brightness P
@@ -247,6 +269,9 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
     --shell-tint-color HEX
                       the same, for the panel, menus and notifications.
                       Default #000000 (remembered)
+    --maximized-panel-brightness P
+                      how bright the top bar is over a maximized window: 0-100,
+                      0 solid black, 100 clear glass, 40 the default (remembered)
     --radius-preset P corner rounding for windows, menus, dialogs and
                       notifications. One of: $RADIUS_PRESETS (default: default,
                       and remembered for later runs)
@@ -390,6 +415,14 @@ parse_flags() {
         --no-liquid-windows) LIQUID_WINDOWS=0; LIQUID_WINDOWS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --fullscreen-blur)    FULLSCREEN_BLUR=1; FULLSCREEN_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-fullscreen-blur) FULLSCREEN_BLUR=0; FULLSCREEN_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --smooth-animations)    SMOOTH_ANIMATIONS=1; SMOOTH_ANIMATIONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-smooth-animations) SMOOTH_ANIMATIONS=0; SMOOTH_ANIMATIONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --window-animation-speed) WINDOW_ANIMATION_SPEED="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --window-animation-speed=*) WINDOW_ANIMATION_SPEED="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --notification-animation-speed) NOTIFICATION_ANIMATION_SPEED="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --notification-animation-speed=*) NOTIFICATION_ANIMATION_SPEED="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --menu-animation-speed) MENU_ANIMATION_SPEED="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --menu-animation-speed=*) MENU_ANIMATION_SPEED="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --blur-strength) BLUR_STRENGTH="${2:-100}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --blur-strength=*) BLUR_STRENGTH="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --adaptive-blur) ADAPTIVE_BLUR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
@@ -432,6 +465,8 @@ parse_flags() {
         --app-tint-color=*) APP_TINT_COLOR="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --shell-tint-color) SHELL_TINT_COLOR="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
         --shell-tint-color=*) SHELL_TINT_COLOR="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
+        --maximized-panel-brightness) MAXIMIZED_PANEL_BRIGHTNESS="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --maximized-panel-brightness=*) MAXIMIZED_PANEL_BRIGHTNESS="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --radius-custom) RADIUS_CUSTOM="${2:-}"; RADIUS_CUSTOM_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --radius-custom=*) RADIUS_CUSTOM="${1#*=}"; RADIUS_CUSTOM_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --radius-preset) RADIUS_PRESET="${2:-}"; RADIUS_PRESET_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
@@ -1658,6 +1693,8 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
                     css) install_css ;;
                     app-opacity) apply_app_opacity ;;
                     fullscreen-blur) apply_fullscreen_blur ;;
+                    smooth-animations) apply_smooth_animations ;;
+                    animation-speed) apply_animation_speed ;;
                     glass-style) apply_glass_style ;;
                     adaptive-blur)
                         apply_adaptive_blur "$ADAPTIVE_BLUR"

@@ -103,7 +103,8 @@ install_ext_ego() {
 
 # Blur My Shell carries the popup component upstream: menus, quick settings,
 # notifications, dialogs and the OSD get blur directly. We build from pinned
-# release v76 with the subwindow patch applied on top (see BMS_SUBWIN_PATCH in
+# release v76 with the subwindow, full-size-buffers and overview-fade patches
+# applied on top (see BMS_SUBWIN_PATCH, BMS_BUFFERS_PATCH and BMS_FADE_PATCH in
 # lib/steps.sh).
 # gnome-extensions pack and gnome-extensions install both write under $HOME, so
 # this needs no root.
@@ -126,12 +127,15 @@ install_bms() {
        && [ -f "$EXT_DIR/$BMS_UUID/components/popup/index.js" ] \
        && [ "$(cat "$CONF_DIR/bms-ref" 2>/dev/null || true)" = "$BMS_REF" ] \
        && patch_stamp_current bms-subwindow-patch "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH" \
+       && patch_stamp_current bms-buffers-patch "$REPO_ROOT/patches/$BMS_BUFFERS_PATCH" \
+       && patch_stamp_current bms-fade-patch "$REPO_ROOT/patches/$BMS_FADE_PATCH" \
        && ext_supports_shell "$EXT_DIR/$BMS_UUID" "$GNOME_MAJOR"; then
+        pin_bms_version
         skip "$BMS_UUID already built from $BMS_REF"
         return 0
     fi
 
-    info "building Blur My Shell from $BMS_REF + patches/$BMS_SUBWIN_PATCH"
+    info "building Blur My Shell from $BMS_REF + patches/$BMS_SUBWIN_PATCH + patches/$BMS_BUFFERS_PATCH + patches/$BMS_FADE_PATCH"
     local src="$SRC_CACHE/blur-my-shell"
     if [ -d "$src/.git" ]; then
         run git -C "$src" checkout --quiet -- . 2>/dev/null || true
@@ -147,6 +151,10 @@ install_bms() {
     if [ "${DRY_RUN:-0}" != 1 ]; then
         git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH" \
             || die "the Blur My Shell subwindow patch did not apply — upstream may have moved"
+        git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_BUFFERS_PATCH" \
+            || die "the Blur My Shell full-size-buffers patch did not apply — upstream may have moved"
+        git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_FADE_PATCH" \
+            || die "the Blur My Shell overview-fade patch did not apply — upstream may have moved"
     fi
 
     local podir=(--podir=../po)
@@ -156,7 +164,7 @@ install_bms() {
     fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: apply patches/$BMS_SUBWIN_PATCH, bundle the stylesheets, gnome-extensions pack in $src/src, then install the zip"
+        info "dry-run: apply patches/$BMS_SUBWIN_PATCH, patches/$BMS_BUFFERS_PATCH and patches/$BMS_FADE_PATCH, bundle the stylesheets, gnome-extensions pack in $src/src, then install the zip"
         return 0
     fi
 
@@ -222,7 +230,28 @@ install_bms() {
     printf '%s\n' "$BMS_REF" > "$CONF_DIR/bms-ref"
     printf 'git\n' > "$CONF_DIR/bms-source"
     patch_stamp_write bms-subwindow-patch "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH"
-    ok "$BMS_UUID (built from $BMS_REF, with the subwindow patch)"
+    patch_stamp_write bms-buffers-patch "$REPO_ROOT/patches/$BMS_BUFFERS_PATCH"
+    patch_stamp_write bms-fade-patch "$REPO_ROOT/patches/$BMS_FADE_PATCH"
+    pin_bms_version
+    ok "$BMS_UUID (built from $BMS_REF, with the subwindow, full-size-buffers and overview-fade patches)"
+}
+
+# GNOME Shell checks every user-installed extension against extensions.gnome.org
+# (extensionDownloader.js checkForUpdates, at login and every few hours) by
+# posting its metadata "version", and downloads whatever EGO answers "upgrade"
+# for, to replace it at the next login. Our v76 build is older than EGO's v77,
+# so the next login swapped in the stock extension, with none of the patches
+# and none of the popup blur, while bms-ref and the patch stamps still said
+# "current". EGO answers nothing for a version at or above its latest (probed:
+# 76 -> upgrade, 77, 78 and 99999 -> {}), so the installed copy claims 99999.
+# The only per-extension lever: allow-extension-installation=false would also
+# stop the installer's own EGO installs. Re-applied on every run, built or
+# skipped, and read by the shell at login.
+pin_bms_version() {
+    local meta="$EXT_DIR/$BMS_UUID/metadata.json"
+    [ "${DRY_RUN:-0}" = 1 ] && return 0
+    [ -f "$meta" ] || return 0
+    grep -q '"version": 99999' "$meta" || sed -i 's/"version": [0-9]*/"version": 99999/' "$meta"
 }
 
 # aura-glass-blur@aura-glass.local — "Blur This App" in the window right-click
@@ -381,7 +410,10 @@ install_extensions() {
 # pixels before every shake, pins the pivot on the hotspot, and adds theme.js,
 # which finds the active cursor theme's pointer itself, in the order GNOME
 # Shell draws it (St's SVG set, built-in Adwaita included, else the Xcursor
-# file), on every cursor-theme change, from any tool.
+# file), on every cursor-theme change, from any tool. The magnified copy is
+# the shape on screen: the theme's busy loop when the sprite animates (Mutter
+# stops animating a hidden pointer), else the static shape the live pixels
+# match, drawn from its largest frame or its SVG.
 # Applied to the EGO download, so a Wiggly update that moves the code skips
 # the patch with a warning rather than half-applying it.
 patch_wiggly_extension() {

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Assert the Blur My Shell patch applies to the pinned ref and leaves valid JS.
+# Assert the Blur My Shell patches apply to the pinned ref and leave valid JS.
 #
-# install_bms applies patches/blur-my-shell-subwindows.patch to BMS_REF and
+# install_bms applies patches/blur-my-shell-subwindows.patch, then
+# patches/blur-my-shell-full-size-buffers.patch, then
+# patches/blur-my-shell-overview-fade.patch, to BMS_REF and
 # dies if it does not apply, which is a user's desktop finding out. And a patch
 # that applies can still reference a name it never declares: KI-27's
 # MESSAGE_CORNER_EFFECT_NAME threw inside a try and was swallowed, so nothing
@@ -41,6 +43,10 @@ note() { printf '  %s\n' "$1"; problems=$((problems + 1)); }
 
 git -C "$TMP/bms" apply --whitespace=nowarn "$ROOT/patches/$BMS_SUBWIN_PATCH" \
     || note "patches/$BMS_SUBWIN_PATCH does not apply to $BMS_REF"
+git -C "$TMP/bms" apply --whitespace=nowarn "$ROOT/patches/$BMS_BUFFERS_PATCH" \
+    || note "patches/$BMS_BUFFERS_PATCH does not apply on top of it"
+git -C "$TMP/bms" apply --whitespace=nowarn "$ROOT/patches/$BMS_FADE_PATCH" \
+    || note "patches/$BMS_FADE_PATCH does not apply on top of those"
 [ "$problems" = 0 ] || { echo "check-bms-patches: $problems problem(s)"; exit 1; }
 
 mapfile -t touched < <(git -C "$TMP/bms" diff --name-only -- '*.js')

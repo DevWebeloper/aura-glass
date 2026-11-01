@@ -1,7 +1,7 @@
-diff -ruN a/cursor.js b/cursor.js
---- a/cursor.js
-+++ b/cursor.js
-@@ -36,6 +36,10 @@
+diff --color -ruN a/cursor.js b/cursor.js
+--- a/cursor.js	2026-10-31 22:23:05.372399691 +0200
++++ b/cursor.js	2026-10-31 22:25:11.866591410 +0200
+@@ -36,6 +36,14 @@
          return this._tracker.get_sprite();
      }
  
@@ -9,10 +9,14 @@ diff -ruN a/cursor.js b/cursor.js
 +        return this._tracker.get_scale();
 +    }
 +
++    get tracker() {
++        return this._tracker;
++    }
++
      controlCursorVisibility(showCursor) {
          // Idempotent behavior: do nothing if state already matches
          if (showCursor && !this._hidden)
-@@ -55,15 +59,20 @@
+@@ -55,15 +63,20 @@
          this._hidden = !showCursor;
      }
  
@@ -35,18 +39,172 @@ diff -ruN a/cursor.js b/cursor.js
      }
  
      hide() {
-diff -ruN a/effect.js b/effect.js
---- a/effect.js
-+++ b/effect.js
-@@ -9,6 +9,7 @@
+diff --color -ruN a/effect.js b/effect.js
+--- a/effect.js	2026-10-31 22:23:05.372399691 +0200
++++ b/effect.js	2026-10-31 22:44:46.669214915 +0200
+@@ -1,24 +1,159 @@
+ 'use strict';
+ 
+ import Clutter from 'gi://Clutter';
++import Cogl from 'gi://Cogl';
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Graphene from 'gi://Graphene';
++import Shell from 'gi://Shell';
+ import St from 'gi://St';
  import * as Main from 'resource:///org/gnome/shell/ui/main.js';
  
  import Cursor from './cursor.js';
-+import { cursorForTheme } from './theme.js';
++import {
++    animatedForTheme, cursorForTheme, shapePicture, shapePixels, staticShapesForTheme,
++} from './theme.js';
  
  const extensionDir = () => GLib.path_get_dirname(import.meta.url.slice(7));
  
-@@ -26,16 +27,59 @@
+-export default class Effect extends St.Icon {
++// How far the live hotspot may sit from a theme shape's and still be that
++// shape. In pixels at the sprite's own width when the theme has that size:
++// Mutter rounds the hotspot to a multiple of the scale it loads at, up to 1px
++// off. Otherwise as a fraction, since an SVG is drawn at any size and an
++// Xcursor size Mutter scales from drifts up to 0.02 (Moga's wait).
++const HOT_PIXELS = 1.5;
++const HOT_FRACTION = 0.025;
++
++// The mean difference, per channel of 255, under which a theme shape's
++// pixels are the live sprite's. Mutter draws an Xcursor size as the file
++// holds it, so the right shape scores near 0. An SVG drawn by gdk-pixbuf
++// differs from St's drawing of it by antialiasing only. A sprite no shape
++// scores under this (an app's own cursor) is magnified as it is.
++const MATCH_LIMIT = 12;
++
++// How many sprites keep the shape they were named as. Each new cursor image
++// is a new texture, and a shake over windows changes the image constantly.
++const NAMED_SPRITES = 16;
++
++// The live sprite's pixels, as a straight RGBA pixbuf: the one way GNOME
++// Shell gives a script a Cogl texture's contents.
++const spritePixbuf = sprite => new Promise((resolve, reject) => {
++    const stream = Gio.MemoryOutputStream.new_resizable();
++    Shell.Screenshot.composite_to_stream(sprite, 0, 0, -1, -1, 1,
++        null, 0, 0, 1, stream, (_source, result) => {
++            try {
++                resolve(Shell.Screenshot.composite_to_stream_finish(result));
++            } catch (e) {
++                reject(e);
++            } finally {
++                stream.close(null);
++            }
++        });
++});
++
++// Mean absolute difference of two straight RGBA images of one size, colour
++// weighted by alpha, so the transparent margin of a cursor does not count.
++// Every other pixel each way, and given up once it passes limit: fifteen
++// Moga shapes share the centre hotspot, and this runs on the shell's thread.
++const difference = (a, aStride, b, bStride, width, height, limit) => {
++    const samples = Math.ceil(width / 2) * Math.ceil(height / 2) * 4;
++    const stop = limit * samples;
++    let sum = 0;
++    for (let y = 0; y < height; y += 2) {
++        if (sum > stop)
++            return Infinity;
++        for (let x = 0; x < width; x += 2) {
++            const i = y * aStride + x * 4, j = y * bStride + x * 4;
++            const aa = a[i + 3], ba = b[j + 3];
++            sum += Math.abs(aa - ba);
++            for (let c = 0; c < 3; c++)
++                sum += Math.abs(a[i + c] * aa - b[j + c] * ba) / 255;
++        }
++    }
++    return sum / samples;
++};
++
++// A cursor counts as animated after this many images of the same shape, each
++// within ANIMATION_GAP_US of the one before and at a steady beat (within
++// ANIMATION_JITTER_US of the previous gap). Mutter re-sends the same shape
++// whenever the pointer crosses into another window, which a shake does, but
++// not on a beat; animation ticks come every frame delay (30-33ms in MacTahoe
++// and Moga).
++const ANIMATION_FRAMES = 3;
++const ANIMATION_GAP_US = 200000;
++const ANIMATION_JITTER_US = 12000;
++
++// The live sprite drawn as the content of an actor, the way GNOME Shell's
++// magnifier draws it (MouseSpriteContent in ui/magnifier.js), so a shape the
++// theme lookup cannot name (an I-beam, a hand, a resize arrow) is magnified
++// as it is on screen.
++const SpriteContent = GObject.registerClass({
++    Implements: [Clutter.Content],
++}, class SpriteContent extends GObject.Object {
++    _init() {
++        super._init();
++        this._texture = null;
++    }
++
++    set texture(texture) {
++        if (this._texture === texture)
++            return;
++        this._texture = texture;
++        this.invalidate();
++    }
++
++    vfunc_get_preferred_size() {
++        if (!this._texture)
++            return [false, 0, 0];
++        return [true, this._texture.get_width(), this._texture.get_height()];
++    }
++
++    vfunc_paint_content(actor, node, _paintContext) {
++        if (!this._texture)
++            return;
++        const [minFilter, magFilter] = actor.get_content_scaling_filters();
++        const textureNode = new Clutter.TextureNode(this._texture,
++            null, minFilter, magFilter);
++        node.add_child(textureNode);
++        textureNode.add_rectangle(actor.get_content_box());
++    }
++});
++
++// The magnified copy draws the shape on screen from the theme's own best
++// picture, since Mutter hands out the sprite but never its name. The theme's
++// busy loop, played from its largest frames, when the sprite has that loop's
++// hotspot and was seen animating, or the hotspot is no static shape's (Mutter
++// stops animating a hidden pointer, so the live sprite would freeze, and a
++// wait cursor met while magnified is never seen ticking). Else the static
++// shape the sprite is: those with its hotspot are held against its pixels,
++// and the closest is drawn from its largest Xcursor frame (Moga: 96px, where
++// the sprite is 64) or its SVG, sharp at any size. A sprite no shape matches
++// is drawn as it is, scaled up, as it is while it is being named.
++export default class Effect extends St.Widget {
+     static {
+         GObject.registerClass(this);
+     }
+ 
+     constructor() {
+-        super();
++        super({layout_manager: new Clutter.BinLayout()});
++        this._icon = new St.Icon({x_expand: true, y_expand: true});
++        this._picture = new Clutter.Actor({x_expand: true, y_expand: true, visible: false});
++        this._picture.set_content_scaling_filters(
++            Clutter.ScalingFilter.TRILINEAR, Clutter.ScalingFilter.LINEAR);
++        this.add_child(this._icon);
++        this.add_child(this._picture);
++        this._sprite = new SpriteContent();
++        this._size = 96;
++        this._arrowHot = null;
++        this._animated = [];
++        this._statics = [];
++        this._named = new Map();
++        this._naming = new Set();
++        this._loop = null;
++        this._frameId = null;
++        this._seen = {key: null, count: 0, time: 0, gap: 0};
++        this._animatedKey = null;
+         this.isHidden = true;
+         this.magnifyDuration = 250;
+         this.unmagnifyDuration = 150;
+@@ -26,33 +161,325 @@
          this.isWiggling = false;
          this._isInTransition = false;
          this.cursor = new Cursor();
@@ -62,11 +220,13 @@ diff -ruN a/effect.js b/effect.js
 +        this._ratio = 1;
 +        this._pivot = new Graphene.Point({x: 0, y: 0});
 +        this._measure();
- 
++        this._changedId = this.cursor.tracker.connect('cursor-changed',
++            () => this._onCursorChanged());
++
 +        // Timeout ID for removing delays
 +        this._unmagnifyDelayId = null;
 +    }
-+
+ 
 +    // The pointer as it is drawn now, in logical pixels, which is what the
 +    // shrink has to end on. Mutter draws it cursor-size x the theme's canvas
 +    // ratio wide on every monitor, while the sprite is a texture loaded at
@@ -92,7 +252,7 @@ diff -ruN a/effect.js b/effect.js
 +            : texture * this._textureScale();
 +        this._hotX = hotX / texture * this._spriteSize;
 +        this._hotY = hotY / sprite.get_height() * this._spriteSize;
-+        this._ratio = this.icon_size / this._spriteSize;
++        this._ratio = this._size / this._spriteSize;
          this._pivot = new Graphene.Point({
              x: this._hotX / this._spriteSize,
              y: this._hotY / this._spriteSize,
@@ -110,7 +270,10 @@ diff -ruN a/effect.js b/effect.js
      }
  
      set cursorSize(size) {
-@@ -43,16 +87,45 @@
+-        this.icon_size = size;
++        this._size = size;
++        this._icon.icon_size = size;
++        this.set_size(size, size);
          this._ratio = size / this._spriteSize;
      }
  
@@ -134,12 +297,227 @@ diff -ruN a/effect.js b/effect.js
 +    _updateIcon() {
 +        const found = cursorForTheme(this._themeName);
 +        this._canvas = found?.canvas ?? null;
-+        if (this._userPath) {
-+            this.gicon = Gio.Icon.new_for_string(this._userPath);
++        this._arrowHot = found?.hot ?? null;
++        this._stopLoop();
++        this._animated = animatedForTheme(this._themeName);
++        this._statics = staticShapesForTheme(this._themeName);
++        this._named.clear();
++        this._userIcon = this._userPath ? Gio.Icon.new_for_string(this._userPath) : null;
++    }
++
++    // Tells an animating sprite from one that changed shape, and follows
++    // the shape while magnified. Counted only while the pointer is drawn:
++    // hidden, Mutter does not tick it, and a re-sent shape is no beat.
++    _onCursorChanged() {
++        const sprite = this.cursor.sprite;
++        if (!sprite)
++            return;
++        const [hotX, hotY] = this.cursor.hot;
++        const key = `${sprite.get_width()}x${sprite.get_height()}@${hotX},${hotY}`;
++        const now = GLib.get_monotonic_time();
++        const seen = this._seen;
++        if (key !== seen.key) {
++            seen.count = 1;
++            seen.gap = 0;
++            this._animatedKey = null;
++        } else if (!this.isWiggling) {
++            const gap = now - seen.time;
++            const steady = seen.count < 2 || Math.abs(gap - seen.gap) <= ANIMATION_JITTER_US;
++            seen.count = gap <= ANIMATION_GAP_US && steady ? seen.count + 1 : 1;
++            seen.gap = gap;
++        }
++        seen.key = key;
++        seen.time = now;
++        if (seen.count >= ANIMATION_FRAMES && this._animatedKey !== key) {
++            this._animatedKey = key;
++            // Decoded now, while the app is busy, not on the first shake.
++            const loop = this._matchLoop();
++            if (loop)
++                this._prepare(loop);
++        }
++        if (this.isWiggling) {
++            this._measure();
++            this._choosePicture();
++        }
++    }
++
++    _near(hot) {
++        const sprite = this.cursor.sprite;
++        const [hotX, hotY] = this.cursor.hot;
++        return this._nearAt(hot, sprite.get_width(), sprite.get_height(), hotX, hotY);
++    }
++
++    _nearAt(hot, width, height, hotX, hotY) {
++        const pixels = hot.bySize?.[width];
++        if (pixels)
++            return Math.abs(pixels[0] - hotX) <= HOT_PIXELS && Math.abs(pixels[1] - hotY) <= HOT_PIXELS;
++        const [x, y] = hot.fraction;
++        return Math.abs(x - hotX / width) <= Math.max(HOT_FRACTION, HOT_PIXELS / width) &&
++            Math.abs(y - hotY / height) <= Math.max(HOT_FRACTION, HOT_PIXELS / height);
++    }
++
++    _matchLoop() {
++        const loop = this._animated.find(a => this._near(a.hot));
++        if (!loop)
++            return null;
++        if (this._animatedKey === this._seen.key)
++            return loop;
++        return this._statics.some(hot => this._near(hot)) ? null : loop;
++    }
++
++    _choosePicture() {
++        const sprite = this.cursor.sprite;
++        if (!sprite?.get_width())
++            return;
++        // Until a loop is decoded it falls through to the static shape or
++        // the sprite, and is chosen once it is ready.
++        const loop = this._matchLoop();
++        if (loop?.contents?.length) {
++            this._playLoop(loop);
 +            return;
 +        }
-+        this.gicon = found?.icon ??
-+            Gio.Icon.new_for_string(GLib.build_filenamev([extensionDir(), 'icons', 'cursor.svg']));
++        if (loop)
++            this._prepare(loop);
++        this._stopLoop();
++        // A picture typed into the preferences stands in for the arrow, and
++        // with no theme to compare against, for every shape.
++        if (this._userPath && (!this._arrowHot || this._near(this._arrowHot))) {
++            this._showIcon(this._userIcon);
++            return;
++        }
++        if (this._named.has(sprite)) {
++            this._showShape(this._named.get(sprite), sprite);
++            return;
++        }
++        this._showShape(null, sprite);
++        this._name(sprite);
++    }
++
++    _showIcon(gicon) {
++        if (this._icon.gicon !== gicon)
++            this._icon.gicon = gicon;
++        this._icon.visible = true;
++        this._picture.visible = false;
++    }
++
++    _showShape(shape, sprite) {
++        if (shape?.icon) {
++            this._showIcon(shape.icon);
++            return;
++        }
++        if (shape && shape.content === undefined) {
++            const picture = shapePicture(shape);
++            shape.content = picture && St.ImageContent.new_with_preferred_size(
++                picture.width, picture.height);
++            shape.content?.set_bytes(global.stage.context.get_backend().get_cogl_context(),
++                picture.bytes, Cogl.PixelFormat.BGRA_8888_PRE,
++                picture.width, picture.height, picture.rowstride);
++        }
++        if (shape?.content) {
++            this._picture.content = shape.content;
++        } else {
++            this._sprite.texture = sprite;
++            this._picture.content = this._sprite;
++        }
++        this._icon.visible = false;
++        this._picture.visible = true;
++    }
++
++    // Finds which theme shape a sprite is and remembers it, then redraws if
++    // that sprite is the one magnified. The hotspot is read now: by the time
++    // the pixels arrive the pointer may wear another shape.
++    async _name(sprite) {
++        if (this._named.has(sprite) || this._naming.has(sprite) || !this._statics.length)
++            return;
++        this._naming.add(sprite);
++        const statics = this._statics;
++        let shape = null;
++        try {
++            const [width, height] = [sprite.get_width(), sprite.get_height()];
++            const [hotX, hotY] = this.cursor.hot;
++            const near = statics.filter(s => this._nearAt(s, width, height, hotX, hotY));
++            if (near.length) {
++                const pixbuf = await spritePixbuf(sprite);
++                if (pixbuf.width === width && pixbuf.height === height && pixbuf.n_channels === 4) {
++                    const live = pixbuf.read_pixel_bytes().toArray();
++                    let best = MATCH_LIMIT;
++                    const all = await Promise.all(near.map(c => shapePixels(c, width)));
++                    for (const [i, candidate] of near.entries()) {
++                        const pixels = all[i];
++                        if (!pixels)
++                            continue;
++                        const score = difference(live, pixbuf.rowstride,
++                            pixels[0], pixels[1], width, height, best);
++                        if (score <= best) {
++                            best = score;
++                            shape = candidate;
++                        }
++                    }
++                }
++            }
++        } catch {
++            shape = null;
++        } finally {
++            this._naming.delete(sprite);
++        }
++        if (statics !== this._statics)
++            return;
++        this._named.set(sprite, shape);
++        if (this._named.size > NAMED_SPRITES)
++            this._named.delete(this._named.keys().next().value);
++        if (this.isWiggling && !this._loop && this.cursor.sprite === sprite)
++            this._choosePicture();
++    }
++
++    // One St.ImageContent per frame, made once per theme. A loop that fails
++    // to decode is left empty, so the sprite stands in for it.
++    _prepare(loop) {
++        if (loop.pending)
++            return;
++        loop.pending = loop.frames().then(frames => {
++            const context = global.stage.context.get_backend().get_cogl_context();
++            loop.contents = frames.map(f => {
++                const content = St.ImageContent.new_with_preferred_size(f.width, f.height);
++                content.set_bytes(context, f.bytes,
++                    f.premultiplied ? Cogl.PixelFormat.BGRA_8888_PRE : Cogl.PixelFormat.RGBA_8888,
++                    f.width, f.height, f.rowstride);
++                return {content, delay: f.delay};
++            });
++        }).catch(() => {
++            loop.contents = [];
++        }).then(() => {
++            if (this.isWiggling && this._animated.includes(loop))
++                this._choosePicture();
++        });
++    }
++
++    _playLoop(loop) {
++        this._icon.visible = false;
++        this._picture.visible = true;
++        if (this._loop === loop)
++            return;
++        this._stopLoop();
++        this._loop = loop;
++        let frame = 0;
++        const show = () => {
++            const {content, delay} = loop.contents[frame];
++            this._picture.content = content;
++            frame = (frame + 1) % loop.contents.length;
++            this._frameId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.max(16, delay), () => {
++                this._frameId = null;
++                show();
++                return GLib.SOURCE_REMOVE;
++            });
++        };
++        show();
++    }
++
++    _stopLoop() {
++        if (this._frameId) {
++            GLib.Source.remove(this._frameId);
++            this._frameId = null;
++        }
++        this._loop = null;
      }
  
      move(x, y) {
@@ -154,12 +532,34 @@ diff -ruN a/effect.js b/effect.js
 +        // instead of appearing at full size on the first shake.
 +        this.pivot_point = this._pivot;
 +        this.set_scale(1.0 / this._ratio, 1.0 / this._ratio);
++        this._choosePicture();
          Main.uiGroup.add_child(this);
          if (this.isHidden) {
              this.cursor.hide();
-diff -ruN a/extension.js b/extension.js
---- a/extension.js
-+++ b/extension.js
+@@ -89,6 +516,8 @@
+                 pivot_point: this._pivot,
+                 onComplete: () => {
+                     Main.uiGroup.remove_child(this);
++                    this._stopLoop();
++                    this._sprite.texture = null;
+                     if (this.isHidden) this.cursor.show();
+ 
+                     this.isWiggling = false;
+@@ -108,6 +537,11 @@
+             this._unmagnifyDelayId = null;
+         }
+         this.remove_all_transitions();
++        this._stopLoop();
++        if (this._changedId) {
++            this.cursor.tracker.disconnect(this._changedId);
++            this._changedId = null;
++        }
+         this.cursor.destroy();
+ 
+         if (this.get_parent()) {
+diff --color -ruN a/extension.js b/extension.js
+--- a/extension.js	2026-10-31 22:23:05.372399691 +0200
++++ b/extension.js	2026-10-31 22:23:05.367429804 +0200
 @@ -1,5 +1,6 @@
  'use strict';
  
@@ -167,7 +567,24 @@ diff -ruN a/extension.js b/extension.js
  import GLib from 'gi://GLib';
  import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
  
-@@ -114,9 +115,29 @@
+@@ -44,7 +45,15 @@
+ 
+     _checkCursorHiddenByProgram() {
+         // different program might take other methods to hide the cursor, so this check should contain more conditions
+-        if (!this._effect.cursor.sprite) {
++        // A fullscreen window on the pointer's monitor counts as one: games
++        // can keep a cursor sprite while aiming flicks the pointer or warps
++        // it back to the centre, and those jumps pass for a shake, so the
++        // pointer grew in game. Treated like a hidden cursor, the watcher
++        // stops, any magnify ends and the history is dropped until the
++        // window leaves fullscreen.
++        const display = global.display;
++        if (!this._effect.cursor.sprite ||
++            display.get_monitor_in_fullscreen(display.get_current_monitor())) {
+             if (!this._isHiddenByProgram) {
+                 this._togglePointerWatcher(false);
+                 this._isHiddenByProgram = true;
+@@ -114,9 +123,29 @@
              [Field.CHCK, 'i', (r) => this._onCheckIntervalChange(r)],
              [Field.DRAW, 'i', (r) => this._onDrawIntervalChange(r)],
          ]);
@@ -197,10 +614,10 @@ diff -ruN a/extension.js b/extension.js
          if (this._checkTimeoutId) {
              GLib.Source.remove(this._checkTimeoutId);
              this._checkTimeoutId = null;
-diff -ruN a/theme.js b/theme.js
---- a/theme.js
-+++ b/theme.js
-@@ -0,0 +1,180 @@
+diff --color -ruN a/theme.js b/theme.js
+--- a/theme.js	2026-10-31 22:23:05.372399691 +0200
++++ b/theme.js	2026-10-31 22:44:46.669292471 +0200
+@@ -0,0 +1,508 @@
 +'use strict';
 +
 +import GdkPixbuf from 'gi://GdkPixbuf';
@@ -266,36 +683,49 @@ diff -ruN a/theme.js b/theme.js
 +};
 +
 +// The SVG's own size in pixels, as librsvg reports it to St: the root's
-+// width attribute, else its viewBox width.
-+const svgWidth = text => {
++// width and height attributes, else its viewBox.
++const svgSize = text => {
 +    const root = text.match(/<svg\b[^>]*>/)?.[0] ?? '';
 +    const width = root.match(/\swidth="\s*([\d.]+)\s*(px)?\s*"/);
-+    if (width)
-+        return parseFloat(width[1]);
-+    const box = root.match(/\sviewBox="\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)/);
-+    return box ? parseFloat(box[1]) : null;
++    const height = root.match(/\sheight="\s*([\d.]+)\s*(px)?\s*"/);
++    const box = root.match(/\sviewBox="\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)/);
++    const w = width ? parseFloat(width[1]) : box ? parseFloat(box[1]) : null;
++    const h = height ? parseFloat(height[1]) : box ? parseFloat(box[2]) : w;
++    return [w, h];
 +};
 +
-+// {icon, canvas} for the SVG St would draw, or null. canvas is the SVG width
-+// over its nominal size: St draws it cursor-size x that wide. Its metadata
-+// names the file: AOSP's default entry is arrow.svg, Adwaita's (built in)
-+// is a 32px canvas for size 24 with the tip at 8,7, unlike its Xcursor file.
-+const svgCursor = name => {
++// {icon, canvas, hot, frames} for the SVG St would draw, or null. canvas is
++// the SVG width over its nominal size: St draws it cursor-size x that wide.
++// hot is the hotspot as {fraction} of the picture, which holds at any size an
++// SVG is drawn at, and frames the files of an
++// animated cursor with their delays. Its metadata names the file: AOSP's
++// default entry is arrow.svg, Adwaita's (built in) is a 32px canvas for size
++// 24 with the tip at 8,7, unlike its Xcursor file.
++const svgCursor = (name, cursor = 'default') => {
 +    const roots = [GLib.get_user_data_dir(), ...GLib.get_system_data_dirs()]
 +        .map(d => Gio.File.new_for_path(d))
 +        .concat([Gio.File.new_for_uri(ST_CURSOR_RESOURCE)]);
 +    for (const root of roots) {
-+        const meta = root.get_child(`icons/${name}/cursors_scalable/default/metadata.json`);
++        const meta = root.get_child(`icons/${name}/cursors_scalable/${cursor}/metadata.json`);
 +        const desc = loadText(meta);
 +        if (desc === null)
 +            continue;
 +        try {
-+            const frame = JSON.parse(desc)[0];
++            const entries = JSON.parse(desc);
++            const frame = entries[0];
 +            const svg = meta.get_parent().get_child(frame.filename);
-+            const width = svgWidth(loadText(svg) ?? '');
-+            if (!width || !frame.nominal_size)
++            const [width, height] = svgSize(loadText(svg) ?? '');
++            if (!width || !height || !frame.nominal_size)
 +                return null;
-+            return {icon: Gio.FileIcon.new(svg), canvas: width / frame.nominal_size};
++            return {
++                icon: Gio.FileIcon.new(svg),
++                canvas: width / frame.nominal_size,
++                hot: {fraction: [frame.hotspot_x / width, frame.hotspot_y / height]},
++                frames: entries.map(e => ({
++                    file: meta.get_parent().get_child(e.filename),
++                    delay: e.delay ?? 0,
++                })),
++            };
 +        } catch {
 +            return null;
 +        }
@@ -303,10 +733,13 @@ diff -ruN a/theme.js b/theme.js
 +    return null;
 +};
 +
-+// The largest nominal size of the theme's default pointer, first frame.
-+const largestXcursor = dir => {
-+    for (const name of ['default', 'left_ptr']) {
-+        const data = readBytes(GLib.build_filenamev([dir, 'cursors', name]));
++// The largest nominal size of a cursor in an Xcursor theme dir: the first
++// frame, and every frame of that size in order, which is how an animated
++// cursor stores its loop.
++const largestXcursor = (dir, names = ['default', 'left_ptr']) => {
++    for (const name of names) {
++        const path = GLib.build_filenamev([dir, 'cursors', name]);
++        const data = readBytes(path);
 +        if (!data || data.length < 16)
 +            continue;
 +        const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -324,8 +757,16 @@ diff -ruN a/theme.js b/theme.js
 +            const h = view.getUint32(pos + 20, true);
 +            if (size === 0 || pos + 36 + w * h * 4 > data.length)
 +                continue;
++            const frame = {
++                w, h, pos: pos + 36,
++                xhot: view.getUint32(pos + 24, true),
++                yhot: view.getUint32(pos + 28, true),
++                delay: view.getUint32(pos + 32, true),
++            };
 +            if (!best || size > best.size)
-+                best = {data, size, w, h, pos: pos + 36};
++                best = {data, path, size, ...frame, frames: [frame]};
++            else if (size === best.size)
++                best.frames.push(frame);
 +        }
 +        if (best)
 +            return best;
@@ -352,32 +793,336 @@ diff -ruN a/theme.js b/theme.js
 +        GdkPixbuf.Colorspace.RGB, true, 8, w, h, w * 4);
 +};
 +
-+// {icon, canvas}: the picture, and the pointer's canvas width over its
-+// nominal size (AOSP draws a 24px canvas for size 18, so 1.33). The pointer is
-+// drawn cursor-size x canvas logical pixels wide whatever the monitor scale,
-+// which is the size the magnified copy has to shrink back to.
++// {icon, canvas, hot}: the picture, the pointer's canvas width over its
++// nominal size (AOSP draws a 24px canvas for size 18, so 1.33), and its
++// hotspot as a fraction of the picture. The pointer is drawn cursor-size x
++// canvas logical pixels wide whatever the monitor scale, which is the size
++// the magnified copy has to shrink back to. The hotspot tells it when a
++// picture typed into the preferences stands in for the arrow.
 +export const cursorForTheme = name => {
 +    if (!name || name.includes('/'))
 +        return null;
 +    return svgCursor(name) ?? xcursorForTheme(name);
 +};
 +
-+const xcursorForTheme = (name, seen = new Set()) => {
++const xcursorForTheme = (name, seen = new Set(), names = undefined) => {
 +    if (seen.has(name) || seen.size > 8)
 +        return null;
 +    seen.add(name);
 +    const dirs = themeDirs(name);
 +    for (const dir of dirs) {
-+        const xcursor = largestXcursor(dir);
-+        if (xcursor)
-+            return {icon: xcursorPixbuf(xcursor), canvas: xcursor.w / xcursor.size};
++        const xcursor = largestXcursor(dir, names);
++        if (xcursor) {
++            return {
++                icon: names ? null : xcursorPixbuf(xcursor),
++                canvas: xcursor.w / xcursor.size,
++                hot: xcursorHot(xcursor),
++                xcursor,
++            };
++        }
 +    }
 +    for (const dir of dirs) {
 +        for (const parent of inherits(dir)) {
-+            const found = xcursorForTheme(parent, seen);
++            const found = xcursorForTheme(parent, seen, names);
 +            if (found)
 +                return found;
 +        }
 +    }
 +    return null;
 +};
++
++// The hotspot of an Xcursor file as {fraction, bySize, animated, path, at,
++// largest}: the largest frame's as a fraction, each frame width's in pixels,
++// and where each width's first frame sits in the file, for pixels() and
++// picture() to read later. Mutter
++// draws the size nearest cursor-size x ceil(monitor scale) with the hotspot
++// that size carries, and the sizes do not agree as fractions (Moga's wait is
++// 0.250,0.292 at 48px and 0.266,0.297 at 64), so the magnified copy compares
++// in pixels at the sprite's own width when it can. Read from the table of
++// contents and the image headers alone: a theme's busy loop is megabytes.
++const xcursorHots = path => {
++    let stream = null;
++    try {
++        stream = Gio.File.new_for_path(path).read(null);
++        const read = (pos, length) => {
++            stream.seek(pos, GLib.SeekType.SET, null);
++            const bytes = stream.read_bytes(length, null).toArray();
++            return bytes.length === length
++                ? new DataView(bytes.buffer, bytes.byteOffset, length) : null;
++        };
++        const head = read(0, 16);
++        if (!head || head.getUint32(0, true) !== XCURSOR_MAGIC)
++            return null;
++        const ntoc = head.getUint32(12, true);
++        const toc = ntoc > 0 && ntoc < 4096 ? read(16, ntoc * 12) : null;
++        if (!toc)
++            return null;
++        const bySize = {};
++        const at = {};
++        const frames = {};
++        let largest = null;
++        for (let i = 0; i < ntoc; i++) {
++            if (toc.getUint32(i * 12, true) !== XCURSOR_IMAGE)
++                continue;
++            const size = toc.getUint32(i * 12 + 4, true);
++            frames[size] = (frames[size] ?? 0) + 1;
++            if (frames[size] > 1)
++                continue;
++            const image = read(toc.getUint32(i * 12 + 8, true), 36);
++            if (!image)
++                continue;
++            const [w, h] = [image.getUint32(16, true), image.getUint32(20, true)];
++            const [x, y] = [image.getUint32(24, true), image.getUint32(28, true)];
++            bySize[w] = [x, y];
++            at[w] = {h, pos: toc.getUint32(i * 12 + 8, true) + 36};
++            if (w && h && (!largest || size > largest.size))
++                largest = {size, w, h, x, y, pos: at[w].pos};
++        }
++        if (!largest)
++            return null;
++        return {
++            fraction: [largest.x / largest.w, largest.y / largest.h],
++            bySize,
++            animated: Object.values(frames).some(n => n > 1),
++            path,
++            at,
++            largest,
++        };
++    } catch {
++        return null;
++    } finally {
++        stream?.close(null);
++    }
++};
++
++const xcursorHot = xc => xcursorHots(xc.path) ?? {fraction: [xc.xhot / xc.w, xc.yhot / xc.h]};
++
++// Every shape in the theme that does not animate, as its hotspot plus where
++// its pixels are (an SVG's file and icon, an Xcursor's offsets). The
++// magnified copy names the live sprite from these. A busy loop whose hotspot
++// is none of these is told by its hotspot alone, which is
++// all there is once the pointer is magnified: hidden, it is not animated, so
++// a wait cursor met while big never ticks. Moga's wait sits 3px from the
++// nearest static shape at 64px. SVG shapes come from every St search root,
++// Xcursor ones from the first theme in the Inherits chain that has a cursors
++// dir; a shape found both ways only makes a loop less often unique.
++export const staticShapesForTheme = name => {
++    if (!name || name.includes('/'))
++        return [];
++    const found = [];
++    const roots = [GLib.get_user_data_dir(), ...GLib.get_system_data_dirs()]
++        .map(d => Gio.File.new_for_path(d))
++        .concat([Gio.File.new_for_uri(ST_CURSOR_RESOURCE)]);
++    for (const root of roots) {
++        const dir = root.get_child(`icons/${name}/cursors_scalable`);
++        let children;
++        try {
++            children = dir.enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
++        } catch {
++            continue;
++        }
++        for (const info of children) {
++            const svg = svgCursor(name, info.get_name());
++            if (svg?.frames.length === 1)
++                found.push({...svg.hot, file: svg.frames[0].file, icon: svg.icon});
++        }
++    }
++    const seen = new Set();
++    const walk = theme => {
++        if (seen.has(theme) || seen.size > 8)
++            return;
++        seen.add(theme);
++        const dirs = themeDirs(theme)
++            .map(d => GLib.build_filenamev([d, 'cursors']))
++            .filter(d => GLib.file_test(d, GLib.FileTest.IS_DIR));
++        if (!dirs.length) {
++            themeDirs(theme).forEach(d => inherits(d).forEach(walk));
++            return;
++        }
++        // Hashed aliases are symlinks, and a theme can be reached twice
++        // (~/.icons linked to ~/.local/share/icons): one file, one entry.
++        const files = new Set();
++        for (const dir of dirs) {
++            const list = Gio.File.new_for_path(dir).enumerate_children(
++                'standard::name', Gio.FileQueryInfoFlags.NONE, null);
++            for (const info of list) {
++                const path = GLib.build_filenamev([dir, info.get_name()]);
++                let id;
++                try {
++                    id = Gio.File.new_for_path(path).query_info('id::file',
++                        Gio.FileQueryInfoFlags.NONE, null).get_attribute_string('id::file');
++                } catch {
++                    continue;
++                }
++                if (files.has(id))
++                    continue;
++                files.add(id);
++                const hot = xcursorHots(path);
++                if (hot && !hot.animated)
++                    found.push(hot);
++            }
++        }
++    };
++    walk(name);
++    return found;
++};
++
++// The pixels a theme shape has at a sprite width, as straight RGBA, for the
++// magnified copy to hold against the live sprite's: [bytes, rowstride], or
++// null when the shape has no frame that wide. An Xcursor frame is read from
++// the file (premultiplied BGRA, unpremultiplied here); an SVG is drawn at
++// that width on gdk-pixbuf's worker threads. Kept on the shape, a few KB a
++// width.
++export const shapePixels = (shape, width) => {
++    shape.pixels ??= {};
++    if (width in shape.pixels)
++        return shape.pixels[width];
++    shape.pixels[width] = shape.file
++        ? svgPixels(shape.file, width)
++        : Promise.resolve(xcursorPixels(shape, width));
++    return shape.pixels[width];
++};
++
++const readAt = (path, pos, length) => {
++    let stream = null;
++    try {
++        stream = Gio.File.new_for_path(path).read(null);
++        stream.seek(pos, GLib.SeekType.SET, null);
++        const bytes = stream.read_bytes(length, null).toArray();
++        return bytes.length === length ? bytes : null;
++    } catch {
++        return null;
++    } finally {
++        stream?.close(null);
++    }
++};
++
++const xcursorPixels = (shape, width) => {
++    const frame = shape.at?.[width];
++    if (!frame)
++        return null;
++    const data = readAt(shape.path, frame.pos, width * frame.h * 4);
++    if (!data)
++        return null;
++    const rgba = new Uint8Array(data.length);
++    for (let p = 0; p < data.length; p += 4) {
++        const a = data[p + 3];
++        const k = a ? 255 / a : 0;
++        rgba[p] = Math.min(255, data[p + 2] * k);
++        rgba[p + 1] = Math.min(255, data[p + 1] * k);
++        rgba[p + 2] = Math.min(255, data[p] * k);
++        rgba[p + 3] = a;
++    }
++    return [rgba, width * 4];
++};
++
++const svgPixels = (file, width) => new Promise(resolve => {
++    let stream;
++    try {
++        stream = file.read(null);
++    } catch {
++        resolve(null);
++        return;
++    }
++    GdkPixbuf.Pixbuf.new_from_stream_at_scale_async(stream,
++        width, -1, true, null, (_source, result) => {
++            try {
++                const pixbuf = GdkPixbuf.Pixbuf.new_from_stream_finish(result);
++                resolve(pixbuf.n_channels === 4
++                    ? [pixbuf.read_pixel_bytes().toArray(), pixbuf.rowstride] : null);
++            } catch {
++                resolve(null);
++            } finally {
++                stream.close(null);
++            }
++        });
++});
++
++// The largest frame of an Xcursor shape, to be drawn magnified:
++// {width, height, bytes, rowstride, premultiplied}. SVG shapes are drawn
++// from their icon instead, sharp at any size.
++export const shapePicture = shape => {
++    const {w, h, pos} = shape.largest;
++    const data = readAt(shape.path, pos, w * h * 4);
++    return data && {width: w, height: h, bytes: new GLib.Bytes(data),
++        rowstride: w * 4, premultiplied: true};
++};
++
++// The names an app shows while it is busy. Mutter stops animating the
++// pointer while it is hidden (meta_sprite_update_cursor hands the renderer
++// NULL), so the magnified copy plays these itself, from the theme's largest
++// frames, instead of freezing on the frame the live sprite stopped at.
++const ANIMATED = ['wait', 'progress', 'watch', 'left_ptr_watch', 'half-busy'];
++
++// An SVG frame is drawn this many pixels wide: sharp at Wiggly's default
++// 96px magnified size on a 2x monitor.
++const SVG_FRAME_PIXELS = 192;
++
++// [{hot, frames}] for the theme's animated busy cursors, looked up the way
++// cursorForTheme looks up the arrow. frames() decodes the loop on first use
++// and resolves to [{width, height, bytes, rowstride, premultiplied, delay}]:
++// Xcursor pixels go as they are (premultiplied BGRA); SVG frames are drawn on
++// gdk-pixbuf's worker threads, since aosp's 88-frame loop took over half a
++// second on the shell's own. SVG themes ship each busy name as its own copy,
++// so loops are told apart by hotspot and length.
++export const animatedForTheme = name => {
++    if (!name || name.includes('/'))
++        return [];
++    const found = [];
++    const seen = new Set();
++    const add = (hot, length, frames) => {
++        const key = `${hot.fraction.map(v => v.toFixed(3))}:${length}`;
++        if (seen.has(key))
++            return;
++        seen.add(key);
++        found.push({hot, frames: once(frames)});
++    };
++    for (const cursor of ANIMATED) {
++        const svg = svgCursor(name, cursor);
++        if (svg) {
++            if (svg.frames.length > 1)
++                add(svg.hot, svg.frames.length, () => Promise.all(svg.frames.map(svgFrame)));
++            continue;
++        }
++        const xc = xcursorForTheme(name, new Set(), [cursor])?.xcursor;
++        if (xc?.frames.length > 1)
++            add(xcursorHot(xc), xc.frames.length, () => Promise.resolve(xcursorFrames(xc)));
++    }
++    return found;
++};
++
++const once = make => {
++    let made = null;
++    return () => (made ??= make());
++};
++
++const xcursorFrames = ({data, frames}) => frames.map(f => ({
++    width: f.w,
++    height: f.h,
++    bytes: new GLib.Bytes(data.subarray(f.pos, f.pos + f.w * f.h * 4)),
++    rowstride: f.w * 4,
++    premultiplied: true,
++    delay: f.delay,
++}));
++
++const svgFrame = ({file, delay}) => new Promise((resolve, reject) => {
++    const stream = file.read(null);
++    GdkPixbuf.Pixbuf.new_from_stream_at_scale_async(stream,
++        SVG_FRAME_PIXELS, -1, true, null, (_source, result) => {
++            try {
++                const pixbuf = GdkPixbuf.Pixbuf.new_from_stream_finish(result);
++                resolve({
++                    width: pixbuf.width,
++                    height: pixbuf.height,
++                    bytes: pixbuf.read_pixel_bytes(),
++                    rowstride: pixbuf.rowstride,
++                    premultiplied: false,
++                    delay,
++                });
++            } catch (e) {
++                reject(e);
++            } finally {
++                stream.close(null);
++            }
++        });
++});

@@ -73,6 +73,7 @@ implementation view.
 | `--app-transparency L` (`--window-opacity`, `--window-transparency`); `--no-app-transparency` (+ the two `--no-` aliases) | `0.70–1.00`, `%`, or `0–255`. 0 = off. Fresh default 0.90 (0.95 without window blur, 1.00 in performance). Buckets snap to 0.82, 0.90 and 0.95 | `app-transparency` (`app-opacity` is always 255 now) | ✓ | `css` for the primary spelling, full for the aliases |
 | `--app-tint-color HEX` | `#000000` | `app-tint-color` | ✓ | `css` |
 | `--shell-tint-color HEX` | `#000000` (inherits app tint if unset) | `shell-tint-color` | ✓ | `css` |
+| `--maximized-panel-brightness P` | 0–100, default 40 (the sheet's 60% black). 0 solid black, 100 no shade. Rewrites the shade's alpha in the installed `shell-00-flat.css` (`apply_maximized_panel_brightness`) | `maximized-panel-brightness` | | `css` |
 | `--panel-height PX` | 24–48 logical px, default 40 (the theme's). 32 is GNOME's own and the settings app's reset. Snapped to whole device pixels at the primary scale (`panel_height_css`) | `panel-height` | | `css` |
 | `--popup-opacity P\|main` | 70–100 in `--app-transparency`'s unit, or `main` (default): follow the app windows (level 0 counts as 100). Scales `shell-popup-blur.css` and the banner ground (40 at 90) by P/90. Ignored in performance | `popup-opacity` | ✓ | `css` |
 | `--notification-opacity P` | retired: accepted, warned, ignored. The banner ground follows `--popup-opacity` | none | | full |
@@ -84,6 +85,8 @@ implementation view.
 | `--glass-style S` | `frosted` (default), `liquid`, `vibrant`, `tinted` (accent colour), `smoked`. Liquid: top bar and dock, and makes the dock's blur static. The others: top bar, overview and lock screen; the dock stays frosted | `glass-style` | | full |
 | `--liquid-windows` / `--no-liquid-windows` | off. Liquid or vibrant behind app windows too (ignored under tinted and smoked); makes `[applications] static-blur` true | `liquid-windows` | | full |
 | `--fullscreen-blur` / `--no-fullscreen-blur` | off. On keeps the window blur behind a fullscreen window; off drops it and puts the window at opacity 255 (`[applications] unblur-when-fullscreen`) | `fullscreen-blur` | | `fullscreen-blur` |
+| `--smooth-animations` / `--no-smooth-animations` | off. On sets Blur My Shell's patched `full-size-buffers` (blur textures allocated once at the largest monitor's size and kept, about 50 MB per blurred surface at 3440×1440) and writes `~/.config/environment.d/aura-glass.conf` with `CLUTTER_PAINT=disable-dynamic-max-render-time` (read at next login). Off clears the key and removes the file | `smooth-animations` | | `smooth-animations` |
+| `--window-animation-speed P`, `--notification-animation-speed P`, `--menu-animation-speed P` | 50–300, default 100 (GNOME's pace; 200 twice as fast). Memos only: the Aura Glass Helper reads them live and scales the shell's own `ease()` durations for window actors (map, destroy, minimize, size change, tile preview), the notification banner and every `BoxPointer` menu, opening and closing alike. Not previewable | `window-animation-speed`, `notification-animation-speed`, `menu-animation-speed` | | `animation-speed` |
 | `--radius-preset P` | `flat sharp adwaita soft medium default rounded` (`pill` → `rounded`). Default `default` | `radius-preset` | | full |
 | `--radius-custom W,M,Q,N,D,P,O,B` | 8 integers within `radius_bounds`. Implies `custom` | `radius-custom` (a 7-field memo is widened with `,9999`) | | full |
 | `--window-buttons close\|all` | unset = leave GNOME's layout | `window-buttons` | | `window-buttons` |
@@ -112,6 +115,7 @@ implementation view.
 | `app-blur` | `apply_app_blur` |
 | `css` | `install_css` (the whole CSS pipeline + `aura-glass-apply`) |
 | `glass-style` | `apply_glass_style` (an accent edit under the tinted style) |
+| `animation-speed` | `apply_animation_speed` (the three memos; the helper picks them up live) |
 | `adaptive-blur` | `apply_adaptive_blur active\|restore` |
 
 These are ignored by the classifier: `--settings-only --incremental --plan-json --yes -y --dry-run -n`.
@@ -142,6 +146,7 @@ not adaptive).
 | `app-tint-color`, `shell-tint-color` | `#rrggbb` | `apply_app_tint_color`, `apply_shell_tint_color` |
 | `popup-opacity` | 70–100 or `main` (written under frosted only) | `apply_popup_transparency` |
 | `panel-height` | 24–48 | `install_css` |
+| `maximized-panel-brightness` | 0–100 | `install_css` |
 | `blur-strength`, `blur-brightness` | 25–200, 50–100 | `apply_blur_pipelines` |
 | `{window,popup,panel,lockscreen}-blur-strength` | 25–200 or `main` | `apply_blur_pipelines` |
 | `{window,popup,panel,lockscreen}-blur-brightness` | 50–100 or `main` | `apply_blur_pipelines` |
@@ -150,6 +155,8 @@ not adaptive).
 | `glass-style` | `frosted\|liquid\|vibrant\|tinted\|smoked` | `apply_glass_style` |
 | `liquid-windows` | `0\|1`, kept under frosted | `apply_glass_style` |
 | `fullscreen-blur` | `0\|1`, top-level | `apply_fullscreen_blur` |
+| `smooth-animations` | `0\|1`, top-level | `apply_smooth_animations` |
+| `window-animation-speed`, `notification-animation-speed`, `menu-animation-speed` | 50–300, top-level | `apply_animation_speed` |
 | `titlebutton-style` | `minimal\|adwaita\|material\|flat` | `install_window_control_style` |
 | `window-buttons` | `close\|all` | `apply_window_buttons` |
 
@@ -215,7 +222,7 @@ by `save_glass_mode_memos`.
 | `accent-from-wallpaper` | opt-in marker for the (currently uncatalogued) auto-accent extension | `bin/aura-glass-ext` writes it; `lib/steps-extensions.sh` reads it |
 | `preview-active`, `preview-backup/` | live preview marker and journal (sheets, BMS dump, memos, session id) | `aura-glass-preview` |
 | `uninstalled` | written by `uninstall.sh`, removed by the next install | |
-| `last-install/` | `events` (JSON lines), `log` (the terminal's output), `window` (the progress window's pid) for the last full install that had a progress window. Replaced each such run; a dry run uses a temp dir instead. Removed by uninstall | `progress_begin` (`lib/progress.sh`); read by the progress window |
+| `last-install/` | `events` (JSON lines), `log` (the terminal's output), `window` (the progress window's pid), `window-layout` (its `WINDOW_LAYOUT`) for the last full install that had a progress window. Replaced each such run; a dry run uses a temp dir instead. Removed by uninstall | `progress_begin` (`lib/progress.sh`); read by the progress window |
 | `shell-*.css`, `gtk4-*.css`, `gtk3-*.css` | installed, rewritten copies spliced by `aura-glass-apply` | `install_css` |
 
 ### `$C/backups/`
@@ -253,7 +260,8 @@ cursor-size and font keys (what `original` / `system` restore).
 
 ```
 /org/gnome/shell/extensions/blur-my-shell/   pipelines, panel, popup (+ patched notification key), applications,
-                                             overview, appfolder, lockscreen, window-list, screenshot, dash-to-dock, …
+                                             overview, appfolder, lockscreen, window-list, screenshot, dash-to-dock, …,
+                                             patched full-size-buffers (--smooth-animations)
 /org/gnome/shell/extensions/custom-osd/
 /org/gnome/shell/extensions/{vitals,hotedge,appindicator}/   (extras.ini)
 ```
@@ -280,6 +288,7 @@ cursor-size and font keys (what `original` / `system` restore).
 | `AURA_GPU_LOG` | `gpu-live.sh` | measurement log |
 | `DRY_RUN=1`, `PREVIEW_MODE=1` | `lib/common.sh` | `run` prints only / `remembering()` false |
 | `NO_COLOR` | `lib/common.sh` | plain output |
+| `CLUTTER_PAINT=disable-dynamic-max-render-time` | Mutter (gnome-shell), from `~/.config/environment.d/aura-glass.conf` | written by `--smooth-animations`: every frame gets the whole refresh interval instead of a deadline guessed from recent frames |
 
 ---
 
@@ -294,6 +303,7 @@ cursor-size and font keys (what `original` / `system` restore).
 | `~/.local/bin/` | the commands in [STRUCTURE.md](STRUCTURE.md) §1 |
 | `~/.local/share/aura-glass/` | GUI copy, the three Python workers |
 | `~/.config/systemd/user/` | the units |
+| `~/.config/environment.d/aura-glass.conf` | only with `--smooth-animations` |
 | `~/.cache/aura-glass/src/` | pinned checkouts (`$SRC_CACHE`) |
 | `~/.cache/aura-glass/operation.lock` | the writer lock |
 | `~/.local/share/fonts/aura-glass/` | downloaded fonts |

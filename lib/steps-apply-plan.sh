@@ -24,6 +24,8 @@ select_apply_actions() {
             # of them, alone or together, is that one step.
             --blur-strength|--blur-strength=*|--blur-brightness|--blur-brightness=*|--*-blur-strength|--*-blur-strength=*|--window-brightness|--window-brightness=*|--app-brightness|--app-brightness=*|--window-blur-brightness|--window-blur-brightness=*|--popup-brightness|--popup-brightness=*|--panel-brightness|--panel-brightness=*|--lockscreen-brightness|--lockscreen-brightness=*) _apply_add blur-pipelines ;;
             --fullscreen-blur|--no-fullscreen-blur) _apply_add fullscreen-blur ;;
+            --smooth-animations|--no-smooth-animations) _apply_add smooth-animations ;;
+            --window-animation-speed|--window-animation-speed=*|--notification-animation-speed|--notification-animation-speed=*|--menu-animation-speed|--menu-animation-speed=*) _apply_add animation-speed ;;
             --app-blur-allow|--app-blur-allow=*|--app-blur-block|--app-blur-block=*) _apply_add app-blur ;;
             # The level is written twice: the GTK stylesheet's alpha (css) and
             # Blur My Shell's window actor opacity, which is all a browser or
@@ -31,7 +33,7 @@ select_apply_actions() {
             # the sheet and left the actor at its old value, so Chrome stopped
             # showing the blur while GTK apps still did.
             --app-transparency|--app-transparency=*|--no-app-transparency) _apply_add css; _apply_add app-opacity ;;
-            --app-tint-color|--app-tint-color=*|--shell-tint-color|--shell-tint-color=*|--popup-opacity|--popup-opacity=*|--panel-height|--panel-height=*|--titlebar-button-style|--titlebar-button-style=*) _apply_add css ;;
+            --app-tint-color|--app-tint-color=*|--shell-tint-color|--shell-tint-color=*|--popup-opacity|--popup-opacity=*|--maximized-panel-brightness|--maximized-panel-brightness=*|--panel-height|--panel-height=*|--titlebar-button-style|--titlebar-button-style=*) _apply_add css ;;
             *) APPLY_FALLBACK_REASON="unclassified flag: $flag"; APPLY_ACTIONS=(full); return ;;
         esac
     done

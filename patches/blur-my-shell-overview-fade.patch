@@ -1,0 +1,288 @@
+diff --git a/src/components/applications/index.js b/src/components/applications/index.js
+index b3c8343..2e6f08d 100644
+--- a/src/components/applications/index.js
++++ b/src/components/applications/index.js
+@@ -1,3 +1,4 @@
++import Clutter from 'gi://Clutter';
+ import Gio from 'gi://Gio';
+ import Meta from 'gi://Meta';
+ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+@@ -10,7 +11,7 @@ import { RoundedPipeline } from '../../render/rounded_pipeline.js';
+ import { WindowRules } from './window_rules.js';
+ import { BLUR_ACTOR_NAME, WindowOpacity } from './window_opacity.js';
+ import { compute_scale, place_dynamic_blur, place_static_blur } from './window_geometry.js';
+-import { finish_preview_fade } from './overview_drag.js';
++import { BLUR_FADE_IN_TIME, finish_preview_fade } from './overview_drag.js';
+ 
+ export const ApplicationsBlur = class ApplicationsBlur {
+     constructor(connections, settings, effects_manager) {
+@@ -23,6 +24,8 @@ export const ApplicationsBlur = class ApplicationsBlur {
+ 
+         this.rules = new WindowRules(settings);
+         this.window_opacity = new WindowOpacity();
++        // blur actors fading out as the overview opens, see reconcile_window_visibility
++        this.fading_out = new WeakSet();
+         this.enabled = false;
+ 
+         this.service = new ApplicationsService;
+@@ -91,9 +94,28 @@ export const ApplicationsBlur = class ApplicationsBlur {
+         const reconcile_windows = () => this.meta_windows.forEach(
+             meta_window => this.reconcile_window_visibility(meta_window)
+         );
++        // Opening the overview took the blur away in one frame while the windows still sat in
++        // place, so the unblurred desktop showed through them for a frame or two before the
++        // previews moved: a dark flash. The blur fades out instead, and the content back to its
++        // full opacity, in the same time it fades back in on leaving. The previews are clones
++        // that still paint it while the overview opens.
+         this.connections.connect(Main.overview, 'showing', _ => {
+             this.overview_visible = true;
+-            reconcile_windows();
++            this.meta_windows.forEach(meta_window =>
++                this.reconcile_window_visibility(meta_window, BLUR_FADE_IN_TIME)
++            );
++        });
++        // Leaving the overview put the windows back with their blur, which used to switch on in
++        // one frame after the previews had settled at full opacity. The blur fades in instead,
++        // and the window content eases from opaque to its translucent opacity with it. Both start
++        // as the overview starts closing, so they run with the previews moving back, as they do
++        // with the previews leaving on the way in, rather than after it; the previews are clones
++        // that paint the blur. 'hidden' then only confirms where the fades are going.
++        this.connections.connect(Main.overview, 'hiding', _ => {
++            this.overview_visible = false;
++            this.meta_windows.forEach(meta_window =>
++                this.reconcile_window_visibility(meta_window, BLUR_FADE_IN_TIME)
++            );
+         });
+         this.connections.connect(Main.overview, 'hidden', _ => {
+             this.overview_visible = false;
+@@ -387,7 +409,9 @@ export const ApplicationsBlur = class ApplicationsBlur {
+         }
+     }
+ 
+-    reconcile_window_visibility(meta_window) {
++    /// A fade time eases a change of blur visibility instead of switching it in one frame: the
++    /// blur and the content's opacity, both ways.
++    reconcile_window_visibility(meta_window, fade_time = 0) {
+         const blur_actor = meta_window.blur_actor;
+         if (!blur_actor)
+             return;
+@@ -405,15 +429,60 @@ export const ApplicationsBlur = class ApplicationsBlur {
+             && !is_fullscreen
+             && (this.settings.applications.BLUR_ON_OVERVIEW || !this.overview_visible);
+ 
+-        if (show_blur)
++        const fading_out = this.fading_out.has(blur_actor);
++        const shown = blur_actor.visible && !fading_out;
++        const fade = fade_time > 0 && show_blur !== shown;
++        // GTK windows are translucent on their own (their CSS background), so whatever the blur
++        // has not yet covered shows through sharp. The blur therefore leads on the way in and
++        // trails on the way out (cubic), and the content's opacity does the opposite (see
++        // WindowOpacity.change), so the window never shows more unblurred desktop than it would
++        // at rest. With the same curve for both, the see-through came first and the blur after.
++        if (show_blur && fade) {
++            // from wherever a fade out had got to, when the overview closed again before it ended
++            if (fading_out)
++                blur_actor.remove_transition('opacity');
++            else
++                blur_actor.opacity = 0;
++            blur_actor.show();
++            blur_actor.ease({
++                opacity: 255,
++                duration: fade_time,
++                mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
++            });
++        } else if (show_blur) {
++            if (fading_out) {
++                blur_actor.remove_transition('opacity');
++                blur_actor.opacity = 255;
++            }
++            // a fade in is otherwise left to finish
+             blur_actor.show();
+-        else
++        } else if (fade) {
++            this.fading_out.add(blur_actor);
++            blur_actor.ease({
++                opacity: 0,
++                duration: fade_time,
++                mode: Clutter.AnimationMode.EASE_IN_CUBIC,
++                onStopped: finished => {
++                    this.fading_out.delete(blur_actor);
++                    if (finished) {
++                        blur_actor.hide();
++                        blur_actor.opacity = 255;
++                    }
++                },
++            });
++        } else if (!fading_out) {
++            // a fade on its way out is left to finish; it hides the blur itself. One on its way in
++            // is cut, so the blur is whole the next time it shows.
++            blur_actor.remove_transition('opacity');
++            blur_actor.opacity = 255;
+             blur_actor.hide();
++        }
+ 
+         this.window_opacity.set(
+             window_actor,
+             show_blur ? this.settings.applications.OPACITY : 255,
+-            blur_actor
++            blur_actor,
++            fade ? fade_time : 0
+         );
+     }
+ 
+diff --git a/src/components/applications/overview_drag.js b/src/components/applications/overview_drag.js
+index ba08554..2871fb1 100644
+--- a/src/components/applications/overview_drag.js
++++ b/src/components/applications/overview_drag.js
+@@ -2,7 +2,7 @@ import Clutter from 'gi://Clutter';
+ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+ import { WindowPreview } from 'resource:///org/gnome/shell/ui/windowPreview.js';
+ 
+-const BLUR_FADE_IN_TIME = 200;
++export const BLUR_FADE_IN_TIME = 200;
+ 
+ /// GNOME moves a window preview dropped in the overview back into its workspace as soon as it is
+ /// back in place, which stops its fade one step short of opaque. Until the overview closes, it is
+diff --git a/src/components/applications/window_opacity.js b/src/components/applications/window_opacity.js
+index a0d6095..0364c71 100644
+--- a/src/components/applications/window_opacity.js
++++ b/src/components/applications/window_opacity.js
+@@ -1,3 +1,5 @@
++import Clutter from 'gi://Clutter';
++
+ export const BLUR_ACTOR_NAME = 'bms-application-blurred-widget';
+ 
+ /// Changes the opacity of a window's content above its blur, remembering the original opacity of
+@@ -5,9 +7,12 @@ export const BLUR_ACTOR_NAME = 'bms-application-blurred-widget';
+ export class WindowOpacity {
+     constructor() {
+         this.originals = new WeakMap();
++        // the opacity each child is easing to, while it is
++        this.targets = new WeakMap();
+     }
+ 
+-    set(window_actor, opacity, blur_actor) {
++    /// A duration eases the content to the new opacity instead of setting it at once.
++    set(window_actor, opacity, blur_actor, duration = 0) {
+         let originals = this.originals.get(window_actor);
+         if (!originals) {
+             originals = new Map();
+@@ -20,27 +25,52 @@ export class WindowOpacity {
+ 
+             if (opacity === 255) {
+                 if (originals.has(child)) {
+-                    child.opacity = originals.get(child);
++                    this.change(child, originals.get(child), duration);
+                     originals.delete(child);
+                 }
+                 return;
+             }
+ 
++            // a child easing back to its original is not there yet, so it is recorded by where
++            // it is going
+             if (!originals.has(child))
+-                originals.set(child, child.opacity);
+-            if (child.opacity !== opacity)
+-                child.opacity = opacity;
++                originals.set(child, this.targets.get(child) ?? child.opacity);
++            this.change(child, opacity, duration);
+         });
+ 
+         if (opacity === 255)
+             this.originals.delete(window_actor);
+     }
+ 
++    change(child, opacity, duration) {
++        if (duration > 0) {
++            // Turning solid early and translucent late keeps the window covering what its blur
++            // does not yet, or no longer, cover; see reconcile_window_visibility.
++            child.ease({
++                opacity,
++                duration,
++                mode: opacity > child.opacity
++                    ? Clutter.AnimationMode.EASE_OUT_QUAD
++                    : Clutter.AnimationMode.EASE_IN_QUAD,
++                onStopped: () => this.targets.delete(child),
++            });
++            // after ease(), which stops a fade it replaces and so runs that one's onStopped
++            this.targets.set(child, opacity);
++        } else if (this.targets.has(child) && this.targets.get(child) === opacity) {
++            // a fade already on its way there is left to finish rather than cut to its end
++        } else {
++            child.remove_transition('opacity');
++            if (child.opacity !== opacity)
++                child.opacity = opacity;
++        }
++    }
++
+     restore(window_actor, child) {
+         const originals = this.originals.get(window_actor);
+         if (!originals?.has(child))
+             return;
+ 
++        child.remove_transition('opacity');
+         child.opacity = originals.get(child);
+         originals.delete(child);
+         if (originals.size === 0)
+diff --git a/src/render/backdrop/capture.js b/src/render/backdrop/capture.js
+index 726351b..2f56a49 100644
+--- a/src/render/backdrop/capture.js
++++ b/src/render/backdrop/capture.js
+@@ -23,6 +23,21 @@ const PIXEL_EPSILON = 1 / 1024;
+ // clones of animated actors change size every frame, and only the last few sizes get painted again
+ const CLONE_TARGET_LIFETIME_US = 1000000;
+ const CAPTURE_TEXTURE_REGION = 'bms_capture_region';
++// Aura Glass: clone captures are kept per size step of this ratio, not per exact size; see
++// cloneCapacity.
++const CLONE_SIZE_STEP = 1.25;
++
++/// Aura Glass: the size a clone's capture is kept and allocated at, the next step of
++/// CLONE_SIZE_STEP up from its own. Keyed by exact size, a window preview zooming into or out of
++/// the overview allocated a new window-sized texture for every window on every frame, each kept
++/// for CLONE_TARGET_LIFETIME_US, which the window blur fading with that zoom (the overview-fade
++/// patch) made happen on every open and close: opening it repeatedly lagged. Stepped, a zoom
++/// reuses a few textures, and a preview and its workspace thumbnail, several steps apart, still
++/// keep separate captures. Never past the largest monitor, as getTextureCapacity does.
++function cloneCapacity(size, limit) {
++    const step = Math.ceil(Math.log(size) / Math.log(CLONE_SIZE_STEP));
++    return Math.max(size, Math.min(Math.ceil(CLONE_SIZE_STEP ** step), limit));
++}
+ 
+ function getCaptureSnippet() {
+     return get_snippet(CAPTURE_TEXTURE_REGION, () => {
+@@ -158,7 +173,8 @@ export const BackdropCaptureEffect = GObject.registerClass({
+         contentActor.add_child(this.output);
+     }
+ 
+-    ensureFramebuffer(targets, key, width, height, sourceFramebuffer, view, fullSize = false) {
++    ensureFramebuffer(targets, key, width, height, sourceFramebuffer, view, fullSize = false,
++        capacityWidth = width, capacityHeight = height) {
+         const context = sourceFramebuffer.get_context();
+         const cached = targets.get(key) ?? null;
+         const reusable = cached !== null && cached.context === context
+@@ -174,8 +190,8 @@ export const BackdropCaptureEffect = GObject.registerClass({
+             return;
+         }
+ 
+-        let textureWidth = width;
+-        let textureHeight = height;
++        let textureWidth = capacityWidth;
++        let textureHeight = capacityHeight;
+         if (fullSize && !reusable) {
+             // Aura Glass: see full-size-buffers in texture_region.js.
+             const limit = largestViewSize();
+@@ -264,8 +280,12 @@ export const BackdropCaptureEffect = GObject.registerClass({
+         const view = painted_view.get_framebuffer() === sourceFramebuffer ? painted_view : null;
+         const inClone = actor.is_in_clone_paint();
+         if (inClone) {
+-            this.ensureFramebuffer(this.cloneTargetsFor(view), `${geometry.width}x${geometry.height}`,
+-                geometry.width, geometry.height, sourceFramebuffer, view);
++            const limit = largestViewSize();
++            const capacityWidth = cloneCapacity(geometry.width, limit.width);
++            const capacityHeight = cloneCapacity(geometry.height, limit.height);
++            this.ensureFramebuffer(this.cloneTargetsFor(view), `${capacityWidth}x${capacityHeight}`,
++                geometry.width, geometry.height, sourceFramebuffer, view, false,
++                capacityWidth, capacityHeight);
+         } else {
+             const actorGeometry = actor.get_abs_allocation_vertices()
+                 .flatMap(vertex => [vertex.x, vertex.y, vertex.z]);
