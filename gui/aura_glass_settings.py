@@ -640,7 +640,8 @@ SEARCH_INDEX = {
     "radius": ["corner", "rounding", "square", "rounded", "pill"],
     "apps": ["allow", "block", "per-app", "whitelist", "blacklist"],
     "extensions": ["gnome extensions", "blur my shell", "space-bar",
-                  "custom osd", "open bar"],
+                  "custom osd", "open bar", "volume", "device name",
+                  "speaker"],
     "packages": ["icon pack", "cursor pack", "remove pack", "disk"],
     "system": ["dependencies", "gdm", "login screen",
               "monitor", "password", "sudo"],
@@ -689,6 +690,8 @@ FLAG_LABELS = {
     "--panel-height": ("appearance", "Top bar height"),
     "--fullscreen-blur": ("glass", "Blur fullscreen windows"),
     "--no-fullscreen-blur": ("glass", "Blur fullscreen windows"),
+    "--osd-device-name": ("extensions", "Show device name"),
+    "--no-osd-device-name": ("extensions", "Show device name"),
     "--maximized-panel-brightness": ("appearance", "Top bar over a maximized window"),
     "--smooth-animations": ("animations", "Smooth animations"),
     "--no-smooth-animations": ("animations", "Smooth animations"),
@@ -2885,6 +2888,8 @@ class Settings:
         self.liquid_windows = read_memo("liquid-windows", "0") == "1"
         # Off unless asked, as apply_fullscreen_blur defaults it.
         self.fullscreen_blur = read_memo("fullscreen-blur", "0") == "1"
+        # Off unless asked, as apply_osd_device_name defaults it.
+        self.osd_device_name = read_memo("osd-device-name", "0") == "1"
         # Top-level, and out of bounds is the shipped 40, as
         # resolve_maximized_panel_brightness has it.
         try:
@@ -3078,6 +3083,9 @@ class Settings:
         if self.fullscreen_blur != other.fullscreen_blur:
             args.append("--fullscreen-blur" if self.fullscreen_blur
                         else "--no-fullscreen-blur")
+        if self.osd_device_name != other.osd_device_name:
+            args.append("--osd-device-name" if self.osd_device_name
+                        else "--no-osd-device-name")
         if self.maximized_panel_brightness != other.maximized_panel_brightness:
             args += ["--maximized-panel-brightness",
                      str(self.maximized_panel_brightness)]
@@ -5893,6 +5901,18 @@ class Window(Adw.ApplicationWindow):
     def _build_extensions_page(self):
         page = Adw.PreferencesPage()
 
+        # Above the "Changes apply as you click" group, because this one is a
+        # setting like any other and waits for Apply.
+        osd = Adw.PreferencesGroup(title="Volume and brightness")
+        self._osd_device_name_row = Adw.SwitchRow(
+            title="Show device name",
+            subtitle="Name the speaker or screen on the pill",
+            active=self._applied.osd_device_name)
+        self._osd_device_name_row.connect("notify::active", self._on_changed,
+                                          "osd_device_name")
+        osd.add(self._osd_device_name_row)
+        page.add(osd)
+
         actions = Adw.PreferencesGroup(
             title="Extensions",
             description="Changes apply as you click.")
@@ -5941,6 +5961,11 @@ class Window(Adw.ApplicationWindow):
             return
 
         for entry in catalogue:
+            # There is no pill to name a device on while Custom OSD is off.
+            if entry["uuid"] == "custom-osd@neuromorph":
+                self._osd_device_name_row.set_sensitive(
+                    entry["installed"] and entry["enabled"])
+
             group = self._ext_groups.get(entry["tier"])
             if group is None:
                 continue
@@ -7733,6 +7758,7 @@ class Window(Adw.ApplicationWindow):
             self._glass_style_row.get_selected()]
         s.liquid_windows = self._liquid_windows_row.get_active()
         s.fullscreen_blur = self._fullscreen_blur_row.get_active()
+        s.osd_device_name = self._osd_device_name_row.get_active()
         s.maximized_panel_brightness = int(round(
             self._maximized_panel_scales["panel"].get_value()))
         s.smooth_animations = self._smooth_animations_row.get_active()
@@ -7997,6 +8023,7 @@ class Window(Adw.ApplicationWindow):
             self._applied.glass_style, "glass_style")
         self._liquid_windows_row.set_active(self._applied.liquid_windows)
         self._fullscreen_blur_row.set_active(self._applied.fullscreen_blur)
+        self._osd_device_name_row.set_active(self._applied.osd_device_name)
         self._maximized_panel_scales["panel"].set_value(
             self._applied.maximized_panel_brightness)
         self._smooth_animations_row.set_active(self._applied.smooth_animations)

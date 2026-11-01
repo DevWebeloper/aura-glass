@@ -339,7 +339,7 @@ RESET_MEMOS=(
     adaptive-profile adaptive-fullscreen-apps
     icon-pack icons cursor-pack cursor-size font
     update-check update-channel rounded-blur-choice
-    extension-pack extension-catalog osd bms-source
+    extension-pack extension-catalog osd osd-device-name bms-source
 )
 
 reset_remembered_choices() {

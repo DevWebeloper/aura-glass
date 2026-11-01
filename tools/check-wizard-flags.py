@@ -93,7 +93,7 @@ FROSTED = ["--all-apps-blur", "--app-transparency", "0.90", "--popup-blur"]
 # installer, so these are the two names the defaults case has to send. The size
 # is a third, independent answer — the wizard's own 20px recommendation.
 PACKS = ["--icons", "reversal", "--cursors", "moga", "--cursor-size", "20",
-         "--osd"]
+         "--osd", "--no-osd-device-name"]
 
 # (description, the answers, whether there is a GDM, expected argv)
 CASES = [
@@ -126,7 +126,7 @@ CASES = [
 
     ("performance keeps its own packs", answers(blur=False, want_icons=False), False,
      BASE + ["--no-blur", "--no-icons", "--cursors", "moga", "--cursor-size",
-             "20", "--osd"]),
+             "20", "--osd", "--no-osd-device-name"]),
 
     ("gtk windows blurred", answers(scope="gtk"), False,
      BASE + ["--gtk-apps-blur", "--app-transparency", "0.90", "--popup-blur"]
@@ -150,25 +150,29 @@ CASES = [
     ("hatter icons and mactahoe pointers",
      answers(icons="hatter", cursors="mactahoe"), False,
      BASE + FROSTED + ["--icons", "hatter", "--cursors", "mactahoe",
-                       "--cursor-size", "20", "--osd"]),
+                       "--cursor-size", "20", "--osd", "--no-osd-device-name"]),
     ("aosp pointers", answers(cursors="aosp"), False,
      BASE + FROSTED + ["--icons", "reversal", "--cursors", "aosp",
-                       "--cursor-size", "20", "--osd"]),
+                       "--cursor-size", "20", "--osd", "--no-osd-device-name"]),
 
     ("keep both packs", answers(want_icons=False, want_cursors=False), False,
      BASE + FROSTED + ["--no-icons", "--no-cursors", "--cursor-size", "20",
-                       "--osd"]),
+                       "--osd", "--no-osd-device-name"]),
 
     # Independent of the pack above: keeping the pointer theme is not a
     # statement about its size, and the reverse holds too.
     ("keep the pointer size, theme untouched",
      answers(cursor_size="24", want_cursor_size=False), False,
-     BASE + FROSTED + ["--icons", "reversal", "--cursors", "moga", "--osd"]),
+     BASE + FROSTED + ["--icons", "reversal", "--cursors", "moga", "--osd", "--no-osd-device-name"]),
 
     ("a larger pointer, theme unchanged",
      answers(cursor_size="32"), False,
      BASE + FROSTED + ["--icons", "reversal", "--cursors", "moga",
-                       "--cursor-size", "32", "--osd"]),
+                       "--cursor-size", "32", "--osd", "--no-osd-device-name"]),
+
+    ("OSD pill naming its device", answers(osd_device_name=True), False,
+     BASE + FROSTED + ["--icons", "reversal", "--cursors", "moga",
+                       "--cursor-size", "20", "--osd", "--osd-device-name"]),
 
     ("stock OSD", answers(want_osd=False), False,
      BASE + FROSTED + ["--icons", "reversal", "--cursors", "moga",

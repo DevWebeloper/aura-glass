@@ -325,6 +325,7 @@ load_dconf() {
     apply_animation_speed
     apply_radius_dconf
     apply_glass_style
+    apply_osd_device_name
     sync_osd_profile
     refresh_bms_after_dconf
 }
@@ -1202,6 +1203,41 @@ apply_popup_blur() {
     run dconf write "$base/popup/blur" true
     run dconf write "$base/popup/static-blur" false
     ok "popup blur on, dynamic — sampling live surface behind popups"
+}
+
+# Whether the volume and brightness pill names the speaker or screen it changes.
+# Off by default, because the pill is tuned as a bare level bar. Custom OSD shows
+# that label only for a popup that has both a label and a level (osd-all), so
+# label-nolevel is left alone. Only label-all moves: the other three entries may
+# be the user's from Custom OSD's own window. Written on every run for the reason
+# apply_fullscreen_blur is, and before sync_osd_profile, because osd-all is in the
+# profile that window loads back.
+apply_osd_device_name() {
+    local key=/org/gnome/shell/extensions/custom-osd/osd-all
+    local want="${OSD_DEVICE_NAME:-}" memo="$CONF_DIR/osd-device-name"
+
+    if [ -z "${OSD_DEVICE_NAME_EXPLICIT:-}" ] || [ -z "$want" ]; then
+        want="$(cat "$memo" 2>/dev/null || true)"
+    fi
+    [ "$want" = 1 ] || want=0
+
+    if remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$want" > "$memo"
+    fi
+
+    local current label=false
+    [ "$want" = 1 ] && label=true
+    current="$(dconf read "$key" 2>/dev/null || true)"
+    # The core.ini value, for a key that was reset since it was loaded.
+    [ -n "$current" ] || current="{'icon-all': false, 'label-all': false, 'level-all': true, 'numeric-all': false}"
+    run dconf write "$key" "$(printf '%s' "$current" | sed -E "s/('label-all': )(true|false)/\1$label/")"
+
+    if [ "$want" = 1 ]; then
+        ok "the volume and brightness pill shows the device name (remembered for later runs)"
+    else
+        ok "the volume and brightness pill shows only the level"
+    fi
 }
 
 # Custom OSD keeps a set of named profiles beside the live settings, and its

@@ -48,6 +48,7 @@ implementation view.
 | `--extensions LIST` | | `extension-pack` | comma-separated UUIDs, each must be in `EXT_EXTRA_ALL`. Empty means minimal. A remembered UUID that is no longer in the catalogue is dropped, not fatal |
 | `--full` | | `extension-pack`, `osd` | all extras + icons + cursors + OSD |
 | `--osd` / `--no-osd` | on | `osd` (`0\|1`) | Custom OSD pill. A remembered `0` is what a flagless `--gui` update or `--force` reinstall reads back |
+| `--osd-device-name` / `--no-osd-device-name` | off | `osd-device-name` (`0\|1`) | Shows the speaker or screen name on the Custom OSD pill (`custom-osd/osd-all`, `label-all`) |
 | `--bms-git` / `--no-bms-git` | git | `bms-ref`, `bms-source` | `--no-bms-git` (EGO build) also forces popup blur off. A remembered `ego` keeps a flagless re-run on the EGO build; `--bms-git` or `--popup-blur` typed override it |
 | `--rounded-blur` / `--no-rounded-blur` | retired | none | accepted and ignored. gnome-rounded-blur is no longer installed: Blur My Shell v76 rounds its blur itself. An older install's `rounded-blur` stamp only tells `uninstall.sh` to explain how to remove the library |
 | `--gui` / `--no-gui` | on | none | settings window (needs PyGObject, libadwaita, pycairo) |
@@ -215,6 +216,7 @@ by `save_glass_mode_memos`.
 | `dconf-shipped` | `<ini>\t<section/key>\t<value>` lines: every value a preset has been loaded or merged at, appended, never rewritten. An update writes a preset key only when it is missing or still holds one of these, so a value the user set is kept. Seeded from the preset's git history on the first merge. Removed by uninstall | `merge_dconf_preset` (in `load_dconf`) |
 | `kept-extensions` | one UUID per line: retired extensions the user chose to keep when asked. Not asked again | `disable_retired_extensions` |
 | `osd` | `0\|1`. Only a `0` is read back | `install_custom_osd`; read in the resolution block |
+| `osd-device-name` | `0\|1`, top-level | `apply_osd_device_name` |
 | `bms-ref`, `bms-source` | installed BMS commit and `git\|ego`. `ego` is read back as `--no-bms-git` | `install_bms`; read in the resolution block |
 | `bms-backports-patch`, `bms-subwindow-patch`, `bms-buffers-patch`, `bms-fade-patch`, `bms-static-patch`, `custom-osd-patch` (legacy `openbar-patch`) | patch stamps. `bms-overview-patch`, `bms-notification-patch`, `bms-panel-patch` and `rounded-blur-patch` are left by older releases and no longer read | `patch_stamp_write` |
 | `gdm-installed`, `gdm-monitors-synced` | login-screen state | `lib/steps-gdm.sh` |

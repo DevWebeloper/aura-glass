@@ -487,7 +487,7 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/extension-pack" \
           "$CONF_DIR/extension-catalog" \
           "$CONF_DIR/dconf-shipped" \
-          "$CONF_DIR/osd" \
+          "$CONF_DIR/osd" "$CONF_DIR/osd-device-name" \
           "$CONF_DIR/window-menu" \
           "$CONF_DIR/app-transparency" \
           "$CONF_DIR/app-opacity" \

@@ -75,6 +75,7 @@ def state(**kw):
     s.glass_style = kw.get("glass_style", "frosted")
     s.liquid_windows = kw.get("liquid_windows", False)
     s.fullscreen_blur = kw.get("fullscreen_blur", False)
+    s.osd_device_name = kw.get("osd_device_name", False)
     s.maximized_panel_brightness = kw.get("maximized_panel_brightness", 40)
     s.smooth_animations = kw.get("smooth_animations", False)
     s.animation_speed = kw.get(
@@ -410,6 +411,12 @@ CASES = [
 
     ("fullscreen windows drop the blur again", state(fullscreen_blur=True),
      FROSTED, ["--no-fullscreen-blur"]),
+
+    ("the OSD pill names its device", FROSTED,
+     state(osd_device_name=True), ["--osd-device-name"]),
+
+    ("the OSD pill goes back to the bare level", state(osd_device_name=True),
+     FROSTED, ["--no-osd-device-name"]),
 
     ("smooth animations on", FROSTED,
      state(smooth_animations=True), ["--smooth-animations"]),

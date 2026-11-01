@@ -84,6 +84,8 @@ WANT_CURSORS=1
 WANT_DEPS=1
 WANT_OSD=1
 OSD_EXPLICIT=""
+OSD_DEVICE_NAME=""  # empty = remembered choice, then 0
+OSD_DEVICE_NAME_EXPLICIT=""
 WINDOW_MENU_EXPLICIT=""
 # Empty = no answer yet: the remembered one, and then the monitor count,
 # decide it further down.
@@ -302,6 +304,9 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       here. Remembered for later runs
     --osd             minimal pill OSD for volume & brightness (default: on)
     --no-osd          keep stock volume and brightness popup
+    --osd-device-name show the speaker or screen name on the OSD pill
+    --no-osd-device-name
+                      the OSD pill is only the level bar (the default)
     --no-popup-blur   keep flat translucent popups, menus and notifications, and
                       skip the blur behind them
     --no-bms-git      use Blur My Shell published build (implies --no-popup-blur)
@@ -492,6 +497,8 @@ parse_flags() {
         --icons=*)       ICONS="${1#*=}"; ICONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --osd)           WANT_OSD=1; OSD_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-osd)        WANT_OSD=0; OSD_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --osd-device-name)    OSD_DEVICE_NAME=1; OSD_DEVICE_NAME_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --no-osd-device-name) OSD_DEVICE_NAME=0; OSD_DEVICE_NAME_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --bms-git)       WANT_BMS_GIT=1; BMS_GIT_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-bms-git)    WANT_BMS_GIT=0; BMS_GIT_EXPLICIT=1; WANT_POPUP_BLUR=0
                          POPUP_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
@@ -979,6 +986,22 @@ EOF
         n|no) WANT_OSD=0; printf '  %s✓%s Keeping stock GNOME OSD\n' "$C_GRN" "$C_OFF" ;;
         *)    WANT_OSD=1; printf '  %s✓%s Custom OSD pill bar enabled\n' "$C_GRN" "$C_OFF" ;;
     esac
+    # Same question and pre-fill as the GTK wizard's page_extensions.
+    if [ "$WANT_OSD" = 1 ]; then
+        OSD_DEVICE_NAME=0
+        osd_name_hint='[y/N]'
+        if [ "$(cat "$CONF_DIR/osd-device-name" 2>/dev/null || true)" = 1 ]; then
+            OSD_DEVICE_NAME=1
+            osd_name_hint='[Y/n]'
+        fi
+        printf '  Show the device name on the pill? (the speaker or screen it changes) %s%s%s: ' "$C_DIM" "$osd_name_hint" "$C_OFF"
+        read -r ans_osd_name || ans_osd_name=""
+        case "${ans_osd_name,,}" in
+            y|yes) OSD_DEVICE_NAME=1 ;;
+            n|no)  OSD_DEVICE_NAME=0 ;;
+        esac
+        OSD_DEVICE_NAME_EXPLICIT=1
+    fi
 
     # Same options, order and recommendation as the GTK wizard's page_extensions:
     # the whole optional set, or none of it. The window has no middle tier and
@@ -1698,6 +1721,7 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
                     css) install_css ;;
                     app-opacity) apply_app_opacity ;;
                     fullscreen-blur) apply_fullscreen_blur ;;
+                    osd-device-name) apply_osd_device_name; sync_osd_profile ;;
                     smooth-animations) apply_smooth_animations ;;
                     animation-speed) apply_animation_speed ;;
                     glass-style) apply_glass_style ;;

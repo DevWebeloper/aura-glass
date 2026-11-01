@@ -48,7 +48,7 @@ import gi
 
 gi.require_version("Adw", "1")
 gi.require_version("Gtk", "4.0")
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
 
 APP_ID = "io.github.DevWebeloper.AuraGlassSetup"
 
@@ -258,6 +258,7 @@ class Answers:
         self.want_cursor_size = True
         self.cursor_size = "20"
         self.want_osd = True
+        self.osd_device_name = read_memo("osd-device-name") == "1"
         # None means "say nothing about extensions", which leaves install.sh on
         # the Core package. Only a readable catalogue turns this into a list.
         self.extensions = extensions
@@ -325,6 +326,9 @@ class Answers:
             args += ["--cursor-size", self.cursor_size]
 
         args.append("--osd" if self.want_osd else "--no-osd")
+        if self.want_osd:
+            args.append("--osd-device-name" if self.osd_device_name
+                        else "--no-osd-device-name")
 
         if self.extensions is not None:
             args += ["--extensions", ",".join(self.extensions)]
@@ -756,6 +760,15 @@ class Window(Adw.ApplicationWindow):
         row.connect("notify::active", lambda r, _p: setattr(
             self.answers, "want_osd", r.get_active()))
         osd.add(row)
+        name_row = Adw.SwitchRow(
+            title="Show device name",
+            subtitle="Name the speaker or screen on the pill",
+            active=self.answers.osd_device_name)
+        name_row.connect("notify::active", lambda r, _p: setattr(
+            self.answers, "osd_device_name", r.get_active()))
+        row.bind_property("active", name_row, "sensitive",
+                          GObject.BindingFlags.SYNC_CREATE)
+        osd.add(name_row)
         page.add(osd)
 
         if not self.catalogue:
@@ -874,8 +887,9 @@ class Window(Adw.ApplicationWindow):
             ("Pointer size",
              "%spx" % answers.cursor_size if answers.want_cursor_size
              else "Kept as it is", "cursors"),
-            ("Volume pill", "Yes" if answers.want_osd else "GNOME's own OSD",
-             "extensions"),
+            ("Volume pill", "GNOME's own OSD" if not answers.want_osd
+             else "Yes, with the device name" if answers.osd_device_name
+             else "Yes", "extensions"),
             ("Extension package", extras, "extensions"),
         ]
         if self.gdm_present:

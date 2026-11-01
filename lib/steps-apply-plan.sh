@@ -24,6 +24,7 @@ select_apply_actions() {
             # of them, alone or together, is that one step.
             --blur-strength|--blur-strength=*|--blur-brightness|--blur-brightness=*|--*-blur-strength|--*-blur-strength=*|--window-brightness|--window-brightness=*|--app-brightness|--app-brightness=*|--window-blur-brightness|--window-blur-brightness=*|--popup-brightness|--popup-brightness=*|--panel-brightness|--panel-brightness=*|--lockscreen-brightness|--lockscreen-brightness=*) _apply_add blur-pipelines ;;
             --fullscreen-blur|--no-fullscreen-blur) _apply_add fullscreen-blur ;;
+            --osd-device-name|--no-osd-device-name) _apply_add osd-device-name ;;
             --smooth-animations|--no-smooth-animations) _apply_add smooth-animations ;;
             --window-animation-speed|--window-animation-speed=*|--notification-animation-speed|--notification-animation-speed=*|--menu-animation-speed|--menu-animation-speed=*) _apply_add animation-speed ;;
             --app-blur-allow|--app-blur-allow=*|--app-blur-block|--app-blur-block=*) _apply_add app-blur ;;

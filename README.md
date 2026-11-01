@@ -111,7 +111,8 @@ Open **Aura Glass** from the app grid, or run `aura-glass-settings`.
 - **Appearance.** Three tabs: accent and font; icons, pointer and its size; titlebar buttons, their style and the top bar (height, and its brightness over a maximized window).
 - **Corner rounding.** Seven presets or eight per-surface values. The blur behind always matches the corner painted on top.
 - **Per-app blur.** A switch per app, the windows open right now, wildcard patterns, and the games that trigger Performance.
-- **Extensions, Packages, System, Updates, Uninstall.**
+- **Extensions.** Each extension's switch, and **Show device name** (`--osd-device-name`), which names the speaker or screen on the volume and brightness pill.
+- **Packages, System, Updates, Uninstall.**
 
 **Blur fullscreen windows** (`--fullscreen-blur`) is off by default, so a
 fullscreen video or game drops the blur behind it and turns opaque.
