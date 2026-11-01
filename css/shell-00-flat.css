@@ -117,9 +117,14 @@ StDrawingArea {
  * St ranks extension sheets above the theme, so aura-glass-apply copies
  * this into extension-overrides.css (.copyous-indicator-box is in its list),
  * where #panel out-weighs Copyous's selector. The glyph itself is the icon
- * pack's: patch_copyous_extension. */
+ * pack's: patch_copyous_extension.
+ * 14px rather than the 16px every status icon gets: the pack's clipboard
+ * fills its whole box edge to edge where its neighbours leave a margin, so
+ * at 16px it still read a size up (seen 2026-11-01). 5px of padding, one
+ * more than the rest, keeps the button the same 24px wide. */
 #panel .panel-button .copyous-indicator-box .system-status-icon {
-  padding: 4px;
+  icon-size: 14px;
+  padding: 5px;
 }
 
 
