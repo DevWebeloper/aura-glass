@@ -424,6 +424,8 @@ install_extensions() {
 # the shape on screen: the theme's busy loop when the sprite animates (Mutter
 # stops animating a hidden pointer), else the static shape the live pixels
 # match, drawn from its largest frame or its SVG.
+# The copy is hidden from pick: it sits under the pointer on top of everything,
+# and a window released in the overview over it snapped back (KI-41).
 # Applied to the EGO download, so a Wiggly update that moves the code skips
 # the patch with a warning rather than half-applying it.
 patch_wiggly_extension() {

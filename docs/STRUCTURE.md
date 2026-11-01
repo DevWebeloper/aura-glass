@@ -88,7 +88,7 @@ For "which file draws this button / owns this setting", use
 | `blur-my-shell-static-maximized.patch` | BMS: applied last. A window covering its monitor (maximized both ways, fullscreen, or sized over the work area) gets static blur and smaller ones dynamic, instead of one type for all; `static-blur=true` still makes every window static. A crossing rebuilds the blur as the other type, after an interactive resize or the overview's motion if one is under way |
 | `custom-osd-gnome50.patch` | Custom OSD on GNOME 50/51 |
 | `copyous-gnome51.patch` | Copyous on GNOME 51 |
-| `wiggly-follow-cursor.patch` | Wiggly: measure the pointer in logical pixels before every shake, grow and shrink about its hotspot, follow the cursor theme itself (`theme.js`), and magnify the shape on screen: the theme's busy loop played, else the static shape named by its pixels and drawn from its largest frame or SVG |
+| `wiggly-follow-cursor.patch` | Wiggly: measure the pointer in logical pixels before every shake, grow and shrink about its hotspot, follow the cursor theme itself (`theme.js`), and magnify the shape on screen: the theme's busy loop played, else the static shape named by its pixels and drawn from its largest frame or SVG. The magnified copy is hidden from pick, so a drop in the overview finds what is under it (KI-41) |
 
 ### `bin/`: commands (most installed into `~/.local/bin`)
 
