@@ -1964,6 +1964,53 @@ class AlertWindow(Adw.Window):
         return False
 
 
+def notes_view(markup):
+    """Changelog markup as widgets, each bullet's text in a column of its own.
+
+    A wrapped "  •  text" line in one label runs its second line back under
+    the bullet. Here the bullet is its own label and the text wraps beside it,
+    so every line of an entry starts at the same edge. Lines that are not
+    bullets (the New / Fixed headings, a note's prose) stay plain labels, and a
+    blank line is a gap. gui/aura_glass_install_progress.py keeps the same helper; the two windows are
+    separate processes and do not import each other.
+    """
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+    plain = []
+
+    def label(text, **kw):
+        widget = Gtk.Label(xalign=0, wrap=True, selectable=True, **kw)
+        widget.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
+        try:
+            widget.set_markup(text)
+        except GLib.Error:
+            widget.set_text(re.sub(r"<[^>]+>", "", text))
+        return widget
+
+    def flush():
+        if plain:
+            box.append(label("\n".join(plain)))
+            del plain[:]
+
+    for line in markup.split("\n"):
+        bullet = re.match(r"^(\s*)•\s+(.*)$", line)
+        if bullet:
+            flush()
+            # Leading spaces are the markdown's nesting: two per level, past
+            # the two every bullet line opens with.
+            depth = max(0, len(bullet.group(1)) - 2) // 2
+            row = Gtk.Box(spacing=8, margin_start=8 + 16 * depth)
+            row.append(Gtk.Label(label="•", valign=Gtk.Align.START))
+            row.append(label(bullet.group(2), hexpand=True))
+            box.append(row)
+        elif not line.strip():
+            flush()
+            box.append(Gtk.Box(height_request=8))
+        else:
+            plain.append(line)
+    flush()
+    return box
+
+
 def plain_row(row, title, subtitle=None):
     """Set a row's text as text rather than as Pango markup.
 
@@ -8191,10 +8238,7 @@ class Window(Adw.ApplicationWindow):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
                       margin_top=12, margin_bottom=12, margin_start=12,
                       margin_end=12)
-        notes = Gtk.Label(xalign=0, wrap=True, selectable=True,
-                          use_markup=True)
-        notes.set_markup(body)
-        box.append(notes)
+        box.append(notes_view(body))
 
         actions = Gtk.Box(spacing=8, halign=Gtk.Align.END)
         if link:
