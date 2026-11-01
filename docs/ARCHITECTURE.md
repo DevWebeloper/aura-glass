@@ -360,8 +360,8 @@ changes neither.
   re-cut. Custom OSD gets
   `custom-osd-gnome50.patch`. Copyous gets `copyous-gnome51.patch`. Wiggly gets
   `wiggly-follow-cursor.patch` on its EGO download (`patch_wiggly_extension`).
-  Status Tray gets its default icon effect edited in place
-  (`patch_status_tray_extension`).
+  Status Tray gets its default icon effect and its theme lookup edited in place
+  (`patch_status_tray_extension`, `patch_status_tray_icon_lookup`).
 - `bin/aura-glass-ext` exposes the catalogue one UUID at a time
   (`list | install | remove | enable | disable | recommended | full`). The
   settings window's Extensions page is built from `aura-glass-ext list`.

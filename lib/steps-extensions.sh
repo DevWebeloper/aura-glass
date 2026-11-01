@@ -412,6 +412,7 @@ install_extensions() {
     patch_copyous_extension
     patch_wiggly_extension
     patch_status_tray_extension
+    patch_status_tray_icon_lookup
 }
 
 # Status Tray took over from AppIndicator Support as the tray. Not asked the way
@@ -469,6 +470,26 @@ patch_status_tray_extension() {
         -e 's/(let |this\._)useTint = (true|false);/\1useTint = true;/' \
         "$ext" "$prefs"
     ok "Status Tray icons default to the white-tinted effect"
+}
+
+# Status Tray searches a theme as <size>/<category>, and Reversal files its icons
+# as <category>/<size>, so a name only the theme has (Solaar's battery-030) misses
+# that search. The fallback, St.IconTheme, does find it, but then asks the result
+# for get_file(), which a GTK paintable has and St.IconInfo does not. With no file
+# the item ends on a bare set_icon_name, which draws nothing and leaves an empty
+# slot in the tray. get_filename() is the same answer in St's own terms, and the
+# icon then takes the file path every other tray icon takes. Applied to the EGO
+# download, so an update that moves the code skips this with a warning.
+patch_status_tray_icon_lookup() {
+    local ext="$EXT_DIR/status-tray@keithvassallo.com/extension.js"
+    [ -f "$ext" ] || return 0
+    grep -qF 'Gio.File.new_for_path(paintable.get_filename())' "$ext" && return 0
+    if ! grep -qF 'resolvedFile = paintable.get_file?.() ?? paintable.file ?? null;' "$ext"; then
+        warn "Status Tray changed upstream; icons only the theme has may stay blank"
+        return 0
+    fi
+    run sed -i 's/resolvedFile = paintable\.get_file?\.() ?? paintable\.file ?? null;/resolvedFile = Gio.File.new_for_path(paintable.get_filename());/' "$ext"
+    ok "Status Tray draws icons only the theme has"
 }
 
 # Wiggly 10 measures the pointer once, at enable, in texture pixels, and eases
