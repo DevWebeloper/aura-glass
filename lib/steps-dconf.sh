@@ -960,7 +960,9 @@ APP_BLUR_SELF="io.github.DevWebeloper.AuraGlassSettings"
 # at both ends, turns * into .* and ? into ., and compiles case-insensitively —
 # which is what a bash glob under nocasematch does. The one difference is [abc]:
 # the extension escapes the brackets and matches them literally. No wm_class has
-# brackets in it, and this one certainly does not.
+# brackets in it, and this one certainly does not. A title: entry never covers it
+# (the literal prefix does not match the class), which is right: it tests the
+# window title, so it says nothing about this class.
 app_blur_covers_self() {
     local pattern="$1" matched=0 restore
     restore="$(shopt -p nocasematch)"

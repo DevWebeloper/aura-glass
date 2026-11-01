@@ -201,38 +201,59 @@ function wildcardToRegex(pattern) {
     return new RegExp(`^${escaped}$`, 'i');
 }
 
-function matchesAny(patterns, wmClass) {
-    return patterns.some(p => p.trim() !== '' && wildcardToRegex(p).test(wmClass));
+// A title: entry (upstream #1217) tests the window titles and any other entry
+// the classes, as to_rule does in Blur My Shell's window_rules.js.
+const TITLE_PREFIX = 'title:';
+
+function matchesAny(patterns, values) {
+    return patterns.some(p => p.trim() !== '' &&
+        values.some(v => wildcardToRegex(p).test(v)));
 }
 
-function matchesAnyClass(patterns, classes) {
-    return classes.some(c => matchesAny(patterns, c));
+function matchesAnyRule(patterns, {classes, titles}) {
+    const isTitle = p => p.trim().startsWith(TITLE_PREFIX);
+    return matchesAny(patterns.filter(p => !isTitle(p)), classes) ||
+        matchesAny(patterns.filter(isTitle).map(p => p.trim().slice(TITLE_PREFIX.length)), titles);
 }
 
-// Mirrors patches/blur-my-shell-subwindows.patch's window_classes: a window's
-// own wm_class and GTK application id, then the same two for each window up
-// its transient-for chain — so right-clicking a dialog's titlebar toggles the
-// app it belongs to, and the checkbox reads as checked when that app is
-// blurred, not only when the dialog's own (often different, sometimes empty)
-// class happens to be on the list. Bounded and cycle-guarded for the same
-// reason the patch's copy is: transient-for loops are malformed but a client
-// can still set one.
-function windowClasses(window) {
-    const classes = [];
-    const push = v => { if (v && !classes.includes(v)) classes.push(v); };
-
-    push(window.get_wm_class());
-    push(window.get_gtk_application_id());
-
-    const seen = new Set([window]);
+// Mirrors patches/blur-my-shell-subwindows.patch's window_chain: a window, then
+// each window up its transient-for chain — so right-clicking a dialog's
+// titlebar toggles the app it belongs to, and the checkbox reads as checked
+// when that app is blurred, not only when the dialog's own (often different,
+// sometimes empty) class happens to be on the list. Bounded and cycle-guarded
+// for the same reason the patch's copy is: transient-for loops are malformed
+// but a client can still set one.
+function windowChain(window) {
+    const chain = [window];
+    const seen = new Set(chain);
     let parent = window.get_transient_for();
     for (let depth = 0; parent && depth < 8 && !seen.has(parent); depth++) {
         seen.add(parent);
-        push(parent.get_wm_class());
-        push(parent.get_gtk_application_id());
+        chain.push(parent);
         parent = parent.get_transient_for();
     }
+    return chain;
+}
+
+// Every wm_class and GTK application id on that chain, nearest first.
+function windowClasses(window) {
+    const classes = [];
+    const push = v => { if (v && !classes.includes(v)) classes.push(v); };
+    for (const member of windowChain(window)) {
+        push(member.get_wm_class());
+        push(member.get_gtk_application_id());
+    }
     return classes;
+}
+
+// What the rules are asked about, taken while the window is known to exist: the
+// menu's toggle reads it again when the backend answers, usually after the menu
+// and possibly the window have gone.
+function windowIdentity(window) {
+    return {
+        classes: windowClasses(window),
+        titles: windowChain(window).map(member => member.get_title()).filter(Boolean),
+    };
 }
 
 // The root class a window belongs to, for both the window-menu toggle and the
@@ -246,10 +267,10 @@ function rootWindowClass(window) {
 
 // A window that fills the screen, for the top-bar shade: maximized both ways,
 // fullscreen, or sized over the whole work area without either flag. (The same
-// test once chose static blur behind such a window, in a Blur My Shell patch
-// dropped with v76.) The last is Tiling Assistant's drag-to-top or maximize
-// with maximize-with-gap on: it resizes to the work area instead of
-// maximizing, so GTK never sees the window as maximized either.
+// test chooses static blur behind such a window: covers_monitor in
+// patches/blur-my-shell-static-maximized.patch.) The last is Tiling Assistant's
+// drag-to-top or maximize with maximize-with-gap on: it resizes to the work area
+// instead of maximizing, so GTK never sees the window as maximized either.
 function coversMonitor(window) {
     if (window.fullscreen ||
         (window.maximized_horizontally && window.maximized_vertically))
@@ -823,7 +844,8 @@ export default class AuraGlassBlurExtension extends Extension {
         if (!isBlurrable(window.get_frame_type()))
             return;
 
-        const classes = windowClasses(window);
+        const identity = windowIdentity(window);
+        const {classes} = identity;
         if (classes.length === 0)
             return;
 
@@ -889,19 +911,25 @@ export default class AuraGlassBlurExtension extends Extension {
             // to is blurred, matching what check_blur itself now does in
             // Blur My Shell.
             const enableAll = this._settings.get_boolean('enable-all');
-            const inWhitelist = matchesAnyClass(this._settings.get_strv('whitelist'), classes);
-            const inBlacklist = matchesAnyClass(this._settings.get_strv('blacklist'), classes);
+            const inWhitelist = matchesAnyRule(this._settings.get_strv('whitelist'), identity);
+            const inBlacklist = matchesAnyRule(this._settings.get_strv('blacklist'), identity);
             const checked = inWhitelist || (enableAll && !inBlacklist);
 
             item.setOrnament(checked ? PopupMenu.Ornament.CHECK
                                       : PopupMenu.Ornament.NONE);
+            // The toggle writes classes only, and the allow list wins over the
+            // block list, so a title: entry on it keeps this window blurred
+            // whatever the toggle does. Greyed out, like the settings window
+            // above, rather than offering an uncheck that undoes nothing.
+            item.setSensitive(!matchesAnyRule(this._settings.get_strv('whitelist'),
+                {classes: [], titles: identity.titles}));
             item.connect('activate', () => {
-                this._toggleBlur(wmClass, classes, !checked, item);
+                this._toggleBlur(wmClass, identity, !checked, item);
             });
         }
     }
 
-    _toggleBlur(wmClass, classes, wantBlurred, item) {
+    _toggleBlur(wmClass, identity, wantBlurred, item) {
         // A lock wait must never run on GNOME Shell's main loop. The backend
         // reads the current memo after it owns that lock, changes both lists
         // through apply_app_blur, and reports any wildcard it had to remove.
@@ -957,8 +985,8 @@ export default class AuraGlassBlurExtension extends Extension {
             // reopened menu never disagrees with this one.
             if (!destroyed) {
                 const enableAll = this._settings.get_boolean('enable-all');
-                const inWhitelist = matchesAnyClass(this._settings.get_strv('whitelist'), classes);
-                const inBlacklist = matchesAnyClass(this._settings.get_strv('blacklist'), classes);
+                const inWhitelist = matchesAnyRule(this._settings.get_strv('whitelist'), identity);
+                const inBlacklist = matchesAnyRule(this._settings.get_strv('blacklist'), identity);
                 item.setOrnament(inWhitelist || (enableAll && !inBlacklist)
                     ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
                 item.setSensitive(true);

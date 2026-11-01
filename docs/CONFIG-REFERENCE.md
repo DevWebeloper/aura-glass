@@ -216,7 +216,7 @@ by `save_glass_mode_memos`.
 | `kept-extensions` | one UUID per line: retired extensions the user chose to keep when asked. Not asked again | `disable_retired_extensions` |
 | `osd` | `0\|1`. Only a `0` is read back | `install_custom_osd`; read in the resolution block |
 | `bms-ref`, `bms-source` | installed BMS commit and `git\|ego`. `ego` is read back as `--no-bms-git` | `install_bms`; read in the resolution block |
-| `bms-subwindow-patch`, `custom-osd-patch` (legacy `openbar-patch`) | patch stamps. `bms-overview-patch`, `bms-notification-patch`, `bms-static-patch`, `bms-panel-patch` and `rounded-blur-patch` are left by older releases and no longer read | `patch_stamp_write` |
+| `bms-backports-patch`, `bms-subwindow-patch`, `bms-buffers-patch`, `bms-fade-patch`, `bms-static-patch`, `custom-osd-patch` (legacy `openbar-patch`) | patch stamps. `bms-overview-patch`, `bms-notification-patch`, `bms-panel-patch` and `rounded-blur-patch` are left by older releases and no longer read | `patch_stamp_write` |
 | `gdm-installed`, `gdm-monitors-synced` | login-screen state | `lib/steps-gdm.sh` |
 | `gdm-gresource` | `sha256sum` line for the gresource `install_gdm` wrote. A mismatch makes `aura-glass-gdm-sync` warn that a package update reverted the login theme (KI-30) | `record_gdm_gresource`; read by `aura-glass-gdm-sync` |
 | `accent-from-wallpaper` | opt-in marker for the (currently uncatalogued) auto-accent extension | `bin/aura-glass-ext` writes it; `lib/steps-extensions.sh` reads it |

@@ -1,5 +1,5 @@
 diff --git a/src/components/applications/index.js b/src/components/applications/index.js
-index e851df6..441e13b 100644
+index 70afe6e..f1f75ff 100644
 --- a/src/components/applications/index.js
 +++ b/src/components/applications/index.js
 @@ -159,6 +159,13 @@ export const ApplicationsBlur = class ApplicationsBlur {
@@ -17,7 +17,7 @@ index e851df6..441e13b 100644
          this.connections.connect(
              meta_window, 'unmanaging',
 diff --git a/src/components/applications/window_rules.js b/src/components/applications/window_rules.js
-index 34e3196..4a6f7d1 100644
+index 715cbb5..d7b3a47 100644
 --- a/src/components/applications/window_rules.js
 +++ b/src/components/applications/window_rules.js
 @@ -5,6 +5,8 @@ const BLURRED_FRAME_TYPES = [
@@ -28,64 +28,73 @@ index 34e3196..4a6f7d1 100644
 +    Meta.FrameType.UTILITY,
  ];
  
- /// Converts a case-insensitive wildcard pattern, where `*` matches any sequence and `?` any single
-@@ -19,6 +21,39 @@ function matches_any(value, patterns) {
-     return Boolean(value) && patterns.some(pattern => pattern.test(value));
+ const TITLE_PREFIX = 'title:';
+@@ -17,18 +19,44 @@ function wildcard_to_regex(pattern) {
+     return new RegExp(regex, 'i');
  }
  
-+/// True when any of a window's classes matches.
-+function matches_any_class(values, patterns) {
-+    return values.some(value => matches_any(value, patterns));
-+}
-+
-+/// Every class a window can be matched under: its own wm_class, its GTK
-+/// application id, and the same two for each window up its transient-for
-+/// chain, so a dialog, a tool palette or a cross-process file chooser inherits
-+/// the decision made for the app it came out of. Matching only get_wm_class()
-+/// left those unblurred beside the window they came out of. Bounded and
-+/// cycle-guarded: transient-for loops are malformed, but a client can still
-+/// set one, and this runs on every window event.
-+function window_classes(meta_window) {
-+    const classes = [];
-+    const push = value => {
-+        if (value && !classes.includes(value))
-+            classes.push(value);
-+    };
-+
-+    push(meta_window.get_wm_class());
-+    push(meta_window.get_gtk_application_id());
-+
-+    const seen = new Set([meta_window]);
+-/// An entry matches the window class, or the window title when it starts with `title:`.
++/// An entry matches the window class or GTK application id, or the window title when it starts
++/// with `title:`.
+ function to_rule(entry) {
+     const by_title = entry.startsWith(TITLE_PREFIX);
+     const pattern = wildcard_to_regex(by_title ? entry.slice(TITLE_PREFIX.length) : entry);
+     return meta_window => {
+-        const value = by_title ? meta_window.get_title() : meta_window.get_wm_class();
+-        return Boolean(value) && pattern.test(value);
++        const values = by_title
++            ? [meta_window.get_title()]
++            : [meta_window.get_wm_class(), meta_window.get_gtk_application_id()];
++        return values.some(value => Boolean(value) && pattern.test(value));
+     };
+ }
+ 
+-function matches_any(meta_window, rules) {
+-    return rules.some(rule => rule(meta_window));
++/// A window and each window up its transient-for chain, so a dialog, a tool palette or a
++/// cross-process file chooser inherits the decision made for the app it came out of, whether that
++/// decision came from its class or its title. Matching only the window itself left those unblurred
++/// beside the window they came out of. Only the window's own title change re-runs the rules, so a
++/// dialog keeps the decision its parent's title gave it until it is next checked. Bounded and
++/// cycle-guarded: transient-for loops are malformed, but a client can still set one, and this runs
++/// on every window event.
++function window_chain(meta_window) {
++    const chain = [meta_window];
++    const seen = new Set(chain);
 +    let parent = meta_window.get_transient_for();
 +    for (let depth = 0; parent && depth < 8 && !seen.has(parent); depth++) {
 +        seen.add(parent);
-+        push(parent.get_wm_class());
-+        push(parent.get_gtk_application_id());
++        chain.push(parent);
 +        parent = parent.get_transient_for();
 +    }
-+    return classes;
++    return chain;
 +}
 +
++function has_class(meta_window) {
++    return Boolean(meta_window.get_wm_class() || meta_window.get_gtk_application_id());
++}
++
++function matches_any(chain, rules) {
++    return rules.some(rule => chain.some(meta_window => rule(meta_window)));
+ }
+ 
  /// Decides which windows are blurred: when blurring every window, those not in the blacklist,
- /// else only those in the whitelist.
- export class WindowRules {
-@@ -32,12 +67,14 @@ export class WindowRules {
-         this.blacklist = this.settings.applications.BLACKLIST.map(wildcard_to_regex);
+@@ -44,11 +72,14 @@ export class WindowRules {
+         this.blacklist = this.settings.applications.BLACKLIST.map(to_rule);
      }
  
 +    /// The whitelist is consulted in both modes, so a window listed there is
 +    /// blurred even when blurring every window would block one of its classes.
      matches(meta_window) {
--        const wm_class = meta_window.get_wm_class();
 -        const listed = this.settings.applications.ENABLE_ALL
--            ? !matches_any(wm_class, this.blacklist)
--            : matches_any(wm_class, this.whitelist);
--        return wm_class !== ''
-+        const classes = window_classes(meta_window);
-+        const listed = matches_any_class(classes, this.whitelist)
+-            ? !matches_any(meta_window, this.blacklist)
+-            : matches_any(meta_window, this.whitelist);
+-        return meta_window.get_wm_class() !== ''
++        const chain = window_chain(meta_window);
++        const listed = matches_any(chain, this.whitelist)
 +            || (this.settings.applications.ENABLE_ALL
-+                && !matches_any_class(classes, this.blacklist));
-+        return classes.length > 0
++                && !matches_any(chain, this.blacklist));
++        return chain.some(has_class)
              && listed
              && BLURRED_FRAME_TYPES.includes(meta_window.get_frame_type());
      }
