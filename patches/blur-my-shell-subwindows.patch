@@ -1,8 +1,8 @@
 diff --git a/src/components/applications/index.js b/src/components/applications/index.js
-index a98c5e8..b3c8343 100644
+index e851df6..441e13b 100644
 --- a/src/components/applications/index.js
 +++ b/src/components/applications/index.js
-@@ -149,6 +149,13 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -159,6 +159,13 @@ export const ApplicationsBlur = class ApplicationsBlur {
              meta_window, 'notify::gtk-application-id',
              _ => this.check_blur(meta_window)
          );
@@ -17,23 +17,19 @@ index a98c5e8..b3c8343 100644
          this.connections.connect(
              meta_window, 'unmanaging',
 diff --git a/src/components/applications/window_rules.js b/src/components/applications/window_rules.js
-index 0ca7acc..8317207 100644
+index 34e3196..4a6f7d1 100644
 --- a/src/components/applications/window_rules.js
 +++ b/src/components/applications/window_rules.js
-@@ -4,6 +4,12 @@ const BLURRED_FRAME_TYPES = [
-     Meta.FrameType.NORMAL,
+@@ -5,6 +5,8 @@ const BLURRED_FRAME_TYPES = [
      Meta.FrameType.DIALOG,
      Meta.FrameType.MODAL_DIALOG,
-+    // attach-modal-dialogs is true out of the box on GNOME, and Mutter reports
-+    // an attached modal as ATTACHED rather than MODAL_DIALOG, which is why
-+    // every modal dialog was the place the glass stopped. UTILITY covers tool
-+    // palettes and floating panels the set above was already meant to include.
-+    Meta.FrameType.ATTACHED,
+     Meta.FrameType.ATTACHED,
++    // UTILITY covers tool palettes and floating panels the set above was already meant to include.
 +    Meta.FrameType.UTILITY,
  ];
  
  /// Converts a case-insensitive wildcard pattern, where `*` matches any sequence and `?` any single
-@@ -18,6 +24,39 @@ function matches_any(value, patterns) {
+@@ -19,6 +21,39 @@ function matches_any(value, patterns) {
      return Boolean(value) && patterns.some(pattern => pattern.test(value));
  }
  
@@ -73,7 +69,7 @@ index 0ca7acc..8317207 100644
  /// Decides which windows are blurred: when blurring every window, those not in the blacklist,
  /// else only those in the whitelist.
  export class WindowRules {
-@@ -31,12 +70,14 @@ export class WindowRules {
+@@ -32,12 +67,14 @@ export class WindowRules {
          this.blacklist = this.settings.applications.BLACKLIST.map(wildcard_to_regex);
      }
  

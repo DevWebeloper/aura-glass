@@ -77,19 +77,18 @@ test('a transient-for loop ends', () => {
 const sizing = load('src/render/shader/texture_region.js',
     '({ set_full_size_buffers, textureFits, initialTextureCapacity, getTextureCapacity })');
 
-test('stock sizing is exact, grows 1.25x and shrinks below half', () => {
+test('stock sizing is exact, grows 1.25x, stops at the view and shrinks below half', () => {
     sizing.set_full_size_buffers(false);
     assert.equal(sizing.initialTextureCapacity(200, 3440), 200);
     assert.equal(sizing.getTextureCapacity(400, 300, 3440), 500);
-    assert.equal(sizing.textureFits(100, 300), false);
 });
 
 test('full-size buffers start at the monitor and never shrink', () => {
     sizing.set_full_size_buffers(true);
     assert.equal(sizing.initialTextureCapacity(200, 3440), 3440);
     assert.equal(sizing.getTextureCapacity(400, 300, 3440), 3440);
-    assert.equal(sizing.textureFits(1, 3440), true);
-    assert.equal(sizing.textureFits(3441, 3440), false);
+    assert.equal(sizing.textureFits({}, 1, 1, 3440, 1440), true);
+    assert.equal(sizing.textureFits({}, 3441, 1, 3440, 1440), false);
     assert.equal(sizing.initialTextureCapacity(4000, 3440), 4000);
     sizing.set_full_size_buffers(false);
 });

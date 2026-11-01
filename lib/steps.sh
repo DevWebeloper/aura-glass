@@ -32,7 +32,7 @@ UPSTREAM_THEME_NAME="Tahoe-Dark"
 THEME_NAME="Aura-Glass"
 
 BMS_REPO="https://github.com/aunetx/blur-my-shell.git"
-BMS_REF="19ce844b8ca3"            # v76; replaces the native gaussian effects, which
+BMS_REF="b1e415cc5ff3"            # v77. v76 replaced the native gaussian effects, which
                                   # lost their radius after a resume from suspend
                                   # (upstream #700, #850)
 BMS_UUID="blur-my-shell@aunetx"
@@ -48,7 +48,8 @@ AURA_EXT_UUID="aura-glass-blur@aura-glass.local"
 # attach-modal-dialogs is true, the GNOME default) and UTILITY. Together those
 # left a blurred app's own dialogs and tool palettes unblurred. Re-cut for v76,
 # which already re-checks a window on gtk-application-id and keeps one set of
-# listeners per window, both of which the v73 patch had to add itself. See the
+# listeners per window, both of which the v73 patch had to add itself, and for
+# v77, which accepts ATTACHED itself, so only UTILITY is still added. See the
 # patch's own comments.
 #
 # v73 needed four more patches. v76 was checked live without them on

@@ -337,8 +337,7 @@ Catalogued in `lib/steps.sh`:
   blur back in, each with the window content easing between opaque and its
   translucent opacity, over 200 ms; both used to switch in one frame; a
   touchpad swipe makes both follow how far open the overview is instead, so
-  a held or reversed swipe keeps the blur in step with the fingers; clone
-  captures are kept per 1.25x size step so the zooming previews reuse them). Each has its own stamp in `$C`. v73's overview,
+  a held or reversed swipe keeps the blur in step with the fingers). Each has its own stamp in `$C`. v73's overview,
   notification, static-maximized and panel-refit patches were dropped with v76,
   which was checked live without them. Custom OSD gets
   `custom-osd-gnome50.patch`. Copyous gets `copyous-gnome51.patch`. Wiggly gets
@@ -423,7 +422,7 @@ after 30 s instead of interleaving.
 | What | Repo | Pin |
 |---|---|---|
 | Base theme | kayozxo/GNOME-macOS-Tahoe | `6dfcd9d941e5` (installed as `Tahoe-Dark`, adopted as `Aura-Glass`) |
-| Blur My Shell | aunetx/blur-my-shell | `19ce844b8ca3` (v76) + 1 patch |
+| Blur My Shell | aunetx/blur-my-shell | `b1e415cc5ff3` (v77) + 3 patches |
 | Custom OSD | neuromorph/custom-osd | `334ac17e9348` + GNOME 50/51 patch |
 | Colloid / Reversal / MacTahoe icons | vinceliuice, yeyushengfan258, vinceliuice | `c9e702beb96f` / `2c8122287e3b` / `b85923bb87f5` |
 | Hatter icons | Mibea/Hatter | full SHA, shallow sparse fetch |

@@ -103,7 +103,7 @@ install_ext_ego() {
 
 # Blur My Shell carries the popup component upstream: menus, quick settings,
 # notifications, dialogs and the OSD get blur directly. We build from pinned
-# release v76 with the subwindow, full-size-buffers and overview-fade patches
+# release v77 with the subwindow, full-size-buffers and overview-fade patches
 # applied on top (see BMS_SUBWIN_PATCH, BMS_BUFFERS_PATCH and BMS_FADE_PATCH in
 # lib/steps.sh).
 # gnome-extensions pack and gnome-extensions install both write under $HOME, so
@@ -239,8 +239,8 @@ install_bms() {
 # GNOME Shell checks every user-installed extension against extensions.gnome.org
 # (extensionDownloader.js checkForUpdates, at login and every few hours) by
 # posting its metadata "version", and downloads whatever EGO answers "upgrade"
-# for, to replace it at the next login. Our v76 build is older than EGO's v77,
-# so the next login swapped in the stock extension, with none of the patches
+# for, to replace it at the next login. Our v76 build was older than EGO's v77,
+# and any build falls behind EGO's next release the same way: the next login swapped in the stock extension, with none of the patches
 # and none of the popup blur, while bms-ref and the patch stamps still said
 # "current". EGO answers nothing for a version at or above its latest (probed:
 # 76 -> upgrade, 77, 78 and 99999 -> {}), so the installed copy claims 99999.

@@ -214,6 +214,7 @@ apply_dconf_merge() {
 # migrating are reset. Every writer above then shapes core.ini's pipelines as
 # on a fresh install. Custom pipelines a user built in Blur My Shell's own
 # preferences on v73 are lost; no component of this preset pointed at one.
+# v77's version 8 only adds stock pipelines, so 7 stays this function's line.
 upgrade_bms_settings() {
     local base=/org/gnome/shell/extensions/blur-my-shell
     local version migrated=0 section
@@ -803,10 +804,11 @@ apply_fullscreen_blur() {
 # grows with every blurred surface and window. Two halves:
 #
 # full-size-buffers is the key patches/blur-my-shell-full-size-buffers.patch
-# adds. Stock v76 sizes each blur's textures to its actor, grows them 1.25x at
-# a time and drops them below half size or at opacity 0, so a menu scaling in,
-# an app folder zooming from its icon or a banner fading in reallocated the
-# capture and the whole kawase chain in its first frames. With the key on they
+# adds. Stock v77 sizes each blur's textures to its actor and grows them 1.25x at
+# a time, shrinking them after 2 s below half size and freeing them 5 s after
+# opacity 0, so the first open of a menu scaling in, an app folder zooming from
+# its icon or a banner fading in still reallocates the capture and the whole
+# kawase chain in its first frames. With the key on they
 # are allocated once at the largest monitor's size (about 50 MB per blurred
 # surface at 3440x1440) and kept. Blur My Shell reads it live.
 #
