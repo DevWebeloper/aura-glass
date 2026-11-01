@@ -119,6 +119,19 @@ StDrawingArea {
   background-color: rgba(0, 0, 0, 0.42);
 }
 
+/* ---------- Overview search --------------------------------------------
+ * The dash's ground on the search bar and the results card, so the overview's
+ * surfaces read as one. The bar keeps it on hover and focus: the theme lifts
+ * it to 18-20% white there, and focus is the only state it is seen in while
+ * typing. style-components=0 in core.ini keeps Blur My Shell's classes off, so
+ * no extension sheet outranks these. */
+#overview .search-entry,
+#overview .search-entry:hover,
+#overview .search-entry:focus,
+.search-section-content {
+  background-color: rgba(0, 0, 0, 0.42);
+}
+
 /* ---------- Top bar: Copyous's clipboard indicator --------------------
  * Copyous's own sheet sets padding: 0 on its panel icon, so it sat 8px
  * narrower than every other status icon and crowded the button edges.
