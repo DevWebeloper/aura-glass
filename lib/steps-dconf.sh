@@ -1723,6 +1723,37 @@ apply_window_buttons() {
     fi
 }
 
+# Tiling Assistant's maximize-with-gap, on with no screen gap for it to keep.
+#
+# Off, which is upstream's default, drag-to-top and tile-maximize really
+# maximize the window. On, they resize it to the work area instead (tile() in
+# its tilingWindowManager.js), so it fills the screen while Mutter and GTK never
+# see it as maximized: the titlebar button stays maximize and the corners stay
+# rounded. A gap is the one thing that is worth that for. A rect on all four
+# work-area edges takes only the screen gaps (addGaps in its utility.js;
+# window-gap goes between windows), so with those at 0 the key does nothing else.
+#
+# A screen gap above 0 was set on purpose, and the key stays. No preset can do
+# this: no release shipped the key, so merge_dconf_preset would keep a true as
+# the user's own, and a load would take the key from someone with a gap.
+#
+# Reset rather than written false, so nothing is left behind for uninstall, and
+# read first: an unset key, which is also Tiling Assistant not being installed
+# (dconf wants no schema for this), returns here. In apply_gsettings rather than
+# load_dconf because the adaptive worker goes through load_dconf (C10).
+apply_tiling_maximize() {
+    local base=/org/gnome/shell/extensions/tiling-assistant gap
+    [ "$(dconf read "$base/maximize-with-gap" 2>/dev/null || true)" = true ] || return 0
+    for gap in single-screen-gap screen-top-gap screen-left-gap screen-right-gap screen-bottom-gap; do
+        case "$(dconf read "$base/$gap" 2>/dev/null || true)" in
+            ''|0) ;;
+            *) return 0 ;;
+        esac
+    done
+    run dconf reset "$base/maximize-with-gap"
+    ok "Tiling Assistant maximizes for real (maximize-with-gap had no gap to keep)"
+}
+
 # Same shape as apply_window_buttons and for the same reason: cursor-size is
 # a GNOME preference shared with Tweaks, not this project's styling, so a
 # flagless install leaves it exactly where it found it.
@@ -1983,6 +2014,7 @@ apply_gsettings() {
     apply_window_buttons
     apply_cursor_size
     apply_font
+    apply_tiling_maximize
     run gsettings set org.gnome.shell disable-extension-version-validation true
 
     # "left alone" rather than a name, because there is no name to give: the

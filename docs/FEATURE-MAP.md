@@ -99,6 +99,7 @@ a restart.
 | Pointer packs, size | `lib/steps-assets.sh` (`install_cursors`, `install_moga_cursors`), `tools/moga_cursor.py`, `apply_cursor_theme`, `apply_cursor_size`, Wiggly's magnified pointer: `patch_wiggly_extension` + `patches/wiggly-follow-cursor.patch` |
 | Fonts | `lib/steps-fonts.sh`, `apply_font` |
 | Extension catalogue | `lib/steps.sh` (arrays, `ext_description`), `bin/aura-glass-ext`, `lib/steps-extensions.sh` |
+| Tiling Assistant's drag-to-top and `tile-maximize` really maximize, so the titlebar button shows restore (`maximize-with-gap` reset unless a screen gap needs it) | `lib/steps-dconf.sh` (`apply_tiling_maximize`, from `apply_gsettings`) |
 | Blur This App (window menu) | `extensions/aura-glass-blur@aura-glass.local/extension.js` → `aura-glass-operation app-blur` |
 | Mouse wheel switches workspaces while dragging in the overview | `extensions/aura-glass-blur@aura-glass.local/extension.js` (`_attachDragScroll`, `_onDragScroll`) |
 | A window let go near a workspace or thumbnail in the overview still lands there | `extensions/aura-glass-blur@aura-glass.local/extension.js` (`_hookDropTargets`, `_workspaceNear`, `_delegateOtherScreens`) |

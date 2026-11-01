@@ -266,6 +266,12 @@ cursor-size and font keys (what `original` / `system` restore).
 /org/gnome/shell/extensions/{vitals,hotedge,appindicator}/   (extras.ini)
 ```
 
+`/org/gnome/shell/extensions/tiling-assistant/maximize-with-gap` is reset on every
+`apply_gsettings` when it holds `true` and `single-screen-gap` and all four
+`screen-*-gap` keys are 0, so drag-to-top really maximizes
+(`apply_tiling_maximize`). Any of those gaps above 0 keeps it. Nothing else in
+that subtree is written.
+
 ---
 
 ## 4. Environment variables
