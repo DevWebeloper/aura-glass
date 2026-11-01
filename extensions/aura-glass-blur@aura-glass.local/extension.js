@@ -14,7 +14,9 @@
  * and emits WindowsChanged and FocusChanged signals.
  *
  * It also shades the top bar while a window on the active workspace fills
- * the panel's monitor (PANEL_SHADE_CLASS, painted by css/shell-00-flat.css).
+ * the panel's monitor (PANEL_SHADE_CLASS, painted by css/shell-00-flat.css),
+ * in that window's titlebar colour and in step with the motion that brought
+ * it (_syncPanelShade).
  *
  * And it lets the mouse wheel switch workspaces while a window or app icon
  * is held in the overview (_attachDragScroll).
@@ -26,6 +28,7 @@
  */
 
 import Clutter from 'gi://Clutter';
+import GdkPixbuf from 'gi://GdkPixbuf';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -85,6 +88,21 @@ const DBUS_IFACE = `
 // Added to Main.panel while the focused window fills the panel's monitor.
 // css/shell-00-flat.css paints it; the name is duplicated there.
 const PANEL_SHADE_CLASS = 'aura-glass-maximized';
+// The shell's own durations for the two motions the shade rides on:
+// WINDOW_ANIMATION_TIME in windowManager.js (a maximize or unmaximize, scaled
+// by --window-animation-speed like the window itself) and ANIMATION_TIME in
+// overview.js (the overview opening and closing, which is never scaled).
+// The stylesheet's 250ms is the fallback while this extension is off.
+const SHADE_WINDOW_MS = 250;
+const SHADE_OVERVIEW_MS = 250;
+// The row of a titlebar read for the shade's colour: 3px inside the frame,
+// below the 1px highlight along a glass window's top edge and above the
+// title text.
+const TITLE_SAMPLE_INSET = 3;
+// Read this long after the window's last focus, move or resize (times the
+// window animation scale), so the row is the settled titlebar and not a
+// frame of the maximize animation.
+const TITLE_SAMPLE_DELAY_MS = 300;
 
 const PROFILES = ['auto', 'full', 'performance'];
 // State files whose change can move the window opacity this extension owns.
@@ -210,6 +228,21 @@ function coversMonitor(window) {
 // applies (patched by patches/blur-my-shell-subwindows.patch to include
 // ATTACHED and UTILITY too) — a window neither this nor Blur My
 // Shell would ever blur is not offered up as something to blur.
+// One colour for a row of titlebar pixels: the median of each channel, so the
+// title text, the buttons and a rounded corner do not move it.
+function medianColor(pixbuf) {
+    const pixels = pixbuf.get_pixels();
+    const stride = pixbuf.get_n_channels();
+    const width = pixbuf.get_width();
+    const channels = [[], [], []];
+    for (let i = 0; i < width; i++) {
+        for (let c = 0; c < 3; c++)
+            channels[c].push(pixels[i * stride + c]);
+    }
+    return channels.map(values =>
+        values.sort((a, b) => a - b)[values.length >> 1]);
+}
+
 function isBlurrable(frameType) {
     return frameType === Meta.FrameType.NORMAL ||
         frameType === Meta.FrameType.DIALOG ||
@@ -260,11 +293,48 @@ export default class AuraGlassBlurExtension extends Extension {
         for (const actor of global.get_window_actors())
             this._trackWindow(actor.get_meta_window());
 
+        // The shade's alpha is the stylesheet's, which the brightness slider
+        // and its preview rewrite. The bar itself carries the titlebar colour
+        // inline and so cannot report it; this hidden stand-in matches the
+        // same two selectors and has nothing inline.
+        this._shadeProbe = new St.Widget({
+            name: 'panel',
+            style_class: `transparent-panel ${PANEL_SHADE_CLASS}`,
+            visible: false,
+        });
+        Main.layoutManager.uiGroup.add_child(this._shadeProbe);
+        this._titleColors = new Map();
+        this._titleSampleId = 0;
+        this._shadeKey = null;
+        // A theme reload (Apply, the preview) can move the alpha. Read on the
+        // next idle, after St has restyled the stand-in.
+        this._themeContext = St.ThemeContext.get_for_stage(global.stage);
+        this._themeChangedId = this._themeContext.connect('changed', () => {
+            GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                if (this._shadeProbe) {
+                    this._shadeKey = null;
+                    this._syncPanelShade();
+                }
+                return GLib.SOURCE_REMOVE;
+            });
+        });
+
         // The overview gives the top bar its own look, so the shade lifts
-        // while it is open and comes back with the window when it closes.
+        // while it is open. Both edges follow the overview's own animation,
+        // as GNOME's panel does with its :overview style: lifted on showing,
+        // back on hiding, so it fades in with the windows coming back. It
+        // used to come back on hidden, after the windows had landed, and the
+        // bar went clear and then dark again: a flash.
+        this._overviewShown = Main.overview.visible;
         this._overviewIds = [
-            Main.overview.connect('showing', () => this._syncPanelShade(true)),
-            Main.overview.connect('hidden', () => this._syncPanelShade(false)),
+            Main.overview.connect('showing', () => {
+                this._overviewShown = true;
+                this._syncPanelShade(SHADE_OVERVIEW_MS);
+            }),
+            Main.overview.connect('hiding', () => {
+                this._overviewShown = false;
+                this._syncPanelShade(SHADE_OVERVIEW_MS);
+            }),
         ];
         this._monitorsChangedId = Main.layoutManager.connect(
             'monitors-changed', () => this._syncPanelShade());
@@ -441,6 +511,20 @@ export default class AuraGlassBlurExtension extends Extension {
         if (workspaceId)
             global.workspace_manager.disconnect(workspaceId);
         this._shadeStackIds = null;
+        if (this._titleSampleId) {
+            GLib.source_remove(this._titleSampleId);
+            this._titleSampleId = 0;
+        }
+        if (this._themeChangedId) {
+            this._themeContext.disconnect(this._themeChangedId);
+            this._themeChangedId = 0;
+        }
+        this._themeContext = null;
+        this._shadeProbe?.destroy();
+        this._shadeProbe = null;
+        this._titleColors = null;
+        Main.panel.set_style(null);
+        Main.panel.remove_style_class_name(PANEL_SHADE_CLASS);
 
         if (this._windowsChangedTimer) {
             GLib.source_remove(this._windowsChangedTimer);
@@ -489,6 +573,7 @@ export default class AuraGlassBlurExtension extends Extension {
                 'notify::fullscreen', () => {
                     this._updateFocusState();
                     this._syncPanelShade();
+                    this._scheduleTitleSample();
                 });
             // size-changed and position-changed catch a tiler's resize to the
             // work area and a move to another monitor, which set no flag.
@@ -497,25 +582,109 @@ export default class AuraGlassBlurExtension extends Extension {
                 'notify::maximized-vertically',
                 'size-changed',
                 'position-changed',
-            ].map(signal => this._focusedWindow.connect(
-                signal, () => this._syncPanelShade()));
+            ].map(signal => this._focusedWindow.connect(signal, () => {
+                this._syncPanelShade();
+                this._scheduleTitleSample();
+            }));
         }
         this._updateFocusState();
         this._syncPanelShade();
+        this._scheduleTitleSample();
     }
 
     // The panel lives on the primary monitor, so a window filling another
     // monitor leaves it alone.
-    _syncPanelShade(overviewVisible = Main.overview.visible) {
+    //
+    // The bar takes the covering window's titlebar colour at the shade's
+    // alpha, so it reads as the app's header carried up to the top of the
+    // screen. The colour is read from the focused window's titlebar once it
+    // settles (_sampleTitleColor) and kept per window, so a maximize or a
+    // return from the overview paints it at once, in step with the motion.
+    // A window not read yet (one that opened maximized) gets the
+    // stylesheet's black until its row has been read.
+    //
+    // The fade takes the duration of the motion that caused it, inline so it
+    // out-ranks the stylesheet's !important 250ms. Restyled only when the
+    // look changes: St cancels a running fade on any new style, and the
+    // restacks and geometry signals that come mid-motion would cut it short.
+    _syncPanelShade(duration = this._shadeWindowDuration()) {
+        if (!this._shadeProbe)
+            return;
         const primary = Main.layoutManager.primaryIndex;
         const workspace = global.workspace_manager.get_active_workspace();
-        const shade = !overviewVisible && workspace.list_windows().some(window =>
-            !window.minimized && !window.skip_taskbar &&
-            window.get_monitor() === primary && coversMonitor(window));
-        if (shade)
+        const covering = this._overviewShown ? [] : workspace.list_windows()
+            .filter(window => !window.minimized && !window.skip_taskbar &&
+                window.get_monitor() === primary && coversMonitor(window));
+        const top = global.display.sort_windows_by_stacking(covering).at(-1);
+        const color = top ? this._titleColors.get(top) ?? null : null;
+        const key = top ? `${color ?? 'sheet'}` : 'clear';
+        if (key === this._shadeKey)
+            return;
+        this._shadeKey = key;
+        let style = `transition-duration: ${duration}ms;`;
+        if (color) {
+            const alpha = this._shadeProbe.get_theme_node()
+                .get_background_color().alpha / 255;
+            style = `background-color: rgba(${color.join(', ')}, ` +
+                `${alpha.toFixed(3)}); ${style}`;
+        }
+        Main.panel.set_style(style);
+        if (top)
             Main.panel.add_style_class_name(PANEL_SHADE_CLASS);
         else
             Main.panel.remove_style_class_name(PANEL_SHADE_CLASS);
+    }
+
+    _shadeWindowDuration() {
+        return Math.round(SHADE_WINDOW_MS * (this._animationScale?.window ?? 1));
+    }
+
+    _scheduleTitleSample() {
+        if (this._titleSampleId)
+            GLib.source_remove(this._titleSampleId);
+        this._titleSampleId = GLib.timeout_add(GLib.PRIORITY_DEFAULT,
+            Math.round(TITLE_SAMPLE_DELAY_MS * (this._animationScale?.window ?? 1)),
+            () => {
+                this._titleSampleId = 0;
+                this._sampleTitleColor(this._focusedWindow);
+                return GLib.SOURCE_REMOVE;
+            });
+    }
+
+    // One row of the focused window's titlebar, as it is on screen: the glass,
+    // its tint and whatever shows through, which is what the bar should
+    // match. The focused window is the topmost, so the row is its own.
+    _sampleTitleColor(window) {
+        if (!window || !this._titleColors || this._overviewShown ||
+            window.minimized || window.fullscreen)
+            return;
+        const monitor = Main.layoutManager.monitors[window.get_monitor()];
+        const frame = window.get_frame_rect();
+        if (!monitor)
+            return;
+        const x0 = Math.max(frame.x, monitor.x);
+        const x1 = Math.min(frame.x + frame.width, monitor.x + monitor.width);
+        const y = frame.y + TITLE_SAMPLE_INSET;
+        if (x1 <= x0 || y < monitor.y || y >= monitor.y + monitor.height)
+            return;
+        const stream = Gio.MemoryOutputStream.new_resizable();
+        new Shell.Screenshot().screenshot_area(x0, y, x1 - x0, 1, stream,
+            (shooter, result) => {
+                let pixbuf;
+                try {
+                    shooter.screenshot_area_finish(result);
+                    stream.close(null);
+                    pixbuf = GdkPixbuf.Pixbuf.new_from_stream(
+                        Gio.MemoryInputStream.new_from_bytes(
+                            stream.steal_as_bytes()), null);
+                } catch {
+                    return;
+                }
+                if (!this._titleColors || !this._destroyIds.has(window))
+                    return;
+                this._titleColors.set(window, medianColor(pixbuf));
+                this._syncPanelShade();
+            });
     }
 
     _updateFocusState() {
@@ -869,6 +1038,7 @@ export default class AuraGlassBlurExtension extends Extension {
         }
         const id = window.connect('unmanaged', () => {
             this._destroyIds.delete(window);
+            this._titleColors?.delete(window);
             this._scheduleWindowsChanged();
         });
         this._destroyIds.set(window, id);
