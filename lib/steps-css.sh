@@ -132,8 +132,32 @@ print(f"""
 #panel .panel-button {{
   -natural-hpadding: {hpad}px;
   -minimum-hpadding: {max(hpad - 2, 3)}px;
+}}
+/* Copyous's clipboard is two pixels under its neighbours with a pixel more
+ * padding (shell-00-flat.css). Its selector out-weighs the rule above, so it
+ * stayed at 14px beside them until it was restated here. */
+#panel .panel-button .copyous-indicator-box .system-status-icon {{
+  icon-size: {icon - 2}px;
+  padding: 5px;
 }}""")
 PY
+}
+
+# Status Tray sizes its icons inline from its own key, so no sheet reaches them
+# and the density block left them at 16px beside 21px neighbours. The key follows
+# the block, the way a fresh install on this display would want it. A size set by
+# hand is neither the default nor the last one written here, and stays.
+sync_tray_icon_size() {
+    local size="$1" key=/org/gnome/shell/extensions/status-tray/icon-size current previous
+    remembering || return 0
+    current="$(dconf read "$key" 2>/dev/null || true)"
+    previous="$(cat "$CONF_DIR/tray-icon-size" 2>/dev/null || true)"
+    if [ -n "$current" ] && [ "$current" != 16 ] && [ "$current" != "$previous" ]; then
+        return 0
+    fi
+    [ "${current:-16}" = "$size" ] || run dconf write "$key" "$size"
+    mkdir -p "$CONF_DIR"
+    printf '%s\n' "$size" > "$CONF_DIR/tray-icon-size"
 }
 
 # How tall the top bar is, in logical pixels. The theme draws it at 40
@@ -749,6 +773,9 @@ install_css() {
             printf '%s\n' "$extra" > "$CONF_DIR/shell-90-density.css"
             ok "scaled panel icons for ${ppi} logical PPI (tuned at ${TUNED_PPI})"
         fi
+        local tray_size
+        tray_size="$(printf '%s\n' "$extra" | sed -n 's/^  icon-size: \([0-9]*\)px;$/\1/p' | head -n 1)"
+        sync_tray_icon_size "${tray_size:-16}"
     fi
 
     # Same sheet, appended after the density rules: both are per-screen and

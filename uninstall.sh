@@ -497,7 +497,7 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/shell-tint-color" \
           "$CONF_DIR/blur-strength" "$CONF_DIR/blur-brightness" \
           "$CONF_DIR"/*-blur-strength "$CONF_DIR"/*-blur-brightness \
-          "$CONF_DIR/popup-opacity" "$CONF_DIR/panel-height" \
+          "$CONF_DIR/popup-opacity" "$CONF_DIR/panel-height" "$CONF_DIR/tray-icon-size" \
           "$CONF_DIR/maximized-panel-brightness" \
           "$CONF_DIR/glass-style" "$CONF_DIR/liquid-windows" "$CONF_DIR/fullscreen-blur" "$CONF_DIR/blur-refresh" \
           "$CONF_DIR/smooth-animations" \

@@ -119,6 +119,58 @@ pan_svg() {
     printf "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><path d='%s' fill='currentColor'/></svg>\n" "$1"
 }
 
+# Reversal draws most symbolics twice: once in <context>/symbolic, once as the
+# KDE panel set in the fixed 16/22/24/32 directories. A lookup takes the nearest
+# size, so the density block's 21px top bar got the 22px panel drawings at scale
+# 1, while the same theme at 16px scale 2 got the symbolic ones: one pack, two
+# sets of icons, by display alone. Each name now lives only in <context>/symbolic,
+# which is Scalable and serves every size. The 16px drawing replaces the symbolic
+# one, since a 16px lookup already preferred it; a name only larger directories
+# have moves there, smallest first.
+#
+# Two passes, because -dark's fixed directories are links into the light theme:
+# removing as it went, the light theme emptied them before -dark had copied any.
+fold_reversal_fixed_symbolics() {
+    local name="$1" dir ctx size icon
+    local dirs=("$HOME/.local/share/icons/$name" "$HOME/.local/share/icons/$name-dark"
+                "$HOME/.local/share/icons/$name-Light" "$HOME/.local/share/icons/$name-Dark")
+    for dir in "${dirs[@]}"; do
+        [ -d "$dir" ] || continue
+        for ctx in "$dir"/*/; do
+            ctx="${ctx%/}"
+            [ -d "$ctx/symbolic" ] || continue
+            for size in 16 22 24 32; do
+                [ -d "$ctx/$size" ] || continue
+                for icon in "$ctx/$size"/*.svg; do
+                    # A plain name linked to a symbolic one keeps its picture.
+                    [ -L "$icon" ] && [ -e "$icon" ] || continue
+                    case "$icon" in *-symbolic.svg) continue ;; esac
+                    case "$(readlink "$icon")" in
+                        *-symbolic.svg)
+                            cp -L "$icon" "$icon.tmp" && mv -f "$icon.tmp" "$icon" ;;
+                    esac
+                done
+                for icon in "$ctx/$size"/*-symbolic.svg; do
+                    [ -e "$icon" ] || continue
+                    if [ "$size" = 16 ] || [ ! -e "$ctx/symbolic/${icon##*/}" ]; then
+                        cp -L --remove-destination "$icon" "$ctx/symbolic/${icon##*/}"
+                    fi
+                done
+            done
+        done
+    done
+    for dir in "${dirs[@]}"; do
+        [ -d "$dir" ] || continue
+        for ctx in "$dir"/*/; do
+            ctx="${ctx%/}"
+            [ -d "$ctx/symbolic" ] || continue
+            for size in 16 22 24 32; do
+                [ -d "$ctx/$size" ] && rm -f "$ctx/$size"/*-symbolic.svg
+            done
+        done
+    done
+}
+
 # Reversal's own pan-*.svg carry a group transform that was never baked into
 # the path data underneath it. librsvg applies the transform and draws them
 # correctly; GTK4's symbolic loader re-serialises the path and drops it, so
@@ -135,9 +187,10 @@ pan_svg() {
 patch_reversal_symbolics() {
     local name="$1" dir sub found=0
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: rewrite pan-*.svg, lock and plugged-in battery symbolics under $name"
+        info "dry-run: rewrite pan-*.svg, lock and plugged-in battery symbolics, drop fixed-size symbolics under $name"
         return 0
     fi
+    fold_reversal_fixed_symbolics "$name"
     for dir in "$HOME/.local/share/icons/$name" "$HOME/.local/share/icons/$name-dark" \
                "$HOME/.local/share/icons/$name-Light" "$HOME/.local/share/icons/$name-Dark"; do
         [ -d "$dir" ] || continue

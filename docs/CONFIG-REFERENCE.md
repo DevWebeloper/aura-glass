@@ -147,6 +147,7 @@ not adaptive).
 | `app-tint-color`, `shell-tint-color` | `#rrggbb` | `apply_app_tint_color`, `apply_shell_tint_color` |
 | `popup-opacity` | 70–100 or `main` (written under frosted only) | `apply_popup_transparency` |
 | `panel-height` | 24–48 | `install_css` |
+| `tray-icon-size` | the Status Tray `icon-size` last written from the display density; a different live value counts as set by hand | `sync_tray_icon_size` |
 | `maximized-panel-brightness` | 0–100 | `install_css` |
 | `blur-strength`, `blur-brightness` | 25–200, 50–100 | `apply_blur_pipelines` |
 | `{window,popup,panel,lockscreen}-blur-strength` | 25–200 or `main` | `apply_blur_pipelines` |
