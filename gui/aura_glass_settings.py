@@ -636,12 +636,12 @@ SEARCH_INDEX = {
                   "pointer", "cursor size", "pointer size", "titlebar",
                   "window buttons", "colloid", "reversal", "hatter",
                   "mactahoe", "aosp", "traffic lights", "button style",
-                  "close button", "top bar", "panel", "maximized", "height"],
+                  "close button", "top bar", "panel", "maximized", "height",
+                  "volume", "device name", "speaker"],
     "radius": ["corner", "rounding", "square", "rounded", "pill"],
     "apps": ["allow", "block", "per-app", "whitelist", "blacklist"],
     "extensions": ["gnome extensions", "blur my shell", "space-bar",
-                  "custom osd", "open bar", "volume", "device name",
-                  "speaker"],
+                  "custom osd", "open bar"],
     "packages": ["icon pack", "cursor pack", "remove pack", "disk"],
     "system": ["dependencies", "gdm", "login screen",
               "monitor", "password", "sudo"],
@@ -657,7 +657,8 @@ SEARCH_INDEX = {
 # under the same page, which is what found the page in the first place.
 SEARCH_TABS = {
     "appearance": {
-        "look": ["accent", "colour", "color", "font"],
+        "look": ["accent", "colour", "color", "font", "volume", "device name",
+                 "speaker"],
         "packs": ["icon", "cursor", "pointer", "colloid", "reversal",
                   "hatter", "mactahoe", "aosp"],
         "bars": ["titlebar", "window buttons", "traffic lights",
@@ -690,8 +691,8 @@ FLAG_LABELS = {
     "--panel-height": ("appearance", "Top bar height"),
     "--fullscreen-blur": ("glass", "Blur fullscreen windows"),
     "--no-fullscreen-blur": ("glass", "Blur fullscreen windows"),
-    "--osd-device-name": ("extensions", "Show device name"),
-    "--no-osd-device-name": ("extensions", "Show device name"),
+    "--osd-device-name": ("appearance", "Show device name"),
+    "--no-osd-device-name": ("appearance", "Show device name"),
     "--maximized-panel-brightness": ("appearance", "Top bar over a maximized window"),
     "--smooth-animations": ("animations", "Smooth animations"),
     "--no-smooth-animations": ("animations", "Smooth animations"),
@@ -4541,6 +4542,16 @@ class Window(Adw.ApplicationWindow):
             "Interface font", "", FONTS, self._applied.font, "font")
         look.add(self._font_row)
         page.add(look)
+
+        osd = Adw.PreferencesGroup(title="Volume and brightness")
+        self._osd_device_name_row = Adw.SwitchRow(
+            title="Show device name",
+            subtitle="Name the speaker or screen on the pill",
+            active=self._applied.osd_device_name)
+        self._osd_device_name_row.connect("notify::active", self._on_changed,
+                                          "osd_device_name")
+        osd.add(self._osd_device_name_row)
+        page.add(osd)
         look_page = page
         page = Adw.PreferencesPage()
 
@@ -5900,18 +5911,6 @@ class Window(Adw.ApplicationWindow):
 
     def _build_extensions_page(self):
         page = Adw.PreferencesPage()
-
-        # Above the "Changes apply as you click" group, because this one is a
-        # setting like any other and waits for Apply.
-        osd = Adw.PreferencesGroup(title="Volume and brightness")
-        self._osd_device_name_row = Adw.SwitchRow(
-            title="Show device name",
-            subtitle="Name the speaker or screen on the pill",
-            active=self._applied.osd_device_name)
-        self._osd_device_name_row.connect("notify::active", self._on_changed,
-                                          "osd_device_name")
-        osd.add(self._osd_device_name_row)
-        page.add(osd)
 
         actions = Adw.PreferencesGroup(
             title="Extensions",

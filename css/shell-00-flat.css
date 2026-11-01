@@ -150,3 +150,15 @@ StDrawingArea {
 }
 
 
+
+/* The device name on the volume and brightness pill (--osd-device-name). The
+ * stock OSD label inherits the shell's size in bold, which was built to sit
+ * beside a 32px icon and towered over this pill's 7px bar. .osd-style is the
+ * class Custom OSD adds, so GNOME's own OSD (--no-osd) keeps its label. The
+ * margin is the air the bar's own margin gives nothing on this side.
+ */
+.osd-style StLabel {
+  font-size: 9pt;
+  font-weight: normal;
+  margin-bottom: 4px;
+}

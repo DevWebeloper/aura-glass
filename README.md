@@ -108,11 +108,10 @@ Open **Aura Glass** from the app grid, or run `aura-glass-settings`.
 
 - **Glass.** Mode, tints, and three main sliders (blur amount, brightness, opacity) that move windows, popups and notifications together, with an Advanced group to set windows, popups & notifications, the top bar or the lock screen apart.
 - **Animations.** How fast windows, notifications and menus open and close, each its own slider in milliseconds, and smooth animations.
-- **Appearance.** Three tabs: accent and font; icons, pointer and its size; titlebar buttons, their style and the top bar (height, and its brightness over a maximized window).
+- **Appearance.** Three tabs: accent, font and **Show device name** (`--osd-device-name`), which names the speaker or screen on the volume and brightness pill; icons, pointer and its size; titlebar buttons, their style and the top bar (height, and its brightness over a maximized window).
 - **Corner rounding.** Seven presets or eight per-surface values. The blur behind always matches the corner painted on top.
 - **Per-app blur.** A switch per app, the windows open right now, wildcard patterns, and the games that trigger Performance.
-- **Extensions.** Each extension's switch, and **Show device name** (`--osd-device-name`), which names the speaker or screen on the volume and brightness pill.
-- **Packages, System, Updates, Uninstall.**
+- **Extensions, Packages, System, Updates, Uninstall.**
 
 **Blur fullscreen windows** (`--fullscreen-blur`) is off by default, so a
 fullscreen video or game drops the blur behind it and turns opaque.
