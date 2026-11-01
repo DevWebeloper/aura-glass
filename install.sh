@@ -156,6 +156,7 @@ RADIUS_PRESET_EXPLICIT=""
 RADIUS_CUSTOM=""       # eight comma-separated pixel values, in RADIUS_TOKENS order
 RADIUS_CUSTOM_EXPLICIT=""
 SETTINGS_ONLY=0
+REFRESH_DISPLAY=0
 DEPS_ONLY=0
 WANT_GUI=1
 WANT_WINDOW_MENU=1
@@ -564,6 +565,7 @@ parse_flags() {
         --titlebar-button-style) TITLEBUTTON_STYLE="${2:-}"; TITLEBUTTON_STYLE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --titlebar-button-style=*) TITLEBUTTON_STYLE="${1#*=}"; TITLEBUTTON_STYLE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --settings-only) SETTINGS_ONLY=1; WANT_DEPS=0; EXPLICIT_FLAGS=1; shift ;;
+        --refresh-display) REFRESH_DISPLAY=1; EXPLICIT_FLAGS=1; shift ;;
         --incremental)   INCREMENTAL=1; EXPLICIT_FLAGS=1; shift ;;
         --plan-json)     PLAN_JSON=1; EXPLICIT_FLAGS=1; shift ;;
         --deps-only)     DEPS_ONLY=1; EXPLICIT_FLAGS=1; shift ;;
@@ -1688,6 +1690,10 @@ if [ "$DEPS_ONLY" = 1 ]; then
     exit 0
 fi
 
+if [ "$REFRESH_DISPLAY" = 1 ] && [ "$SETTINGS_ONLY" != 1 ]; then
+    die "--refresh-display requires --settings-only"
+fi
+
 if [ "$SETTINGS_ONLY" = 1 ]; then
     # Either theme name counts as installed. migrate_legacy_names has normally
     # renamed the old one by now, but a dry run deliberately leaves it alone,
@@ -1695,6 +1701,17 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
     if [ ! -d "$CONF_DIR" ] \
        || { [ ! -d "$HOME/.themes/$THEME_NAME" ] && [ ! -d "$HOME/.themes/$UPSTREAM_THEME_NAME" ]; }; then
         die "--settings-only retunes an existing install, but there is nothing installed yet. Run ./install.sh first."
+    fi
+    # Only what depends on the screen, and no --reload-gtk: nothing GTK reads
+    # changed, and bouncing every window's theme on a hotplug would be visible.
+    if [ "$REFRESH_DISPLAY" = 1 ]; then
+        write_display_sheet
+        if [ "$DRY_RUN" = 1 ]; then
+            info "dry-run: aura-glass-apply"
+        else
+            "$HOME/.local/bin/aura-glass-apply" | sed 's/^/    /'
+        fi
+        exit 0
     fi
     if [ "$INCREMENTAL" = 1 ]; then
         select_apply_actions

@@ -228,7 +228,10 @@ stays at the shipped `default` state so `check-tokens.sh` has one baseline.
 The tint rewriters own a literal's colour channels and the opacity rewriters own
 its alpha, so they're order-independent. `shell-90-density.css` is generated per
 display by `measure_logical_ppi` and `density_css`, plus the top bar height (`--panel-height`, default the theme's 40) snapped to
-whole device pixels at the primary scale (`measure_primary_scale`, `panel_height_css`).
+whole device pixels at the primary scale (`measure_primary_scale`, `panel_height_css`). Both depend on the
+layout, so Aura Glass Helper re-runs them on `monitors-changed` and at start, through
+`aura-glass-display-sync` and `--settings-only --refresh-display`; an unchanged result
+splices to the same files and does not reload the shell.
 
 ### Splicing: `bin/aura-glass-apply`
 

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Re-measure the primary display after its layout changed.
+#
+# Aura Glass Helper runs this on monitors-changed and when it starts. The panel
+# icon size and the top bar's pixel snapping depend on the primary's density and
+# scale, and those move whenever a monitor is plugged in or a scale is changed;
+# a sheet measured once at install stayed wrong until the next retune. install.sh
+# does the work, so the numbers keep one owner. A layout that needs nothing new
+# ends with aura-glass-apply seeing no change and not reloading the shell.
+#
+# No recorded checkout (a --no-gui install) means nothing to run, and that is
+# quiet: this fires on every hotplug with nobody watching.
+set -euo pipefail
+
+repo="$(cat "${AURA_GLASS_DIR:-$HOME/.config/aura-glass}/repo-path" 2>/dev/null || true)"
+[ -n "$repo" ] && [ -x "$repo/install.sh" ] || exit 0
+exec "$repo/install.sh" --settings-only --refresh-display -y

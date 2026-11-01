@@ -97,6 +97,7 @@ For "which file draws this button / owns this setting", use
 |---|---|---|
 | `aura-glass-apply` | Splice installed sheets into the 4 targets (flatten, accent swap, atomic publish, shell reload). `--json`, `--force-reload`, `--no-shell-reload`. | `install_css` |
 | `aura-glass-operation` | The writer lock: `run -- CMD…`, `held`, `app-blur --wm-class X --enabled 0\|1`. | `install_css` |
+| `aura-glass-display-sync` | Run by Aura Glass Helper on a layout change: `install.sh --settings-only --refresh-display` from the recorded checkout. | `install_css` |
 | `aura-glass-preview` | Live preview: `begin`, `set`, `apps`, `revert`, `status`, `commit --session S -- CMD`, and `app-blur` (window-menu writer). | `install_gui` |
 | `aura-glass-settings` | Launches the settings window (`AURA_GLASS_GUI` overrides it with a checkout). | `install_gui` |
 | `aura-glass-open-once` | First-login autostart: removes its own `.desktop` file, then opens the settings window. | `install_first_open_autostart` |

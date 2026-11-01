@@ -671,6 +671,57 @@ install_window_control_style() {
     fi
 }
 
+# The per-screen sheet: the density correction and the top bar's pixel snapping,
+# both measured from the primary display. Its own function because it has two
+# callers: install_css, and --refresh-display when the layout changes under a
+# running session (bin/aura-glass-display-sync).
+write_display_sheet() {
+    # Generated rather than kept in css/, so it is written for whatever screen
+    # the installer is actually run on. It gets its own sheet — prefix 90, so it
+    # lands after every hand-written shell sheet and overrides them — rather
+    # than being appended to one of them: an appended block would be silently
+    # doubled the next time this ran, and would be lost the moment the sheet it
+    # was appended to got recopied.
+    local ppi extra
+    ppi="$(measure_logical_ppi || true)"
+    run rm -f "$CONF_DIR/shell-90-density.css"
+    if [ -z "$ppi" ]; then
+        skip "could not measure display density — panel sizes left as tuned"
+    else
+        extra="$(density_css "$ppi")"
+        if [ -z "$extra" ]; then
+            ok "display is ${ppi} logical PPI — no scaling needed"
+        elif [ "${DRY_RUN:-0}" = 1 ]; then
+            info "dry-run: scale panel icons for ${ppi} logical PPI"
+        else
+            printf '%s\n' "$extra" > "$CONF_DIR/shell-90-density.css"
+            ok "scaled panel icons for ${ppi} logical PPI (tuned at ${TUNED_PPI})"
+        fi
+        local tray_size
+        tray_size="$(printf '%s\n' "$extra" | sed -n 's/^  icon-size: \([0-9]*\)px;$/\1/p' | head -n 1)"
+        sync_tray_icon_size "${tray_size:-16}"
+    fi
+
+    # Same sheet, appended after the density rules: both are per-screen and
+    # both go when the sheet is removed above.
+    local scale height
+    height="$(resolve_panel_height)"
+    if remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$height" > "$CONF_DIR/panel-height"
+    fi
+    scale="$(measure_primary_scale || true)"
+    extra="$(panel_height_css "${scale:-1}" "$height")"
+    if [ -z "$extra" ]; then
+        :
+    elif [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: top bar at ${height}px, snapped to whole pixels at scale ${scale:-1}"
+    else
+        printf '%s\n' "$extra" >> "$CONF_DIR/shell-90-density.css"
+        ok "top bar at $(printf '%s' "$extra" | sed -n 's/^  height: \([0-9]*\)px.*/\1/p')px for ${height}px at scale ${scale:-1} (remembered for later runs)"
+    fi
+}
+
 install_css() {
     step "Installing the CSS tweaks"
 
@@ -696,6 +747,8 @@ install_css() {
             "$HOME/.local/share/aura-glass/aura_glass_operation.py" 755
         install_if_changed "$REPO_ROOT/bin/aura-glass-operation" \
             "$HOME/.local/bin/aura-glass-operation" 755
+        install_if_changed "$REPO_ROOT/bin/aura-glass-display-sync" \
+            "$HOME/.local/bin/aura-glass-display-sync" 755
         install_if_changed "$REPO_ROOT/bin/aura-glass-apply" \
             "$HOME/.local/bin/aura-glass-apply" 755
         run ln -sf "$HOME/.local/bin/aura-glass-apply" \
@@ -752,50 +805,7 @@ install_css() {
     ok "css -> $CONF_DIR"
     ok "re-apply command -> ~/.local/bin/aura-glass-apply"
 
-    # Generated rather than kept in css/, so it is written for whatever screen
-    # the installer is actually run on. It gets its own sheet — prefix 90, so it
-    # lands after every hand-written shell sheet and overrides them — rather
-    # than being appended to one of them: an appended block would be silently
-    # doubled the next time this ran, and would be lost the moment the sheet it
-    # was appended to got recopied.
-    local ppi extra
-    ppi="$(measure_logical_ppi || true)"
-    run rm -f "$CONF_DIR/shell-90-density.css"
-    if [ -z "$ppi" ]; then
-        skip "could not measure display density — panel sizes left as tuned"
-    else
-        extra="$(density_css "$ppi")"
-        if [ -z "$extra" ]; then
-            ok "display is ${ppi} logical PPI — no scaling needed"
-        elif [ "${DRY_RUN:-0}" = 1 ]; then
-            info "dry-run: scale panel icons for ${ppi} logical PPI"
-        else
-            printf '%s\n' "$extra" > "$CONF_DIR/shell-90-density.css"
-            ok "scaled panel icons for ${ppi} logical PPI (tuned at ${TUNED_PPI})"
-        fi
-        local tray_size
-        tray_size="$(printf '%s\n' "$extra" | sed -n 's/^  icon-size: \([0-9]*\)px;$/\1/p' | head -n 1)"
-        sync_tray_icon_size "${tray_size:-16}"
-    fi
-
-    # Same sheet, appended after the density rules: both are per-screen and
-    # both go when the sheet is removed above.
-    local scale height
-    height="$(resolve_panel_height)"
-    if remembering; then
-        mkdir -p "$CONF_DIR"
-        printf '%s\n' "$height" > "$CONF_DIR/panel-height"
-    fi
-    scale="$(measure_primary_scale || true)"
-    extra="$(panel_height_css "${scale:-1}" "$height")"
-    if [ -z "$extra" ]; then
-        :
-    elif [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: top bar at ${height}px, snapped to whole pixels at scale ${scale:-1}"
-    else
-        printf '%s\n' "$extra" >> "$CONF_DIR/shell-90-density.css"
-        ok "top bar at $(printf '%s' "$extra" | sed -n 's/^  height: \([0-9]*\)px.*/\1/p')px for ${height}px at scale ${scale:-1} (remembered for later runs)"
-    fi
+    write_display_sheet
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
         info "dry-run: aura-glass-apply"

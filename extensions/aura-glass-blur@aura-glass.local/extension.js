@@ -379,7 +379,13 @@ export default class AuraGlassBlurExtension extends Extension {
             }),
         ];
         this._monitorsChangedId = Main.layoutManager.connect(
-            'monitors-changed', () => this._syncPanelShade());
+            'monitors-changed', () => {
+                this._syncPanelShade();
+                this._queueDisplaySync();
+            });
+        // Also now: a layout changed while the session was locked or logged out
+        // sent its signal to nobody.
+        this._queueDisplaySync();
         // A maximized window behind a smaller focused one (the settings app
         // over Chrome) still fills the screen, so the shade follows every
         // window on the workspace, not only the focused one: restacked
@@ -689,6 +695,29 @@ export default class AuraGlassBlurExtension extends Extension {
         }
     }
 
+    // Top bar icon size and pixel snapping are measured from the primary display.
+    // Plugging in a monitor can fire this several times while mutter settles, so
+    // it waits for two quiet seconds. Only the installed command is run: a nested
+    // preview shell has a fixture $HOME without it, and must not retune the desktop.
+    _queueDisplaySync() {
+        if (this._displaySyncTimer)
+            GLib.source_remove(this._displaySyncTimer);
+        this._displaySyncTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
+            this._displaySyncTimer = 0;
+            const command = GLib.build_filenamev([
+                GLib.get_home_dir(), '.local', 'bin', 'aura-glass-display-sync']);
+            if (GLib.file_test(command, GLib.FileTest.IS_EXECUTABLE)) {
+                try {
+                    Gio.Subprocess.new([command],
+                        Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE);
+                } catch (error) {
+                    console.warn(`aura-glass: display sync: ${error.message}`);
+                }
+            }
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
     disable() {
         if (this._extStateChangedId) {
             Main.extensionManager?.disconnect?.(this._extStateChangedId);
@@ -725,6 +754,10 @@ export default class AuraGlassBlurExtension extends Extension {
         this._dragIds = null;
         this._detachDragScroll();
         this._unhookDropTargets();
+        if (this._displaySyncTimer) {
+            GLib.source_remove(this._displaySyncTimer);
+            this._displaySyncTimer = 0;
+        }
         if (this._monitorsChangedId) {
             Main.layoutManager.disconnect(this._monitorsChangedId);
             this._monitorsChangedId = 0;

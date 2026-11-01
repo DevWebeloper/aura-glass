@@ -76,6 +76,7 @@ implementation view.
 | `--shell-tint-color HEX` | `#000000` (inherits app tint if unset) | `shell-tint-color` | ✓ | `css` |
 | `--maximized-panel-brightness P` | 0–100, default 40 (the sheet's 60% black). 0 solid black, 100 no shade. Rewrites the shade's alpha in the installed `shell-00-flat.css` (`apply_maximized_panel_brightness`) | `maximized-panel-brightness` | | `css` |
 | `--panel-height PX` | 24–48 logical px, default 40 (the theme's). 32 is GNOME's own and the settings app's reset. Snapped to whole device pixels at the primary scale (`panel_height_css`) | `panel-height` | | `css` |
+| `--refresh-display` | With `--settings-only` only: re-measure the primary display, rewrite `shell-90-density.css` and the tray icon size, re-splice. Run by `aura-glass-display-sync`; no memo of its own. |
 | `--popup-opacity P\|main` | 70–100 in `--app-transparency`'s unit, or `main` (default): follow the app windows (level 0 counts as 100). Scales `shell-popup-blur.css` and the banner ground (40 at 90) by P/90. Ignored in performance | `popup-opacity` | ✓ | `css` |
 | `--notification-opacity P` | retired: accepted, warned, ignored. The banner ground follows `--popup-opacity` | none | | full |
 | `--blur-strength P` | 25–200 % of each pipeline's tuned radius, default 100. The main blur amount: every pipeline | `blur-strength` | ✓ | `blur-pipelines` |
