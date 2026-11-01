@@ -1761,6 +1761,35 @@ moga_cursor_theme() {
     printf 'Aura-Glass-Moga-%s\n' "$variant"
 }
 
+# The Aura-Glass-Moga-* packs on disk are this project's files whatever the
+# cursor memo says, so they are brought up to the current design on every run.
+# "keep" (--no-cursors) only promises not to set cursor-theme, and a pointer
+# picked from one of these packs before "Default" was chosen is still drawn
+# from them: tying this to the cursor step left that pointer on the old
+# picture through every update.
+#
+# Earlier runs wrapped every Xcursor in these packs as a PNG inside an SVG
+# under cursors_scalable/. GNOME Shell 51 does draw that directory (St's
+# svg-cursor comes ahead of Mutter's Xcursor loader), but the wrapper was
+# only the same bitmap, with its blue channel taken from green, so the
+# Xcursor files underneath are the better copy. Only our own wrappers go:
+# an upstream vector set has no embedded PNG.
+#
+# recolor returns at once on a pack already redrawn (its marker), so this is
+# about a second per pack once after an update and nothing after that.
+refresh_moga_packs() {
+    [ "${DRY_RUN:-0}" = 1 ] && return 0
+    local c
+    for c in "$HOME/.local/share/icons"/Aura-Glass-Moga-*; do
+        [ -d "$c/cursors" ] || continue
+        python3 "$REPO_ROOT/tools/moga_cursor.py" recolor "$c" >/dev/null \
+            || warn "could not redraw the $(basename "$c") cursors"
+        if grep -qs 'data:image/png;base64' "$c/cursors_scalable/default/default.svg"; then
+            run rm -rf "$c/cursors_scalable"
+        fi
+    done
+}
+
 sync_cursor_theme_files() {
     local cursor="$1"
     [ -n "$cursor" ] || return 0
@@ -1774,17 +1803,6 @@ sync_cursor_theme_files() {
     for c in "$HOME/.local/share/icons"/Aura-Glass-Moga-* "$HOME/.local/share/icons"/MacTahoe* "$HOME/.local/share/icons"/aosp*; do
         [ -d "$c" ] || continue
         ln -sfn "$c" "$HOME/.icons/$(basename "$c")"
-    done
-    # Earlier runs wrapped every Xcursor in these packs as a PNG inside an SVG
-    # under cursors_scalable/. GNOME Shell 51 does draw that directory (St's
-    # svg-cursor comes ahead of Mutter's Xcursor loader), but the wrapper was
-    # only the same bitmap, with its blue channel taken from green, so the
-    # Xcursor files underneath are the better copy. Only our own wrappers go:
-    # an upstream vector set has no embedded PNG.
-    for c in "$HOME/.local/share/icons"/Aura-Glass-Moga-*; do
-        if grep -qs 'data:image/png;base64' "$c/cursors_scalable/default/default.svg"; then
-            run rm -rf "$c/cursors_scalable"
-        fi
     done
 
     if [ -f "$HOME/.config/gtk-3.0/settings.ini" ]; then
@@ -1802,6 +1820,8 @@ apply_cursor_theme() {
     if [ -z "${CURSORS:-}" ] && [ -r "$memo" ]; then
         want="$(cat "$memo" 2>/dev/null || true)"
     fi
+
+    refresh_moga_packs
 
     if [ "${WANT_CURSORS:-1}" != 1 ] || [ "$want" = keep ]; then
         cursor=""
