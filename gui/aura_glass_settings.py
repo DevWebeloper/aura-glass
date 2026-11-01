@@ -125,14 +125,13 @@ ACCENTS = ["purple", "blue", "teal", "green", "yellow", "orange", "red", "pink",
 # gone; tokens.sh records why, and still resolves the name so an old memo
 # installs.
 RADIUS_PRESETS = [
-    ("flat", "Flat", "Square but for the very corner — 6px windows"),
-    ("sharp", "Sharp", "Barely rounded — 10px windows, 8px menus"),
-    ("adwaita", "Adwaita", "Matches an unthemed GTK4 app — 12px windows"),
-    ("soft", "Soft", "A visible corner, well short of the theme's — 16px "
-                     "windows"),
-    ("medium", "Medium", "Between soft and the shipped look — 22px windows"),
-    ("default", "Default", "What the theme ships — 30px windows, 26px menus"),
-    ("rounded", "Rounded", "The roundest on offer — 38px windows, 32px menus"),
+    ("flat", "Flat", "6px windows"),
+    ("sharp", "Sharp", "10px windows, 8px menus"),
+    ("adwaita", "Adwaita", "12px, like a plain GTK4 app"),
+    ("soft", "Soft", "16px windows"),
+    ("medium", "Medium", "22px windows"),
+    ("default", "Default", "30px windows, the theme's own"),
+    ("rounded", "Rounded", "38px windows, the roundest"),
 ]
 
 # What a retired preset resolves to, for a $CONF_DIR memo written before it was
@@ -221,20 +220,19 @@ TRANSPARENCY_SNAP = 1
 # Byte-identical on both glass tabs, and kept as one constant rather than two
 # copies of a sentence: shortening one without the other would visibly desync
 # the two tabs' Opacity rows.
-OPACITY_SUBTITLE = ("Lower is more see-through. 70% is the floor — below it, "
-                    "text stops reading clearly")
+OPACITY_SUBTITLE = "Lower is more see-through. 70% is the lowest"
 
 # The three answers the "Blur behind windows" row offers, which are
 # install.sh's APP_BLUR_SCOPE values and the ones both wizards ask about.
 WINDOW_BLUR_CHOICES = [
-    ("all", "All apps", "Browsers and Electron apps too — heavy on the GPU"),
-    ("gtk", "GTK apps only", "GNOME and libadwaita apps, lighter on the GPU"),
-    ("none", "Off", "Translucent windows with no blur behind them"),
+    ("all", "All apps", "Includes browsers. Heavy on the GPU"),
+    ("gtk", "GTK apps only", "GNOME apps only. Lighter on the GPU"),
+    ("none", "Off", "See-through windows, no blur"),
 ]
 
 # The popup-blur switch's subtitle. Notifications ride on it since Blur My
 # Shell v76, which blurs a banner through the popup component.
-POPUP_BLUR_SUBTITLE = "Popups, Quick Settings, notifications and the panel"
+POPUP_BLUR_SUBTITLE = "Menus, Quick Settings, notifications and the top bar"
 
 # --blur-strength scales every blur radius at once. The bounds are
 # BLUR_STRENGTH_MIN and BLUR_STRENGTH_MAX in lib/steps-dconf.sh, which is where
@@ -289,11 +287,11 @@ PANEL_HEIGHT_MARKS = [
 # BLUR_SURFACES in lib/steps-dconf.sh names them: (id, title, subtitle). The id
 # names the memos and the flags (--window-blur-strength, --window-brightness).
 BLUR_SURFACES = [
-    ("window", "Windows", "Behind application windows"),
+    ("window", "Windows", "Behind app windows"),
     ("popup", "Popups & notifications",
-     "Menus, Quick Settings and notification banners"),
-    ("panel", "Top bar", "The panel along the top of the screen"),
-    ("lockscreen", "Lock screen", "And the overview behind the windows"),
+     "Menus, Quick Settings and notifications"),
+    ("panel", "Top bar", "The bar at the top of the screen"),
+    ("lockscreen", "Lock screen", "Also the overview background"),
 ]
 
 # The two brightness memos an earlier release wrote under other names, and the
@@ -409,13 +407,11 @@ def percent_to_level(percent):
 # the machine had before aura-glass first ran on it, from the snapshot
 # gsettings_backup_once takes in preflight.
 ICON_PACKS = [
-    ("colloid", "Colloid", "Folder icons in a colour of their own"),
-    ("reversal", "Reversal", "macOS-style circular icons, the setup wizard's "
-                             "recommendation"),
-    ("hatter", "Hatter", "Rounded squares, in the accent's colour"),
-    ("keep", "Default", "Left alone — set from anywhere else, untouched here"),
-    ("original", "Original", "Back to what was set before aura-glass first "
-                             "ran"),
+    ("colloid", "Colloid", "Colourful folder icons"),
+    ("reversal", "Reversal", "Round macOS-style icons. Recommended"),
+    ("hatter", "Hatter", "Rounded squares in your accent colour"),
+    ("keep", "Default", "Don't change"),
+    ("original", "Original", "What you had before Aura Glass"),
 ]
 
 # The colour the icons are built in, which is not the accent. install.sh has
@@ -428,7 +424,7 @@ ICON_PACKS = [
 # would be a second copy of that mapping. Reversal's are its own, and are not
 # the accent list — it ships browns and greys the accents do not, and no teal,
 # yellow or slate.
-ICON_COLOR_FOLLOW = ("", "Match the accent", "Whatever the accent is set to")
+ICON_COLOR_FOLLOW = ("", "Match the accent", "Follows the accent")
 ICON_COLORS = {
     "colloid": [ICON_COLOR_FOLLOW] + [(a, a.capitalize(), "") for a in ACCENTS],
     "reversal": [ICON_COLOR_FOLLOW] + [
@@ -467,13 +463,12 @@ def join_icons(family, color):
     return family
 
 CURSOR_PACKS = [
-    ("adwaita", "Adwaita", "Ships with GNOME. Crisper at every size"),
-    ("aosp", "AOSP", "Android's pointers, the setup wizard's recommendation"),
+    ("adwaita", "Adwaita", "GNOME's default. Sharpest"),
+    ("aosp", "AOSP", "Android pointers. Recommended"),
     ("mactahoe", "MacTahoe", "The macOS pointer set"),
-    ("moga", "Moga Neon", "Accent-matched neon pointers by Moyash"),
-    ("keep", "Default", "Left alone — set from anywhere else, untouched here"),
-    ("original", "Original", "Back to what was set before aura-glass first "
-                             "ran"),
+    ("moga", "Moga Neon", "Neon pointers in your accent colour"),
+    ("keep", "Default", "Don't change"),
+    ("original", "Original", "What you had before Aura Glass"),
 ]
 
 # org.gnome.desktop.interface cursor-size, a separate key from the theme
@@ -496,20 +491,20 @@ CURSOR_SIZE_GNOME = 24
 # fourth opinion. install.sh's apply_font is where that happens.
 UPDATE_CHANNELS = [
     ("release", "Releases",
-     "Notify when a new tagged release is out"),
+     "Tell me about new releases"),
     ("latest", "Latest commits",
-     "Follow main commit by commit; a tagged release is still announced"),
+     "Every change on main, and releases"),
 ]
 
 FONTS = [
     ("system", "System default",
-     "GNOME's own font, left alone — and what the other three revert to"),
+     "GNOME's default font"),
     ("misans", "MiSans",
-     "Xiaomi's interface font. Latin and Arabic — 7 MB download"),
+     "Xiaomi's font, with Arabic. 7 MB download"),
     ("inter", "Inter",
-     "The screen-first grotesque — 34 MB download"),
+     "Clean screen font. 34 MB download"),
     ("sf-pro", "San Francisco",
-     "Apple's SF Pro, from a mirror — 49 MB download"),
+     "Apple's font. 49 MB download"),
 ]
 
 # What install.sh calls the three answers. It was a dropdown once; it is two
@@ -527,10 +522,9 @@ GLASS_MODES = ["frosted", "performance"]
 # apply_window_buttons in lib/steps-dconf.sh for why the rest of what
 # button-layout can express is not offered.
 WINDOW_BUTTON_LAYOUTS = [
-    ("", "Leave as it is", "Whatever GNOME or Tweaks has set. Not touched"),
-    ("close", "Close only", "One button. The other two go to the right-click "
-                            "menu and the keyboard"),
-    ("all", "Minimize, maximize and close", "All three, the way GNOME ships"),
+    ("", "Leave as it is", ""),
+    ("close", "Close only", ""),
+    ("all", "Minimize, maximize and close", ""),
 ]
 
 # Titlebar button *style* — this project's own CSS, not a GNOME setting, so
@@ -539,13 +533,13 @@ WINDOW_BUTTON_LAYOUTS = [
 # lib/steps-css.sh.
 TITLEBUTTON_STYLES = [
     ("minimal", "Monochrome minimal",
-     "No disc until the pointer is on it; close turns red"),
+     "Circle on hover, close turns red"),
     ("adwaita", "Adwaita discs",
-     "GNOME's own — a neutral disc behind every glyph, always"),
+     "GNOME's look, a grey circle on each"),
     ("material", "Material filled",
-     "Solid heavier discs, close filled red at rest"),
+     "Solid circles, close always red"),
     ("flat", "Flat glyphs",
-     "No disc at all — the glyph brightens instead"),
+     "No circle, the icon lights up"),
 ]
 
 # The material on the top bar and the dock. Install-side: apply_glass_style in
@@ -554,17 +548,13 @@ TITLEBUTTON_STYLES = [
 GLASS_STYLES = [
     ("frosted", "Frosted", "Blur alone"),
     ("liquid", "Liquid",
-     "The edges bend what is behind them like a lens. The dock blurs the "
-     "wallpaper, not the windows behind it"),
+     "Edges bend the view like a lens"),
     ("vibrant", "Vibrant",
-     "The colours behind the top bar and the overview come through richer "
-     "and a little brighter. The dock keeps its live frosted blur"),
+     "Richer, brighter colours behind the top bar and overview"),
     ("tinted", "Tinted",
-     "The top bar and the overview take on your accent colour. The dock "
-     "keeps its live frosted blur"),
+     "Top bar and overview take your accent colour"),
     ("smoked", "Smoked",
-     "The top bar and the overview turn darker and greyer, so white text "
-     "reads more easily. The dock keeps its live frosted blur"),
+     "Darker top bar and overview, easier to read"),
 ]
 
 # Appearance selectors share one small piece of row metadata.  Icon colour is
@@ -946,9 +936,9 @@ def find_system_icon_themes():
 
 def get_cursor_packs():
     base_packs = [
-        ("moga", "Moga Neon", "Accent-matched neon pointers by Moyash"),
-        ("adwaita", "Adwaita", "Ships with GNOME. Crisper at every size"),
-        ("aosp", "AOSP", "Android's pointers, the setup wizard's recommendation"),
+        ("moga", "Moga Neon", "Neon pointers in your accent colour"),
+        ("adwaita", "Adwaita", "GNOME's default. Sharpest"),
+        ("aosp", "AOSP", "Android pointers. Recommended"),
         ("mactahoe", "MacTahoe", "The macOS pointer set"),
     ]
     options = []
@@ -960,16 +950,16 @@ def get_cursor_packs():
     for sys_cursor in find_system_cursor_themes():
         options.append((sys_cursor, f"{sys_cursor} [✓ Installed]", "System cursor theme"))
 
-    options.append(("keep", "Default", "Left alone — set from anywhere else, untouched here"))
-    options.append(("original", "Original", "Back to what was set before aura-glass first ran"))
+    options.append(("keep", "Default", "Don't change"))
+    options.append(("original", "Original", "What you had before Aura Glass"))
     return options
 
 
 def get_icon_packs():
     base_packs = [
-        ("reversal", "Reversal", "macOS-style circular icons, the setup wizard's recommendation"),
-        ("colloid", "Colloid", "Folder icons in a colour of their own"),
-        ("hatter", "Hatter", "Rounded squares, in the accent's colour"),
+        ("reversal", "Reversal", "Round macOS-style icons. Recommended"),
+        ("colloid", "Colloid", "Colourful folder icons"),
+        ("hatter", "Hatter", "Rounded squares in your accent colour"),
     ]
     options = []
     for pid, label, desc in base_packs:
@@ -980,8 +970,8 @@ def get_icon_packs():
     for sys_icon in find_system_icon_themes():
         options.append((sys_icon, f"{sys_icon} [✓ Installed]", "System icon theme"))
 
-    options.append(("keep", "Default", "Left alone — set from anywhere else, untouched here"))
-    options.append(("original", "Original", "Back to what was set before aura-glass first ran"))
+    options.append(("keep", "Default", "Don't change"))
+    options.append(("original", "Original", "What you had before Aura Glass"))
     return options
 
 
@@ -3321,8 +3311,7 @@ class TintPickerWindow(Adw.Window):
 
         custom = Adw.PreferencesGroup(
             title="Any colour",
-            description="For a tint the palette doesn't have. Keep it dark, or "
-                        "light reads as a grey wash over white text.")
+            description="Any colour. Dark ones read best.")
 
         self._entry = Adw.EntryRow(title="Hex")
         self._entry.connect("changed", self._on_entry)
@@ -3330,8 +3319,7 @@ class TintPickerWindow(Adw.Window):
 
         self._custom_swatch = Swatch(colour, size=20, radius=5)
         chooser = Adw.ActionRow(
-            title="Pick one",
-            subtitle="GTK's own colour chooser, with a wheel and a picker")
+            title="Pick one")
         chooser.add_prefix(self._custom_swatch)
         button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
         button.connect("clicked", self._on_custom)
@@ -3700,9 +3688,7 @@ class Window(Adw.ApplicationWindow):
         header.set_title_widget(self._window_title)
         self._preview_toggle = Gtk.ToggleButton(
             icon_name="view-reveal-symbolic", active=True,
-            tooltip_text="Live preview — show tint, transparency, radius, "
-                        "blur strength and popup blur on the desktop as you "
-                        "move them")
+            tooltip_text="Preview changes live on the desktop")
         self._preview_toggle.connect("toggled", self._on_preview_toggle)
         header.pack_end(self._preview_toggle)
 
@@ -3715,8 +3701,7 @@ class Window(Adw.ApplicationWindow):
         # command that puts the block back without a full install.
         self._reapply = Gtk.Button(
             icon_name="view-refresh-symbolic",
-            tooltip_text="Re-apply the CSS to the theme, without reinstalling "
-                         "— the same as running aura-glass-apply")
+            tooltip_text="Re-apply the theme CSS")
         self._reapply.connect("clicked", self._on_reapply)
         header.pack_end(self._reapply)
 
@@ -3897,7 +3882,7 @@ class Window(Adw.ApplicationWindow):
         # that — it is true continuously while nothing has run, which
         # apply_status never is.
         preview_label = Gtk.Label(
-            label="Previewing on the desktop — Apply to keep it",
+            label="Previewing — press Apply to keep it",
             xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.END)
         preview_label.add_css_class("dim-label")
         preview_label.add_css_class("caption")
@@ -4168,9 +4153,7 @@ class Window(Adw.ApplicationWindow):
 
         dialog = AlertWindow(
             heading="Apply before closing?",
-            body="There are changes here that have not been applied yet. "
-                "Closing now leaves the desktop as it was before you made "
-                "them.")
+            body="Changes not applied yet will be lost.")
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("discard", "Discard")
         dialog.add_response("apply", "Apply")
@@ -4456,8 +4439,7 @@ class Window(Adw.ApplicationWindow):
         page = Adw.PreferencesPage()
 
         look = Adw.PreferencesGroup(
-            title="Look",
-            description="All of these apply without logging out.")
+            title="Look")
         self._accent_row = self._combo(
             "Accent colour", "", [(a, a.capitalize(), "") for a in ACCENTS],
             self._applied.accent, "accent")
@@ -4486,9 +4468,8 @@ class Window(Adw.ApplicationWindow):
         # network — the two rows below say so themselves.
         packs = Adw.PreferencesGroup(
             title="Icons and pointer",
-            description="Already installed applies instantly. A new pack "
-                        "downloads first — Apply needs a minute and the "
-                        "network.")
+            description="Installed packs apply at once. New ones download "
+                        "first.")
         family, color = split_icons(self._applied.icons)
         self._icons_row = self._combo(
             "Icon pack", "", get_icon_packs(), family, "icons")
@@ -4511,7 +4492,7 @@ class Window(Adw.ApplicationWindow):
             CURSOR_SIZE_MIN, CURSOR_SIZE_MAX, 1)
         self._cursor_size_row.set_title("Pointer size")
         self._cursor_size_row.set_subtitle(
-            "%dpx suits the packs above; GNOME's own default is %dpx"
+            "%dpx recommended, GNOME's default is %dpx"
             % (CURSOR_SIZE_RECOMMENDED, CURSOR_SIZE_GNOME))
         self._cursor_size_row.set_value(self._applied.cursor_size)
         self._cursor_size_row.connect(
@@ -4522,10 +4503,7 @@ class Window(Adw.ApplicationWindow):
         page = Adw.PreferencesPage()
 
         buttons = Adw.PreferencesGroup(
-            title="Titlebar buttons",
-            description="Which buttons: a GNOME setting, shared with Tweaks "
-                        "— left alone until you pick one here. Style: this "
-                        "project's own CSS.")
+            title="Titlebar buttons")
         self._window_buttons_row = self._combo(
             "Buttons", "", WINDOW_BUTTON_LAYOUTS,
             self._applied.window_buttons, "window_buttons")
@@ -4540,9 +4518,7 @@ class Window(Adw.ApplicationWindow):
         # compare against the one GNOME draws, and the reset button is that
         # comparison made in one click.
         bar = Adw.PreferencesGroup(
-            title="Top bar",
-            description="Snapped to whole pixels at a fractional display "
-                        "scale, so a maximized window meets it without a seam.")
+            title="Top bar")
         self._panel_height_scale = self._percent_scale(
             PANEL_HEIGHT_MIN, PANEL_HEIGHT_MAX, PANEL_HEIGHT_MARKS, 4, 0,
             self._applied.panel_height, step=1)
@@ -4557,7 +4533,7 @@ class Window(Adw.ApplicationWindow):
             PANEL_HEIGHT_GNOME))
         self._panel_height_reset = reset
         bar.add(self._slider_row(
-            "Height", "%d px is the theme's, %d px GNOME's own"
+            "Height", "Theme %d px, GNOME %d px"
             % (PANEL_HEIGHT_THEME, PANEL_HEIGHT_GNOME),
             self._panel_height_scale, reset))
         self._sync_panel_height()
@@ -4568,10 +4544,9 @@ class Window(Adw.ApplicationWindow):
         self._maximized_panel_scales = {}
         page.add(self._build_percent_group(
             "panel", "Top bar",
-            "Shaded while a window fills the screen, so the bar joins the app "
-            "instead of reading as a gap above it.",
+            "Darkens the bar while a window is maximized.",
             "Brightness over a maximized window",
-            "0% is solid black, 100% the clear glass it is everywhere else",
+            "0% is black, 100% is clear",
             MAXIMIZED_PANEL_BRIGHTNESS_MIN, MAXIMIZED_PANEL_BRIGHTNESS_MAX,
             MAXIMIZED_PANEL_BRIGHTNESS_MARKS, 10, 4,
             self._applied.maximized_panel_brightness,
@@ -4601,9 +4576,7 @@ class Window(Adw.ApplicationWindow):
 
         presets = Adw.PreferencesGroup(
             title="Corner rounding",
-            description="Seven steps, square to softer than the theme "
-                        "ships, plus a libadwaita match. Move one surface "
-                        "afterwards and the rounding becomes yours.")
+            description="Change a surface below to make your own.")
 
         # Seven little windows rather than seven buttons with words on them.
         # Each card is rounded by the window radius its preset sets, so the row
@@ -4644,7 +4617,7 @@ class Window(Adw.ApplicationWindow):
         # lines, which left the button squeezed against prose.
         self._radius_reset = Gtk.Button(
             label="Reset to default", valign=Gtk.Align.CENTER,
-            tooltip_text="Put all eight surfaces back to what the theme ships")
+            tooltip_text="Reset all corners to the theme's")
         self._radius_reset.add_css_class("flat")
         self._radius_reset.connect("clicked", self._on_radius_preset, "default")
 
@@ -4667,8 +4640,7 @@ class Window(Adw.ApplicationWindow):
         # bar on the Glass page ends its group where it does.
         heading = Adw.PreferencesGroup(
             title="Each surface",
-            description="Pixels, within what the presets already cover. "
-                        "Point at a row to preview it.")
+            description="In pixels. Hover a row to preview it.")
 
         # Which surface the preview is drawing, or None while the pointer is
         # nowhere near a row. Kept here rather than in the drawing so that
@@ -4710,8 +4682,7 @@ class Window(Adw.ApplicationWindow):
                 # with it is not lost the moment this switch is flipped back.
                 self._radius_pill_row = Adw.SwitchRow(
                     title="Pill-shaped buttons",
-                    subtitle="Apply, Save and the rest — the shipped capsule "
-                             "shape")
+                    subtitle="Buttons like Apply and Save")
                 self._radius_pill_row.connect("notify::active",
                                               self._on_changed, "radius")
                 self._watch_surface(self._radius_pill_row, ident)
@@ -5051,13 +5022,13 @@ class Window(Adw.ApplicationWindow):
         self._mode_switch.set_sensitive(self._repo is not None)
         if applied == "performance":
             self._mode_row.set_subtitle(
-                "No blur anywhere — every surface is opaque")
+                "No blur, solid surfaces")
         elif active:
             self._mode_row.set_subtitle(
-                "Blur is paused for now — %s"
+                "Blur paused: %s"
                 % self.ADAPTIVE_REASONS.get(reason, reason))
         else:
-            self._mode_row.set_subtitle("Blur behind the shell and your apps")
+            self._mode_row.set_subtitle("Blur behind the shell and apps")
         if hasattr(self, "_window_title"):
             self._window_title.set_subtitle(summary)
 
@@ -5070,16 +5041,15 @@ class Window(Adw.ApplicationWindow):
         self._profile_row.set_sensitive(applied == "frosted")
         if applied == "performance":
             self._profile_row.set_subtitle(
-                "Only in Frosted glass — Performance has no blur to lighten")
+                "Only in Frosted glass")
         elif profile == "auto":
             self._profile_row.set_subtitle(
-                "Drops to Performance on battery, a busy GPU or a "
-                "fullscreen game, and back when it ends")
+                "Turns blur off on battery, high GPU load or fullscreen games")
         elif profile == "full":
             self._profile_row.set_subtitle("Always full blur")
         else:
             self._profile_row.set_subtitle(
-                "Performance overlay held on until you pick another profile")
+                "Performance stays on until you change it")
 
     def _switch_mode(self, mode):
         """Apply the other mode in one click: show its tab, then Apply.
@@ -5110,7 +5080,7 @@ class Window(Adw.ApplicationWindow):
         argv = self._adaptive_argv("profile", profile)
         if argv is None:
             self._toasts.add_toast(Adw.Toast(
-                title="The aura-glass checkout is gone"))
+                title="The Aura Glass folder is missing"))
             self._sync_mode_status()
             return
         label = dict(self.ADAPTIVE_PROFILES)[profile]
@@ -5264,8 +5234,7 @@ class Window(Adw.ApplicationWindow):
         # unless the Advanced group below gives it a value of its own.
         glass = Adw.PreferencesGroup(
             title="Glass",
-            description="Moves windows, popups and notifications together. "
-                        "Advanced below sets any of them apart.")
+            description="Sets windows, popups and notifications together.")
 
         strength = self._percent_scale(
             BLUR_STRENGTH_MIN, BLUR_STRENGTH_MAX, BLUR_STRENGTH_MARKS, 25,
@@ -5273,8 +5242,7 @@ class Window(Adw.ApplicationWindow):
         strength.connect("value-changed", self._on_main_changed)
         self._strength_scales["frosted"] = strength
         glass.add(self._slider_row(
-            "Blur amount", "Higher is softer, and costs more GPU time. Moves "
-            "the dock and the rest of the shell too", strength))
+            "Blur amount", "Higher is softer and uses more GPU", strength))
 
         brightness = self._percent_scale(
             BLUR_BRIGHTNESS_MIN, BLUR_BRIGHTNESS_MAX, BLUR_BRIGHTNESS_MARKS, 10,
@@ -5282,8 +5250,7 @@ class Window(Adw.ApplicationWindow):
         brightness.connect("value-changed", self._on_main_changed)
         self._glass_brightness_scale = brightness
         glass.add(self._slider_row(
-            "Brightness", "100% is the tuned glass — lower darkens what shows "
-            "through", brightness))
+            "Brightness", "Lower is darker", brightness))
 
         # Opaque windows are stored as a flat "0" and show as 100%: the bar's
         # top is what that looks like, and _current keeps the "0" until the
@@ -5316,8 +5283,7 @@ class Window(Adw.ApplicationWindow):
         page.add(reach)
 
         style = Adw.PreferencesGroup(
-            title="Glass style",
-            description="The material on the top bar and the dock.")
+            title="Glass style")
         self._glass_style_row = self._combo(
             "Style", "", GLASS_STYLES, self._applied.glass_style,
             "glass_style")
@@ -5329,10 +5295,9 @@ class Window(Adw.ApplicationWindow):
         # Last on the page rather than first: the cost is worth knowing, but
         # not the reason anyone opened this tab.
         page.add(tip_card(
-            "<b>Blur is the most expensive thing in this window.</b> It costs "
-            "GPU and battery — more on integrated graphics or a 4K screen. If "
-            "the desktop feels slow, set <b>Blur behind windows</b> to GTK "
-            "apps only first, or switch to Performance."))
+            "<b>Blur uses the most GPU and battery.</b> If things feel slow, "
+            "set <b>Blur behind windows</b> to GTK apps only, or switch to "
+            "Performance."))
 
         return self._mode_tab("frosted", page)
 
@@ -5346,8 +5311,7 @@ class Window(Adw.ApplicationWindow):
         """
         group = Adw.PreferencesGroup(
             title="Advanced",
-            description="Set a surface apart from the main sliders. A surface "
-                        "you change keeps its value until you reset it.")
+            description="Change one surface on its own.")
         # (sid, kind) -> row, for _current, _reload and the main sliders.
         self._surface_rows = {}
         for sid, title, subtitle in BLUR_SURFACES:
@@ -5379,16 +5343,14 @@ class Window(Adw.ApplicationWindow):
                                subtitle="Window blur behaviour")
         self._liquid_windows_row = Adw.SwitchRow(
             title="Glass style behind app windows",
-            subtitle="Window blur turns static: a window blurs the wallpaper, "
-                     "not the window under it",
+            subtitle="Windows blur only the wallpaper. Lighter on the GPU",
             active=self._applied.liquid_windows)
         self._liquid_windows_row.connect("notify::active", self._on_changed,
                                          "liquid_windows")
         more.add_row(self._liquid_windows_row)
         self._fullscreen_blur_row = Adw.SwitchRow(
             title="Blur fullscreen windows",
-            subtitle="Off drops the blur behind a fullscreen video or game "
-                     "and makes it opaque",
+            subtitle="Off makes fullscreen apps solid",
             active=self._applied.fullscreen_blur)
         self._fullscreen_blur_row.connect("notify::active", self._on_changed,
                                           "fullscreen_blur")
@@ -5553,39 +5515,36 @@ class Window(Adw.ApplicationWindow):
         never writes a memo, and a memo is all these are.
         """
         page = Adw.PreferencesPage()
-        for kind, title, description in (
-                ("window", "Windows",
-                 "Opening, closing, minimizing and maximizing."),
-                ("notification", "Notifications",
-                 "A banner sliding in, and back out."),
-                ("menu", "Menus",
-                 "The top bar's menus, Quick Settings, the calendar and "
-                 "right-click menus, opening and closing.")):
-            page.add(self._build_percent_group(
-                kind, title, description, "Speed",
-                "GNOME's own is %d ms — right is quicker, left slower"
-                % ANIMATION_BASE_MS[kind],
-                ANIMATION_SPEED_MIN, ANIMATION_SPEED_MAX,
-                ANIMATION_SPEED_MARKS, 25, 4,
-                self._applied.animation_speed[kind], self._speed_scales,
-                ANIMATION_BASE_MS[kind]))
-
         # Not a look, a trade: VRAM and a few ms of latency for animations
         # that start without a dropped frame. See apply_smooth_animations for
         # both halves and what each costs.
         motion = Adw.PreferencesGroup(title="Smoothness")
         self._smooth_animations_row = Adw.SwitchRow(
             title="Smooth animations",
-            subtitle="Menus, folders and notifications open faster, with "
-                     "no stutter. No extra CPU or GPU load, but it uses a "
-                     "lot of video memory: switch to Performance mode "
-                     "before playing games. Off by default; fully applies "
-                     "at next login",
+            subtitle="No stutter on menus and notifications. Uses a lot of "
+                     "video memory, so use Performance for games. Full effect "
+                     "after next login",
             active=self._applied.smooth_animations)
         self._smooth_animations_row.connect("notify::active", self._on_changed,
                                             "smooth_animations")
         motion.add(self._smooth_animations_row)
         page.add(motion)
+        for kind, title, description in (
+                ("window", "Windows",
+                 "Open, close, minimize and maximize."),
+                ("notification", "Notifications",
+                 "Banners sliding in and out."),
+                ("menu", "Menus",
+                 "Top bar menus, Quick Settings and right-click menus.")):
+            page.add(self._build_percent_group(
+                kind, title, description, "Speed",
+                "GNOME's default is %d ms"
+                % ANIMATION_BASE_MS[kind],
+                ANIMATION_SPEED_MIN, ANIMATION_SPEED_MAX,
+                ANIMATION_SPEED_MARKS, 25, 4,
+                self._applied.animation_speed[kind], self._speed_scales,
+                ANIMATION_BASE_MS[kind]))
+
         return page
 
     def _opacity_scale(self, percent):
@@ -5632,19 +5591,16 @@ class Window(Adw.ApplicationWindow):
         page = Adw.PreferencesPage()
 
         page.add(self._build_tint_group(
-            "performance",
-            description="What the surfaces are tinted toward."))
+            "performance"))
 
         group = Adw.PreferencesGroup(
-            title="Transparency",
-            description="How much of the desktop comes through windows, popups and menus.")
+            title="Transparency")
 
         self._p_transparency_scale = self._opacity_scale(
             level_to_percent(performance["transparency"]))
 
         row = Adw.ActionRow(
-            title="Windows, popups and menus opacity",
-            subtitle="Applied immediately across running apps, menus and shell popups")
+            title="Windows, popups and menus opacity")
         row.add_suffix(self._p_transparency_scale._readout)
         group.add(row)
 
@@ -5655,10 +5611,8 @@ class Window(Adw.ApplicationWindow):
         page.add(group)
 
         page.add(tip_card(
-            "<b>Maximum responsiveness with full Aura Glass styling.</b>\n"
-            "Blur shaders are disabled and windows, popups and menus have adjustable "
-            "opacity (100% by default) for zero GPU overhead. Theme geometry, corner radii, "
-            "accents, and custom tints remain active."))
+            "<b>The fastest mode.</b> No blur, so no GPU cost. Corners, "
+            "accent and tints stay."))
 
         return self._mode_tab("performance", page)
 
@@ -5699,7 +5653,7 @@ class Window(Adw.ApplicationWindow):
 
         rows["link"] = Adw.SwitchRow(
             title="One colour for both",
-            subtitle="Point the shell at the app windows' tint",
+            subtitle="Use the app tint for the shell too",
             active=tints["app"] == tints["shell"])
         rows["link"].connect("notify::active", self._on_tint_link, mode)
         group.add(rows["link"])
@@ -5836,12 +5790,11 @@ class Window(Adw.ApplicationWindow):
 
     EXT_TIERS = [
         ("core", "Minimal",
-         "The foundation installed with every package. Turning one off changes "
-         "the look, and none of them can be removed from here."),
+         "Always installed. Can be turned off, not removed."),
         ("recommended", "Core",
-         "Six curated additions on top of Minimal. This is the default package."),
+         "Six extras on top of Minimal. The default."),
         ("full", "Complete Experience",
-         "Every remaining optional extension, added on top of Core."),
+         "Every other extension, on top of Core."),
     ]
 
     def _ext_catalogue(self):
@@ -5869,8 +5822,7 @@ class Window(Adw.ApplicationWindow):
 
         actions = Adw.PreferencesGroup(
             title="Extensions",
-            description="Apply as you click — no password needed, and "
-                        "nothing for the Apply button to collect.")
+            description="Changes apply as you click.")
         row = Adw.ActionRow(
             title="Fit a package",
             subtitle="Installs and enables everything in it")
@@ -5910,7 +5862,6 @@ class Window(Adw.ApplicationWindow):
             for tier, _t, _d in self.EXT_TIERS[:1]:
                 row = Adw.ActionRow(
                     title="Could not read the extension list",
-                    subtitle="bin/aura-glass-ext didn't answer",
                     sensitive=False)
                 self._ext_groups[tier].add(row)
                 self._ext_rows.append((self._ext_groups[tier], row))
@@ -5980,7 +5931,7 @@ class Window(Adw.ApplicationWindow):
             return
         if self._repo is None:
             self._toasts.add_toast(Adw.Toast(
-                title="The aura-glass checkout is gone"))
+                title="The Aura Glass folder is missing"))
             return
         argv = ["bash", os.path.join(self._repo, "bin", "aura-glass-ext"),
                 action, uuid]
@@ -6026,7 +5977,7 @@ class Window(Adw.ApplicationWindow):
     def _run_ext(self, action, uuid, title):
         if self._repo is None:
             self._toasts.add_toast(Adw.Toast(
-                title="The aura-glass checkout is gone"))
+                title="The Aura Glass folder is missing"))
             return
         argv = ["bash", os.path.join(self._repo, "bin", "aura-glass-ext"),
                 action]
@@ -6040,9 +5991,7 @@ class Window(Adw.ApplicationWindow):
             self._rebuild_extensions()
 
         open_over(ApplyDialog(self._repo, [], done, title=title,
-                              description="gnome-extensions is doing this, "
-                                          "under your home directory. No "
-                                          "password needed.",
+                              description="No password needed.",
                               argv=argv), self)
 
     # ---- things that need root ---------------------------------------------
@@ -6084,9 +6033,8 @@ class Window(Adw.ApplicationWindow):
         """
         dialog = AlertWindow(
             heading="Run this in a terminal",
-            body=("%s needs a terminal, and none of the ones this knows about "
-                  "are installed%s. Copy the command and run it yourself — it "
-                  "will ask for your password."
+            body=("%s needs a terminal, but none was found%s. Copy the "
+                  "command and run it yourself. It will ask for your password."
                   % (what, "" if why is None else " (%s)" % why)))
 
         entry = Gtk.Entry(text=command, editable=False, hexpand=True)
@@ -6116,9 +6064,7 @@ class Window(Adw.ApplicationWindow):
 
         group = Adw.PreferencesGroup(
             title="Needs a password",
-            description="install.sh needs root for these — a terminal opens "
-                        "rather than failing silently. Apply doesn't touch "
-                        "them.")
+            description="These need your password, so they open in a terminal.")
         # Watched rather than left to a Re-read button: there was never a
         # signal that a spawned terminal finished, only a signal that the
         # stamp file it eventually writes changed — and Gio.FileMonitor is
@@ -6148,8 +6094,7 @@ class Window(Adw.ApplicationWindow):
 
         self._gdm_monitors_row = Adw.ActionRow(
             title="Sync the monitor layout to the login screen",
-            subtitle="Copies ~/.config/monitors.xml so GDM opens on the same "
-                     "monitor your session does")
+            subtitle="Login screen uses the same monitor as your desktop")
         self._gdm_monitors_button = Gtk.Button(valign=Gtk.Align.CENTER)
         self._gdm_monitors_button.connect("clicked", self._on_gdm_monitors)
         self._gdm_monitors_row.add_suffix(self._gdm_monitors_button)
@@ -6328,7 +6273,7 @@ class Window(Adw.ApplicationWindow):
         """Ask install.sh's own missing_cmds, which needs no root to answer."""
         self._deps_row.set_subtitle("Checking…")
         if self._repo is None:
-            self._deps_row.set_subtitle("The aura-glass checkout is gone")
+            self._deps_row.set_subtitle("The Aura Glass folder is missing")
             return
 
         script = (". %s/lib/common.sh; . %s/lib/distro.sh; "
@@ -6388,8 +6333,7 @@ class Window(Adw.ApplicationWindow):
 
         group = Adw.PreferencesGroup(
             title="Uninstall",
-            description="Runs uninstall.sh in a terminal — parts of it need "
-                        "your password. Reinstalling is the way back.")
+            description="Opens in a terminal and asks for your password.")
 
         for flags, title, verb, subtitle, body in self.UNINSTALL_SCOPES:
             row = Adw.ActionRow(title=title, subtitle=subtitle)
@@ -6430,8 +6374,7 @@ class Window(Adw.ApplicationWindow):
 
         self._packs_mine = Adw.PreferencesGroup(
             title="Installed for you",
-            description="Icon and pointer packs in your home directory. Old "
-                        "ones accumulate — remove them here.")
+            description="Icon and pointer packs you can remove.")
         page.add(self._packs_mine)
 
         # Listed rather than hidden. Colloid and MacTahoe often arrive from the
@@ -6447,8 +6390,7 @@ class Window(Adw.ApplicationWindow):
         # root's work and a password prompt needs a keyboard.
         self._packs_system = Adw.PreferencesGroup(
             title="Installed system-wide",
-            description="Owned by your distro's package manager. Remove opens "
-                        "a terminal so you see what else goes with it.")
+            description="Installed by your system. Remove opens a terminal.")
         page.add(self._packs_system)
 
         self._pack_rows = []
@@ -6776,8 +6718,7 @@ class Window(Adw.ApplicationWindow):
 
         examples = Adw.ExpanderRow(
             title="Examples",
-            subtitle="A window's class isn't its title-bar name. "
-                     "* matches anything.")
+            subtitle="Use the app's window class. * matches anything.")
         for pattern, what in PATTERN_EXAMPLES:
             row = plain_row(Adw.ActionRow(), pattern, what)
             use = Gtk.Button(label="Use", valign=Gtk.Align.CENTER)
@@ -6791,8 +6732,7 @@ class Window(Adw.ApplicationWindow):
 
         self._app_patterns_group = Adw.PreferencesGroup(
             title="Patterns",
-            description="Wildcards, and apps not installed as a desktop "
-                        "entry")
+            description="For wildcards and unlisted apps")
         self._app_pattern_empty_row = Adw.ActionRow(
             title="No patterns yet", sensitive=False)
         self._app_patterns_group.add(self._app_pattern_empty_row)
@@ -6800,8 +6740,7 @@ class Window(Adw.ApplicationWindow):
 
         # ---- open now: what the desktop can already point to
         self._app_open_group = Adw.PreferencesGroup(
-            title="Open now",
-            description="Windows on your desktop right now.")
+            title="Open now")
         self._app_open_placeholder = Adw.ActionRow(
             title="No other windows open right now", sensitive=False)
         self._app_open_group.add(self._app_open_placeholder)
@@ -6814,7 +6753,7 @@ class Window(Adw.ApplicationWindow):
 
         self._app_self_row = Adw.ActionRow(
             title=app_name(SELF_WM_CLASS),
-            subtitle="%s — this window, always blurred while the blur is on"
+            subtitle="%s — always blurred"
                      % SELF_WM_CLASS)
         self._app_self_row.set_sensitive(False)
         self._app_installed_group.add(self._app_self_row)
@@ -6836,8 +6775,7 @@ class Window(Adw.ApplicationWindow):
             row._name = name
             if any(pattern_matches(d, wm) for d in self._app_shipped_block):
                 row.set_tooltip_text(
-                    "Heavy: redraws constantly, so the blur behind it is "
-                    "rebuilt just as often.")
+                    "Heavy: redraws all the time, so its blur costs more.")
             self._app_row_guard = True
             row.set_active(self._app_is_on(wm))
             self._app_row_guard = False
@@ -6851,16 +6789,15 @@ class Window(Adw.ApplicationWindow):
         self._adaptive_open_rows = {}
         self._adaptive_games_group = Adw.PreferencesGroup(
             title="Fullscreen performance games",
-            description="When running fullscreen in Auto profile, Aura Glass switches to Performance mode to eliminate blur overhead.")
+            description="In Auto, these turn blur off while fullscreen.")
         self._adaptive_games_empty_row = Adw.ActionRow(
             title="No games added yet",
-            subtitle="Add open windows below to switch to Performance mode when fullscreen",
+            subtitle="Add from open windows below",
             sensitive=False)
         self._adaptive_games_group.add(self._adaptive_games_empty_row)
 
         self._adaptive_open_expander = Adw.ExpanderRow(
-            title="Add from open windows",
-            subtitle="Pick currently running games or apps")
+            title="Add from open windows")
         refresh_button = Gtk.Button(
             icon_name="view-refresh-symbolic",
             valign=Gtk.Align.CENTER,
@@ -7015,12 +6952,10 @@ class Window(Adw.ApplicationWindow):
             self._app_default_switcher.set_active_name(scope)
         if scope == "all":
             self._app_default_switcher.set_tooltip_text(
-                "Covers browsers and Electron apps too — heavy on the GPU. "
-                "Turn individual ones off below.")
+                "Includes browsers. Heavy on the GPU. Turn apps off below.")
         else:
             self._app_default_switcher.set_tooltip_text(
-                "Only the apps switched on below get blurred and "
-                "translucent — the two arrive together.")
+                "Only apps switched on below get blur.")
 
     # ---- keeping every row in step ------------------------------------------
 
@@ -7447,7 +7382,7 @@ class Window(Adw.ApplicationWindow):
         settings = Adw.PreferencesGroup(title="Notifications")
         self._update_check_row = Adw.SwitchRow(
             title="Check daily",
-            subtitle="One notification per release, in the background",
+            subtitle="One notification per release",
             active=self._applied.update_check)
         self._update_check_row.connect("notify::active", self._on_changed,
                                        "update_check")
@@ -7460,15 +7395,11 @@ class Window(Adw.ApplicationWindow):
 
         repair = Adw.PreferencesGroup(
             title="Repair installation",
-            description="Reapply refreshes what you have chosen. Reset starts "
-                        "over: everything reinstalled on the theme's defaults, "
-                        "then the setup wizard to choose again.")
+            description="Reapply keeps your choices. Reset starts over.")
 
         reapply_row = Adw.ActionRow(
             title="Reapply settings",
-            subtitle="Reapplies saved dconf, CSS and GNOME settings in a "
-                     "terminal so prompts remain usable, without reinstalling "
-                     "the theme or extension packages")
+            subtitle="Applies your saved settings again, in a terminal")
         self._repair_reapply = Gtk.Button(label="Reapply",
                                           valign=Gtk.Align.CENTER,
                                           sensitive=self._repo is not None)
@@ -7478,9 +7409,8 @@ class Window(Adw.ApplicationWindow):
 
         reset_row = Adw.ActionRow(
             title="Reset theme to defaults",
-            subtitle="Forgets every choice, reinstalls everything and opens "
-                     "the setup wizard, in a terminal. Old choices are kept "
-                     "in backups/")
+            subtitle="Clears your choices, reinstalls and opens the setup "
+                     "wizard. Old choices are backed up")
         self._repair_full = Gtk.Button(label="Reset",
                                        valign=Gtk.Align.CENTER,
                                        sensitive=self._repo is not None)
@@ -7500,8 +7430,7 @@ class Window(Adw.ApplicationWindow):
         # this checkout is on. These are what a released install reads.
         self._updates_group = Adw.PreferencesGroup(
             title="Updates",
-            description="Checks the git remote for new releases and tags. "
-                        "Never installs anything on its own.")
+            description="Checks for new releases. Never installs on its own.")
         updates = self._updates_group
 
         self._version_row = Adw.ActionRow(title="Version")
@@ -7515,8 +7444,7 @@ class Window(Adw.ApplicationWindow):
 
         self._update_button_row = Adw.ActionRow(
             title="Install update",
-            subtitle="Switches the checkout to the new release and runs the "
-                     "full installer")
+            subtitle="Installs the new release")
         self._update_button_row.add_prefix(Gtk.Image.new_from_icon_name(
             "software-update-available-symbolic"))
         self._update_button = Gtk.Button(valign=Gtk.Align.CENTER)
@@ -7550,7 +7478,7 @@ class Window(Adw.ApplicationWindow):
                                       self._on_browse_switched)
         refresh = Gtk.Button(icon_name="view-refresh-symbolic",
                              valign=Gtk.Align.CENTER,
-                             tooltip_text="Fetch releases from the remote")
+                             tooltip_text="Check for releases")
         refresh.add_css_class("flat")
         refresh.connect("clicked", lambda _b: self._refresh_updates(True))
         self._browse_refresh = refresh
@@ -7597,8 +7525,7 @@ class Window(Adw.ApplicationWindow):
         # number is furniture.
         self._update_log_group = Adw.PreferencesGroup(
             title="Update log",
-            description="What the pull and installer print, live. Kept after "
-                        "they finish so a failure can be read back.")
+            description="Live output, kept after it ends.")
         self._update_log = log_view()
         self._update_log_group.add(
             Gtk.ScrolledWindow(child=self._update_log, min_content_height=280,
@@ -8027,27 +7954,22 @@ class Window(Adw.ApplicationWindow):
         if package:
             self._version_row.set_title("Package")
             self._updates_group.set_description(
-                "Installed from the %s package. The check asks GitHub whether "
-                "main has moved past the commit it was built from. Updates "
-                "come through your package manager, not this window."
+                "Installed from the %s package. Update it with your package "
+                "manager."
                 % package[0])
         elif is_test_build(self._repo):
             self._version_row.set_title("Test build")
             self._updates_group.set_description(
-                "This checkout is on the branch %s, not the released line, so "
-                "the check asks the git remote whether that branch has moved "
-                "rather than which releases exist. To go back to releases, "
-                "install one from the list below." % current_branch(self._repo))
+                "On the branch %s, not a release. Install a release below to "
+                "go back." % current_branch(self._repo))
         else:
             self._version_row.set_title("Version")
             self._updates_group.set_description(
-                "The check asks the git remote for new releases and new tags "
-                "on main, and offers the newest. It never installs anything "
-                "on its own.")
+                "Checks for new releases. Never installs on its own.")
 
         if version is None:
             self._version_row.set_subtitle(
-                "This checkout is not on a release tag")
+                "Not on a release")
         elif pending:
             # On a test build both sides carry the same branch@ prefix, and the
             # branch is already named in the title and the description above. Two
@@ -8075,8 +7997,7 @@ class Window(Adw.ApplicationWindow):
             self._update_button_row.set_title("%s is available" % pending)
         elif pending:
             self._update_button_row.set_subtitle(
-                "Switches the checkout to %s and runs the full installer in a "
-                "terminal" % pending)
+                "Installs %s in a terminal" % pending)
             self._update_button.set_sensitive(not self._running)
 
     # ---- the release list -------------------------------------------------
@@ -8101,7 +8022,7 @@ class Window(Adw.ApplicationWindow):
         self._updates_loading = True
         self._browse_refresh.set_sensitive(False)
         if fetch:
-            self._browse_status.set_label("Fetching releases from the remote…")
+            self._browse_status.set_label("Checking for releases…")
 
         def work():
             try:
@@ -8552,10 +8473,10 @@ class Window(Adw.ApplicationWindow):
             if run_dir:
                 self._open_update_window(run_dir)
             self._update_button_row.set_subtitle(
-                "Theme update running — follow it in the update window")
+                "Updating — see the update window")
             self._apply_status.remove_css_class("error")
             self._apply_status.set_label(
-                "Theme update running — follow it in the update window")
+                "Updating — see the update window")
 
     def _open_update_window(self, run_dir):
         """gui/aura_glass_install_progress.py --update, detached.
@@ -8597,8 +8518,7 @@ class Window(Adw.ApplicationWindow):
         if self.run_in_terminal(cmd, "Reapply settings"):
             self._apply_status.remove_css_class("error")
             self._apply_status.set_label(
-                "Reapply settings opened in a terminal — follow its progress "
-                "there")
+                "Reapplying in a terminal")
 
     def _on_reset_defaults(self, _button):
         if self._running:
@@ -8615,10 +8535,9 @@ class Window(Adw.ApplicationWindow):
             return
         dialog = AlertWindow(
             heading="Reset the theme to its defaults?",
-            body="Every choice you made here is forgotten, everything is "
-                 "reinstalled, and the setup wizard opens so you can choose "
-                 "again. Cancelling the wizard leaves things as they are. Your "
-                 "old choices are kept in %s." % os.path.join(
+            body="All your choices are cleared, everything is reinstalled and "
+                 "the setup wizard opens. Cancel the wizard to keep things as "
+                 "they are. Old choices are saved in %s." % os.path.join(
                      CONF_DIR, "backups", "reset-<time>"))
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("reset", "Reset")
@@ -8639,7 +8558,7 @@ class Window(Adw.ApplicationWindow):
                     "Reset to defaults"):
                 self._apply_status.remove_css_class("error")
                 self._apply_status.set_label(
-                    "Reset opened in a terminal — follow its progress there")
+                    "Resetting in a terminal")
 
         dialog.connect("response", answered)
         open_over(dialog, self)
@@ -8698,7 +8617,7 @@ class Window(Adw.ApplicationWindow):
         if self.run_in_terminal(cmd, "Reapply CSS"):
             self._apply_status.remove_css_class("error")
             self._apply_status.set_label(
-                "Reapply CSS opened in a terminal — follow its progress there")
+                "Reapplying CSS in a terminal")
             self._reload_preview_css()
 
     def _on_apply(self, _button):

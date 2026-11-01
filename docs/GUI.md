@@ -123,7 +123,7 @@ Launched from the app grid (`io.github.DevWebeloper.AuraGlassSettings`) or
 `aura-glass-settings`. It refuses to start without `$CONF_DIR`. It finds the
 checkout through `$CONF_DIR/repo-path`, which is recorded rather than guessed.
 If that path is gone, Apply and the repair actions do nothing except show a
-"checkout is gone" toast. It's a
+"The Aura Glass folder is missing" toast. It's a
 `HANDLES_COMMAND_LINE` app, so `--page IDENT` raises a running instance on a
 page.
 
@@ -178,7 +178,7 @@ is decided by `select_apply_actions`. See
 | Page | Group | Holds |
 |---|---|---|
 | Glass | Appearance | A status group on top: the mode in force plus any adaptive overlay and its reason, a "Switch to X" button (the ordinary Apply), and an "Adaptive performance" combo running `aura-glass-adaptive profile` like the panel menu. It's watched live (`$C`, `$C/adaptive-performance`), and the header subtitle repeats it on every page. Then two mode tabs (Frosted, Performance) in an `Adw.ViewStack`, with a "Switch now" banner when the tab differs from the installed mode. **Frosted**: tints; a Glass group of three main sliders (Blur amount, Brightness, Opacity 70–100 %, where 100 % also stands for an opaque `0` install); "Blur behind windows" (All apps / GTK apps only / Off) and the popup blur switch, which covers notifications; the glass style; and a collapsed Advanced group with one expander per surface (Windows, Popups & notifications, Top bar, Lock screen) holding that surface's own blur amount and brightness (plus opacity for popups & notifications), and a More expander for glass style behind app windows and fullscreen blur. A surface bar follows its main slider until moved; then it keeps its value, and a reset button hands it back (`main`). **Performance**: tints and one opacity scale. |
-| Animations | Appearance | Window, notification and menu speed (three scales read out in ms (50–300 % of GNOME's pace underneath), `--*-animation-speed`, not previewable), smooth animations |
+| Animations | Appearance | Window, notification and menu speed (three scales read out in ms (50–300 % of GNOME's pace underneath), `--*-animation-speed`, not previewable), with the smooth animations switch above them |
 | Appearance | Appearance | Three tabs. **Look**: accent (nine names plus a link to GNOME Settings; there's no hex picker, by design), font. **Icons & pointer**: icon pack and colour, pointer and size. **Titlebar & top bar**: titlebar buttons and style, top bar height (24–48 px, with a reset to GNOME's 32) and its brightness over a maximized window |
 | Corner rounding | Appearance | Seven preset cards drawn with their own corners, reset, or eight per-surface spin rows with a live drawing |
 | Per-app blur | Appearance | A switch per installed app, live "Open now" windows (D-Bus), a default for unchosen apps, **fullscreen performance games** (written straight to `adaptive-fullscreen-apps`), wildcard patterns |
