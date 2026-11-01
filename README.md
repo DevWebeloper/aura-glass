@@ -116,6 +116,10 @@ Open **Aura Glass** from the app grid, or run `aura-glass-settings`.
 **Blur fullscreen windows** (`--fullscreen-blur`) is off by default, so a
 fullscreen video or game drops the blur behind it and turns opaque.
 
+A window that fills the screen blurs the wallpaper rather than the windows
+stacked under it, which is cheaper while it redraws. Smaller and half-tiled
+windows keep the live blur.
+
 **Smooth animations** (`--smooth-animations`) is off by default. On, menus,
 folders and notifications open faster, with no stutter. It adds no CPU or GPU
 load and no extra power draw, only video memory, and a lot of it: switch to

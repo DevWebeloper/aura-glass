@@ -1,0 +1,256 @@
+diff --git a/src/components/applications/index.js b/src/components/applications/index.js
+index 4ddafea..3dfe17e 100644
+--- a/src/components/applications/index.js
++++ b/src/components/applications/index.js
+@@ -10,9 +10,13 @@ import { DynamicPipeline } from '../../render/dynamic_surface.js';
+ import { RoundedPipeline } from '../../render/rounded_pipeline.js';
+ import { WindowRules } from './window_rules.js';
+ import { BLUR_ACTOR_NAME, WindowOpacity } from './window_opacity.js';
+-import { compute_scale, place_dynamic_blur, place_static_blur } from './window_geometry.js';
++import { compute_scale, covers_monitor, place_dynamic_blur, place_static_blur } from './window_geometry.js';
+ import { BLUR_FADE_IN_TIME, finish_preview_fade } from './overview_drag.js';
+ 
++// Every resizing Meta.GrabOp carries one of Mutter's window-direction bits, and no move does. Only
++// a keyboard resize can start without one, and its key presses are too slow to matter here.
++const GRAB_RESIZE_DIRECTIONS = 0xf000;
++
+ export const ApplicationsBlur = class ApplicationsBlur {
+     constructor(connections, settings, effects_manager) {
+         this.connections = connections;
+@@ -28,6 +32,8 @@ export const ApplicationsBlur = class ApplicationsBlur {
+         this.fading_out = new WeakSet();
+         // while a touchpad swipe moves the overview, see follow_overview_gesture
+         this.following_gesture = false;
++        // the window under an interactive resize, see update_blur_type
++        this.resizing_window = null;
+         this.enabled = false;
+ 
+         this.service = new ApplicationsService;
+@@ -58,11 +64,28 @@ export const ApplicationsBlur = class ApplicationsBlur {
+             global.display,
+             'window-entered-monitor',
+             (_display, _monitor, meta_window) => {
+-                if (meta_window.blur_actor && this.settings.applications.STATIC_BLUR)
++                if (!meta_window.blur_actor)
++                    return;
++                // its new monitor has its own work area to cover or not
++                if (!this.update_blur_type(meta_window) && meta_window.bms_static_blur)
+                     this.update_size(meta_window);
+             }
+         );
+ 
++        // Dragging a window's edge resizes it once per frame, and past the edge of the work area
++        // and back would rebuild its blur each time, so the type waits for the end of the resize.
++        // A move is left alone: the size changes once, when dragging a maximized window frees it.
++        this.connections.connect(global.display, 'grab-op-begin', (_display, meta_window, op) => {
++            if (op & GRAB_RESIZE_DIRECTIONS)
++                this.resizing_window = meta_window;
++        });
++        this.connections.connect(global.display, 'grab-op-end', (_display, meta_window) => {
++            if (meta_window !== this.resizing_window)
++                return;
++            this.resizing_window = null;
++            this.update_blur_type(meta_window);
++        });
++
+         this.focused_window = null;
+         this.init_dynamic_opacity();
+         this.connections.connect(
+@@ -130,6 +153,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+                 const stop = () => {
+                     this.following_gesture = false;
+                     follow_windows();
++                    this.update_blur_types();
+                 };
+                 // an ease cut short is a new swipe taking over, which goes on following
+                 if (settle)
+@@ -157,6 +181,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+                 this.reconcile_window_visibility(meta_window, BLUR_FADE_IN_TIME)
+             );
+         });
++        this.connections.connect(Main.overview, 'shown', _ => this.update_blur_types());
+         // Leaving the overview put the windows back with their blur, which used to switch on in
+         // one frame after the previews had settled at full opacity. The blur fades in instead,
+         // and the window content eases from opaque to its translucent opacity with it. Both start
+@@ -172,6 +197,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+         this.connections.connect(Main.overview, 'hidden', _ => {
+             this.overview_visible = false;
+             reconcile_windows();
++            this.update_blur_types();
+         });
+         this.connections.connect(Main.overview, 'window-drag-end', (_, meta_window) => {
+             if (this.settings.applications.BLUR_ON_OVERVIEW)
+@@ -251,10 +277,22 @@ export const ApplicationsBlur = class ApplicationsBlur {
+             meta_window,
+             meta_window,
+             'size-changed',
+-            () => this.update_size(meta_window)
++            () => {
++                if (!this.update_blur_type(meta_window))
++                    this.update_size(meta_window);
++            }
++        );
++        // Before the handlers below, which a rebuild disconnects. A window as big as the work area
++        // covers it or not by where it is, so a move alone can cross too.
++        this.connect_blur_signal(
++            meta_window,
++            meta_window,
++            'position-changed',
++            () => this.update_blur_type(meta_window)
+         );
+ 
+-        if (this.settings.applications.STATIC_BLUR) {
++        // These last as long as the blur does, and a rebuild connects them afresh for its new type.
++        if (meta_window.bms_static_blur) {
+             this.connect_blur_signal(
+                 meta_window,
+                 meta_window,
+@@ -302,13 +340,18 @@ export const ApplicationsBlur = class ApplicationsBlur {
+             meta_window,
+             meta_window,
+             ['notify::maximized-horizontally', 'notify::maximized-vertically'],
+-            () => this.update_corner_radius(meta_window)
++            () => {
++                if (!this.update_blur_type(meta_window))
++                    this.update_corner_radius(meta_window);
++            }
+         );
+         this.connect_blur_signal(
+             meta_window,
+             meta_window,
+             'notify::fullscreen',
+             () => {
++                if (this.update_blur_type(meta_window))
++                    return;
+                 this.update_corner_radius(meta_window);
+                 this.reconcile_window_visibility(meta_window);
+             }
+@@ -318,7 +361,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+             window_actor,
+             'child-added',
+             () => {
+-                if (this.settings.applications.STATIC_BLUR
++                if (meta_window.bms_static_blur
+                     && meta_window.get_client_type() === Meta.WindowClientType.X11)
+                     window_actor.set_child_below_sibling(meta_window.blur_actor, null);
+                 this.reconcile_window_visibility(meta_window);
+@@ -348,7 +391,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+     update_size(meta_window) {
+         const blur_actor = meta_window.blur_actor;
+ 
+-        if (this.settings.applications.STATIC_BLUR) {
++        if (meta_window.bms_static_blur) {
+             const window_monitor_index = meta_window.get_monitor();
+             const monitor = Main.layoutManager.monitors[window_monitor_index];
+             if (!monitor)
+@@ -372,6 +415,43 @@ export const ApplicationsBlur = class ApplicationsBlur {
+         }
+     }
+ 
++    /// Static for every window when the setting says so, else only for one that covers its monitor:
++    /// the largest blurred area there is, computed once from the wallpaper rather than blurred again
++    /// each time the window or anything under it redraws. What that costs:
++    /// - Static blur shows the wallpaper and nothing else, so the windows stacked behind a maximized
++    ///   one no longer show through it.
++    /// - In the overview the previews are clones of the window actor, whose whole subtree they scale,
++    ///   so the static copy shrinks with its preview during the fade. place_static_blur only holds it
++    ///   still against the window actor's own animations, which a clone doesn't have.
++    /// With unblur-when-fullscreen a fullscreen window has no blur at all, so this only shows on
++    /// maximized and work-area windows there.
++    wants_static_blur(meta_window) {
++        return this.settings.applications.STATIC_BLUR || covers_monitor(meta_window);
++    }
++
++    /// Rebuilds the blur as the other type when the window has crossed between covering its monitor
++    /// and not, and returns whether it did. A rebuild sets the size, corners and visibility itself.
++    /// A crossing waits, keeping the type it has, for what can't take a new blur actor well: the end
++    /// of an interactive resize, and the overview settling. A blur built during the overview's fades
++    /// would appear whole instead of partway. Each end calls this again.
++    update_blur_type(meta_window) {
++        if (!meta_window.blur_actor
++            || meta_window === this.resizing_window
++            || this.following_gesture
++            || Main.overview.animationInProgress
++            || meta_window.bms_static_blur === this.wants_static_blur(meta_window))
++            return false;
++
++        this._log(`application turning ${meta_window.bms_static_blur ? 'dynamic' : 'static'}`);
++        this.remove_blur(meta_window);
++        this.create_blur_effect(meta_window);
++        return true;
++    }
++
++    update_blur_types() {
++        this.meta_windows.forEach(meta_window => this.update_blur_type(meta_window));
++    }
++
+     /// Adds or removes the blur of a tracked window, following the window rules.
+     check_blur(meta_window) {
+         if (!is_desktop_window(meta_window) && this.rules.matches(meta_window)) {
+@@ -392,7 +472,10 @@ export const ApplicationsBlur = class ApplicationsBlur {
+         let blur_actor, bg_manager;
+         let rounded_pipeline = null;
+ 
+-        if (this.settings.applications.STATIC_BLUR) {
++        // recorded on the window, so everything after this follows the type this blur was built as
++        meta_window.bms_static_blur = this.wants_static_blur(meta_window);
++
++        if (meta_window.bms_static_blur) {
+             const pipeline = new Pipeline(
+                 this.effects_manager,
+                 global.blur_my_shell._pipelines_manager,
+@@ -459,7 +542,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+ 
+         let use_0_radius = !this.settings.applications.CORNER_WHEN_MAXIMIZED && (is_maximized || is_fullscreen);
+ 
+-        if (this.settings.applications.STATIC_BLUR) {
++        if (meta_window.bms_static_blur) {
+             meta_window.bms_rounded_pipeline.update();
+             meta_window.bms_rounded_pipeline.setStraightCorners(use_0_radius);
+         } else {
+@@ -648,6 +731,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+         delete meta_window.blur_actor;
+         delete meta_window.bg_manager;
+         delete meta_window.bms_rounded_pipeline;
++        delete meta_window.bms_static_blur;
+     }
+ 
+     /// Kinda the same as `remove_blur`, but better: it also untracks the window.
+@@ -660,6 +744,8 @@ export const ApplicationsBlur = class ApplicationsBlur {
+         this.meta_windows.delete(meta_window);
+         if (this.focused_window === meta_window)
+             this.focused_window = null;
++        if (this.resizing_window === meta_window)
++            this.resizing_window = null;
+     }
+ 
+     disable() {
+diff --git a/src/components/applications/window_geometry.js b/src/components/applications/window_geometry.js
+index b49e741..eda745d 100644
+--- a/src/components/applications/window_geometry.js
++++ b/src/components/applications/window_geometry.js
+@@ -19,6 +19,24 @@ export function compute_scale(meta_window, mutter_settings) {
+         : 1;
+ }
+ 
++/// Whether a window covers its monitor: maximized both ways, fullscreen, or sized over the monitor's
++/// whole work area without either flag. The last is what Tiling Assistant's drag-to-top leaves with
++/// maximize-with-gap on, since it resizes the window instead of maximizing it. The same test as
++/// coversMonitor in Aura Glass Helper, which shades the top bar behind such a window. A window on
++/// no monitor has no work area, nor a monitor's background to make a static blur from.
++export function covers_monitor(meta_window) {
++    if (meta_window.get_monitor() < 0)
++        return false;
++    if (meta_window.fullscreen
++        || (meta_window.maximized_horizontally && meta_window.maximized_vertically))
++        return true;
++    const area = meta_window.get_work_area_current_monitor();
++    const frame = meta_window.get_frame_rect();
++    return frame.x <= area.x && frame.y <= area.y
++        && frame.x + frame.width >= area.x + area.width
++        && frame.y + frame.height >= area.y + area.height;
++}
++
+ /// Places a dynamic blur actor over the window frame, in coordinates relative to the window
+ /// buffer's corner.
+ export function place_dynamic_blur(blur_actor, meta_window, scale) {

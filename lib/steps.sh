@@ -37,7 +37,7 @@ BMS_REF="b1e415cc5ff3"            # v77. v76 replaced the native gaussian effect
                                   # (upstream #700, #850)
 BMS_UUID="blur-my-shell@aunetx"
 
-# Applied right after the pin, so the three patches below stack on it: four
+# Applied right after the pin, so the patches below stack on it: four
 # commits from upstream master that v77 does not have. BMS_REF stays on the
 # release because master also moved the preferences UI into a GResource (#1220),
 # which changes the build install_bms mirrors. Drop this and move the pin once a
@@ -73,16 +73,18 @@ AURA_EXT_UUID="aura-glass-blur@aura-glass.local"
 # v73 needed four more patches. v76 was checked live without them on
 # 2026-10-27 and they were dropped: the overview previews no longer show a
 # frozen window blur, notification blur now simply follows the popup blur (the
-# separate `popup/notification` key is gone with its patch), the top bar's blur
-# stays aligned after login on two monitors, and a maximized window keeps the
-# dynamic blur, which costs about five points of GPU busy over static.
+# separate `popup/notification` key is gone with its patch), and the top bar's
+# blur stays aligned after login on two monitors. The fourth made a maximized
+# window static. Without it such a window kept the dynamic blur, about five
+# points of GPU busy over static, which was first accepted and then not: it is
+# back as BMS_STATIC_PATCH below.
 BMS_SUBWIN_PATCH="blur-my-shell-subwindows.patch"
 # Applied after it: a `full-size-buffers` key that keeps every blur texture at
 # the largest monitor's size instead of reallocating it while an animation
 # resizes or fades its actor. Off unless --smooth-animations asks; see
 # apply_smooth_animations and the patch's own comments.
 BMS_BUFFERS_PATCH="blur-my-shell-full-size-buffers.patch"
-# Applied last: opening the overview fades the window blur out and the window
+# Applied after it: opening the overview fades the window blur out and the window
 # content back to opaque, where the blur went in one frame and let the
 # unblurred desktop through the windows still in place (a dark flash, seen
 # frame by frame in a screencast on 2026-10-31). Leaving it fades the blur
@@ -98,6 +100,22 @@ BMS_BUFFERS_PATCH="blur-my-shell-full-size-buffers.patch"
 # window per frame (clone captures were keyed by exact size), so opening the
 # overview repeatedly lagged; the patch keys them by 1.25x size steps.
 BMS_FADE_PATCH="blur-my-shell-overview-fade.patch"
+# Applied last: upstream picks static or dynamic window blur once, for every
+# window, from `applications/static-blur`. This makes a window that covers its
+# monitor (maximized both ways, fullscreen, or sized over the whole work area,
+# which is how Tiling Assistant's drag-to-top with maximize-with-gap leaves it)
+# static while it does, and leaves smaller and half-tiled windows dynamic. That
+# is the largest blurred area there is, and static stops it being blurred again
+# each time it redraws (the five points above; not measured on this build). What
+# it gives up: static blur shows the wallpaper only, so windows stacked behind a
+# maximized one no longer show through it, and the static copy shrinks with its
+# preview during the overview fade. unblur-when-fullscreen=true leaves a true
+# fullscreen window no blur at all, so static only shows on maximized and
+# work-area windows. A crossing rebuilds the blur as the other type, but waits
+# for the end of an interactive resize (it would rebuild per crossing) and for
+# the overview to settle (a new actor would cut BMS_FADE_PATCH's fades short).
+# See the patch's own comments.
+BMS_STATIC_PATCH="blur-my-shell-static-maximized.patch"
 
 
 CUSTOMOSD_REPO="https://github.com/neuromorph/custom-osd.git"

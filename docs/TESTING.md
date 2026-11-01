@@ -133,11 +133,13 @@ OK). When you do write one:
 
 `python3 tests/check-performance.py` covers the Packages page's empty system
 group. `python3 tests/check-bms-patches.py /path/to/blur-my-shell-clone` applies
-the four Blur My Shell patches to the pinned upstream source in a temporary
+the five Blur My Shell patches to the pinned upstream source in a temporary
 directory and runs the patched window rules against simulated windows: dialogs
 and tool palettes matched through their app, the GTK application id, the allow
 list winning in all mode, `title:` entries up the transient-for chain, and a
-transient-for loop. See [tests/README.md](../tests/README.md). Set `BMS_TEST_SOURCE` to run
+transient-for loop. It also runs the window blur against fake actors: which
+windows are static, crossing either way, and a crossing during an interactive
+resize, the overview fade or a touchpad swipe. See [tests/README.md](../tests/README.md). Set `BMS_TEST_SOURCE` to run
 patched-source checks from the commit hook. The tests never fetch or access
 the running desktop.
 

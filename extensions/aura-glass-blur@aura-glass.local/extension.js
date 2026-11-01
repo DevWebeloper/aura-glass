@@ -267,10 +267,10 @@ function rootWindowClass(window) {
 
 // A window that fills the screen, for the top-bar shade: maximized both ways,
 // fullscreen, or sized over the whole work area without either flag. (The same
-// test once chose static blur behind such a window, in a Blur My Shell patch
-// dropped with v76.) The last is Tiling Assistant's drag-to-top or maximize
-// with maximize-with-gap on: it resizes to the work area instead of
-// maximizing, so GTK never sees the window as maximized either.
+// test chooses static blur behind such a window: covers_monitor in
+// patches/blur-my-shell-static-maximized.patch.) The last is Tiling Assistant's
+// drag-to-top or maximize with maximize-with-gap on: it resizes to the work area
+// instead of maximizing, so GTK never sees the window as maximized either.
 function coversMonitor(window) {
     if (window.fullscreen ||
         (window.maximized_horizontally && window.maximized_vertically))
