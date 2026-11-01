@@ -54,6 +54,7 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 | [KI-38](#ki-38) | Medium | **Fixed** (needs a live check) | Updates removed retired extensions without asking, and either kept user extension settings and missed preset fixes, or reset them (`--force`, `extras.ini`) |
 | [KI-39](#ki-39) | Medium | **Fixed** (needs a live check) | A failed gnome-rounded-blur build only warned, and the install carried on around it; the only fix was to re-run and watch the build |
 | [KI-40](#ki-40) | Medium | **Fixed** (`fix/bms-v76`, resume needs a live check) | Blur My Shell's blur renders wrong after resume from suspend or hibernate until the extension is toggled |
+| [KI-41](#ki-41) | Medium | **Fixed** (needs a live check) | A window dragged in the overview sometimes snaps back instead of dropping: the magnified pointer took the drop |
 
 ---
 
@@ -1067,6 +1068,55 @@ crashes Mutter), so the reporter's resume-hook workaround was not adopted.
 stays right without touching the extension. Checked live on 2026-10-27 so far:
 v76 loads, settings migrate, overview previews, notifications, the top bar on
 two monitors and a blurred app's Save As dialog. The resume itself is pending.
+
+---
+
+## KI-41
+
+**A window dragged in the overview sometimes snaps back instead of dropping.**
+Reported on GNOME Shell 51.1: dragging to another workspace or to the other
+screen "cancels the drag and won't drop it", some of the time.
+
+**Symptom.** On release the preview flies back to where it came from and the
+window stays put. There is nothing in the journal, since a drop that no target
+takes isn't an error.
+
+**Root cause.** Wiggly's magnified pointer. GNOME's `dnd.js` picks the drop
+target with `get_actor_at_pos(Clutter.PickMode.ALL, x, y)` and walks up from it
+looking for `_delegate.acceptDrop`. `ALL` finds actors that aren't reactive too,
+which is why GNOME hides its own drag actor from pick. Wiggly's `Effect` is added
+to `Main.uiGroup`, on top of everything and right under the pointer, and isn't
+hidden, so a release while the pointer is magnified picks `Effect < uiGroup <
+stage`. No `acceptDrop` on that chain means `_cancelDrag`. It is intermittent
+because the pointer has to be magnified at that moment: a fast shake sets it off,
+and it stays until the shrink ends. Upstream Wiggly has this too; our patch didn't
+add it. Blur My Shell isn't involved: the bug reproduces without it loaded.
+
+**Evidence.** A private headless shell with two virtual monitors (`dbus-run-session`,
+isolated `HOME` and XDG directories), a virtual pointer and a real preview drag,
+calling the `move()` and `magnify()` Wiggly's timer calls. Installed Wiggly: drops
+with no magnify landed; 3 of 3 with it magnified cancelled, pick
+`StIcon`/`ClutterActor < Effect < uiGroup < stage`, signals
+`begin,cancelled,end`. With `Shell.util_set_hidden_from_pick` on the actor: 3 of 3
+landed. Built from the changed patch, with Blur My Shell, the helper and Tiling
+Assistant loaded: 8 of 8 landed, 4 of them magnified. Wiggly's own shake detection
+also fired during a drag in that shell. That a hand's shake is what the reporter
+hit has not been confirmed.
+
+**Fix.** `patches/wiggly-follow-cursor.patch` hides the `Effect` from pick in its
+constructor. Picks for drag hover and for app icons dropped in the overview take
+the same path, so they stop finding it too. An install with the older patch takes
+neither direction of the new one, so `patch_wiggly_extension` fetches Wiggly again
+and patches it fresh on the next full run, not on a retune. Needs a re-login.
+
+**Still cancels, by design.** GNOME's own rules: Esc, a drop on the workspace and
+monitor the window is already on, and a drop on anything with no target, such as
+the top bar or a gap between thumbnails. GNOME asks for the `no-drop` pointer
+over those.
+
+**Verify.** In the overview, drag a window to the other screen, shake until the
+pointer grows and let go while it is still big: the window lands. Do the same onto
+a workspace thumbnail.
 
 ---
 

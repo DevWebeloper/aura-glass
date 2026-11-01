@@ -86,7 +86,7 @@ For "which file draws this button / owns this setting", use
 | `blur-my-shell-overview-fade.patch` | BMS: opening the overview fades the window blur out and leaving it fades it back in, the window content easing with it (200 ms each way); both used to switch in one frame. During a touchpad swipe both follow how far open the overview is instead, so a held or reversed swipe keeps them in step with the fingers. Clone captures are kept per 1.25x size step, so the zooming previews reuse textures instead of allocating one per frame |
 | `custom-osd-gnome50.patch` | Custom OSD on GNOME 50/51 |
 | `copyous-gnome51.patch` | Copyous on GNOME 51 |
-| `wiggly-follow-cursor.patch` | Wiggly: measure the pointer in logical pixels before every shake, grow and shrink about its hotspot, follow the cursor theme itself (`theme.js`), and magnify the shape on screen: the theme's busy loop played, else the static shape named by its pixels and drawn from its largest frame or SVG |
+| `wiggly-follow-cursor.patch` | Wiggly: measure the pointer in logical pixels before every shake, grow and shrink about its hotspot, follow the cursor theme itself (`theme.js`), and magnify the shape on screen: the theme's busy loop played, else the static shape named by its pixels and drawn from its largest frame or SVG. The magnified copy is hidden from pick, so a drop in the overview finds what is under it (KI-41) |
 
 ### `bin/`: commands (most installed into `~/.local/bin`)
 
