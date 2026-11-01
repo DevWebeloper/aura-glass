@@ -308,7 +308,9 @@ workspaces have no painted half: `apply_radius_dconf` sets their
 
 `apply_gsettings` writes `color-scheme=prefer-dark`, the accent,
 gtk-theme/shell theme, icon theme, cursor theme/size, window buttons and font.
-It also sets `org.gnome.shell disable-extension-version-validation=true`.
+It also sets `org.gnome.shell disable-extension-version-validation=true`, and
+resets Tiling Assistant's `maximize-with-gap` when no screen gap needs it
+(`apply_tiling_maximize`).
 
 `app_blur_literal` is the one place arbitrary user text (per-app wm_class
 patterns) reaches dconf. `check-app-blur-lists.sh` round-trips it through
