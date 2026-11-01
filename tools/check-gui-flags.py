@@ -272,9 +272,9 @@ CASES = [
      state(surface_brightness={"popup": 90}), state(),
      ["--popup-brightness", "main"]),
 
-    ("top bar blur amount set apart", FROSTED,
-     state(surface_strength={"panel": 150}),
-     ["--panel-blur-strength", "150"]),
+    ("lock screen blur amount set apart", FROSTED,
+     state(surface_strength={"lockscreen": 150}),
+     ["--lockscreen-blur-strength", "150"]),
 
     ("lock screen brightness set apart", FROSTED,
      state(surface_brightness={"lockscreen": 70}),
