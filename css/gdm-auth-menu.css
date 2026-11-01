@@ -1,0 +1,54 @@
+/* ---------- Login screen: session switcher menu (GNOME Shell 50+) ----------
+ * The list the cog opens (GNOME, Gamescope, ...), from js/gdm/authMenuButton.js.
+ * install_gdm appends this sheet to the login theme only: the pinned WhiteSur
+ * sheet paints every popup an opaque #36363a with #424247 hovers, which reads as
+ * a grey box on the glass login screen.
+ *
+ * Not in shell-50-dialogs.css, which is also spliced into the desktop theme. The
+ * lock screen opens this same menu there, and this selector would out-weigh the
+ * .popup-menu-content that the transparency, tint and performance paths rewrite.
+ *
+ * Blur My Shell doesn't run in the greeter, so nothing blurs behind the fill.
+ * aura-gdm.png is itself blurred and #lockDialogGroup is all that sits under the
+ * menu, so a translucent fill still reads as frosted, with no pipeline to match.
+ * Values are the desktop's frosted menu in shell-20-popup-menus.css: 0.42 ground,
+ * 26px (TOKEN_RADIUS_MENU), and the white hover ladder. The edge is the dialog's
+ * from shell-50-dialogs.css, as the desktop's transparent border is only there to
+ * sit on a blur.
+ *
+ * The menu is parented to Main.uiGroup, not the dialog, so .login-dialog can't
+ * scope it. The class on the content box is the only handle.
+ */
+.popup-menu-content.login-dialog-auth-menu-button-popup {
+  background-color: rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 26px;
+  padding: 6px;
+  box-shadow: none;
+}
+
+.login-dialog-auth-menu-button-popup .popup-menu-item {
+  padding: 6px 12px;
+  margin: 2px 4px;
+  border-radius: 12px;
+  spacing: 8px;
+}
+
+.login-dialog-auth-menu-button-popup .popup-menu-item:focus,
+.login-dialog-auth-menu-button-popup .popup-menu-item:hover,
+.login-dialog-auth-menu-button-popup .popup-menu-item:selected {
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+.login-dialog-auth-menu-button-popup .popup-menu-item:active {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+/* The "Session Type" heading over the list. It replaces its label's whole style class,
+ * so no sheet in the login theme styles it and it would look like one more row.
+ */
+.login-dialog-auth-menu-button-popup .login-dialog-auth-menu-item-section-label {
+  font-size: 0.9em;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.6);
+}

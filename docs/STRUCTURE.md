@@ -68,6 +68,7 @@ For "which file draws this button / owns this setting", use
 | `shell-popup-blur` popup alphas over real blur | `gtk4-70-surfaces` surfaces, Nautilus status, sidebars | |
 | `shell-notification-blur` notification alphas over real blur | `gtk4-transparency` translucent windows (rescaled, tinted) | |
 | *(generated)* `shell-90-density` panel icon scale and top bar height for this display | `gtk4-window-controls-{adwaita,material,flat}` one, by style | |
+| `gdm-auth-menu` login screen session menu (login theme only, appended by `install_gdm`) | | |
 
 ### `dconf/`
 

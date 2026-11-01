@@ -47,6 +47,7 @@ TOKEN_RADIUS_WINDOW=30
 # Ordinary popup menus.
 #   css/shell-20-popup-menus.css  .popup-menu-content
 #   css/shell-popup-blur.css      .popup-menu-content, at !important
+#   css/gdm-auth-menu.css         the login screen's session menu
 #   dconf/core.ini                [blur-my-shell/popup] menu-corner-radius
 TOKEN_RADIUS_MENU=26
 

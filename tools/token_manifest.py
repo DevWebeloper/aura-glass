@@ -73,6 +73,10 @@ MANIFEST = [
     ("TOKEN_RADIUS_MENU", "css", "css/shell-popup-blur.css",
      r"^\.popup-menu-content,\n\.background-menu \.popup-menu-content \{"
      r"[^}]*?border-radius: (\d+)px"),
+    # The login screen's session menu. install_gdm appends it from the repo, so
+    # it holds the shipped radius whatever preset the desktop runs.
+    ("TOKEN_RADIUS_MENU", "css", "css/gdm-auth-menu.css",
+     r"^\.popup-menu-content\.login-dialog-auth-menu-button-popup \{[^}]*?border-radius: (\d+)px"),
     ("TOKEN_RADIUS_MENU", "ini", "dconf/core.ini",
      "blur-my-shell/popup", "menu-corner-radius"),
 
@@ -174,6 +178,7 @@ MANIFEST = [
 #   shell-80-solid.css         installed only for --no-blur
 #   shell-popup-blur.css       installed only while popup blur is on
 #   shell-notification-blur.css  installed only while notification blur is on
+#   gdm-auth-menu.css          never installed there; install_gdm reads the repo
 #
 # Every other sheet the manifest names is installed unconditionally, so a missing
 # one means an incomplete install and stays a hard error.
@@ -181,6 +186,7 @@ OPTIONAL_SHEETS = {
     "shell-80-solid.css",
     "shell-popup-blur.css",
     "shell-notification-blur.css",
+    "gdm-auth-menu.css",
 }
 
 # The radius tokens, in the order install.sh and the GUI pass them around. The

@@ -101,7 +101,9 @@ if apply_text is None or not steps_files or preview_text is None:
     sys.exit(1)
 
 css_dir = os.path.join(ROOT, "css")
-on_disk = sorted(f for f in os.listdir(css_dir) if f.endswith(".css"))
+# gdm-* sheets go into the login theme (install_gdm), never through $CONF_DIR.
+on_disk = sorted(f for f in os.listdir(css_dir)
+                 if f.endswith(".css") and not f.startswith("gdm-"))
 
 shell_list = array_entries(apply_text, "SHELL_SNIPPETS", APPLY)
 gtk4_list = array_entries(apply_text, "GTK4_SNIPPETS", APPLY)
@@ -208,6 +210,8 @@ def code_only(text):
 for rel, text in ((STEPS, code_only(steps_text)),
                   (PREVIEW, code_only(preview_text))):
     for name in sorted(set(re.findall(r'css/([A-Za-z0-9_.-]+\.css)', text))):
+        if name.startswith("gdm-") and os.path.exists(os.path.join(css_dir, name)):
+            continue
         checks += 1
         if name not in on_disk:
             failures.append(

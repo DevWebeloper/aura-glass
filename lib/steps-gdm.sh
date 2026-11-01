@@ -368,6 +368,13 @@ install_gdm() {
             done
         fi
 
+        # Login-only rules, kept out of the desktop theme (css/gdm-auth-menu.css says why)
+        for css_file in "$src"/other/gdm/theme/gnome-shell-*.css "$src"/src/main/gnome-shell/_shell-base.scss; do
+            if [ -f "$css_file" ]; then
+                cat "$REPO_ROOT/css/gdm-auth-menu.css" >> "$css_file"
+            fi
+        done
+
         # Neutralize WhiteSur internal network & system package checks that can freeze/hang
         sed -i 's/prepare_deps/true/g' "$src"/libs/*.sh 2>/dev/null || true
         sed -i 's/get_utc_epoch_time/true/g' "$src"/libs/*.sh 2>/dev/null || true
