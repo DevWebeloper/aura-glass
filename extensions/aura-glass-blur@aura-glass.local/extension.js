@@ -24,6 +24,9 @@
  * And it sets how fast windows, notification banners and menus animate
  * (_syncEaseHook), from the three *-animation-speed memos.
  *
+ * And it starts keyboard focus on Log Out in the log out dialog, where stock
+ * GNOME starts it on Cancel (_hookEndSessionDialog).
+ *
  * It stays installed and enabled in every mode, Performance included.
  */
 
@@ -38,6 +41,7 @@ import St from 'gi://St';
 
 import {BoxPointer} from 'resource:///org/gnome/shell/ui/boxpointer.js';
 import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
+import {EndSessionDialog} from 'resource:///org/gnome/shell/ui/endSessionDialog.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
@@ -48,6 +52,8 @@ import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/ex
 
 const BMS_UUID = 'blur-my-shell@aunetx';
 const BMS_SCHEMA_ID = 'org.gnome.shell.extensions.blur-my-shell.applications';
+// DialogType.LOGOUT in endSessionDialog.js, which doesn't export the enum.
+const END_SESSION_TYPE_LOGOUT = 0;
 
 // Pinned back onto the whitelist by every install.sh run (app_blur_pin_allow
 // in lib/steps-dconf.sh) — the same string is duplicated in
@@ -324,6 +330,7 @@ export default class AuraGlassBlurExtension extends Extension {
 
         this._settings = this._openBmsApplicationsSettings();
         this._syncWindowMenu();
+        this._hookEndSessionDialog();
 
         this._extStateChangedId = Main.extensionManager?.connect?.(
             'extension-state-changed', (_mgr, ext) => {
@@ -647,6 +654,25 @@ export default class AuraGlassBlurExtension extends Extension {
         };
     }
 
+    // Log out only: power off and restart keep stock's focus on Cancel, since
+    // a stray Enter there costs more. _updateButtons rebuilds the buttons on
+    // every open, and a destroyed button clears the focus set here, so the
+    // other dialog types sharing this instance don't inherit it.
+    _hookEndSessionDialog() {
+        this._origUpdateButtons = EndSessionDialog.prototype._updateButtons;
+        const self = this;
+        EndSessionDialog.prototype._updateButtons = function () {
+            self._origUpdateButtons.call(this);
+            if (this._type === END_SESSION_TYPE_LOGOUT)
+                this.setInitialKeyFocus(this.dialogLayout.buttonLayout.get_last_child());
+        };
+    }
+
+    _unhookEndSessionDialog() {
+        EndSessionDialog.prototype._updateButtons = this._origUpdateButtons;
+        this._origUpdateButtons = null;
+    }
+
     _isBmsApplicationsActive() {
         const bmsEnabled = Boolean(global.blur_my_shell) ||
             Main.extensionManager?.lookup?.(BMS_UUID)?.state === 1;
@@ -682,6 +708,7 @@ export default class AuraGlassBlurExtension extends Extension {
         }
 
         this._unhookWindowMenu();
+        this._unhookEndSessionDialog();
         this._settings = null;
 
         if (this._focusWindowId) {

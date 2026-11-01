@@ -60,38 +60,74 @@
   color: -st-accent-fg-color !important;
 }
 
-/* Dialog buttons follow the same control ladder as the rest of the desktop.
- * The default button was stock GNOME blue, which ignored the accent the whole
- * desktop is built around — -st-accent-color tracks Settings → Appearance.
+/* Dialog buttons stay on the white lift ladder in every state, with no accent:
+ * rest 0.10, hover 0.16, pressed 0.22, focus and :default 0.30 (0.36 hovered).
+ * Focus has to read at a glance on its own, so it sits well above hover. The
+ * upstream theme sets box-shadow: none on :focus and fills the last button with
+ * the accent whatever has focus, so Tab moved nothing you could see and the pill
+ * read as selected while Enter pressed another button. A white ring and then an
+ * accent fill that followed focus were both tried and rejected on the desktop.
+ *
+ * Upstream's :last-child and state rules tie with these at their specificity, and
+ * a tied rule lost even though it came later (preview shell, GNOME 51). Hence
+ * !important, with :last-child restated so each state still outweighs the one
+ * below it. The repeated pseudo-classes on :active and :insensitive add weight,
+ * since either can combine with hover, focus, :default or :last-child, and upstream's
+ * :insensitive:last-child has an !important accent text colour of its own to beat.
  */
 .modal-dialog .modal-dialog-button,
+.modal-dialog .modal-dialog-button:last-child,
 .modal-dialog .modal-dialog-linked-button,
+.modal-dialog .modal-dialog-linked-button:last-child,
 .modal-dialog .button {
-  background-color: rgba(255, 255, 255, 0.10);
+  background-color: rgba(255, 255, 255, 0.10) !important;
   border: 1px solid transparent;
   border-radius: 9999px;
   box-shadow: none;
-  color: #ffffff;
+  color: #ffffff !important;
 }
 
 .modal-dialog .modal-dialog-button:hover,
+.modal-dialog .modal-dialog-button:last-child:hover,
 .modal-dialog .modal-dialog-linked-button:hover,
+.modal-dialog .modal-dialog-linked-button:last-child:hover,
 .modal-dialog .button:hover {
-  background-color: rgba(255, 255, 255, 0.16);
+  background-color: rgba(255, 255, 255, 0.16) !important;
 }
 
+.modal-dialog .modal-dialog-button:focus,
+.modal-dialog .modal-dialog-button:last-child:focus,
 .modal-dialog .modal-dialog-button:default,
+.modal-dialog .modal-dialog-button:last-child:default,
+.modal-dialog .modal-dialog-linked-button:focus,
+.modal-dialog .modal-dialog-linked-button:last-child:focus,
 .modal-dialog .modal-dialog-linked-button:default,
+.modal-dialog .modal-dialog-linked-button:last-child:default,
 .modal-dialog .button:default {
-  background-color: -st-accent-color;
-  color: -st-accent-fg-color;
+  background-color: rgba(255, 255, 255, 0.30) !important;
 }
 
+.modal-dialog .modal-dialog-button:focus:hover,
+.modal-dialog .modal-dialog-button:last-child:focus:hover,
 .modal-dialog .modal-dialog-button:default:hover,
+.modal-dialog .modal-dialog-button:last-child:default:hover,
+.modal-dialog .modal-dialog-linked-button:focus:hover,
+.modal-dialog .modal-dialog-linked-button:last-child:focus:hover,
 .modal-dialog .modal-dialog-linked-button:default:hover,
+.modal-dialog .modal-dialog-linked-button:last-child:default:hover,
 .modal-dialog .button:default:hover {
-  background-color: -st-accent-color;
-  box-shadow: inset 0 0 0 99px rgba(255, 255, 255, 0.12) !important;
+  background-color: rgba(255, 255, 255, 0.36) !important;
+}
+
+.modal-dialog .modal-dialog-button:active:active:active:active:active,
+.modal-dialog .modal-dialog-linked-button:active:active:active:active:active {
+  background-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+.modal-dialog .modal-dialog-button:insensitive:insensitive:insensitive,
+.modal-dialog .modal-dialog-linked-button:insensitive:insensitive:insensitive {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: rgba(255, 255, 255, 0.35) !important;
 }
 
 /* Copyous's Super+V contents: the clipboard cards, the header, footer and
