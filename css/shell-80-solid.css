@@ -88,6 +88,10 @@
   background-color: rgba(22, 23, 27, 0.99);
 }
 
+#dash .dash-background {
+  background-color: rgba(22, 23, 27, 0.99);
+}
+
 /* The Quick Settings sliders and toggle tiles are white overlays at low alpha,
  * which composite correctly over an opaque ground and are deliberately left
  * alone — they are how the tiles stay legible as raised surfaces without a

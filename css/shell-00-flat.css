@@ -109,6 +109,16 @@ StDrawingArea {
   transition-duration: 250ms !important;
 }
 
+/* ---------- Overview dash ---------------------------------------------
+ * The theme paints this pill 12% white, which read as a pale bar against the
+ * dark overview. Darkened to the same ground as the Super+V dialog, also a
+ * panel floating over a blurred backdrop. The blur stays behind it (pipeline
+ * dock in core.ini); override-background is off there, so no extension sheet
+ * outranks this rule. */
+#dash .dash-background {
+  background-color: rgba(0, 0, 0, 0.42);
+}
+
 /* ---------- Top bar: Copyous's clipboard indicator --------------------
  * Copyous's own sheet sets padding: 0 on its panel icon, so it sat 8px
  * narrower than every other status icon and crowded the button edges.
