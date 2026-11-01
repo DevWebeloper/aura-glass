@@ -205,6 +205,7 @@ main() {
     echo "==> Running the installer"
     bash "$repo/install.sh" --gui
     pin_settings_to_dock
+    restart_settings_window
     # The installer finished, so whatever the update check found is now what is
     # installed — the window stops offering it.
     rm -f "$conf/update-available"
@@ -232,6 +233,31 @@ pin_settings_to_dock() {
     esac
     gsettings set org.gnome.shell favorite-apps "$favs" 2>/dev/null || return 0
     mkdir -p "$(dirname "$marker")" && : > "$marker"
+}
+
+# Close the settings window and open it again, now that the installer has put
+# the new copy in place. The running one is still the old Python, so without
+# this it would go on showing the old Updates page (offering the update just
+# installed) until someone thought to close it. Not tied to the update window's
+# Log out / Later: install.sh leaves that question to the window and returns, so
+# this runs as soon as the install is done, whichever is clicked or neither.
+#
+# Only when one was open, which it is whenever the update was started from it;
+# an update run by hand does not get a window it never had. Opened on the
+# Updates page, where it was. A SIGTERM is safe here: the window refuses to
+# start an update while a live preview is open, so there is nothing to revert.
+restart_settings_window() {
+    local app="$HOME/.local/bin/aura-glass-settings" i
+    pgrep -u "$(id -u)" -f '^python[0-9.]* .*/aura_glass_settings\.py' >/dev/null 2>&1 || return 0
+    pkill -u "$(id -u)" -f '^python[0-9.]* .*/aura_glass_settings\.py' 2>/dev/null || true
+    # The relaunch would hand its argv to the old instance while it is still
+    # on the bus and exit, so wait for that one to be gone first.
+    for i in $(seq 1 25); do
+        pgrep -u "$(id -u)" -f '^python[0-9.]* .*/aura_glass_settings\.py' >/dev/null 2>&1 || break
+        sleep 0.2
+    done
+    [ -x "$app" ] || return 0
+    setsid -f "$app" --page updates </dev/null >/dev/null 2>&1 || true
 }
 
 main "$@"
