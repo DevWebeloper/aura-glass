@@ -48,10 +48,11 @@ APP_ID = "io.github.DevWebeloper.AuraGlassInstall"
 # second at most, so polling is simpler than a file monitor and as quick.
 POLL_MS = 250
 
-# Written to window-layout. 2 is the two-column update window. Raise it when
-# the layout changes enough that an update should swap an open older window
-# for this one (progress_begin compares it).
-WINDOW_LAYOUT = 2
+# Written to window-layout. 2 is the two-column update window, 3 the one whose
+# changelog bullets hang (notes_view). Raise it when the layout changes enough
+# that an update should swap an open older window for this one (progress_begin
+# compares it).
+WINDOW_LAYOUT = 3
 
 # The most of a step's log a "Why?" shows. A font or icon pack download can
 # print a lot; the end of it is where the failure is.
