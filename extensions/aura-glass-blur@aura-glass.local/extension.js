@@ -18,7 +18,8 @@
  * in step with the motion that brought it (_syncPanelShade).
  *
  * And it lets the mouse wheel switch workspaces while a window or app icon
- * is held in the overview (_attachDragScroll).
+ * is held in the overview (_attachDragScroll), and takes a window dropped
+ * near a workspace rather than only exactly on it (_hookDropTargets).
  *
  * And it sets how fast windows, notification banners and menus animate
  * (_syncEaseHook), from the three *-animation-speed memos.
@@ -36,10 +37,12 @@ import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 import {BoxPointer} from 'resource:///org/gnome/shell/ui/boxpointer.js';
+import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {WindowMenu} from 'resource:///org/gnome/shell/ui/windowMenu.js';
+import {ThumbnailsBox} from 'resource:///org/gnome/shell/ui/workspaceThumbnail.js';
 import {TilePreview} from 'resource:///org/gnome/shell/ui/windowManager.js';
 import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
@@ -58,6 +61,18 @@ const SELF_WM_CLASS = 'io.github.DevWebeloper.AuraGlassSettings';
 // none of it is near-white. The symbolic ring is white already, so the effect
 // leaves it alone.
 const APP_ICON = `${SELF_WM_CLASS}-symbolic`;
+
+// How far into a thumbnail, from each side, a held window means "a new workspace
+// here" rather than "this workspace". GNOME's 10px gave a quarter of an 81px
+// thumbnail (1920x1080) to new workspaces, so a window aimed at workspace 1 and
+// let go near the thumbnail's edge made a workspace instead. At 4px the zone
+// between two thumbnails is still 12px wide with the theme's 4px spacing.
+const THUMBNAIL_NEW_WORKSPACE_PX = 4;
+// How far outside the 44px thumbnail row a dropped window still counts as dropped
+// on the thumbnail nearest it. GNOME cancels a drop there. 20px is under half a
+// thumbnail's height: it forgives a miss and stays this side of the top bar, which
+// is above the overview's controls and so never asks.
+const THUMBNAIL_DROP_SLACK_PX = 20;
 
 // The top bar is drawn in one colour: white glyphs, the way the system icons
 // already are. Tray icons from apps are not. Discord and Claude hand over a
@@ -358,7 +373,10 @@ export default class AuraGlassBlurExtension extends Extension {
         // signals can read it off the stage.
         this._dragScrollActor = null;
         this._dragScrollId = 0;
-        const dragBegin = () => this._attachDragScroll();
+        const dragBegin = () => {
+            this._attachDragScroll();
+            this._delegateOtherScreens();
+        };
         const dragEnd = () => this._detachDragScroll();
         this._dragIds = [
             Main.overview.connect('window-drag-begin', dragBegin),
@@ -369,6 +387,7 @@ export default class AuraGlassBlurExtension extends Extension {
             Main.overview.connect('item-drag-cancelled', dragEnd),
         ];
 
+        this._hookDropTargets();
         this._buildPanelMenu();
         this._hookWhiteIcons();
         this._initOpacityMonitor();
@@ -399,6 +418,162 @@ export default class AuraGlassBlurExtension extends Extension {
         if (!Main.overview.visible)
             return Clutter.EVENT_PROPAGATE;
         return Main.wm.handleWorkspaceScroll(event);
+    }
+
+    // A window dragged to another workspace only landed if it was let go inside a
+    // strip of the thumbnail or on the neighbour's own edge of the screen. Near
+    // misses cancelled it or made a new workspace, so the same gesture worked only
+    // sometimes. Apart from the cut size, a drop that had a target keeps it: DND's
+    // walk up from the picked actor reaches these delegates only once every target
+    // below them has refused, and the actors they sit on had none of their own.
+    _hookDropTargets() {
+        const proto = ThumbnailsBox.prototype;
+        this._origPlaceholderTarget = proto._getPlaceholderTarget;
+        this._origWithinWorkspace = proto._withinWorkspace;
+
+        // GNOME's two methods with their cut size replaced, which is a constant
+        // private to its module.
+        proto._getPlaceholderTarget = function (index, spacing, rtl) {
+            const workspace = this._thumbnails[index];
+            let targetX1, targetX2;
+            if (rtl) {
+                const baseX = workspace.x + workspace.width;
+                targetX1 = baseX - THUMBNAIL_NEW_WORKSPACE_PX;
+                targetX2 = baseX + spacing + THUMBNAIL_NEW_WORKSPACE_PX;
+            } else {
+                targetX1 = workspace.x - spacing - THUMBNAIL_NEW_WORKSPACE_PX;
+                targetX2 = workspace.x + THUMBNAIL_NEW_WORKSPACE_PX;
+            }
+            if (index === 0) {
+                if (rtl)
+                    targetX2 -= spacing + THUMBNAIL_NEW_WORKSPACE_PX;
+                else
+                    targetX1 += spacing + THUMBNAIL_NEW_WORKSPACE_PX;
+            }
+            if (index === this._dropPlaceholderPos) {
+                const placeholderWidth = this._dropPlaceholder.get_width() + spacing;
+                if (rtl)
+                    targetX2 += placeholderWidth;
+                else
+                    targetX1 -= placeholderWidth;
+            }
+            return [targetX1, targetX2];
+        };
+        proto._withinWorkspace = function (x, index, rtl) {
+            const workspace = this._thumbnails[index];
+            let x1 = workspace.x + THUMBNAIL_NEW_WORKSPACE_PX;
+            let x2 = workspace.x + workspace.width - THUMBNAIL_NEW_WORKSPACE_PX;
+            if (index === this._thumbnails.length - 1) {
+                if (rtl)
+                    x1 -= THUMBNAIL_NEW_WORKSPACE_PX;
+                else
+                    x2 += THUMBNAIL_NEW_WORKSPACE_PX;
+            }
+            return x > x1 && x <= x2;
+        };
+
+        // Windows only: an app icon let go here keeps GNOME's answer.
+        const controls = Main.overview._overview?.controls;
+        if (!controls)
+            return;
+        const targetFor = (source, x, y) => {
+            if (!source.metaWindow)
+                return null;
+            const [originX, originY] = controls.get_transformed_position();
+            return this._workspaceNear(controls, originX + x, originY + y);
+        };
+        controls._delegate = {
+            handleDragOver: (source, actor, x, y, time) =>
+                targetFor(source, x, y)?.handleDragOver(source, actor, x, y, time) ??
+                    DND.DragMotionResult.CONTINUE,
+            acceptDrop: (source, actor, x, y, time) =>
+                targetFor(source, x, y)?.acceptDrop(source, actor, x, y, time) ?? false,
+        };
+        this._dropControls = controls;
+    }
+
+    _unhookDropTargets() {
+        const proto = ThumbnailsBox.prototype;
+        if (this._origPlaceholderTarget)
+            proto._getPlaceholderTarget = this._origPlaceholderTarget;
+        if (this._origWithinWorkspace)
+            proto._withinWorkspace = this._origWithinWorkspace;
+        this._origPlaceholderTarget = null;
+        this._origWithinWorkspace = null;
+        this._dropControls?._workspacesDisplay._workspacesViews.forEach(view => {
+            if (view._workspacesView)
+                delete view._delegate;
+        });
+        if (this._dropControls)
+            delete this._dropControls._delegate;
+        this._dropControls = null;
+    }
+
+    // Another screen's workspace leaves a margin above and below it, where a window
+    // let go on that screen was cancelled. The views are rebuilt each time the overview
+    // opens, so they are reached when a drag starts. Only those views have a
+    // _workspacesView.
+    _delegateOtherScreens() {
+        this._dropControls?._workspacesDisplay._workspacesViews.forEach(view => {
+            if (!view._workspacesView || view._delegate)
+                return;
+            const target = source => (source.metaWindow
+                ? view._workspacesView.getActiveWorkspace()
+                : null);
+            view._delegate = {
+                handleDragOver: (source, actor, x, y, time) =>
+                    target(source)?.handleDragOver(source, actor, x, y, time) ??
+                        DND.DragMotionResult.CONTINUE,
+                acceptDrop: (source, actor, x, y, time) =>
+                    target(source)?.acceptDrop(source, actor, x, y, time) ?? false,
+            };
+        });
+    }
+
+    // The primary monitor's workspace a stage point is a near miss of: the thumbnail
+    // nearest it within the slack, or the neighbour on that side when it is in the
+    // gap between the active workspace and the neighbour's edge of the screen.
+    _workspaceNear(controls, x, y) {
+        const view = controls._workspacesDisplay._getPrimaryView();
+        const workspaces = view?._workspaces;
+        if (!workspaces)
+            return null;
+
+        const box = controls._thumbnailsBox;
+        if (box.visible) {
+            const [, boxY] = box.get_transformed_position();
+            const [, boxHeight] = box.get_transformed_size();
+            if (y >= boxY - THUMBNAIL_DROP_SLACK_PX &&
+                y <= boxY + boxHeight + THUMBNAIL_DROP_SLACK_PX) {
+                let nearest = null;
+                let nearestDistance = THUMBNAIL_DROP_SLACK_PX;
+                for (const thumbnail of box._thumbnails) {
+                    const [thumbnailX] = thumbnail.get_transformed_position();
+                    const [thumbnailWidth] = thumbnail.get_transformed_size();
+                    const distance = Math.max(thumbnailX - x, x - thumbnailX - thumbnailWidth, 0);
+                    if (distance <= nearestDistance) {
+                        nearest = thumbnail;
+                        nearestDistance = distance;
+                    }
+                }
+                if (nearest)
+                    return workspaces[nearest.metaWorkspace.index()] ?? null;
+            }
+        }
+
+        const active = view.getActiveWorkspace();
+        const [activeX, activeY] = active.get_transformed_position();
+        const [activeWidth, activeHeight] = active.get_transformed_size();
+        if (y < activeY || y > activeY + activeHeight ||
+            (x >= activeX && x <= activeX + activeWidth))
+            return null;
+        const index = workspaces.indexOf(active);
+        return [workspaces[index - 1], workspaces[index + 1]].find(workspace => {
+            if (!workspace)
+                return false;
+            const [workspaceX] = workspace.get_transformed_position();
+            return x < activeX ? workspaceX < activeX : workspaceX > activeX;
+        }) ?? null;
     }
 
     // Main.loadTheme() carries extension sheets over to each new theme and
@@ -501,6 +676,7 @@ export default class AuraGlassBlurExtension extends Extension {
             Main.overview.disconnect(id);
         this._dragIds = null;
         this._detachDragScroll();
+        this._unhookDropTargets();
         if (this._monitorsChangedId) {
             Main.layoutManager.disconnect(this._monitorsChangedId);
             this._monitorsChangedId = 0;

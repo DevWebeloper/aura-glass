@@ -55,6 +55,7 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 | [KI-39](#ki-39) | Medium | **Fixed** (needs a live check) | A failed gnome-rounded-blur build only warned, and the install carried on around it; the only fix was to re-run and watch the build |
 | [KI-40](#ki-40) | Medium | **Fixed** (`fix/bms-v76`, resume needs a live check) | Blur My Shell's blur renders wrong after resume from suspend or hibernate until the extension is toggled |
 | [KI-41](#ki-41) | Medium | **Fixed** (needs a live check) | A window dragged in the overview sometimes snaps back instead of dropping: the magnified pointer took the drop |
+| [KI-42](#ki-42) | Medium | **Fixed** (needs a live check) | A window dragged to another workspace or screen in the overview landed only if let go in exactly the right strip |
 
 ---
 
@@ -1111,12 +1112,58 @@ and patches it fresh on the next full run, not on a retune. Needs a re-login.
 
 **Still cancels, by design.** GNOME's own rules: Esc, a drop on the workspace and
 monitor the window is already on, and a drop on anything with no target, such as
-the top bar or a gap between thumbnails. GNOME asks for the `no-drop` pointer
-over those.
+the top bar. GNOME asks for the `no-drop` pointer over those. Near misses of a
+workspace are [KI-42](#ki-42).
 
 **Verify.** In the overview, drag a window to the other screen, shake until the
 pointer grows and let go while it is still big: the window lands. Do the same onto
 a workspace thumbnail.
+
+---
+
+## KI-42
+
+**A window dragged to another workspace or screen landed only if let go in exactly
+the right strip.** Reported on GNOME Shell 51.1, on the primary monitor: from
+workspace 2 to workspace 1, without scrolling, the window drops only sometimes.
+
+**Symptom.** The same gesture lands, snaps back, or makes a new workspace, depending
+on a few pixels. Nothing in the journal.
+
+**Root cause.** GNOME's hit areas, not a fault in the theme, which leaves the
+thumbnails' sizes alone. Measured at 1920x1080 with the real theme, from workspace 2,
+in a private headless shell with a virtual pointer and real preview drags:
+
+| Let go at | Before | Why |
+|---|---|---|
+| Outer 10px each side of an 81x44 thumbnail | **New workspace** | `WORKSPACE_CUT_SIZE`: a quarter of the thumbnail means "insert here" |
+| Just above, below or left of the thumbnail row | Cancelled | No target there |
+| Gap between the neighbour's strip and the active workspace (x 155 to 222) | Cancelled | `WorkspacesView` has no target |
+| Top and bottom margin of another screen's overview | Cancelled | `SecondaryMonitorDisplay` has no target |
+| Middle of a thumbnail, the neighbour's strip | Landed, also with no pause before release | |
+
+So timing is not the cause. Stale hover state (`_dropWorkspace` is set from an idle)
+did not show up across 10 releases with no pause.
+
+**Fix.** Aura Glass Helper, `_hookDropTargets`, because GNOME is the owner of these
+areas and the helper already extends overview drags. `THUMBNAIL_NEW_WORKSPACE_PX`
+narrows the cut from 10px to 4px, so 90% of a thumbnail means that workspace. A
+window-only delegate on the overview's controls takes the near misses: the nearest
+thumbnail within `THUMBNAIL_DROP_SLACK_PX`, else the neighbour on that side of the
+active workspace. `_delegateOtherScreens` does the same for another screen's margin.
+DND walks up to these only after every target below has refused, so a drop on the
+workspace it is already on, the middle of the active workspace and the top bar still
+cancel, as the sweep confirmed. App icons keep GNOME's answer.
+
+**Limits.** It leans on GNOME's private names (`_getPlaceholderTarget`,
+`_withinWorkspace`, `_thumbnailsBox`, `_workspacesDisplay`, `_workspacesViews`) and
+was run on 51 only, not 48 to 50. For the other screen's margins the sweep saw no
+cancel but did not log the window's monitor.
+
+**Verify.** Needs the helper copied and a re-login. From workspace 2 on the primary,
+drag a window to workspace 1 and let go on the thumbnail's edge, just under the
+thumbnail row, and in the gap beside the left strip: each lands on workspace 1. The
+small slot between two thumbnails still makes a new workspace.
 
 ---
 
