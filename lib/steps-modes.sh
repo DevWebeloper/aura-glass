@@ -127,9 +127,13 @@ seed_glass_mode() {
 
     local disk_level disk_app disk_shell disk_strength disk_scope disk_popup
     local disk_brightness disk_popup_opacity entry surface legacy
+    local disk_dock disk_panel disk_maximized_panel
     disk_level="$(cat "$CONF_DIR/app-transparency" 2>/dev/null || true)"
     disk_app="$(cat "$CONF_DIR/app-tint-color" 2>/dev/null || true)"
     disk_shell="$(cat "$CONF_DIR/shell-tint-color" 2>/dev/null || true)"
+    disk_dock="$(cat "$CONF_DIR/dock-tint-color" 2>/dev/null || true)"
+    disk_panel="$(cat "$CONF_DIR/panel-tint-color" 2>/dev/null || true)"
+    disk_maximized_panel="$(cat "$CONF_DIR/maximized-panel-tint-color" 2>/dev/null || true)"
     disk_strength="$(cat "$CONF_DIR/blur-strength" 2>/dev/null || true)"
     disk_scope="$(cat "$CONF_DIR/app-blur-scope" 2>/dev/null || true)"
     disk_popup="$(cat "$CONF_DIR/popup-blur" 2>/dev/null || true)"
@@ -140,6 +144,9 @@ seed_glass_mode() {
         mode_memo_write app-transparency "1.00"
         mode_memo_write app-tint-color   "#000000"
         mode_memo_write shell-tint-color "#000000"
+        mode_memo_write dock-tint-color  "main"
+        mode_memo_write panel-tint-color "main"
+        mode_memo_write maximized-panel-tint-color "main"
         mode_memo_write app-blur-scope   "none"
         mode_memo_write popup-blur       "0"
     else
@@ -152,6 +159,9 @@ seed_glass_mode() {
         mode_memo_write app-transparency "${disk_level:-$fresh_level}"
         mode_memo_write app-tint-color   "${disk_app:-#000000}"
         mode_memo_write shell-tint-color "${disk_shell:-#000000}"
+        mode_memo_write dock-tint-color  "${disk_dock:-main}"
+        mode_memo_write panel-tint-color "${disk_panel:-main}"
+        mode_memo_write maximized-panel-tint-color "${disk_maximized_panel:-main}"
         mode_memo_write app-blur-scope   "${disk_scope:-all}"
         mode_memo_write blur-strength    "${disk_strength:-100}"
         mode_memo_write blur-brightness  "${disk_brightness:-100}"
@@ -204,6 +214,12 @@ load_glass_mode_memos() {
         || APP_TINT_COLOR="$(mode_memo_read app-tint-color '#000000')"
     [ -n "${SHELL_TINT_COLOR_EXPLICIT:-}" ] || [ -n "${SHELL_TINT_COLOR:-}" ] \
         || SHELL_TINT_COLOR="$(mode_memo_read shell-tint-color '#000000')"
+    [ -n "${DOCK_TINT_COLOR:-}" ] \
+        || DOCK_TINT_COLOR="$(mode_memo_read dock-tint-color main)"
+    [ -n "${PANEL_TINT_COLOR:-}" ] \
+        || PANEL_TINT_COLOR="$(mode_memo_read panel-tint-color main)"
+    [ -n "${MAXIMIZED_PANEL_TINT_COLOR:-}" ] \
+        || MAXIMIZED_PANEL_TINT_COLOR="$(mode_memo_read maximized-panel-tint-color main)"
 
     if [ "${GLASS_MODE}" = frosted ]; then
         [ -n "${BLUR_STRENGTH:-}" ] \
@@ -241,6 +257,9 @@ save_glass_mode_memos() {
     mode_memo_write app-transparency "${APP_TRANSPARENCY:-0}"
     mode_memo_write app-tint-color   "${APP_TINT_COLOR:-#000000}"
     mode_memo_write shell-tint-color "${SHELL_TINT_COLOR:-#000000}"
+    mode_memo_write dock-tint-color  "${DOCK_TINT_COLOR:-main}"
+    mode_memo_write panel-tint-color "${PANEL_TINT_COLOR:-main}"
+    mode_memo_write maximized-panel-tint-color "${MAXIMIZED_PANEL_TINT_COLOR:-main}"
     if [ "${GLASS_MODE:-}" = performance ]; then
         mode_memo_write app-blur-scope   "none"
         mode_memo_write popup-blur       "0"

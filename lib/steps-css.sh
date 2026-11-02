@@ -29,7 +29,20 @@ measure_primary_scale() {
     measure_primary_display scale
 }
 
+# DISPLAY_MEASURE_CACHE names a directory to keep the answers in, for a caller
+# that runs this over and over on one screen. An empty answer is not kept.
 measure_primary_display() {
+    local cached="${DISPLAY_MEASURE_CACHE:+$DISPLAY_MEASURE_CACHE/display-$1}" value
+    if [ -n "$cached" ] && [ -s "$cached" ]; then
+        cat "$cached"
+        return 0
+    fi
+    value="$(read_primary_display "$1")" || return 0
+    [ -z "$cached" ] || [ -z "$value" ] || printf '%s\n' "$value" > "$cached"
+    [ -z "$value" ] || printf '%s\n' "$value"
+}
+
+read_primary_display() {
     python3 - "$1" <<'PY' 2>/dev/null
 import glob, math, os, re, subprocess, sys
 
@@ -365,6 +378,50 @@ apply_shell_tint_color() {
         printf '%s\n' "$want" > "$memo"
     fi
     ok "shell surfaces tinted toward $want (remembered for later runs)"
+}
+
+# The surfaces with a colour of their own: the dock with the overview's search,
+# the top bar over the desktop, the top bar over a maximized window. `main` is
+# no colour of its own, and it is a value rather than an absence so that asking
+# for it is how one is undone: the dock and the shaded bar go back to following
+# the shell tint, and the bar over the desktop to clear glass.
+#
+# Over the shell sheets, after apply_shell_tint_color, so the surface's answer
+# is the one left standing. Fresh copies again, so it never compounds.
+SURFACE_TINTS="dock:DOCK_TINT_COLOR panel:PANEL_TINT_COLOR maximized-panel:MAXIMIZED_PANEL_TINT_COLOR"
+apply_surface_tint_colors() {
+    local entry surface var want memo
+    for entry in $SURFACE_TINTS; do
+        surface="${entry%%:*}"
+        var="${entry#*:}"
+        memo="$CONF_DIR/$surface-tint-color"
+        want="${!var:-}"
+        if [ -z "$want" ] && [ -r "$memo" ]; then
+            want="$(cat "$memo" 2>/dev/null || true)"
+        fi
+        [ -n "$want" ] || continue
+
+        case "$want" in
+            main|\#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;;
+            *) warn "--$surface-tint-color wants a #rrggbb colour or main, got '$want'"
+               continue ;;
+        esac
+
+        if [ "${DRY_RUN:-0}" = 1 ]; then
+            info "dry-run: $surface tint $want"
+            continue
+        fi
+
+        if [ "$want" != main ]; then
+            python3 "$REPO_ROOT/tools/apply-shell-tint.py" --surface "$surface" \
+                "$CONF_DIR" "$want" | sed 's/^/    /' \
+                || { warn "could not tint the $surface"; continue; }
+        fi
+        if remembering; then
+            mkdir -p "$CONF_DIR"
+            printf '%s\n' "$want" > "$memo"
+        fi
+    done
 }
 
 # How opaque popups, menus and notification banners are.
@@ -792,6 +849,7 @@ install_css() {
     # and popup ones are decided, so whichever set is installed is the set that
     # gets the colour.
     apply_shell_tint_color
+    apply_surface_tint_colors
     apply_popup_transparency
     # The other rewriter over that same sheet, and independent of the tint above
     # it: that one owns a literal's colour channels, this one owns its alpha, so

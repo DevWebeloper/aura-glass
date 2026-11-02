@@ -330,16 +330,18 @@ restore_stood_down_extensions() {
 RESET_MEMOS=(
     glass-mode modes accent radius-preset radius-custom
     app-transparency app-opacity app-tint-color shell-tint-color
+    dock-tint-color panel-tint-color maximized-panel-tint-color
     notification-opacity blur-strength popup-brightness window-brightness grain
-    glass-style liquid-windows fullscreen-blur smooth-animations
+    glass-style liquid-windows fullscreen-blur maximized-blur smooth-animations
     window-animation-speed notification-animation-speed menu-animation-speed
+    top-bar-icon
     titlebutton-style window-buttons
     window-blur app-blur-scope app-blur-allow app-blur-block
     popup-blur notification-blur
     adaptive-profile adaptive-fullscreen-apps
     icon-pack icons cursor-pack cursor-size font
     update-check update-channel rounded-blur-choice
-    extension-pack extension-catalog osd osd-device-name bms-source
+    extension-pack extension-catalog osd osd-device-name osd-style bms-source
 )
 
 reset_remembered_choices() {

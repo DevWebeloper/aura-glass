@@ -1,8 +1,8 @@
 diff --git a/extension.js b/extension.js
-index 27fbac8..d3a0001 100644
+index 27fbac8..8bd6ae0 100644
 --- a/extension.js
 +++ b/extension.js
-@@ -14,6 +14,50 @@ import {Extension, gettext as _, pgettext} from 'resource:///org/gnome/shell/ext
+@@ -14,6 +14,85 @@ import {Extension, gettext as _, pgettext} from 'resource:///org/gnome/shell/ext
  
  const OsdWindowManager = Main.osdWindowManager;
  
@@ -50,10 +50,45 @@ index 27fbac8..d3a0001 100644
 +    OsdWindowManager.show(-1, icon, label, level, maxLevel);
 +}
 +
++// Aura Glass's two designs, picked by the osd-style key (--osd-style). Each is a
++// style class and nothing else: its size, padding, radius and type are fixed
++// logical pixels in css/shell-00-flat.css, so a retune can reach them without a
++// rebuild, and nothing below may size them from the screen. Upstream's sums tie
++// the icon to monitor.height/5 and the bar's min-width to three icons, and its
++// box grows with the longest device name. Any other value of the key gets
++// upstream's layout, unchanged.
++const OSD_STYLE_CLASSES = {capsule: 'aura-osd-capsule', tab: 'aura-osd-tab'};
++
++// The bare level pill the capsule replaced was this tall (size 40 scales
++// vpadding 10 and levthickness 7 to 9 + 6 + 9). Upstream subtracts the box's own
++// height when it works out the position, which here would move the capsule by
++// about six pixels whenever a popup with a device name follows one without, so
++// the capsule stays centred where that pill was centred instead.
++const CAPSULE_ANCHOR_HEIGHT = 24;
++
++// St.BoxLayout took orientation in GNOME 48 and deprecated vertical for it.
++function setBoxVertical(box, vertical) {
++  if ('orientation' in box)
++    box.orientation = vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
++  else
++    box.vertical = vertical;
++}
++
++// Where the tab hangs from, relative to its monitor. Only the primary monitor
++// has a top bar, and a fullscreen window takes it away: panelBox is tracked with
++// trackFullscreen, so its visibility says so. Measured here rather than written
++// down, because --panel-height moves it and the user can change it at any time.
++function tabTop(monitor) {
++  const panelBox = Main.layoutManager.panelBox;
++  if (monitor != Main.layoutManager.primaryMonitor || !panelBox.visible)
++    return 0;
++  return Math.max(0, panelBox.y + panelBox.height - monitor.y);
++}
++
  export default class CustomOSDExtension extends Extension {
    constructor(metadata) {
      super(metadata);
-@@ -42,11 +86,11 @@ export default class CustomOSDExtension extends Extension {
+@@ -42,11 +121,11 @@ export default class CustomOSDExtension extends Extension {
    }
  
    _showOSD(osd) {
@@ -68,7 +103,7 @@ index 27fbac8..d3a0001 100644
      }
      if (osd == "Command OSD") {
        let cmdosd = this._settings.get_string('showosd');
-@@ -56,9 +100,9 @@ export default class CustomOSDExtension extends Extension {
+@@ -56,9 +135,9 @@ export default class CustomOSDExtension extends Extension {
        let level = parseFloat(cmdosd[3]);
        icon? icon = Gio.ThemedIcon.new_with_default_fallbacks(icon) : icon = this._custOSDIcon;
        if (level!=0 && !level)
@@ -80,7 +115,71 @@ index 27fbac8..d3a0001 100644
      }
    }
    
-@@ -318,17 +362,27 @@ export default class CustomOSDExtension extends Extension {
+@@ -188,6 +267,9 @@ export default class CustomOSDExtension extends Extension {
+     let vpadding = this._settings.get_double("vpadding");
+     let ringgap = this._settings.get_double("ring-gap");
+     const bgImage = this._settings.get_string('background-image');
++    const osdStyle = this._settings.get_string('osd-style');
++    const styleClass = OSD_STYLE_CLASSES[osdStyle] ?? null;
++    const tab = osdStyle == 'tab';
+ 
+     const red = parseInt(parseFloat(color[0]) * 255);
+     const green = parseInt(parseFloat(color[1]) * 255);
+@@ -279,20 +361,48 @@ export default class CustomOSDExtension extends Extension {
+ 
+       if(!osdW._levLabel) this._createLevLabel(osdW, monitorIndex);
+ 
+-      this._setOSDOrientation(osdW, rotate);
++      // A rotated design is neither of the designs. Blur My Shell's blur actor
++      // does not rotate with the pill either, which is why the preset leaves
++      // rotate off, so this only ever matters to a hand-set key.
++      this._setOSDOrientation(osdW, rotate && !styleClass);
+       
+       let monitor = Main.layoutManager.monitors[monitorIndex];
+-      osdW._icon.icon_size = Mr(osd_size/150 * monitor.height/5); 
++      // -1 is St.Icon's "ask the stylesheet".
++      osdW._icon.icon_size = styleClass ? -1 : Mr(osd_size/150 * monitor.height/5);
+       osdW._icon.y_align = Clutter.ActorAlign.CENTER;
+ 
+-      osdW._label.x_align = Clutter.ActorAlign.CENTER;
+-      
++      osdW._label.x_align = styleClass ? Clutter.ActorAlign.FILL : Clutter.ActorAlign.CENTER;
++
+       osdW._hbox.add_style_class_name(
+         "osd-style"
+       );
++
++      // The pill's width is fixed, so the box holding the name and the bar has
++      // to take what the icon leaves, and the name has to be what gives way:
++      // St.Label ellipsizes, and BoxLayout shrinks the child with room to lose.
++      // The tab is one line, so the box lies down and the name takes the slack.
++      // show() hands the slack to the bar when there is no name.
++      Object.values(OSD_STYLE_CLASSES).forEach(c => {
++        if (c != styleClass)
++          osdW._hbox.remove_style_class_name(c);
++      });
++      if (styleClass)
++        osdW._hbox.add_style_class_name(styleClass);
++      osdW._vbox.x_expand = !!styleClass;
++      setBoxVertical(osdW._vbox, !tab);
++      osdW._label.x_expand = tab;
++      osdW._level.x_expand = false;
++      osdW._label.y_align = tab ? Clutter.ActorAlign.CENTER : Clutter.ActorAlign.FILL;
++      osdW._level.y_align = tab ? Clutter.ActorAlign.CENTER : Clutter.ActorAlign.FILL;
+       
+       // FONT, COLOR, BG COLOR, PADDING, SPACING, MARGINS
+-      let hboxSty = ` ${fontStyles} background-color: rgba(${bgred},${bggreen},${bgblue},${alpha}); color: rgba(${red},${green},${blue},${falpha}); 
++      // The fill and the ink stay dconf's in a design as well, because
++      // dconf/solid.ini raises alpha for performance mode. Only the geometry and
++      // the type move to the stylesheet. An inline padding or spacing would beat
++      // it. margin stays: the theme's .osd-window carries a 4em margin-bottom.
++      let hboxSty = styleClass
++        ? ` background-color: rgba(${bgred},${bggreen},${bgblue},${alpha}); color: rgba(${red},${green},${blue},${falpha}); margin: 0px; `
++        : ` ${fontStyles} background-color: rgba(${bgred},${bggreen},${bgblue},${alpha}); color: rgba(${red},${green},${blue},${falpha}); 
+                     padding: ${vpadding}px ${hpadding}px ${vpadding}px ${(100-osd_size)/10 + hpadding*1.25}px; margin: 0px; spacing: ${0.75*hpadding}px; `;
+       
+       // SHADOW 
+@@ -318,17 +428,27 @@ export default class CustomOSDExtension extends Extension {
        
        // DYNAMIC BLUR
        else if (bgeffect == "dynamic-blur") {
@@ -118,7 +217,7 @@ index 27fbac8..d3a0001 100644
        }
  
        // GLASS OR WOOD RAW OR WOOD POLISHED
-@@ -346,11 +400,9 @@ export default class CustomOSDExtension extends Extension {
+@@ -346,25 +466,27 @@ export default class CustomOSDExtension extends Extension {
        }
  
        if (bgeffect != "dynamic-blur") {
@@ -133,7 +232,44 @@ index 27fbac8..d3a0001 100644
        
        osdW._hbox.style = hboxSty;
  
-@@ -410,13 +462,11 @@ export default class CustomOSDExtension extends Extension {
+       // ICON 
+-      osdW._icon.style = ` margin-right: ${0.2*osdW._icon.icon_size}px; margin-leftt: ${(110-osd_size)/10 + 0.2*osdW._icon.icon_size}px; `;
++      osdW._icon.style = styleClass ? '' : ` margin-right: ${0.2*osdW._icon.icon_size}px; margin-leftt: ${(110-osd_size)/10 + 0.2*osdW._icon.icon_size}px; `;
+       // LABEL
+       osdW._label.style = ` color: rgba(${red},${green},${blue},${0.95*falpha}); margin-right: 0px; margin-left: 0px; `; 
+       // LEVEL
+-      osdW._level.style = ` height: ${levthickness}px; -barlevel-height: ${levthickness}px; min-width: ${Mr(3*osdW._icon.icon_size)}px; margin-right: 0px; margin-left: 0px;
+-      -barlevel-active-background-color: rgba(${levred},${levgreen},${levblue},${levalpha}); -barlevel-background-color: rgba(${levred},${levgreen},${levblue},0.2); `; 
++      osdW._level.style = styleClass
++        ? ` margin-right: 0px; margin-left: 0px; -barlevel-active-background-color: rgba(${levred},${levgreen},${levblue},${levalpha}); `
++        : ` height: ${levthickness}px; -barlevel-height: ${levthickness}px; min-width: ${Mr(3*osdW._icon.icon_size)}px; margin-right: 0px; margin-left: 0px;
++      -barlevel-active-background-color: rgba(${levred},${levgreen},${levblue},${levalpha}); -barlevel-background-color: rgba(${levred},${levgreen},${levblue},0.2); `;
+       // LEV LABEL - NUMERIC %
+       osdW._levLabel.style = ` font-size: ${font_size*1.2}pt; font-weight: bold; min-width: ${Mr((100-osd_size)/10 + osd_size*2.22)}px; `; //28+osd*1.58     
+       
+-      osdW.y_align = Clutter.ActorAlign.CENTER;  
++      // START so the tab's translation is its distance from the monitor's top,
++      // with no half pixel from centring to open a gap under the top bar.
++      osdW.y_align = tab ? Clutter.ActorAlign.START : Clutter.ActorAlign.CENTER;
+ 
+     }
+ 
+@@ -384,6 +506,14 @@ export default class CustomOSDExtension extends Extension {
+       osdW._hbox.remove_style_class_name(
+         "osd-style"
+       );
++      Object.values(OSD_STYLE_CLASSES).forEach(c => osdW._hbox.remove_style_class_name(c));
++      osdW._vbox.x_expand = false;
++      setBoxVertical(osdW._vbox, true);
++      osdW._label.x_expand = false;
++      osdW._label.x_align = Clutter.ActorAlign.FILL;
++      osdW._label.y_align = Clutter.ActorAlign.FILL;
++      osdW._level.x_expand = false;
++      osdW._level.y_align = Clutter.ActorAlign.FILL;
+       osdW._hbox.style = '';
+       osdW._hbox.rotation_angle_z = 0;
+       osdW._hbox.set_pivot_point(0.0,0.0);
+@@ -410,13 +540,11 @@ export default class CustomOSDExtension extends Extension {
        if (osdW._hideTimeoutId)
          GLib.source_remove(osdW._hideTimeoutId);
  
@@ -150,7 +286,7 @@ index 27fbac8..d3a0001 100644
          GLib.source_remove(osdW._blurTimeoutId);
          osdW._blurTimeoutId = null;
        }
-@@ -436,6 +486,12 @@ export default class CustomOSDExtension extends Extension {
+@@ -436,6 +564,12 @@ export default class CustomOSDExtension extends Extension {
      this.progressRing = false;
      this.progressSVGId = [];
      this.isClippedRedrawsSet = false;
@@ -163,7 +299,7 @@ index 27fbac8..d3a0001 100644
  
      this._resources = Gio.Resource.load(this.path + '/resources/custom-osd.gresource');
      Gio.resources_register(this._resources);
-@@ -462,13 +518,7 @@ export default class CustomOSDExtension extends Extension {
+@@ -462,13 +596,7 @@ export default class CustomOSDExtension extends Extension {
  
      // Check if Clipped Redraws flag is set externally (e.g. by Blur My Shell)
      this.redrawFlagTimeoutId = setTimeout( () => {
@@ -178,7 +314,7 @@ index 27fbac8..d3a0001 100644
      }, 2000);
  
   
-@@ -477,7 +527,17 @@ export default class CustomOSDExtension extends Extension {
+@@ -477,7 +605,17 @@ export default class CustomOSDExtension extends Extension {
        "show",
        function () {
    
@@ -197,7 +333,48 @@ index 27fbac8..d3a0001 100644
          let monitors = custOSD._settings.get_string("monitors");
    
          if (monitors == "primary" && monitor != Main.layoutManager.primaryMonitor){
-@@ -566,14 +626,22 @@ export default class CustomOSDExtension extends Extension {
+@@ -526,7 +664,11 @@ export default class CustomOSDExtension extends Extension {
+         }
+ 
+         const bgeffect = custOSD._settings.get_string("bg-effect");
+-        icon? this._icon.visible = true : this._icon.visible = false;  
++        const osdStyle = custOSD._settings.get_string("osd-style");
++        const styled = osdStyle in OSD_STYLE_CLASSES;
++        // Both designs have the icon, whatever the three osd-* keys say. The preset
++        // hides it for upstream's layout, where it is a fifth of the screen.
++        icon || styled ? this._icon.visible = true : this._icon.visible = false;  
+         numeric? this._levLabel.visible = this._level.visible : this._levLabel.visible = false;
+         let levelOn = this._level.visible;
+ 
+@@ -537,15 +679,18 @@ export default class CustomOSDExtension extends Extension {
+         }
+         else 
+           padding = custOSD.hpadding*1.65 + (100-custOSD.osd_size)/10;
+-        this._hbox.style += ` padding-right: ${padding}px; `;
++        if (!styled)
++          this._hbox.style += ` padding-right: ${padding}px; `;
+         
+         if(!level || bgeffect == 'progress-ring') this._level.visible = false;
+         if(!label) this._label.visible = false;
++        // The tab's bar is 120 wide beside a name and takes the line without one.
++        if (osdStyle == 'tab') this._level.x_expand = !this._label.visible;
+ 
+         const h_percent = custOSD._settings.get_double("horizontal");
+         const v_percent = custOSD._settings.get_double("vertical");
+         const bradius = custOSD._settings.get_double("bradius");
+-        const rotate = custOSD._settings.get_boolean("rotate");       
++        const rotate = custOSD._settings.get_boolean("rotate") && !styled;
+  
+         let br1, br2;
+         if(bradius < 0){
+@@ -560,20 +705,29 @@ export default class CustomOSDExtension extends Extension {
+         }
+ 
+         const sqrCircle = custOSD._settings.get_boolean("square-circle");
+-        if(sqrCircle)
++        if(sqrCircle && !styled)
+           this._hbox.set_height(this._hbox.width);
+         else
            this._hbox.set_height(-1);
  
          let hbxH = this._hbox.height;
@@ -209,21 +386,32 @@ index 27fbac8..d3a0001 100644
          if(bgeffect == 'progress-ring')
            br2 = br1;
  
-         this._hbox.style += ` border-radius: ${br1*hbxH/2/100}px ${br2*hbxH/2/100}px;`;
- 
--        let hbxW = this._hbox.width; 
--        
+-        this._hbox.style += ` border-radius: ${br1*hbxH/2/100}px ${br2*hbxH/2/100}px;`;
++        if (!styled)
++          this._hbox.style += ` border-radius: ${br1*hbxH/2/100}px ${br2*hbxH/2/100}px;`;
++
 +        let hbxW = this._hbox.width;
 +        if (hbxW <= 0) {
 +          let [, natW] = this._hbox.get_preferred_width(hbxH);
 +          hbxW = natW > 0 ? natW : 150;
 +        }
-+
+ 
+-        let hbxW = this._hbox.width; 
+-        
          if(bgeffect == 'progress-ring') {
            custOSD.progressRing = true;
            custOSD.height = hbxH;
-@@ -601,14 +669,14 @@ export default class CustomOSDExtension extends Extension {
-         let transY = -v_percent * (monitor.height - hbxH)/100.0;
+@@ -598,17 +752,22 @@ export default class CustomOSDExtension extends Extension {
+         let transX = h_percent * (monitor.width - hbxW)/100.0;
+         this._hbox.translation_x = transX;
+ 
+-        let transY = -v_percent * (monitor.height - hbxH)/100.0;
++        let transY = -v_percent * (monitor.height - (osdStyle == 'capsule' ? CAPSULE_ANCHOR_HEIGHT : hbxH))/100.0;
++        // The tab has one place to be, so the position keys do not reach it.
++        if (osdStyle == 'tab') {
++          this._hbox.translation_x = 0;
++          transY = tabTop(monitor);
++        }
          this._hbox.translation_y = transY;
  
 -        const effect = this._hbox.get_effect('customOSD-dynamic');
@@ -241,7 +429,7 @@ index 27fbac8..d3a0001 100644
                  GLib.source_remove(this._blurTimeoutId);
                  this._blurTimeoutId = null;
                });
-@@ -648,6 +716,11 @@ export default class CustomOSDExtension extends Extension {
+@@ -648,6 +807,11 @@ export default class CustomOSDExtension extends Extension {
      this._custOSDIcon = null;
      this._timeOSDIcon = null;
  
@@ -271,3 +459,19 @@ index 8e79e77..60ba290 100644
    ],
    "url": "https://github.com/neuromorph/custom-osd",
    "gettext-domain": "custom-osd",
+diff --git a/schemas/org.gnome.shell.extensions.custom-osd.gschema.xml b/schemas/org.gnome.shell.extensions.custom-osd.gschema.xml
+index d001692..2cd0ae1 100644
+--- a/schemas/org.gnome.shell.extensions.custom-osd.gschema.xml
++++ b/schemas/org.gnome.shell.extensions.custom-osd.gschema.xml
+@@ -377,6 +377,11 @@
+       <summary>Profiles</summary>
+       <description>Settings Profiles.</description>
+     </key>
++    <key type="s" name="osd-style">
++      <default>'capsule'</default>
++      <summary>Aura Glass design</summary>
++      <description>capsule or tab, set by install.sh --osd-style. Any other value keeps upstream's layout.</description>
++    </key>
+     <key type="s" name="showosd">
+       <default>''</default>
+       <summary>Show OSD from command line</summary>

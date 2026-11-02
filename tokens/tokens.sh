@@ -93,18 +93,34 @@ TOKEN_RADIUS_DIALOG=20
 #   dconf/core.ini        [blur-my-shell/popup] corner-radius
 TOKEN_RADIUS_POPUP=20
 
-# The volume/brightness OSD. dconf only: Custom OSD draws the pill and Blur My
-# Shell rounds the blur, so there is no CSS counterpart to keep in step.
+# The window and workspace switchers' blur, despite the name. dconf only: no
+# stylesheet paints against it. Blur My Shell v76 split the key it was named for:
+# `osd-corner-radius` now rounds .switcher-list and .workspace-switcher, and the
+# volume and brightness popup moved to `osd-window-corner-radius`, whose default
+# this project never set. See TOKEN_RADIUS_OSD_CAPSULE below. The name stays
+# because the radius-custom memo and the preset rows carry this column by position.
 #
-# This key does NOT clamp, whatever the old comment in dconf/core.ini claimed.
-# Past half the blurred box's height the four corner arcs overlap and the OSD
-# turns into a soft ellipse — which is what 100 produced. The box being blurred
-# is the stock .osd-window, far shorter than the pill Custom OSD draws inside
-# it, so any value estimated from the *pill* comes out far too large. 12 was
-# found by bisecting 0 (hard rectangle) against 25 (bulging). Raise it only
-# against a screenshot.
+# This key does NOT clamp. Past half the blurred box's height the four corner
+# arcs overlap and the shape turns into a soft ellipse — which is what 100
+# produced. 12 was found by bisecting 0 (hard rectangle) against 25 (bulging),
+# when it still reached the popup. Raise it only against a screenshot.
 #   dconf/core.ini        [blur-my-shell/popup] osd-corner-radius
 TOKEN_RADIUS_OSD=12
+
+# The volume and brightness popup, one radius per --osd-style. Fixed design values,
+# not part of the radius presets: these are shapes picked as a whole, and the
+# preset rows' ceiling of 16 was set by the old 24 px pill. Painted by the theme and
+# rounded behind it by Blur My Shell. apply_osd_style writes the blur half for
+# the style in force, so core.ini carries the capsule's, which is the default.
+#
+# Neither may pass half its popup's height, for the reason above: the capsule is 48
+# tall without a device name and the tab is 38. The tab rounds only its bottom
+# corners, through the key patches/blur-my-shell-osd-corners.patch adds.
+#   css/shell-00-flat.css .osd-window.aura-osd-capsule, .osd-window.aura-osd-tab
+#   dconf/core.ini        [blur-my-shell/popup] osd-window-corner-radius
+#   gui/aura_glass_setup_wizard.py  OSD_DESIGNS
+TOKEN_RADIUS_OSD_CAPSULE=20
+TOKEN_RADIUS_OSD_TAB=16
 
 # Buttons carrying a label — Apply, Save, and the rest of gtk4-20-buttons.css's
 # own button.text-button block. Shipped as a pill (9999) rather than a curated
@@ -132,13 +148,13 @@ TOKEN_RADIUS_BUTTON=9999
 # not proportional to each other and scaling them by a common factor produces
 # combinations nobody looked at. Quick Settings is *larger* than a menu (Blur My
 # Shell groups the date menu with it, see TOKEN_RADIUS_QUICK_SETTINGS above),
-# and the OSD's ceiling has nothing to do with the others at all — it is set by
-# the height of the box being blurred, not by the shape drawn inside it.
+# and the OSD column's ceiling has nothing to do with the others at all — it is
+# set by the height of the box being blurred, not by the shape drawn inside it.
 #
-# The OSD column is the one to be careful with. TOKEN_RADIUS_OSD's comment
-# records why: past half the blurred box's height the four corner arcs overlap
-# and the pill turns into a soft ellipse, which is what 25 produced. Every row
-# here stays well under that.
+# The OSD column is the one to be careful with, and it no longer reaches the
+# volume and brightness popup. TOKEN_RADIUS_OSD's comment records why: past half
+# the blurred box's height the four corner arcs overlap and the shape turns into
+# a soft ellipse, which is what 25 produced. Every row here stays well under that.
 #
 # The `default` row is the one that has been through the screenshot loop that
 # tokens.sh describes. The others are coherent by construction — they keep the
@@ -363,7 +379,8 @@ TOKEN_BLUR_RADIUS_WINDOW_LIST=60    # sigma 30
 # overview p90 GPU busy 99% against 28% with it off, on an RX 7600 — and with the
 # window at 94% opacity almost none of it reached the screen. On v76, a
 # maximized window with this blur dynamic measured median 16% / p90 20% against
-# 11% / 13% static (RX 7600, 20 s, 2026-10-27).
+# 11% / 13% static (RX 7600, 20 s, 2026-10-27). Pipeline `maximized` starts from
+# this radius too, so a maximized window matches the others until it is set apart.
 TOKEN_BLUR_RADIUS_APPLICATIONS=24
 TOKEN_BLUR_RADIUS_DASH_TO_DOCK=8    # sigma 4, the cheap end of the range.
 
@@ -395,6 +412,7 @@ TOKEN_APP_TRANSPARENCY_SHIPPED=0.92
 # that still disagree. The mix() weight is the complement (100 - this).
 #
 #   css/gtk4-transparency.css   the @define-color and :root tint blocks
+#   gui/wallpaper_palette.py    APP_TINT_SHARE, what the picker judges a tint by
 TOKEN_APP_TINT=45
 
 # ---------- Not tokens, deliberately ----------

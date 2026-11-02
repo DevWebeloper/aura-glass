@@ -134,6 +134,19 @@ MANIFEST = [
     ("TOKEN_RADIUS_OSD", "ini", "dconf/core.ini",
      "blur-my-shell/popup", "osd-corner-radius"),
 
+    # The popup's two designs. The tab has no ini entry for the reason core.ini
+    # carries only the default style's: apply_osd_style writes the one in force.
+    ("TOKEN_RADIUS_OSD_CAPSULE", "css", "css/shell-00-flat.css",
+     r"^\.osd-window\.aura-osd-capsule \{[^}]*?border-radius: (\d+)px"),
+    ("TOKEN_RADIUS_OSD_CAPSULE", "ini", "dconf/core.ini",
+     "blur-my-shell/popup", "osd-window-corner-radius"),
+    ("TOKEN_RADIUS_OSD_CAPSULE", "raw", "gui/aura_glass_setup_wizard.py",
+     r'"capsule": \{[^}]*?"radius": (\d+)'),
+    ("TOKEN_RADIUS_OSD_TAB", "css", "css/shell-00-flat.css",
+     r"^\.osd-window\.aura-osd-tab \{[^}]*?border-radius: 0 0 (\d+)px"),
+    ("TOKEN_RADIUS_OSD_TAB", "raw", "gui/aura_glass_setup_wizard.py",
+     r'"tab": \{[^}]*?"radius": (\d+)'),
+
     # No ini entry: buttons have no Blur My Shell component to disagree with,
     # the same way TOKEN_RADIUS_OSD has no css/ site — one direction each.
     ("TOKEN_RADIUS_BUTTON", "css", "css/gtk4-20-buttons.css",
@@ -156,6 +169,9 @@ MANIFEST = [
     ("TOKEN_BLUR_RADIUS_APPLICATIONS", "raw", "dconf/core.ini",
      r"'name': <'windows'>, 'effects': <\[<\{'type': <'dual_kawase_blur'>, "
      r"'id': <'[^']*'>, 'params': <\{'unscaled_radius': <(\d+)\.0>"),
+    ("TOKEN_BLUR_RADIUS_APPLICATIONS", "raw", "dconf/core.ini",
+     r"'name': <'maximized'>, 'effects': <\[<\{'type': <'dual_kawase_blur'>, "
+     r"'id': <'[^']*'>, 'params': <\{'unscaled_radius': <(\d+)\.0>"),
     ("TOKEN_BLUR_RADIUS_DASH_TO_DOCK", "raw", "dconf/core.ini",
      r"'name': <'dock'>, 'effects': <\[<\{'type': <'dual_kawase_blur'>, "
      r"'id': <'[^']*'>, 'params': <\{'unscaled_radius': <(\d+)\.0>"),
@@ -165,6 +181,9 @@ MANIFEST = [
     # Both spellings of the tint, and the mix() weight is the complement.
     ("TOKEN_APP_TINT", "css", "css/gtk4-transparency.css",
      r"var\(--window-bg-color\) (\d+)%, #000000"),
+    # The picker judges a tint by what this mix turns it into.
+    ("TOKEN_APP_TINT", "raw", "gui/wallpaper_palette.py",
+     r"APP_TINT_SHARE = (\d+)"),
     # The prose in the sheet's own header states the baseline too. A stale
     # comment here is how the next person picks the wrong number by hand.
     ("TOKEN_APP_TRANSPARENCY_SHIPPED", "css", "css/gtk4-transparency.css",

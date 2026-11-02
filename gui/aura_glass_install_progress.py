@@ -6,17 +6,18 @@ lib/progress.sh opens this, detached, when the setup wizard started the run or
 every question are still asked there, and this window says so whenever the
 terminal is waiting. What it adds is the overview:
 
-  while the install runs   a progress bar, the step running now and the last
-                           line it printed, and the checklist of steps filling
-                           in as each one ends
-  when it ends             the checklist with verify_install's checks under it,
+  while the install runs   the setup the wizard settled on, a progress bar, the
+                           step running now and the last line it printed, and
+                           the steps sliding in as each one starts
+  when it ends             the steps with verify_install's checks under them,
                            a "Why?" on everything that did not go cleanly (what
                            the step reported, and its part of the log), "Check
                            again", and the log out screen
 
-With --update it is the settings window's update window instead: the
-changelog the settings window wrote to changelog.json above, the bar in the
-middle, and the log live at the bottom (docs/GUI.md §2b).
+With --update it is the settings window's update window: the same columns, with
+the changelog the settings window wrote to changelog.json on the left instead
+of the setup (docs/GUI.md §2b). A run the wizard did not start, such as the
+settings window's login screen run, has no setup to show and stays one column.
 
 The contract is the two files in --dir, described at the top of
 lib/progress.sh. This reads them and writes two files of its own: `window`, its
@@ -52,7 +53,7 @@ POLL_MS = 250
 # changelog bullets hang (notes_view). Raise it when the layout changes enough
 # that an update should swap an open older window for this one (progress_begin
 # compares it).
-WINDOW_LAYOUT = 3
+WINDOW_LAYOUT = 4
 
 # The most of a step's log a "Why?" shows. A font or icon pack download can
 # print a lot; the end of it is where the failure is.
@@ -112,6 +113,25 @@ progressbar.install-progress > trough > progress {
     background-color: alpha(currentColor, 0.10);
     font-weight: bold;
 }
+.setup-badge {
+    min-width: 32px;
+    min-height: 32px;
+    border-radius: 999px;
+    background-color: alpha(currentColor, 0.09);
+}
+.setup-dot {
+    min-width: 14px;
+    min-height: 14px;
+    border-radius: 999px;
+}
+.next-number {
+    min-width: 22px;
+    min-height: 22px;
+    border-radius: 999px;
+    background-color: alpha(currentColor, 0.09);
+    font-size: smaller;
+    font-weight: bold;
+}
 .latest-pill {
     padding: 1px 8px;
     border-radius: 999px;
@@ -167,6 +187,34 @@ FINISHED = {
              "Nothing after the failed step was installed. Why? shows what "
              "went wrong — fix that and run ./install.sh again."),
 }
+
+
+# How each pack and font spells its own name, for the setup cards. A name that
+# is not here came in as a typed --icons or --cursors and is shown as it is.
+PACK_NAMES = {
+    "colloid": "Colloid",
+    "reversal": "Reversal",
+    "hatter": "Hatter",
+    "mactahoe": "MacTahoe",
+    "adwaita": "Adwaita",
+    "aosp": "AOSP",
+    "moga": "Aura Moga Neon",
+    "original": "What you had before",
+}
+FONT_NAMES = {
+    "misans": "MiSans",
+    "inter": "Inter",
+    "sf-pro": "San Francisco",
+}
+SCOPE_NAMES = {
+    "all": "All apps",
+    "gtk": "GTK apps",
+    "none": "No window blur",
+}
+
+# Width of an install's window with the setup column, and without it.
+WIDE_WIDTH = 1040
+SINGLE_WIDTH = 640
 
 
 def clean(text):
@@ -352,7 +400,7 @@ class Card(Gtk.Revealer):
 class Window(Adw.ApplicationWindow):
     def __init__(self, app, run_dir, update=False):
         super().__init__(application=app, title="Aura Glass",
-                         default_width=1040 if update else 600,
+                         default_width=WIDE_WIDTH if update else SINGLE_WIDTH,
                          default_height=720,
                          width_request=360, height_request=480)
         self.update = update
@@ -371,6 +419,7 @@ class Window(Adw.ApplicationWindow):
         self.verifying = False
         self.log_pos = 0
         self.log_view = None
+        self.setup_shown = False
         self.follow = True
         self.bar_target = 0.0
         self.bar_animation = None
@@ -441,8 +490,7 @@ class Window(Adw.ApplicationWindow):
             GLib.idle_add(self._scroll_to_end, self.log_view)
 
     def poll(self):
-        if self.log_view is not None:
-            self._follow_log()
+        self._follow_log()
         try:
             with open(self.events_path, "rb") as handle:
                 handle.seek(self.events_pos)
@@ -495,6 +543,8 @@ class Window(Adw.ApplicationWindow):
                 self.pid = None
             self.repo = event.get("repo") or None
             self.dry = event.get("dry") == "1"
+        elif kind == "choices":
+            self._show_setup(event)
         elif kind == "plan":
             self._add_step(event.get("id", ""), event.get("title", ""))
         elif kind == "start":
@@ -559,12 +609,10 @@ class Window(Adw.ApplicationWindow):
         self.banner = Adw.Banner(title="", revealed=False)
         view.add_top_bar(self.banner)
 
-        # The bar, the step running now and, when it ends, the outcome. On
-        # top of the checklist for an install; at the head of the right-hand
-        # column, above the steps, for an update.
-        size = 40 if self.update else 48
-        hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
-                       spacing=6 if self.update else 8)
+        # The bar, the step running now and, when it ends, the outcome, at the
+        # head of the right-hand column, above the steps.
+        size = 40
+        hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.hero_icon = Gtk.Stack(
             transition_type=Gtk.StackTransitionType.CROSSFADE,
             transition_duration=250)
@@ -578,7 +626,7 @@ class Window(Adw.ApplicationWindow):
             label="Updating Aura Glass" if self.update
             else "Installing Aura Glass",
             wrap=True, justify=Gtk.Justification.CENTER)
-        self.heading.add_css_class("title-3" if self.update else "title-2")
+        self.heading.add_css_class("title-3")
         hero.append(self.heading)
 
         self.current = Gtk.Label(label="Starting…", wrap=True,
@@ -590,7 +638,7 @@ class Window(Adw.ApplicationWindow):
         self.bar.add_css_class("install-progress")
         hero.append(self.bar)
 
-        self.last_line = Gtk.Label(label="", xalign=0.5 if self.update else 0,
+        self.last_line = Gtk.Label(label="", xalign=0.5,
                                    ellipsize=Pango.EllipsizeMode.END)
         self.last_line.add_css_class("monospace")
         self.last_line.add_css_class("caption")
@@ -607,11 +655,8 @@ class Window(Adw.ApplicationWindow):
         hero.append(hint)
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18,
-                       margin_top=16 if self.update else 18, margin_bottom=18,
-                       margin_start=20 if self.update else 12,
-                       margin_end=20 if self.update else 12)
-        if not self.update:
-            body.append(hero)
+                       margin_top=16, margin_bottom=18,
+                       margin_start=20, margin_end=20)
 
         steps_section, self.steps_list = self._section("Steps")
         body.append(steps_section)
@@ -629,19 +674,12 @@ class Window(Adw.ApplicationWindow):
         scroller = Gtk.ScrolledWindow(
             child=Adw.Clamp(maximum_size=560, child=body), vexpand=True,
             hscrollbar_policy=Gtk.PolicyType.NEVER)
-        if self.update:
-            self._build_update(view, hero, scroller)
-        else:
-            view.set_content(scroller)
+        self._build_columns(view, hero, scroller)
 
         bottom = Gtk.Box(spacing=12, margin_top=12, margin_bottom=12,
                          margin_start=12, margin_end=12)
-        if self.update:
-            log_button = Gtk.ToggleButton(label="Show log")
-            log_button.connect("toggled", self._on_toggle_log)
-        else:
-            log_button = Gtk.Button(label="Show log")
-            log_button.connect("clicked", self._on_show_log)
+        log_button = Gtk.ToggleButton(label="Show log")
+        log_button.connect("toggled", self._on_toggle_log)
         bottom.append(log_button)
         bottom.append(Gtk.Box(hexpand=True))
         self.later = Gtk.Button(label="Later", visible=False)
@@ -655,29 +693,35 @@ class Window(Adw.ApplicationWindow):
 
         self.set_content(view)
 
-    def _build_update(self, view, hero, scroller):
-        """Two columns: what's new on the left, how it is going on the right.
+    def _build_columns(self, view, hero, scroller):
+        """Two columns: what's new or the setup on the left, how it is going on
+        the right.
 
         The steps appear one by one as they start, and the right column keeps
         the newest in view unless it was scrolled up to read. The log is
         followed all along but hidden in a drawer under both columns, opened
         by Show log: the steps already say what is happening, and the log is
         there for when one of them did not go cleanly. Narrower than 760sp
-        the columns stack, changelog first.
+        the columns stack, the left one first.
+
+        An install's left column stays hidden until a choices event fills it,
+        and a run that sends none is the right column alone.
         """
         # Equal halves whatever each holds, so neither column jumps in width
-        # as the steps and checks come in.
+        # as the steps and checks come in. A hidden child takes no half.
         columns = Gtk.Box(vexpand=True, homogeneous=True)
 
-        changelog = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
-                            margin_top=20, margin_bottom=20,
-                            margin_start=20, margin_end=20)
-        self._build_changelog(changelog)
-        left = Gtk.ScrolledWindow(
-            child=Adw.Clamp(maximum_size=560, child=changelog), vexpand=True,
-            hscrollbar_policy=Gtk.PolicyType.NEVER)
-        left.add_css_class("changelog-pane")
-        columns.append(left)
+        side = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
+                       margin_top=20, margin_bottom=20,
+                       margin_start=20, margin_end=20)
+        if self.update:
+            self._build_changelog(side)
+        self.side = side
+        self.left = Gtk.ScrolledWindow(
+            child=Adw.Clamp(maximum_size=560, child=side), vexpand=True,
+            hscrollbar_policy=Gtk.PolicyType.NEVER, visible=self.update)
+        self.left.add_css_class("changelog-pane")
+        columns.append(self.left)
 
         right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         right.append(Adw.Clamp(maximum_size=560, child=hero,
@@ -716,7 +760,7 @@ class Window(Adw.ApplicationWindow):
         narrow = Adw.Breakpoint.new(
             Adw.BreakpointCondition.parse("max-width: 760sp"))
         narrow.add_setter(columns, "orientation", Gtk.Orientation.VERTICAL)
-        narrow.add_setter(left, "css-classes", GObject.Value(
+        narrow.add_setter(self.left, "css-classes", GObject.Value(
             GObject.TYPE_STRV, ["changelog-pane-narrow"]))
         self.add_breakpoint(narrow)
 
@@ -798,6 +842,160 @@ class Window(Adw.ApplicationWindow):
             card.append(notes)
             body.append(card)
 
+    def _show_setup(self, event):
+        """The left column of a wizard's install: what it is about to set up.
+
+        Every value is what install.sh resolved, not what the wizard asked for,
+        so this is true of a re-run that kept a remembered answer too.
+        """
+        if self.setup_shown or self.update:
+            return
+        self.setup_shown = True
+        body = self.side
+
+        heading = Gtk.Label(label="Your setup", xalign=0)
+        heading.add_css_class("title-2")
+        body.append(heading)
+        version = event.get("version", "")
+        if version:
+            pill = Gtk.Label(label=version, halign=Gtk.Align.START)
+            pill.add_css_class("version-pill")
+            body.append(pill)
+        intro = Gtk.Label(
+            label="What this install is putting in place. All of it can be "
+                  "changed later.",
+            xalign=0, wrap=True)
+        intro.add_css_class("dim-label")
+        body.append(intro)
+
+        # A grid rather than a FlowBox: a FlowBox falls to one column as soon as
+        # the longest line's natural width stops fitting twice, so the same six
+        # cards came out in two shapes depending on the answers.
+        grid = Gtk.Grid(column_homogeneous=True, row_homogeneous=True,
+                        column_spacing=8, row_spacing=8)
+        for index, card in enumerate(self._setup_cards(event)):
+            grid.attach(self._setup_card(*card), index % 2, index // 2, 1, 1)
+        body.append(grid)
+        body.append(self._next_card())
+
+        self.left.set_visible(True)
+        # Before the window is shown this is simply its size. A window already
+        # up, because this event lost the race to the first poll, grows to it.
+        self.set_default_size(WIDE_WIDTH, self.get_default_size()[1])
+
+    def _setup_cards(self, event):
+        """(icon or an accent's hex, label, value, detail), one per card."""
+        accent = event.get("accent", "")
+        hexcolour = event.get("accent_hex", "")
+        if not re.fullmatch(r"[0-9a-fA-F]{6}", hexcolour):
+            hexcolour = None
+        font = event.get("font", "")
+        look = (hexcolour or "applications-graphics-symbolic", "Look",
+                accent.capitalize(),
+                "%s font" % FONT_NAMES[font] if font in FONT_NAMES
+                else "Your current font")
+
+        if event.get("glass") == "performance":
+            glass = "Performance"
+            detail = "No blur"
+        else:
+            glass = "Frosted glass"
+            scope = event.get("scope", "")
+            detail = "%s · %s%% opacity" % (
+                SCOPE_NAMES.get(scope, scope), event.get("opacity", ""))
+
+        def pack(name, kept):
+            return PACK_NAMES.get(name.split("-")[0], name) if name else kept
+
+        size = event.get("cursor_size", "")
+        try:
+            extras = int(event.get("extensions", "0"))
+        except ValueError:
+            extras = 0
+        themed = event.get("gdm") == "1"
+        matched = event.get("gdm_monitors") == "1"
+        return [
+            look,
+            ("video-display-symbolic", "Glass", glass, detail),
+            ("view-app-grid-symbolic", "Icons",
+             pack(event.get("icons", ""), "Left as they are"), ""),
+            ("input-mouse-symbolic", "Pointer",
+             pack(event.get("cursors", ""), "Left as it is"),
+             "%spx" % size if size else "Size left as it is"),
+            ("application-x-addon-symbolic", "Extensions",
+             "%d optional" % extras if extras else "Foundation only",
+             "With the volume pill" if event.get("osd") == "1"
+             else "GNOME's own volume popup"),
+            ("system-lock-screen-symbolic", "Login screen",
+             "Themed" if themed else "Left as it is",
+             "Monitor layout matched" if matched
+             else "Monitor layout left alone"),
+        ]
+
+    def _setup_card(self, icon, label, value, detail):
+        card = Gtk.Box(spacing=12)
+        card.add_css_class("release-card")
+        # Its own expand set, so the centred child does not pass one on to the
+        # card and push the words away from the badge.
+        badge = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER,
+                        hexpand=False, vexpand=False)
+        badge.add_css_class("setup-badge")
+        if icon.endswith("-symbolic"):
+            badge.append(Gtk.Image(icon_name=icon, hexpand=True,
+                                   halign=Gtk.Align.CENTER))
+        else:
+            # The accent's own colour, from install.sh's accent_hex, rather
+            # than a copy of the nine here. Nothing is the accent yet: this
+            # window can be open before the run has set it.
+            dot = Gtk.Box(hexpand=True, vexpand=True, halign=Gtk.Align.CENTER,
+                          valign=Gtk.Align.CENTER)
+            dot.add_css_class("setup-dot")
+            provider = Gtk.CssProvider()
+            provider.load_from_data(
+                (".setup-dot { background-color: #%s; }" % icon).encode())
+            Gtk.StyleContext.add_provider_for_display(
+                Gdk.Display.get_default(), provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
+            badge.append(dot)
+        card.append(badge)
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1,
+                       hexpand=True, valign=Gtk.Align.CENTER)
+        name = Gtk.Label(label=label, xalign=0)
+        name.add_css_class("caption")
+        name.add_css_class("dim-label")
+        text.append(name)
+        answer = Gtk.Label(label=value, xalign=0, wrap=True)
+        answer.add_css_class("heading")
+        text.append(answer)
+        if detail:
+            more = Gtk.Label(label=detail, xalign=0, wrap=True)
+            more.add_css_class("caption")
+            more.add_css_class("dim-label")
+            text.append(more)
+        card.append(text)
+        return card
+
+    def _next_card(self):
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        card.add_css_class("release-card")
+        title = Gtk.Label(label="What happens next", xalign=0)
+        title.add_css_class("title-4")
+        card.append(title)
+        for number, line in enumerate((
+                "The terminal asks for your password if a step needs it.",
+                "Log out and back in. Extensions only load into a new session.",
+                "Retune anything in Aura Glass Settings, without reinstalling.",
+        ), 1):
+            row = Gtk.Box(spacing=10)
+            badge = Gtk.Label(label=str(number), valign=Gtk.Align.START)
+            badge.add_css_class("next-number")
+            row.append(badge)
+            words = Gtk.Label(label=line, xalign=0, wrap=True, hexpand=True,
+                              valign=Gtk.Align.CENTER)
+            row.append(words)
+            card.append(row)
+        return card
+
     def _add_step(self, ident, title):
         if ident in self.steps:
             return
@@ -807,11 +1005,9 @@ class Window(Adw.ApplicationWindow):
         self.steps_list.append(step.card)
         self.steps[ident] = step
         self.order.append(ident)
+        # Not revealed yet: each step shows as it starts, so the column fills
+        # in as the run goes, and _finish shows the ones it never reached.
         self._refresh_step(step)
-        # An install lists every step from the start; an update shows each
-        # one as it starts, so the column fills in as the run goes.
-        if not self.update:
-            step.card.reveal()
 
     def _refresh_step(self, step):
         subtitle = ""
@@ -927,6 +1123,9 @@ class Window(Adw.ApplicationWindow):
             heading = {"ok": "Aura Glass is updated",
                        "warn": "Updated, with a few problems",
                        "fail": "The update stopped"}[status]
+        live = event.get("logout") == "0"
+        if live and status != "fail":
+            text = "Everything is already live, so there is no need to log out."
         if event.get("lost"):
             text = ("The installer stopped without finishing — its terminal "
                     "was closed or the run was interrupted. Why? on the last "
@@ -948,7 +1147,7 @@ class Window(Adw.ApplicationWindow):
         self.title.set_title("Aura Glass")
         self.title.set_subtitle(self._update_span() if self.update else "")
 
-        can_log_out = status != "fail" and not self.dry
+        can_log_out = status != "fail" and not self.dry and not live
         self.logout.set_visible(can_log_out)
         self.later.set_label("Later" if can_log_out else "Close")
         self.later.set_visible(True)
@@ -1049,26 +1248,6 @@ class Window(Adw.ApplicationWindow):
 
         dialog.connect("response", response)
         dialog.present(self)
-
-    def _on_show_log(self, _button):
-        dialog = Adw.Dialog(title="Install log", content_width=720,
-                            content_height=600)
-        view = Adw.ToolbarView()
-        header = Adw.HeaderBar()
-        opener = Gtk.Button(label="Open in editor")
-        opener.connect("clicked", lambda _b: open_uri(
-            GLib.filename_to_uri(self.log_path)))
-        header.pack_start(opener)
-        view.add_top_bar(header)
-        text = Gtk.TextView(editable=False, cursor_visible=False, monospace=True,
-                            wrap_mode=Gtk.WrapMode.WORD_CHAR,
-                            top_margin=8, bottom_margin=8,
-                            left_margin=8, right_margin=8)
-        text.get_buffer().set_text(read_range(self.log_path, 0))
-        view.set_content(Gtk.ScrolledWindow(child=text, vexpand=True))
-        dialog.set_child(view)
-        dialog.present(self)
-        GLib.idle_add(self._scroll_to_end, text)
 
     def _on_check_again(self, button):
         if not self.repo or self.verifying:

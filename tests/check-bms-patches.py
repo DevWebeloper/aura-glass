@@ -23,7 +23,8 @@ with tempfile.TemporaryDirectory(prefix="aura-bms-test-") as directory:
                   "blur-my-shell-subwindows.patch",
                   "blur-my-shell-full-size-buffers.patch",
                   "blur-my-shell-overview-fade.patch",
-                  "blur-my-shell-static-maximized.patch"):
+                  "blur-my-shell-static-maximized.patch",
+                  "blur-my-shell-osd-corners.patch"):
         subprocess.run(["git", "apply", str(ROOT / "patches" / patch)],
                        cwd=target, check=True)
     subprocess.run(["node", str(ROOT / "tests" / "bms-patches.cjs"), directory], check=True)

@@ -41,6 +41,9 @@ def fixture():
     log = os.path.join(temp.name, "commands.log")
     write(os.path.join(bindir, "dconf"), "#!/bin/sh\nprintf 'dconf %s\\n' \"$*\" >> \"$AURA_TEST_LOG\"\n", 0o755)
     write(os.path.join(bindir, "gsettings"), "#!/bin/sh\nprintf 'gsettings %s\\n' \"$*\" >> \"$AURA_TEST_LOG\"\ncase \"$1\" in get) printf \"'Aura-Glass'\\n\";; esac\n", 0o755)
+    # Fails unless a check says otherwise, as a Helper from before ReloadTheme
+    # does. Stubbed so that no fixture can reach the real shell through it.
+    write(os.path.join(bindir, "gdbus"), "#!/bin/sh\nprintf 'gdbus %s\\n' \"$*\" >> \"$AURA_TEST_LOG\"\nexit \"${AURA_TEST_GDBUS_RC:-1}\"\n", 0o755)
     write(os.path.join(bindir, "sleep"), "#!/bin/sh\nprintf 'sleep %s\\n' \"$*\" >> \"$AURA_TEST_LOG\"\n", 0o755)
     os.makedirs(os.path.join(home, ".local", "share", "gnome-shell", "extensions", "user-theme@gnome-shell-extensions.gcampax.github.com", "schemas"))
     env = os.environ | {
@@ -101,8 +104,39 @@ def check_quiet_reapply_and_gtk_only_reload():
         temp.cleanup()
 
 
+def commands(log):
+    with open(log, encoding="utf-8") as stream:
+        return stream.read().splitlines()
+
+
+def check_reload_steps():
+    temp, env, _targets, log, _config = fixture()
+    try:
+        def force(**extra):
+            open(log, "w", encoding="utf-8").close()
+            forced = run(env | extra, "--force-reload")
+            assert forced["shell_reload"] == "reloaded"
+            return commands(log)
+
+        # The Helper answers: no toggle, so no trip through the default theme.
+        lines = force(AURA_TEST_GDBUS_RC="0")
+        assert any("ReloadTheme" in line for line in lines)
+        assert reload_count(log) == 0, lines
+        # It refuses, as one from before a login does: the toggle, with its gap.
+        lines = force()
+        assert reload_count(log) == 2, lines
+        assert "sleep 1" in lines, lines
+        # A preview takes the toggle with no gap: this is the flash of a click.
+        lines = force(PREVIEW_MODE="1")
+        assert reload_count(log) == 2, lines
+        assert not any(line.startswith("sleep") for line in lines), lines
+    finally:
+        temp.cleanup()
+
+
 def main():
     check_quiet_reapply_and_gtk_only_reload()
+    check_reload_steps()
     print("check-apply-publication: OK")
 
 

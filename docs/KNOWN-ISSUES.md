@@ -635,6 +635,12 @@ Verified in a pty against a fixture `HOME`: Performance + Minimal prints
 "Performance (No blur)" and 0 extensions; Frosted + Full prints 8; Complete
 Experience prints 20px and all apps at 90%. The hermetic suite passes.
 
+**Superseded 2026-11-02.** Neither wizard asks Frosted or Performance, popup blur
+or "no window blur" any more: every wizard install is frosted, and Performance is
+the settings app's mode switch. Adwaita left both wizards' pointer lists, the GDM
+questions default to yes, and the 20px pointer became a size per display
+(`recommended_cursor_size`).
+
 ---
 
 ## KI-25

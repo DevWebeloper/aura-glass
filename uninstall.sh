@@ -215,6 +215,10 @@ restore "gnome-shell.css"   "$HOME/.themes/$THEME_NAME/gnome-shell/gnome-shell.c
 step "Resetting theme settings"
 run gsettings reset org.gnome.desktop.interface gtk-theme
 run gsettings reset org.gnome.desktop.interface icon-theme
+# Generated over whichever pack was in use, by apply_icon_theme.
+for d in "$HOME"/.local/share/icons/Aura-Lucide--*; do
+    if [ -d "$d" ]; then run rm -rf "$d"; fi
+done
 run gsettings reset org.gnome.desktop.interface cursor-theme
 run gsettings reset org.gnome.desktop.interface cursor-size
 run gsettings reset org.gnome.desktop.interface accent-color
@@ -490,17 +494,19 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/extension-pack" \
           "$CONF_DIR/extension-catalog" \
           "$CONF_DIR/dconf-shipped" \
-          "$CONF_DIR/osd" "$CONF_DIR/osd-device-name" \
-          "$CONF_DIR/window-menu" \
+          "$CONF_DIR/osd" "$CONF_DIR/osd-device-name" "$CONF_DIR/osd-style" \
+          "$CONF_DIR/window-menu" "$CONF_DIR/top-bar-icon" \
           "$CONF_DIR/app-transparency" \
           "$CONF_DIR/app-opacity" \
           "$CONF_DIR/app-tint-color" \
           "$CONF_DIR/shell-tint-color" \
+          "$CONF_DIR/dock-tint-color" "$CONF_DIR/panel-tint-color" \
+          "$CONF_DIR/maximized-panel-tint-color" \
           "$CONF_DIR/blur-strength" "$CONF_DIR/blur-brightness" \
           "$CONF_DIR"/*-blur-strength "$CONF_DIR"/*-blur-brightness \
           "$CONF_DIR/popup-opacity" "$CONF_DIR/panel-height" "$CONF_DIR/tray-icon-size" \
           "$CONF_DIR/maximized-panel-brightness" \
-          "$CONF_DIR/glass-style" "$CONF_DIR/liquid-windows" "$CONF_DIR/fullscreen-blur" "$CONF_DIR/blur-refresh" \
+          "$CONF_DIR/glass-style" "$CONF_DIR/liquid-windows" "$CONF_DIR/fullscreen-blur" "$CONF_DIR/maximized-blur" "$CONF_DIR/blur-refresh" \
           "$CONF_DIR/smooth-animations" \
           "$CONF_DIR/window-animation-speed" "$CONF_DIR/notification-animation-speed" "$CONF_DIR/menu-animation-speed" \
           "$CONF_DIR/gdm-installed" "$CONF_DIR/gdm-gresource" \
@@ -522,6 +528,8 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/accent" "$CONF_DIR/glass-mode"
 # The last full install's progress record and log (lib/progress.sh).
 run rm -rf "$CONF_DIR/last-install"
+# What the next update trusts as already installed (lib/steps-apply-plan.sh).
+run rm -f "$CONF_DIR/installed-parts" "$CONF_DIR/apply-source-fingerprint"
 [ -d "$CONF_DIR" ] && run touch "$CONF_DIR/uninstalled"
 if confirm "Delete $CONF_DIR (this also deletes the backups above)?" 0; then
     run rm -rf "$CONF_DIR"

@@ -474,3 +474,74 @@ monitor_count() {
     [ "$drm" -gt 0 ] 2>/dev/null || drm=1
     printf '%s' "$drm"
 }
+
+# recommended_cursor_size — the pointer size both wizards recommend for the
+# screens driven right now: 24 up to 1080p (1200 lines), 32 at 1440p, 48 at 4K.
+#
+# Each is the same share of the screen's height, taking 32 on a 1440p panel as
+# the baseline it was looked at on. Moga's own drawings start at 32 and step to
+# 48 and 64, so the two larger answers are also the ones it has pixels for.
+#
+# The largest screen decides, in physical lines rather than logical ones: a
+# 1440p panel at 133% is still a 1440p panel, and cursor-size is one key for
+# all of them. The exception is a scale of 1.75 and up, where GNOME is doubling
+# the pointer itself, so 4K at 200% reads as the 1080p it is laid out as; 48
+# there would draw a 96px pointer. The GUI wizard's recommended_cursor_size
+# makes the same call off Gdk. Mutter is asked first for the same reason as
+# monitor_count. DRM has no scale and is what is left with no session to ask;
+# with neither, 32.
+recommended_cursor_size() {
+    local lines="" modes mode height
+
+    if have gdbus && have python3; then
+        lines="$(gdbus call --session \
+                    --dest org.gnome.Mutter.DisplayConfig \
+                    --object-path /org/gnome/Mutter/DisplayConfig \
+                    --method org.gnome.Mutter.DisplayConfig.GetCurrentState \
+                    2>/dev/null \
+                 | python3 -c '
+import re, sys
+state = sys.stdin.read()
+scales = {}
+for scale, outputs in re.findall(
+        r"\(-?\d+, -?\d+, ([0-9.]+), uint32 \d+, (?:true|false), \[(.*?)\]", state):
+    for name in re.findall(r"\(\x27([^\x27]+)\x27, \x27", outputs):
+        scales[name] = float(scale)
+heads = list(re.finditer(
+    r"\(\(\x27([^\x27]+)\x27, \x27[^\x27]*\x27, \x27[^\x27]*\x27, \x27[^\x27]*\x27\), \[", state))
+best = 0
+for i, head in enumerate(heads):
+    end = heads[i + 1].start() if i + 1 < len(heads) else len(state)
+    current = re.search(
+        r"\x27[^\x27]*\x27, \d+, (\d+), [0-9.]+, [0-9.]+, \[[^\]]*\], \{[^}]*\x27is-current\x27",
+        state[head.end():end])
+    if current and head.group(1) in scales:
+        scale = scales[head.group(1)]
+        best = max(best, int(int(current.group(1)) / (scale if scale >= 1.75 else 1)))
+if best:
+    print(best)
+' 2>/dev/null)" || lines=""
+    fi
+
+    if [ -z "$lines" ]; then
+        # The first line of a connector's modes is its preferred, largest one.
+        for modes in /sys/class/drm/card*-*/modes; do
+            [ -r "$modes" ] || continue
+            [ "$(cat "${modes%/modes}/status" 2>/dev/null || true)" = connected ] || continue
+            mode="$(head -n 1 "$modes" 2>/dev/null || true)"
+            height="${mode#*x}"
+            height="${height%%[!0-9]*}"
+            [ -n "$height" ] && [ "$height" -gt "${lines:-0}" ] && lines="$height"
+        done
+    fi
+
+    if [ -z "$lines" ]; then
+        printf '32'
+    elif [ "$lines" -le 1200 ]; then
+        printf '24'
+    elif [ "$lines" -le 1800 ]; then
+        printf '32'
+    else
+        printf '48'
+    fi
+}

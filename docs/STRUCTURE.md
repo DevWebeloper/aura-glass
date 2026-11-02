@@ -25,6 +25,7 @@ For "which file draws this button / owns this setting", use
 | `CONTRIBUTING.md` | The short contributor guide. |
 | `LICENSE` | MIT. |
 | `wallpapers/` | Bundled wallpapers (JPEG). `install_wallpapers` copies them and lists them in Settings > Appearance; it never sets one. |
+| `symbols/lucide/` | System icons under GNOME's names, from Lucide (ISC, `LICENSE` beside them) with strokes turned into filled outlines, because symbolic recolouring works on fills. `write_system_icons` copies them into the overlay themes. |
 | `.gitignore` | Ignores preview screenshots, `__pycache__`, IDE files, `.agents/` and `*.code-workspace`. |
 
 ### `lib/`: the steps (sourced by `install.sh`; definitions only)
@@ -45,8 +46,8 @@ For "which file draws this button / owns this setting", use
 | `steps-gdm.sh` | Login screen theme, cursor and icons, wallpaper generation, monitor sync, and the GDM sync unit (all opt-in, root). |
 | `steps-gui.sh` | `install_gui` (settings window, launcher, preview, desktop entry, icon, the `repo-path` memo), `install_first_open_autostart`, `install_update_check`. |
 | `steps-wizard.sh` | `run_setup_wizard`, which runs the GTK wizard and reads its flags back. |
-| `progress.sh` | The progress window's side of a full install: `progress_begin` (tee to the log, launch the window), `progress_plan`/`progress_start`/`progress_end`/`progress_skip`, `progress_finish`, the `progress_note`/`progress_wait`/`progress_resume` hooks `common.sh` calls as no-ops otherwise, and `verify_install` (the checklist, also `--verify`). Sourced last. |
-| `steps-apply-plan.sh` | The incremental classifier (`select_apply_actions`) and `apply_source_fingerprint`. |
+| `progress.sh` | The progress window's side of a full install: `progress_begin` (tee to the log, launch the window), `progress_plan`/`progress_choices`/`progress_start`/`progress_end`/`progress_skip`, `progress_finish`, the `progress_note`/`progress_wait`/`progress_resume` hooks `common.sh` calls as no-ops otherwise, and `verify_install` (the checklist, also `--verify`). Sourced last. |
+| `steps-apply-plan.sh` | The incremental classifier (`select_apply_actions`), the parts table and what is out of date (`select_update_parts`), and the update's runner (`run_selective_update`). |
 
 ### `tokens/`
 
@@ -86,7 +87,7 @@ For "which file draws this button / owns this setting", use
 | `blur-my-shell-subwindows.patch` | BMS: blur a blurred app's ATTACHED dialogs and UTILITY palettes too, and match both class and `title:` entries up the transient-for chain |
 | `blur-my-shell-full-size-buffers.patch` | BMS: a `full-size-buffers` key that keeps blur textures at monitor size instead of reallocating them while an actor animates (`--smooth-animations`) |
 | `blur-my-shell-overview-fade.patch` | BMS: opening the overview fades the window blur out and leaving it fades it back in, the window content easing with it (200 ms each way); both used to switch in one frame. During a touchpad swipe both follow how far open the overview is instead, so a held or reversed swipe keeps them in step with the fingers. Clone captures are kept per 1.25x size step, so the zooming previews reuse textures instead of allocating one per frame |
-| `blur-my-shell-static-maximized.patch` | BMS: applied last. A window covering its monitor (maximized both ways, fullscreen, or sized over the work area) gets static blur and smaller ones dynamic, instead of one type for all; `static-blur=true` still makes every window static. A crossing rebuilds the blur as the other type, after an interactive resize or the overview's motion if one is under way |
+| `blur-my-shell-static-maximized.patch` | BMS: applied last. A window covering its monitor (maximized both ways, fullscreen, or sized over the work area) gets static blur and smaller ones dynamic, instead of one type for all; `static-blur=true` still makes every window static. Its `maximized-static-blur` key turns that off (the window stays dynamic), and while on the static window uses pipeline `maximized`. A crossing rebuilds the blur as the other type, after an interactive resize or the overview's motion if one is under way |
 | `custom-osd-gnome50.patch` | Custom OSD on GNOME 50/51 |
 | `copyous-gnome51.patch` | Copyous on GNOME 51 |
 | `wiggly-follow-cursor.patch` | Wiggly: measure the pointer in logical pixels before every shake, grow and shrink about its hotspot, follow the cursor theme itself (`theme.js`), and magnify the shape on screen: the theme's busy loop played, else the static shape named by its pixels and drawn from its largest frame or SVG. The magnified copy is hidden from pick, so a drop in the overview finds what is under it (KI-41) |
@@ -113,10 +114,12 @@ For "which file draws this button / owns this setting", use
 | File | What |
 |---|---|
 | `aura_glass_setup_wizard.py` | First-run GTK wizard. Prints flags on stdout. |
-| `aura_glass_install_progress.py` | A full install's progress window: bar, step checklist, checks, "Why?" per step and check, "Check again" (`install.sh --verify`), log out. Reads `$CONF_DIR/last-install/`. |
+| `aura_glass_install_progress.py` | A full install's progress window: the setup a wizard run resolved, bar, steps, checks, "Why?" per step and check, "Check again" (`install.sh --verify`), log out. Reads `$CONF_DIR/last-install/`. |
 | `aura_glass_settings.py` | The settings app (~7,000 lines): `Settings` (state read from memos), `flags_against`, the `Window` pages, `ShellBridge` (D-Bus client), terminal spawning, update logic. |
 | `preview_queue.py` | `PreviewQueue`: one active preview operation plus one replaceable pending one. Apply, Revert and Close take priority. |
+| `wallpaper_palette.py` | The tint picker's colour work, stdlib only: OKLCH, a model of what each surface does to a tint, wallpaper clustering, XML slideshows, and the three rows of suggestions. |
 | `icons/io.github.DevWebeloper.AuraGlassSettings.svg` | App icon (also the README logo). |
+| `samples/` | What the setup wizard shows of fonts and packs it hasn't installed yet: outlines of text, each pointer pack's arrow file, each icon pack's drawings, `render_samples.py` to rebuild them, and `NOTICE.md` for whose they are. Read from the checkout, not installed. |
 
 ### `extensions/aura-glass-blur@aura-glass.local/`
 
@@ -201,12 +204,13 @@ the GPU. **Agents never run these.** Humans only: `preview.sh`,
   └─ preview-active, preview-backup/          only while a live preview is open
 ~/.local/bin/                                 aura-glass-{apply,operation,preview,settings,open-once,update-check,
                                               icon-sync,gdm-sync,adaptive}  (+ tahoe-glass-apply symlink)
-~/.local/share/aura-glass/                    gui/ (settings window + preview_queue.py),
+~/.local/share/aura-glass/                    gui/ (settings window, preview_queue.py, wallpaper_palette.py),
                                               aura_glass_{operation,adaptive}.py
 ~/.local/share/applications/io.github.DevWebeloper.AuraGlassSettings.desktop
 ~/.local/share/icons/hicolor/scalable/apps/io.github.DevWebeloper.AuraGlassSettings.svg
 ~/.local/share/gnome-shell/extensions/        user-theme, blur-my-shell, custom-osd, aura-glass-blur, extras
 ~/.local/share/icons/, ~/.icons/              icon and pointer packs
+~/.local/share/icons/Aura-Lucide--<pack>/     system icon overlays from --system-icons
 ~/.local/share/fonts/aura-glass/              fonts from --font
 ~/.local/share/backgrounds/aura-glass/        wallpapers/ copies
 ~/.local/share/gnome-background-properties/aura-glass.xml   lists them in Settings > Appearance
@@ -266,7 +270,7 @@ the subject of [CONSISTENCY.md](CONSISTENCY.md).
 | `adaptive-performance/*` | worker (`active`, `reason`), `apply_adaptive_blur` (`saved-mode-keys`) | worker, extension, `install_adaptive_performance` |
 | `repo-path` | `install_gui` (only when the GUI is installed) | settings app, preview, update check, adaptive worker (fallback) |
 | `adaptive-install` | `install_adaptive_performance` | adaptive worker |
-| `apply-source-fingerprint` | the `--settings-only --incremental` full fallback | the incremental classifier |
+| `installed-parts` | `update_stamp`, after each part | `--update` and `--incremental` (`select_update_parts`) |
 | BMS dconf subtree | `load_dconf` + `apply_*`, `apply_adaptive_blur`, preview `revert` | Blur My Shell |
 | The 4 CSS targets | `aura-glass-apply` only | GNOME Shell (User Themes), GTK |
 | `$CONF_DIR/extension-overrides.css` | `aura-glass-apply` only | Aura Glass Helper (loads it as an extension sheet, reloads on rename) |

@@ -31,6 +31,7 @@ flag means. Every other program composes flags or calls those functions.
 | Run | Command | What it does | Needs |
 |---|---|---|---|
 | **Full install** | `./install.sh [flags]` | (progress window, after the GTK wizard or with `--progress-window`) → deps → base theme → extensions → icons → cursors → fonts → dconf preset → CSS → gsettings → extensions on/off → integrations (icon sync, GUI, update timer, Flatpak override, retired panel-blur unit removed, adaptive worker) → enable extensions → GDM (opt-in) → `verify_install` (the checklist) → `finish` (log out, from the window when it is open) | network; root only for deps, rounded-blur fallback, GDM |
+| **Update** | `./install.sh --update` (what `bin/aura-glass-update` runs) | Only the parts out of date, in the full install's order, then `verify_install`. A failed check, a file no part claims, nothing recorded, or any other flag runs the full install instead. Asks for sudo only if a package is missing or the login screen is out of date, and for a logout only if an extension's files moved | network only for a part that fetches |
 | **Retune** | `./install.sh --settings-only [flags]` | optional pack/font install if those flags were given → dconf preset → CSS → gsettings → icon sync → extensions on/off → remember mode → GUI, update timer, retired panel-blur unit removed, adaptive worker → GDM sync (if installed) | nothing. Offline, unprivileged, a few seconds |
 
 `--settings-only` refuses to run unless `$CONF_DIR` and the theme directory
@@ -41,12 +42,41 @@ by the GUI and the adaptive worker:
 
 | Modifier | Contract |
 |---|---|
-| `--incremental` | Classify the typed flags (`lib/steps-apply-plan.sh`) and run **only** the matching steps: `accent`, `cursor-theme`, `cursor-size`, `window-buttons`, `blur-pipelines`, `app-blur`, `css`, `adaptive-blur`. Any other flag, a missing or changed source fingerprint, or no narrow flag at all falls back to the full retune. |
+| `--incremental` | Classify the typed flags (`lib/steps-apply-plan.sh`) and run **only** the matching steps, plus any local part that is out of date (§ Parts, below). `--glass-mode`, any flag no class names, no narrow flag at all, or no record of what is installed falls back to the full retune. |
 | `--plan-json` | With `--settings-only --incremental --dry-run`, print `{"schema_version":1,"actions":[…],"fallback_reason":…}` on stdout and exit. The settings window asks it for the pending flags (debounced, as a dry run) and shows the answer as the first row of the "N changes" popover: a quick apply and its steps, or a full reapply and why (`plan_summary`). `tools/check-incremental-apply.py` and `check-gui-flags.py` cover it. |
 | `--adaptive-blur active\|restore` | Private to the adaptive worker. Requires `--settings-only --incremental`. Applies or removes a **transient** no-blur state without writing any memo (`remembering()` is false while it's set). |
 
 `--deps-only` installs missing dependencies and exits. The settings window
 hands it to a terminal because it needs `sudo`.
+
+
+### Parts: what an update and an Apply run
+
+`lib/steps-apply-plan.sh` lists everything the full install does as parts
+(`UPDATE_PARTS`) and `$C/installed-parts` holds a hash for each one, written only
+after it succeeds. A part is out of date when its hash differs or
+`update_part_present` finds what it installed gone.
+
+A hash covers the part's entry functions and everything they reach (from
+`declare -f`, so a comment changes nothing and a helper three calls down does),
+the library variables those name, the files in `UPDATE_PART_FILES`, and for the
+theme and extensions the GNOME version. Nothing can fall between parts unnoticed:
+
+- A file no part claims and `UPDATE_IGNORED` does not name lands in `other`, and a
+  change there runs the full install.
+- A part that failed has no new stamp, so the next run tries it again.
+- `verify_install` runs after every update, and a failed check runs the full install.
+- `check-incremental-apply.py` fails if a step of the full sequence is outside a part
+  or a tracked file is unaccounted for.
+
+Installing the theme also selects the look and the login screen, because it puts
+upstream's sheets back. Installing extensions also selects `enable`.
+
+An Apply runs only `UPDATE_LOCAL_PARTS`, the steps a retune has always run, so it
+stays offline and rootless. Anything else out of date goes in the plan's
+`pending_update`, the popover names it, and the next update installs it.
+
+Bump `UPDATE_PLAN_SCHEMA` to make every part out of date for a release that needs it.
 
 ---
 
@@ -246,8 +276,9 @@ splices to the same files and does not reload the shell.
   `-st-accent-color` in the shell and `@accent_bg_color` in GTK4, so GNOME's
   accent recolours everything live.
 - **Publishing** goes through a temp file and `os.replace`, and identical output
-  isn't rewritten (quiet apply). The shell reload (toggling User Themes) happens
-  only when the shell CSS changed. `--force-reload` forces it,
+  isn't rewritten (quiet apply). The shell reload happens only when the shell CSS
+  changed: Aura Glass Helper's D-Bus `ReloadTheme` first, which has no trip through
+  the default theme, then toggling User Themes for a Helper that doesn't have it yet. `--force-reload` forces it,
   `--no-shell-reload` suppresses it, and `--json` prints a machine-readable
   result.
 
@@ -354,7 +385,8 @@ changes neither.
   a held or reversed swipe keeps the blur in step with the fingers), then
   `blur-my-shell-static-maximized.patch` (a window covering its monitor is static
   and smaller ones dynamic, a crossing rebuilding the blur as the other type once
-  an interactive resize or the overview's motion is over). Each has its own stamp in `$C`. v73's overview,
+  an interactive resize or the overview's motion is over; `--maximized-blur dynamic`
+  turns this off through its `maximized-static-blur` key). Each has its own stamp in `$C`. v73's overview,
   notification and panel-refit patches were dropped with v76, which was checked
   live without them, and its static-maximized patch with them until it came back
   re-cut. Custom OSD gets
@@ -376,7 +408,7 @@ changes neither.
    `apply_app_blur`, so the memo and dconf change together.
 2. A **D-Bus bridge**, `io.github.DevWebeloper.AuraGlass` at
    `/io/github/DevWebeloper/AuraGlass`. Methods are `ListWindows`,
-   `GetFocusState`, `GetFullscreen`, `SetWindowOpacity`, `RefreshOpacity` and
+   `GetFocusState`, `GetFullscreen`, `SetWindowOpacity`, `RefreshOpacity`, `ReloadTheme` and
    `InspectOverviewState`; signals are `WindowsChanged` and `FocusChanged`.
    Unprivileged GTK apps on Wayland have no other way to see the window list
    and the fullscreen state. Both the settings app and the adaptive worker use

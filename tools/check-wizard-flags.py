@@ -8,7 +8,7 @@ therefore only as correct as that command line, and a wizard that composes a
 list install.sh rejects has turned a working install into an error message
 before a single file was written.
 
-So this checks five things:
+So this checks eight things:
 
   composition — the exact argument list for a set of answers. Reading these
       cases is the fastest way to see what pressing Install will do.
@@ -28,6 +28,14 @@ So this checks five things:
 
   accent colours — the swatch hex for each accent, against accent_hex in
       lib/steps-dconf.sh, which tints the tinted glass style with it.
+
+  opacity bar — its range, marks and snap, against the settings window's.
+
+  pointer size — the size recommended for each kind of display.
+
+  previews — every outline, pointer and icon the window shows of something it has not
+      installed yet is in gui/samples/, and the two OSD designs it draws still have
+      the numbers css/shell-00-flat.css gives them.
 
 Run it after changing Answers.to_argv, after changing the pages, and after
 changing any flag in install.sh that the wizard sends.
@@ -87,13 +95,15 @@ def answers(**kw):
 # The font rides with the accent because to_argv states both on every run, and
 # it is second because that is the order to_argv writes them in.
 BASE = ["--accent", "purple", "--font", "system"]
-FROSTED = ["--all-apps-blur", "--app-transparency", "0.90", "--popup-blur"]
+FROSTED = ["--glass-mode", "frosted", "--all-apps-blur", "--app-transparency",
+           "0.90", "--popup-blur"]
 # The wizard's recommended pair, which is not install.sh's flagless default —
 # the wizard states its answer on every run rather than leaving the packs to the
 # installer, so these are the two names the defaults case has to send. The size
-# is a third, independent answer — the wizard's own 20px recommendation.
-PACKS = ["--icons", "reversal", "--cursors", "moga", "--cursor-size", "20",
-         "--osd", "--no-osd-device-name"]
+# is a third, independent answer — 32px until the window has asked the display.
+PACKS = ["--icons", "reversal", "--system-icons", "lucide", "--cursors", "moga", "--cursor-size", "32",
+         "--osd", "--no-osd-device-name",
+                       "--osd-style", "capsule"]
 
 # (description, the answers, whether there is a GDM, expected argv)
 CASES = [
@@ -104,9 +114,12 @@ CASES = [
      BASE + FROSTED + PACKS),
 
     # The two GDM flags appear only where install.sh found a GDM to theme, and
-    # both are stated rather than left out: the page has two switches and an
-    # untouched switch is an answer.
+    # both are stated rather than left out: the page has two switches, both on
+    # until turned off, and an untouched switch is an answer.
     ("defaults, with a login manager", answers(), True,
+     BASE + FROSTED + PACKS + ["--gdm", "--gdm-monitors"]),
+
+    ("the login screen left alone", answers(gdm=False, gdm_monitors=False), True,
      BASE + FROSTED + PACKS + ["--no-gdm", "--no-gdm-monitors"]),
 
     ("accent only", answers(accent="teal"), False,
@@ -118,65 +131,62 @@ CASES = [
     ("a font of its own", answers(font="inter"), False,
      ["--accent", "purple", "--font", "inter"] + FROSTED + PACKS),
 
-    # Performance is the absence of every blur, and install.sh rejects --no-blur
-    # beside any blur flag by design. This is the case that says the wizard
-    # cannot produce that combination.
-    ("performance", answers(blur=False), False,
-     BASE + ["--no-blur"] + PACKS),
-
-    ("performance keeps its own packs", answers(blur=False, want_icons=False), False,
-     BASE + ["--no-blur", "--no-icons", "--cursors", "moga", "--cursor-size",
-             "20", "--osd", "--no-osd-device-name"]),
-
+    # Always frosted, whichever cards were picked: nothing the window can
+    # produce says --no-blur or --no-window-blur any more.
     ("gtk windows blurred", answers(scope="gtk"), False,
-     BASE + ["--gtk-apps-blur", "--app-transparency", "0.90", "--popup-blur"]
-     + PACKS),
-
-    # The transparency has to follow the scope flag rather than precede it:
-    # --no-window-blur picks 0.95 for itself only when nothing explicit has
-    # already said one, so the order here is the thing being asserted.
-    ("no window blur", answers(scope="none", transparency="0.95"), False,
-     BASE + ["--no-window-blur", "--app-transparency", "0.95", "--popup-blur"]
-     + PACKS),
-
-    ("flat popups", answers(popup_blur=False), False,
-     BASE + ["--all-apps-blur", "--app-transparency", "0.90", "--no-popup-blur"]
+     BASE + ["--glass-mode", "frosted", "--gtk-apps-blur", "--app-transparency",
+             "0.90", "--popup-blur"]
      + PACKS),
 
     ("deeper glass", answers(transparency="0.82"), False,
-     BASE + ["--all-apps-blur", "--app-transparency", "0.82", "--popup-blur"]
+     BASE + ["--glass-mode", "frosted", "--all-apps-blur", "--app-transparency",
+             "0.82", "--popup-blur"]
      + PACKS),
 
     ("hatter icons and mactahoe pointers",
      answers(icons="hatter", cursors="mactahoe"), False,
-     BASE + FROSTED + ["--icons", "hatter", "--cursors", "mactahoe",
-                       "--cursor-size", "20", "--osd", "--no-osd-device-name"]),
+     BASE + FROSTED + ["--icons", "hatter", "--system-icons", "lucide", "--cursors", "mactahoe",
+                       "--cursor-size", "32", "--osd", "--no-osd-device-name",
+                       "--osd-style", "capsule"]),
     ("aosp pointers", answers(cursors="aosp"), False,
-     BASE + FROSTED + ["--icons", "reversal", "--cursors", "aosp",
-                       "--cursor-size", "20", "--osd", "--no-osd-device-name"]),
+     BASE + FROSTED + ["--icons", "reversal", "--system-icons", "lucide", "--cursors", "aosp",
+                       "--cursor-size", "32", "--osd", "--no-osd-device-name",
+                       "--osd-style", "capsule"]),
 
     ("keep both packs", answers(want_icons=False, want_cursors=False), False,
-     BASE + FROSTED + ["--no-icons", "--no-cursors", "--cursor-size", "20",
-                       "--osd", "--no-osd-device-name"]),
+     BASE + FROSTED + ["--no-icons", "--no-cursors", "--cursor-size", "32",
+                       "--osd", "--no-osd-device-name",
+                       "--osd-style", "capsule"]),
 
     # Independent of the pack above: keeping the pointer theme is not a
     # statement about its size, and the reverse holds too.
     ("keep the pointer size, theme untouched",
      answers(cursor_size="24", want_cursor_size=False), False,
-     BASE + FROSTED + ["--icons", "reversal", "--cursors", "moga", "--osd", "--no-osd-device-name"]),
+     BASE + FROSTED + ["--icons", "reversal", "--system-icons", "lucide", "--cursors", "moga", "--osd", "--no-osd-device-name",
+                       "--osd-style", "capsule"]),
 
     ("a larger pointer, theme unchanged",
-     answers(cursor_size="32"), False,
-     BASE + FROSTED + ["--icons", "reversal", "--cursors", "moga",
-                       "--cursor-size", "32", "--osd", "--no-osd-device-name"]),
+     answers(cursor_size="48"), False,
+     BASE + FROSTED + ["--icons", "reversal", "--system-icons", "lucide", "--cursors", "moga",
+                       "--cursor-size", "48", "--osd", "--no-osd-device-name",
+                       "--osd-style", "capsule"]),
 
     ("OSD pill naming its device", answers(osd_device_name=True), False,
-     BASE + FROSTED + ["--icons", "reversal", "--cursors", "moga",
-                       "--cursor-size", "20", "--osd", "--osd-device-name"]),
+     BASE + FROSTED + ["--icons", "reversal", "--system-icons", "lucide", "--cursors", "moga",
+                       "--cursor-size", "32", "--osd", "--osd-device-name",
+                       "--osd-style", "capsule"]),
 
+    ("the pack's own system icons", answers(system_icons="pack"), False,
+     BASE + FROSTED + ["--icons", "reversal", "--system-icons", "pack",
+                       "--cursors", "moga", "--cursor-size", "32", "--osd",
+                       "--no-osd-device-name", "--osd-style", "capsule"]),
+    ("the top bar tab", answers(osd_style="tab"), False,
+     BASE + FROSTED + ["--icons", "reversal", "--system-icons", "lucide", "--cursors", "moga",
+                       "--cursor-size", "32", "--osd", "--no-osd-device-name",
+                       "--osd-style", "tab"]),
     ("stock OSD", answers(want_osd=False), False,
-     BASE + FROSTED + ["--icons", "reversal", "--cursors", "moga",
-                       "--cursor-size", "20", "--no-osd"]),
+     BASE + FROSTED + ["--icons", "reversal", "--system-icons", "lucide", "--cursors", "moga",
+                       "--cursor-size", "32", "--no-osd"]),
 
     # A catalogue that could not be read leaves this None, which sends no
     # --extensions at all and leaves install.sh on its own recommended pack.
@@ -191,10 +201,6 @@ CASES = [
     # resolves an empty list to --no-extras rather than to a pack.
     ("no extensions", answers(extensions=[]), False,
      BASE + FROSTED + PACKS + ["--extensions", ""]),
-
-    ("the login screen, themed",
-     answers(gdm=True, gdm_monitors=True), True,
-     BASE + FROSTED + PACKS + ["--gdm", "--gdm-monitors"]),
 
     # Answers.best, the welcome page's "Best experience" button. Extensions
     # come from the catalogue (core excluded — install.sh installs that
@@ -311,6 +317,150 @@ def check_accent_colours():
 
 
 check_accent_colours()
+
+
+# ---- opacity bar ------------------------------------------------------------
+# The wizard's bar is meant to be the settings window's bar: picking "deep" here
+# has to land on "deep" there. Read from the source, because importing the
+# settings window needs pycairo and this check does not.
+def check_opacity_bar():
+    with open(os.path.join(ROOT, "gui", "aura_glass_settings.py"),
+              encoding="utf-8") as fh:
+        settings = fh.read()
+    marks = re.search(r"^TRANSPARENCY_MARKS = (\[.*?^\])", settings, re.M | re.S)
+    if eval(marks.group(1)) != wiz.TRANSPARENCY_MARKS:  # our own source
+        failures.append("opacity bar: the marks differ from the settings window")
+    for name in ("TRANSPARENCY_MIN", "TRANSPARENCY_MAX", "TRANSPARENCY_SNAP"):
+        found = re.search(r"^%s = (\d+)" % name, settings, re.M)
+        if int(found.group(1)) != getattr(wiz, name):
+            failures.append("opacity bar: %s differs from the settings window"
+                            % name)
+
+
+check_opacity_bar()
+
+
+# ---- pointer size -----------------------------------------------------------
+# (physical height, scale) -> size. 1440p is the baseline at any fractional
+# scale; 4K at 200% is 1080p, because GNOME doubles the pointer by itself.
+def check_cursor_sizes():
+    offered = {size for size, _title, _sub in wiz.CURSOR_SIZES}
+    for height, scale, want in ((1080, 1.0, "24"), (1200, 1.25, "24"),
+                                (1440, 1.0, "32"), (1440, 1.33, "32"),
+                                (1600, 1.67, "32"), (1600, 2.0, "24"),
+                                (2160, 1.0, "48"), (2160, 1.5, "48"),
+                                (2160, 2.0, "24")):
+        got = wiz.cursor_size_for(height, scale)
+        if got != want:
+            failures.append("pointer size: %dp at %s gave %s, want %s"
+                            % (height, scale, got, want))
+        if got not in offered:
+            failures.append("pointer size: %s is recommended but not offered"
+                            % got)
+
+
+check_cursor_sizes()
+
+
+# ---- previews ---------------------------------------------------------------
+# A missing outline falls back to a label in the system font, which would show
+# every font as the same font, and a missing pointer draws an empty tile. Neither
+# would raise, so nothing else would catch it.
+def check_previews():
+    samples = os.path.join(ROOT, "gui", "samples")
+    for font, _title, _sub in wiz.FONTS:
+        if font == "system":
+            continue
+        outlines = wiz.font_outlines(ROOT, font)
+        for key in wiz.FONT_SAMPLES:
+            if key not in outlines or wiz.Gsk.Path.parse(
+                    outlines[key]["path"]) is None:
+                failures.append("previews: %s has no usable outline of %s"
+                                % (font, key))
+
+    packs = ["moga-" + name for name, _label, _hex in wiz.ACCENTS]
+    packs += ["aosp", "mactahoe"]
+    for pack in packs:
+        path = os.path.join(samples, "pointers", pack + ".xcursor.gz")
+        try:
+            if not wiz.read_pointer(path):
+                failures.append("previews: %s holds no images" % path)
+        except OSError as exc:
+            failures.append("previews: %s" % exc)
+
+    for pack in ("reversal", "hatter", "colloid"):
+        for name in wiz.ICON_SAMPLES:
+            for accent, _label, _hex in wiz.ACCENTS:
+                folder = os.path.join(samples, "icons", pack)
+                if not (os.path.isfile(os.path.join(folder, name + ".svg"))
+                        or os.path.isfile(os.path.join(
+                            folder, "%s-%s.svg" % (name, accent)))):
+                    failures.append("previews: %s has no %s for %s"
+                                    % (pack, name, accent))
+
+    # The two popup designs against the sheet that draws them. See OSD_DESIGNS.
+    with open(os.path.join(ROOT, "css", "shell-00-flat.css"),
+              encoding="utf-8") as handle:
+        sheet = handle.read()
+
+    def declared(selector, prop):
+        rule = re.search(r"^" + re.escape(selector) + r" \{([^}]*)\}", sheet, re.M)
+        found = re.search(r"(?:^|\s)" + re.escape(prop) + r":\s*([^;]+);",
+                          rule.group(1)) if rule else None
+        return found.group(1).strip() if found else None
+
+    base = ".osd-window.aura-osd-"
+    want = {
+        (base + "capsule", "width"): "%dpx" % wiz.OSD_DESIGNS["capsule"]["width"],
+        (base + "capsule", "padding"): "%dpx %dpx" % (
+            wiz.OSD_DESIGNS["capsule"]["padding_y"],
+            wiz.OSD_DESIGNS["capsule"]["padding_x"]),
+        (base + "capsule", "spacing"): "%dpx" % wiz.OSD_DESIGNS["capsule"]["gap"],
+        (base + "capsule", "border-radius"):
+            "%dpx" % wiz.OSD_DESIGNS["capsule"]["radius"],
+        (base + "capsule > StBoxLayout", "spacing"):
+            "%dpx" % wiz.OSD_DESIGNS["capsule"]["name_gap"],
+        (base + "capsule StIcon", "icon-size"):
+            "%dpx" % wiz.OSD_DESIGNS["capsule"]["icon"],
+        (base + "capsule .level", "height"):
+            "%dpx" % wiz.OSD_DESIGNS["capsule"]["thickness"],
+        (base + "capsule StLabel", "font-size"):
+            "%gpx" % wiz.FONT_SAMPLES["osd-capsule"][1],
+        (base + "tab", "width"): "%dpx" % wiz.OSD_DESIGNS["tab"]["width"],
+        (base + "tab", "height"): "%dpx" % wiz.OSD_DESIGNS["tab"]["height"],
+        (base + "tab", "padding"): "0 %dpx" % wiz.OSD_DESIGNS["tab"]["padding_x"],
+        (base + "tab", "spacing"): "%dpx" % wiz.OSD_DESIGNS["tab"]["gap"],
+        (base + "tab", "border-radius"):
+            "0 0 %dpx %dpx" % (wiz.OSD_DESIGNS["tab"]["radius"],
+                               wiz.OSD_DESIGNS["tab"]["radius"]),
+        (base + "tab StIcon", "icon-size"):
+            "%dpx" % wiz.OSD_DESIGNS["tab"]["icon"],
+        (base + "tab .level", "height"):
+            "%dpx" % wiz.OSD_DESIGNS["tab"]["thickness"],
+        (base + "tab .level", "width"): "%dpx" % wiz.OSD_DESIGNS["tab"]["bar"],
+        (base + "tab StLabel", "font-size"):
+            "%gpx" % wiz.FONT_SAMPLES["osd-tab"][1],
+    }
+    for (selector, prop), value in want.items():
+        got = declared(selector, prop)
+        if got != value:
+            failures.append("previews: %s %s is %s in css, %s in the wizard"
+                            % (selector, prop, got, value))
+    if not wiz.osd_colours(ROOT)["fill"].startswith("rgba("):
+        failures.append("previews: no [custom-osd] colours in dconf/core.ini")
+
+    # The options the two front ends share.
+    with open(os.path.join(ROOT, "gui", "aura_glass_settings.py"),
+              encoding="utf-8") as handle:
+        settings = handle.read()
+    for _value, title, subtitle in wiz.OSD_STYLES + wiz.SYSTEM_ICONS:
+        if not re.search(r'"%s",\s*"%s"' % (re.escape(title), re.escape(subtitle)),
+                         settings):
+            failures.append("previews: the settings window words %s differently"
+                            % title)
+
+
+check_previews()
 
 # Acceptance. --dry-run resolves and prints without writing anything, so this
 # runs against the real installer on a real machine and still changes nothing.

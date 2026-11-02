@@ -321,11 +321,14 @@ load_dconf() {
     apply_app_blur
     apply_app_opacity
     apply_fullscreen_blur
+    apply_maximized_blur
     apply_smooth_animations
     apply_animation_speed
+    apply_top_bar_icon
     apply_radius_dconf
     apply_glass_style
     apply_osd_device_name
+    apply_osd_style
     sync_osd_profile
     refresh_bms_after_dconf
 }
@@ -345,9 +348,10 @@ load_dconf() {
 #
 # Three of these have no painted counterpart at all. `corner-radius` under popup
 # is the generic fallback for surfaces the specific keys do not claim,
-# `osd-corner-radius` belongs to a pill Custom OSD draws rather than to any
-# stylesheet — see TOKEN_RADIUS_OSD for why that one does not simply scale with
-# the rest — and `workspace-corner-radius` is the corner Blur My Shell v77 clips
+# `osd-corner-radius` belongs to the window and workspace switchers' blur rather
+# than to any stylesheet — see TOKEN_RADIUS_OSD for why that one does not simply
+# scale with the rest, and apply_osd_style for the volume and brightness popup,
+# which has a key of its own and no preset — and `workspace-corner-radius` is the corner Blur My Shell v77 clips
 # overview workspaces at, which follows the window's token.
 #
 # That last key only works while the overview component is on: with its blur off
@@ -808,6 +812,34 @@ apply_fullscreen_blur() {
     fi
 }
 
+# Whether a window covering its monitor keeps the cheaper static blur, through
+# pipeline `maximized`, or is one more dynamic window on the windows' pipeline.
+# Static unless asked: maximized-static-blur in dconf/core.ini says why. Written
+# on every run for the reason apply_fullscreen_blur is. An installed Blur My Shell
+# without patches/blur-my-shell-static-maximized.patch's key ignores it.
+apply_maximized_blur() {
+    local base=/org/gnome/shell/extensions/blur-my-shell
+    local want="${MAXIMIZED_BLUR:-}" memo="$CONF_DIR/maximized-blur"
+
+    if [ -z "${MAXIMIZED_BLUR_EXPLICIT:-}" ] || [ -z "$want" ]; then
+        want="$(cat "$memo" 2>/dev/null || true)"
+    fi
+    [ "$want" = dynamic ] || want=static
+
+    if remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$want" > "$memo"
+    fi
+
+    if [ "$want" = dynamic ]; then
+        run dconf write "$base/applications/maximized-static-blur" false
+        ok "maximized windows follow the other windows' dynamic blur (remembered for later runs)"
+    else
+        run dconf write "$base/applications/maximized-static-blur" true
+        ok "maximized windows keep a static blur of their own"
+    fi
+}
+
 # --smooth-animations: VRAM and a little latency traded for animations that
 # start without a dropped frame. Off by default, because the VRAM it takes
 # grows with every blurred surface and window. Two halves:
@@ -903,6 +935,25 @@ apply_animation_speed() {
         printf '%s\n' "$menu" > "$CONF_DIR/menu-animation-speed"
     fi
     ok "animation speed: windows ${window}%, notifications ${notification}%, menus ${menu}% of GNOME's pace (remembered for later runs)"
+}
+
+# --top-bar-icon / --no-top-bar-icon: whether the Aura Glass Helper shows its
+# icon in the top bar. A memo and nothing else: the Helper reads it live through
+# its config monitor and hides the button (_syncTopBarIcon in its extension.js),
+# so Apply needs no reload. Written only when a flag chose it, because a missing
+# memo already means shown. Here rather than in install_aura_ext because that
+# does not run on an incremental Apply.
+apply_top_bar_icon() {
+    [ -n "${TOP_BAR_ICON:-}" ] || return 0
+    if remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$TOP_BAR_ICON" > "$CONF_DIR/top-bar-icon"
+    fi
+    if [ "$TOP_BAR_ICON" = 1 ]; then
+        ok "the Aura Glass icon shows in the top bar (remembered for later runs)"
+    else
+        ok "the Aura Glass icon is hidden from the top bar (remembered for later runs): switch the adaptive profile with aura-glass-adaptive profile"
+    fi
 }
 
 # The popup keys themselves ship in dconf/core.ini so the whole preset stays
@@ -1206,7 +1257,7 @@ apply_popup_blur() {
 }
 
 # Whether the volume and brightness pill names the speaker or screen it changes.
-# Off by default, because the pill is tuned as a bare level bar. Custom OSD shows
+# Off by default, because the popup reads best as an icon and a bar. Custom OSD shows
 # that label only for a popup that has both a label and a level (osd-all), so
 # label-nolevel is left alone. Only label-all moves: the other three entries may
 # be the user's from Custom OSD's own window. Written on every run for the reason
@@ -1234,10 +1285,53 @@ apply_osd_device_name() {
     run dconf write "$key" "$(printf '%s' "$current" | sed -E "s/('label-all': )(true|false)/\1$label/")"
 
     if [ "$want" = 1 ]; then
-        ok "the volume and brightness pill shows the device name (remembered for later runs)"
+        ok "the volume and brightness popup shows the device name (remembered for later runs)"
     else
-        ok "the volume and brightness pill shows only the level"
+        ok "the volume and brightness popup shows no device name"
     fi
+}
+
+# Which design the volume and brightness popup wears, --osd-style capsule|tab.
+# The capsule is the default, for a missing memo and for one this does not know.
+# Top-level rather than in a mode drawer: it is a shape, and both modes have the
+# same one. Written on every run for the reason apply_fullscreen_blur is, and
+# before sync_osd_profile, because osd-style is in the profile it saves.
+#
+# The radius and which corners take it are Blur My Shell's half of a shape the
+# theme paints, so they have to move with it (CLAUDE.md rule 3). They are written
+# with no blur on as well, unlike apply_radius_dconf's, because the keys cost
+# nothing without Blur My Shell and this way a switch to frosted finds them right.
+#
+# Safe to run ahead of the extensions it talks to, which is what a retune does
+# before the rebuilt ones are loaded: Custom OSD without the patch ignores
+# osd-style and keeps its pill, and Blur My Shell without its patch ignores the
+# corners key. The radius does reach it, and 20 suits that pill better than the
+# default 48 this key had until now.
+apply_osd_style() {
+    local osd=/org/gnome/shell/extensions/custom-osd
+    local popup=/org/gnome/shell/extensions/blur-my-shell/popup
+    local want="${OSD_STYLE:-}" memo="$CONF_DIR/osd-style"
+
+    if [ -z "${OSD_STYLE_EXPLICIT:-}" ] || [ -z "$want" ]; then
+        want="$(cat "$memo" 2>/dev/null || true)"
+    fi
+    [ "$want" = tab ] || want=capsule
+
+    if remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$want" > "$memo"
+    fi
+
+    run dconf write "$osd/osd-style" "'$want'"
+    if [ "$want" = tab ]; then
+        run dconf write "$popup/osd-window-corner-radius" "$TOKEN_RADIUS_OSD_TAB"
+        run dconf write "$popup/osd-window-rounded-corners" 2
+    else
+        run dconf write "$popup/osd-window-corner-radius" "$TOKEN_RADIUS_OSD_CAPSULE"
+        run dconf write "$popup/osd-window-rounded-corners" 0
+    fi
+
+    ok "the volume and brightness popup is the $want (remembered for later runs)"
 }
 
 # Custom OSD keeps a set of named profiles beside the live settings, and its
@@ -1372,8 +1466,12 @@ BLUR_BRIGHTNESS_MIN=50
 BLUR_BRIGHTNESS_MAX=100
 
 # surface:memo-prefix:dconf component. The memo prefix names the flags too
-# (--window-blur-strength, --window-brightness).
-BLUR_SURFACES="window:applications popup:popup lockscreen:lockscreen"
+# (--window-blur-strength, --window-brightness). maximized has no component key
+# (apply_blur_pipelines names its pipeline) and its `main` follows window, not the
+# main numbers, so a maximized window matches the others until it is set apart. It
+# stays after window: apply_blur_pipelines and the settings window both read
+# window's answer first.
+BLUR_SURFACES="window:applications popup:popup lockscreen:lockscreen maximized:maximized"
 
 # A per-surface memo, from its own file or — for the two brightness memos an
 # earlier release wrote under another name — from that one. A legacy value at
@@ -1527,18 +1625,31 @@ for match in EFFECT.finditer(base_blob):
 
 # Pipeline id -> (strength, brightness) for the surfaces that have their own;
 # every other pipeline takes the main pair.
+MAXIMIZED = "pipeline_aura_glass_maximized"
 own = {}
+window = (strength, brightness)
 for arg in sys.argv[4:]:
     component, values = arg.split("=", 1)
     s, b = values.split("/", 1)
-    pipeline = read("/%s/pipeline" % component).strip("'")
+    main_s, main_b = window if component == "maximized" else (strength, brightness)
+    pair = (main_s if s == "main" else int(s), main_b if b == "main" else int(b))
+    if component == "applications":
+        window = pair
+    pipeline = MAXIMIZED if component == "maximized" else read("/%s/pipeline" % component).strip("'")
     if pipeline:
-        own[pipeline] = (strength if s == "main" else int(s),
-                         brightness if b == "main" else int(b))
+        own[pipeline] = pair
 
 cur = read("/pipelines") or base_blob
 if not cur:
     sys.exit(0)
+
+# load_dconf skips core.ini on an existing install, and upgrade_bms_settings only
+# moves one still below v76, so this is what brings the maximized pipeline to a
+# blob written before it shipped. Its entry is the last in core.ini's dict.
+if "'%s':" % MAXIMIZED not in cur:
+    start = base_blob.find("'%s':" % MAXIMIZED)
+    if start >= 0:
+        cur = cur.rstrip()[:-1] + ", " + base_blob[start:].rstrip()
 
 # The blob is a dict keyed by pipeline id, so each pipeline's effects sit
 # between its own key and the next one.
@@ -1991,11 +2102,10 @@ apply_moga_cursor_theme() {
     CURSORS=moga apply_cursor_theme
 }
 
-apply_gsettings() {
-    step "Setting themes and accent"
-
-    # prefer-dark is set below, so pick the dark half of the pair here and save
-    # the agent a visible swap a moment later.
+# The icon-theme key and the memo behind it, which an icon-pack Apply also runs.
+apply_icon_theme() {
+    # apply_gsettings sets prefer-dark, so pick the dark half of the pair here
+    # and save the agent a visible swap a moment later.
     #
     # Nothing is resolved at all when the icons are being kept. --no-icons is a
     # promise not to touch the key, and the promise has to hold in this step
@@ -2003,29 +2113,27 @@ apply_gsettings() {
     # installed no pack and then pointed the key at one anyway — and every
     # later run, flagless or from the window, put this theme's pack back over
     # whatever GNOME Tweaks or anything else had set since.
-    local base icons=""
+    local base icons="" system
     if [ "${WANT_ICONS:-1}" = 1 ]; then
         base="$(icon_base)"
         icons="$(icon_variant "$base" Dark || true)"
         [ -n "$icons" ] \
-            || { warn "icon theme $base is not installed — falling back to Adwaita"; icons="Adwaita"; }
+            || { warn "icon theme $base is not installed — falling back to Adwaita"; icons="Adwaita"; base="Adwaita"; }
+        system="$(system_icons_choice)"
+        if remembering; then
+            mkdir -p "$CONF_DIR"
+            printf '%s\n' "$system" > "$CONF_DIR/system-icons"
+        fi
+        if [ "$system" = lucide ]; then
+            write_system_icons "$base"
+            icons="$SYSTEM_ICONS_PREFIX$icons"
+        fi
     fi
 
-    # prefer-dark and the accent are GNOME's own keys and a preference of the
-    # user's, not this theme's styling, so they stand in every mode, as do the
-    # GTK and shell themes: Performance is the theme with the blur removed.
-    #
-    # Written on every full run and full retune, not only the first install,
-    # and on purpose (KI-16, decided 2026-10-15): the theme is dark-only — every
-    # sheet, tint and the frosted ladder are tuned against a dark ground — so a
-    # light color-scheme under it is a broken look, not a preference the theme
-    # can honour. A retune is the way back to the look as designed.
-    run gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
-    apply_accent
-    run gsettings set org.gnome.desktop.interface gtk-theme "$THEME_NAME"
-    run dconf write /org/gnome/shell/extensions/user-theme/name "'$THEME_NAME'"
+    APPLIED_ICONS="$icons"
     if [ -n "$icons" ]; then
         run gsettings set org.gnome.desktop.interface icon-theme   "$icons"
+        prune_system_icons "$system" "$base"
     fi
 
     # Remembered so the next flagless run comes back to this accent rather than
@@ -2042,6 +2150,25 @@ apply_gsettings() {
             printf '%s\n' keep > "$CONF_DIR/icon-pack"
         fi
     fi
+}
+
+apply_gsettings() {
+    step "Setting themes and accent"
+
+    # prefer-dark and the accent are GNOME's own keys and a preference of the
+    # user's, not this theme's styling, so they stand in every mode, as do the
+    # GTK and shell themes: Performance is the theme with the blur removed.
+    #
+    # Written on every full run and full retune, not only the first install,
+    # and on purpose (KI-16, decided 2026-10-15): the theme is dark-only — every
+    # sheet, tint and the frosted ladder are tuned against a dark ground — so a
+    # light color-scheme under it is a broken look, not a preference the theme
+    # can honour. A retune is the way back to the look as designed.
+    run gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
+    apply_accent
+    run gsettings set org.gnome.desktop.interface gtk-theme "$THEME_NAME"
+    run dconf write /org/gnome/shell/extensions/user-theme/name "'$THEME_NAME'"
+    apply_icon_theme
 
     apply_cursor_theme
 
@@ -2056,7 +2183,7 @@ apply_gsettings() {
     # "left alone" rather than a name, because there is no name to give: the
     # key was not read and not written, and printing what it happens to hold
     # would read like this run had set it.
-    local icon_say="${icons:-left alone}" cursor_say="${APPLIED_CURSOR:-left alone}"
+    local icon_say="${APPLIED_ICONS:-left alone}" cursor_say="${APPLIED_CURSOR:-left alone}"
     local font_say; font_say="$(font_family)"; font_say="${font_say:-system}"
     ok "gtk-theme=$THEME_NAME  icons=$icon_say  cursor=$cursor_say  accent=$ACCENT  font=$font_say"
 }

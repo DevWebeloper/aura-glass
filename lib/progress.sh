@@ -24,6 +24,10 @@
 #   events  one JSON object per line, the window's only input:
 #             begin   pid, log, repo, dry   (aura-glass-update's, in an update)
 #             plan    id, title          one per step, in order, before any start
+#             choices version, accent, accent_hex, glass, scope, opacity, icons,
+#                     cursors, cursor_size, font, extensions, gdm, gdm_monitors,
+#                     osd                what a wizard's run resolved, for the
+#                                        window's left column; absent otherwise
 #             start   id, offset         offset = log size when the step began
 #             note    id, level, text    a warn or error line, as printed
 #             end     id, status, offset ok | warn | skip | fail
@@ -188,6 +192,33 @@ progress_plan() {
     done
 }
 
+# progress_choices — what this run resolved, as the window's "Your setup" column.
+# Only for a run the setup wizard started: the settings window's login screen
+# run has no setup to describe, and an update's left column is its changelog.
+progress_choices() {
+    [ -n "$PROGRESS_DIR" ] && [ "${FROM_GUI_WIZARD:-0}" = 1 ] \
+        && [ -z "${AURA_GLASS_PROGRESS_DIR:-}" ] || return 0
+    local scope="${APP_BLUR_SCOPE:-all}" icons="" cursors="" opacity
+    # The size apply_cursor_size will set: the flag, then its memo.
+    local size="${CURSOR_SIZE:-}"
+    [ -n "$size" ] || size="$(cat "$CONF_DIR/cursor-size" 2>/dev/null || true)"
+    [ "${WANT_WINDOW_BLUR:-1}" = 1 ] || scope=none
+    [ "${WANT_ICONS:-1}" = 0 ] || icons="${ICONS:-}"
+    [ "${WANT_CURSORS:-1}" = 0 ] || cursors="${CURSORS:-}"
+    # A level of 0 is opaque windows, which the settings window's bar shows as
+    # 100% too.
+    opacity="$(awk -v l="${APP_TRANSPARENCY:-0}" \
+        'BEGIN { printf "%d", (l + 0 == 0 ? 100 : l * 100 + 0.5) }')"
+    progress_event choices \
+        version "$(git -C "$REPO_ROOT" describe --tags --always 2>/dev/null || true)" \
+        accent "${ACCENT:-}" accent_hex "$(accent_hex "${ACCENT:-}")" \
+        glass "$(glass_mode_from_state)" scope "$scope" opacity "$opacity" \
+        icons "$icons" cursors "$cursors" cursor_size "$size" \
+        font "${FONT:-system}" extensions "${#EXT_EXTRA[@]}" \
+        gdm "${WANT_GDM:-0}" gdm_monitors "${WANT_GDM_MONITORS:-0}" \
+        osd "${WANT_OSD:-1}"
+}
+
 # progress_start ID — the steps after this belong to ID, until progress_end.
 # A step that fails stops the run through die or set -e, so there is no
 # progress_end for it; progress_exit closes it as failed.
@@ -231,7 +262,8 @@ progress_finish() {
     elif grep -q '"t":"end".*"status":"warn"\|"t":"check".*"status":"\(warn\|fail\)"' "$PROGRESS_DIR/events" 2>/dev/null; then
         status=warn
     fi
-    progress_event finish status "$status" rc "$rc"
+    # logout 0: everything landed live, so the window offers no logout.
+    progress_event finish status "$status" rc "$rc" logout "${2:-1}"
 }
 
 progress_exit() {

@@ -70,7 +70,7 @@ Use a throwaway `HOME` as well. The checks don't need the real one.
 | `check-cascade.sh` | every sheet is installed, spliced and previewed, in prefix order (`install_css` ↔ `*_SNIPPETS` ↔ `preview-session.sh`) |
 | `check-radius-preset.sh` | `apply-radius-preset.py` moves exactly the radii it should and nothing else (temp dir) |
 | `check-gui-flags.py` | every argument list `Settings.flags_against` can build is accepted by `install.sh --dry-run` (skips without PyGObject) |
-| `check-wizard-flags.py` | the same for the setup wizard's full command lines, including `--extensions` |
+| `check-wizard-flags.py` | the same for the setup wizard's full command lines, including `--extensions`, plus its preview files and the OSD preview's numbers |
 | `check-gui-radius.py` | the GUI's preset rows and bounds equal `tokens.sh` |
 | `check-terminal-spawn.py` | each known terminal gets a runnable argv (launches nothing) |
 | `check-ext-catalogue.sh` | `aura-glass-ext list` describes every extension the install can reach |
@@ -83,7 +83,7 @@ Use a throwaway `HOME` as well. The checks don't need the real one.
 | `check-operation-recovery.py` | the writer lock: serialization, inheritance, timeout, signal forwarding |
 | `check-apply-publication.py` | `aura-glass-apply` publishes atomically and quietly (identical output isn't rewritten) |
 | `check-integration-reconcile.py` | installed helpers and units aren't recopied when unchanged |
-| `check-incremental-apply.py` | `--plan-json` classification through the real parser |
+| `check-incremental-apply.py` | Flag classes through the real parser; every step and tracked file belongs to a part; which change selects which parts; a real `--update` and `bin/aura-glass-update` under stubs (only the changed part, no sudo, no logout, an old release's fallback); and each narrow Apply leaves the same memos, keys and sheets as the full retune. About three minutes. Its updater cases run only on a clone inside the fixture, and assert that first: the updater stashes and resets whatever `repo-path` names. |
 | `check-apply-feedback.py` | GUI recovery feedback comes from the backend protocol, not parsed log text |
 | `check-adaptive-worker.py` | the worker's reducer: hysteresis, debounce, immediate triggers, profiles |
 | `check-adaptive-installer.sh` | `--adaptive-blur active` turns blur off without touching memos, and `restore` brings back the saved state. Uses a fabricated `modes/frosted/blur` memo (KI-02) |

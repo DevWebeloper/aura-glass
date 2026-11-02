@@ -112,6 +112,59 @@ icon_variant() {
     return 1
 }
 
+# ------------------------------------------------------------- system icons --
+#
+# The small one-colour icons (sound, Wi-Fi, battery and so on) as a theme of
+# their own that inherits the pack, because GNOME takes one icon-theme name and
+# the pack's app and folder icons have to keep working under it. Patching the
+# pack instead would rewrite a theme the user may have brought themselves, and
+# going back would mean reinstalling it.
+#
+# --system-icons lucide is the default. symbols/lucide/ is Lucide (ISC) with its
+# strokes turned into filled outlines, generated once and committed, because GTK
+# and St recolour a symbolic icon by its fill and would flood a stroked one.
+SYSTEM_ICONS_PREFIX="Aura-Lucide--"
+
+system_icons_choice() {
+    local want="${SYSTEM_ICONS:-}"
+    if [ -z "${SYSTEM_ICONS_EXPLICIT:-}" ] || [ -z "$want" ]; then
+        want="$(cat "$CONF_DIR/system-icons" 2>/dev/null || true)"
+    fi
+    [ "$want" = pack ] || want=lucide
+    printf '%s\n' "$want"
+}
+
+# One overlay per half of the pack that exists, so icon-sync has a dark and a
+# light one to swap between without running anything from the repo.
+write_system_icons() {
+    local base="$1" root="$HOME/.local/share/icons" c dir
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: write the $SYSTEM_ICONS_PREFIX overlays over $base"
+        return 0
+    fi
+    for c in "$base" "$base-Dark" "$base-dark" "$base-Light" "$base-light"; do
+        [ -d "$root/$c" ] || [ -d "/usr/share/icons/$c" ] || continue
+        dir="$root/$SYSTEM_ICONS_PREFIX$c"
+        mkdir -p "$dir/status/symbolic"
+        cp -f "$REPO_ROOT"/symbols/lucide/*.svg "$dir/status/symbolic/"
+        printf '[Icon Theme]\nName=Aura Lucide over %s\nComment=Lucide system icons, everything else from %s\nInherits=%s\nDirectories=status/symbolic\n\n[status/symbolic]\nContext=Status\nSize=16\nMinSize=8\nMaxSize=512\nType=Scalable\n' \
+            "$c" "$c" "$c" > "$dir/index.theme"
+    done
+}
+
+# After the key has moved, so nothing in use is ever deleted from under it.
+prune_system_icons() {
+    local keep="$1" base="$2" d name
+    for d in "$HOME/.local/share/icons/$SYSTEM_ICONS_PREFIX"*; do
+        [ -d "$d" ] || continue
+        name="${d##*/}"; name="${name#"$SYSTEM_ICONS_PREFIX"}"
+        if [ "$keep" = lucide ]; then
+            case "$name" in "$base"|"$base"-*) continue ;; esac
+        fi
+        run rm -rf "$d"
+    done
+}
+
 # One flat 16x16 symbolic arrow. viewBox is not optional: without it the width
 # and height are the only size the file has, so the copy written into the @2x
 # directory cannot scale to the size that directory exists to serve.

@@ -44,6 +44,9 @@ install_gui() {
     # sequencing contract as a checkout launch; it uses only the stdlib.
     install_if_changed "$REPO_ROOT/gui/preview_queue.py" \
         "$GUI_DIR/preview_queue.py" 644
+    # The same: the tint picker's colour work, stdlib only and imported beside it.
+    install_if_changed "$REPO_ROOT/gui/wallpaper_palette.py" \
+        "$GUI_DIR/wallpaper_palette.py" 644
     # The update window the settings window opens, from its own directory
     # rather than the checkout the update is about to move.
     install_if_changed "$REPO_ROOT/gui/aura_glass_install_progress.py" \

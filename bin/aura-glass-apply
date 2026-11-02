@@ -394,6 +394,18 @@ GTK4_SNIPPETS=(
 # already rewritten to `none` is left alone, so the second run reports zero.
 apply "$SHELL_CSS"     1 "${SHELL_SNIPPETS[@]}"
 
+apply "$GTK4_CSS"      1 "${GTK4_SNIPPETS[@]}"
+apply "$GTK4_DARK_CSS" 1 "${GTK4_SNIPPETS[@]}"
+# GTK3's half of the theme ships as a gresource, so there is nothing here to
+# flatten — gtk3-tweaks.css resets it with `*` instead, which works because user
+# CSS loads at GTK_STYLE_PROVIDER_PRIORITY_USER, above the theme. Flattening is
+# off for a second reason too: unlike the other three this file is not
+# theme-generated, so anything already in it is the user's own and stays as is.
+apply "$GTK3_CSS"      0 "$DIR/gtk3-tweaks.css" \
+                         "$DIR/gtk3-window-controls-adwaita.css" \
+                         "$DIR/gtk3-window-controls-material.css" \
+                         "$DIR/gtk3-window-controls-flat.css"
+
 # Some shell surfaces belong to another extension that paints them from a
 # stylesheet of its own, and St ranks every extension-loaded sheet above the
 # shell theme whatever the specificity (get_origin in st-theme.c). Copyous's
@@ -408,7 +420,9 @@ apply "$SHELL_CSS"     1 "${SHELL_SNIPPETS[@]}"
 # before the reload below, through a rename, and only when it changed: the
 # Helper reloads it on that rename, and an unchanged write would reload for
 # nothing. Always written, even with no rules, so a rule that drops out is
-# dropped there too rather than left loaded from an older file.
+# dropped there too rather than left loaded from an older file. Last of the
+# writes, so the Helper's reload of this and the theme reload below land together
+# rather than the top bar changing a step ahead of everything else.
 python3 - "$DIR/extension-overrides.css" "${SHELL_SNIPPETS[@]}" <<'PY'
 import os, re, sys, tempfile
 
@@ -423,8 +437,14 @@ for path in snippets:
     except OSError:
         continue
     for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+        # A coloured top bar has to out-rank Blur My Shell's transparent one
+        # just as the shade does. By its background rather than by name: the
+        # plain #panel.transparent-panel rule beside it carries only a
+        # transition, which stays in the theme sheet.
         keep = [s.strip() for s in selectors.split(",")
-                if any(name in s for name in OWNED)]
+                if any(name in s for name in OWNED)
+                or (s.strip().startswith("#panel.transparent-panel")
+                    and "background-color" in body)]
         if keep:
             decls = "\n".join("  " + d.strip() + ";" for d in body.split(";") if d.strip())
             rules.append(",\n".join(keep) + " {\n" + decls + "\n}\n")
@@ -444,20 +464,18 @@ os.chmod(temporary, 0o644)
 os.replace(temporary, destination)
 print("extension overrides ->", destination, "(%d rule%s)" % (len(rules), "" if len(rules) == 1 else "s"))
 PY
-apply "$GTK4_CSS"      1 "${GTK4_SNIPPETS[@]}"
-apply "$GTK4_DARK_CSS" 1 "${GTK4_SNIPPETS[@]}"
-# GTK3's half of the theme ships as a gresource, so there is nothing here to
-# flatten — gtk3-tweaks.css resets it with `*` instead, which works because user
-# CSS loads at GTK_STYLE_PROVIDER_PRIORITY_USER, above the theme. Flattening is
-# off for a second reason too: unlike the other three this file is not
-# theme-generated, so anything already in it is the user's own and stays as is.
-apply "$GTK3_CSS"      0 "$DIR/gtk3-tweaks.css" \
-                         "$DIR/gtk3-window-controls-adwaita.css" \
-                         "$DIR/gtk3-window-controls-material.css" \
-                         "$DIR/gtk3-window-controls-flat.css"
-
 # The User Themes extension reloads on a settings change, not on a file change,
-# so toggle the key to force Main.loadTheme().
+# so toggle the key to force Main.loadTheme(). Writing the value it already holds
+# does nothing (tried live 2026-11-02: the shell does not open the file), so the
+# toggle has to go through the default theme, and that is what the sleep made a
+# whole second of. Aura Glass Helper's ReloadTheme has no such step, so it goes
+# first. A Helper from before it was added stays in the shell until the next
+# login, and refuses the call.
+#
+# A preview does the toggle with no gap: measured the same day, it still reloads
+# every time, about 50 ms after the default theme, where a click used to show the
+# wrong theme for a second. Everything else keeps the gap. Nothing has shown it is
+# needed, but a real apply has no next click to put a missed reload right.
 SD="$HOME/.local/share/gnome-shell/extensions/user-theme@gnome-shell-extensions.gcampax.github.com/schemas"
 [ -d "$SD" ] || SD="/usr/share/gnome-shell/extensions/user-theme@gnome-shell-extensions.gcampax.github.com/schemas"
 if [ "$NO_SHELL_RELOAD" = 1 ]; then
@@ -471,9 +489,14 @@ elif { [ "$SHELL_TARGET_CHANGED" = 1 ] || [ "$FORCE_RELOAD" = 1 ]; } && [ -d "$S
     # unrelated selected theme merely because its name is nonempty is a visible
     # surprise and cannot repair these files.
     if [ "$cur" = "$THEME" ]; then
-        GSETTINGS_SCHEMA_DIR="$SD" gsettings set org.gnome.shell.extensions.user-theme name ''
-        sleep 1
-        GSETTINGS_SCHEMA_DIR="$SD" gsettings set org.gnome.shell.extensions.user-theme name "$cur"
+        if ! gdbus call --session --timeout 2 --dest org.gnome.Shell \
+                --object-path /io/github/DevWebeloper/AuraGlass \
+                --method io.github.DevWebeloper.AuraGlass.ReloadTheme \
+                >/dev/null 2>&1; then
+            GSETTINGS_SCHEMA_DIR="$SD" gsettings set org.gnome.shell.extensions.user-theme name ''
+            [ "${PREVIEW_MODE:-0}" = 1 ] || sleep 1
+            GSETTINGS_SCHEMA_DIR="$SD" gsettings set org.gnome.shell.extensions.user-theme name "$cur"
+        fi
         SHELL_RELOAD="reloaded"
         echo "shell theme reloaded ($cur)"
     elif [ "$FORCE_RELOAD" = 1 ] && [ -d "$HOME/.themes/$THEME" ]; then
@@ -506,7 +529,10 @@ if [ "$RELOAD_GTK" = 1 ] && [ "$GTK_TARGET_CHANGED" = 1 ] && command -v gsetting
     gtk_now=${gtk_now#\'}; gtk_now=${gtk_now%\'}
     if [ "$gtk_now" = "$THEME" ]; then
         gsettings set org.gnome.desktop.interface gtk-theme Adwaita 2>/dev/null || true
-        sleep 0.3
+        # No gap in a preview, or every open app shows Adwaita for this long on
+        # each click. The same measurement: GTK still re-reads the theme after
+        # both writes, and a preview is one click from being repeated if not.
+        [ "${PREVIEW_MODE:-0}" = 1 ] || sleep 0.3
         gsettings set org.gnome.desktop.interface gtk-theme "$THEME" 2>/dev/null || true
         GTK_RELOAD="reloaded"
         GTK_RESTART=0

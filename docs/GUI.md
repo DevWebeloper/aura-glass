@@ -34,15 +34,70 @@ protocol.
 
 ### Pages
 
-`welcome` (Complete Experience / Customize) → `accent` → `blur` ("Frosted
-glass, or performance". "Performance" sends `--no-blur`) → `blur_details` (popup blur, scope,
-transparency) → `icons` → `cursors` (+ size)
-→ `extensions` → `gdm` (only with `--gdm-present`) → `summary`.
+`welcome` (Complete Experience / Customize) → `accent` → `glass` (scope: every
+app window or GTK and GNOME apps; the settings app's Opacity bar, 70–100 % with
+its deep, balanced and subtle marks) → `icons` → `cursors` (+ size) →
+`extensions` → `gdm` (only with `--gdm-present`, both switches on by default) →
+`summary`. Choices are cards rather than radio rows.
+
+There is no blur page: every wizard install is frosted with popups blurred.
+Performance needs nothing a frosted install lacks (its sheet and drawer are made
+when the mode is switched to), so it stays the settings window's mode switch.
+Adwaita isn't among the wizard's pointers, though `--cursors adwaita` and the
+settings app still offer it.
+
+Pointer sizes are 24 (1080p), 32 (1440p), 48 (4K) and 64 (extra large). The one
+recommended and preselected follows the largest screen's physical lines, one
+class down from a scale of 1.75: up to 1200 gives 24, up to 1800 gives 32, and
+above that 48 (`recommended_cursor_size`, in the window off Gdk and in
+`lib/common.sh` off Mutter).
+
+### Previews
+
+The window shows what each choice will look like before any of it is on the
+machine, and it does so without a network, a download or anything to clean up:
+
+- **Fonts**: `gui/samples/fonts/<font>.json` holds the outline of each
+  `FONT_SAMPLES` string as an SVG path. `TextOutline` fills it in the CSS colour
+  around it (`Gsk.Path`, GTK 4.14), so it is as sharp as a label at any scale, which
+  no PNG managed at 133%. **System default** is a real
+  `Gtk.Label` in the family `--font system` lands on: `apply_font`'s backup of
+  `font-name`, else the current key. Each font card shows its own font. The mock
+  above follows the answer through `Window.sample_font`, which `sync_look` sets.
+  Fetching the fonts instead was rejected: 90 MB, a network before the first
+  question, and private fontconfig registration, for three cards.
+- **Pointers**: `gui/samples/pointers/*.xcursor.gz` holds each pack's own
+  `cursors/default`, one per accent for Moga. `read_pointer` reads Xcursor, and
+  the **Default** pointer theme is read the same way, from the theme
+  `cursor-theme` names (`pointer_theme_file`, following `Inherits`). `PointerSample`
+  does Mutter's sum (image nearest size × the scale rounded up, drawn at image size
+  × size / nominal, in logical px), so a tile is the size that pointer will be on
+  the display the window is on. The **Default** size tile draws at `cursor-size`.
+  Both keys are read, never written.
+- **Icons**: under the cards, eight of the pack's own drawings from
+  `gui/samples/icons/<pack>/`, in the accent's colour, swapped on each pick.
+  **Default** asks `Gtk.IconTheme` instead, and leaves out what that theme lacks.
+  The System icons question (`--system-icons`, the settings window's wording) sits
+  below it and is hidden for **Default**, since `--no-icons` ignores the answer.
+- **OSD**: the page's new question, **Capsule** or **Top bar tab** (`--osd-style`,
+  the settings window's `OSD_STYLES` wording), drawn life size from `OSD_DESIGNS`,
+  which copies the fixed pixels in `css/shell-00-flat.css`. Colours come from
+  `[custom-osd]` in `dconf/core.ini` (`osd_colours`), the icon from `symbols/lucide/`.
+  The capsule sits near the foot of the screen, the tab flush under the top bar. With
+  the popup off it shows GNOME's own instead. Every answer updates it at once. It
+  can't blur, so the wall's soft blobs stand in. The mocks on the welcome and summary
+  pages carry a smaller copy (`osd_scene`).
+
+`gui/samples/render_samples.py` rebuilds the files, by hand, after a change to
+`FONT_SAMPLES`, `ICON_SAMPLES`, a pack's pin or an accent table. `gui/samples/NOTICE.md` says
+whose each one is: the repository's MIT licence doesn't cover them.
+`check-wizard-flags.py` fails on a missing one, and on OSD numbers that no longer
+match the stylesheet.
 
 `Answers.to_argv` emits a **full** flag list rather than a diff, because there's
-nothing on disk yet to clobber. `--no-blur` goes out alone. Otherwise it sends
-the scope flag, then `--app-transparency`, then `--popup-blur` or
-`--no-popup-blur`. `Answers.best()` is "Complete Experience": every catalogued
+nothing on disk yet to clobber: `--glass-mode frosted`, the scope flag,
+`--app-transparency`, `--popup-blur`. It never sends `--no-blur` or
+`--no-window-blur`. `Answers.best()` is "Complete Experience": every catalogued
 extension, GDM where present, and monitor sync only on multi-monitor machines.
 
 ### Parity with the text wizard
@@ -50,10 +105,10 @@ extension, GDM where present, and monitor sync only on multi-monitor machines.
 Every question has a twin in `install.sh`'s text wizard (search for
 `Step 0: Quick Start`). The rule is that options, defaults and recommendations
 match, and the window is the canonical side (decided 2026-10-15, KI-24): the
-text wizard asks Frosted/Performance first (Performance goes out as a lone
-`--no-blur`, as the window sends it), offers Full or Minimal for the pack, and
-its Complete Experience states the same blur, transparency and 20px pointer
-answers as `Answers.best()`. It's **stated in comments, not enforced**, and it
+text wizard asks the same scope and opacity (the three marks by number, or any
+level from 70 to 100 typed), offers Full or Minimal for the pack, and its
+Complete Experience states the same blur, transparency and pointer size answers
+as `Answers.best()`. It's **stated in comments, not enforced**, and it
 had drifted on the recommended pointer (KI-05). `check-wizard-flags.py` checks only that every
 command line the window can produce is accepted.
 
@@ -79,9 +134,16 @@ runs     install.sh --verify --progress-dir <run dir>   ("Check again")
          gnome-session-quit --logout --no-prompt         ("Log out now")
 ```
 
-It shows a progress bar (always green, whatever the accent), the step running
-now and the last log line, then the checklist: one row per planned step
-(ok, warning, failed, skipped) and, under it, `verify_install`'s checks. A
+It has the update window's layout (below): two columns over a log drawer, opened
+by **Show log**, stacking below 760sp. The left column, **Your setup**, comes
+from the `choices` event `progress_choices` sends for a run the wizard started:
+what `install.sh` resolved (look, glass, icons, pointer, extensions, login
+screen) and what happens next. A run without that event, such as the settings
+window's GDM run, is the right column alone, 640 wide instead of 1040. The right
+column is a progress bar (always green, whatever the accent), the step running
+now and the last log line, then the steps sliding in as each one starts (ok,
+warning, failed, skipped; the ones a stopped run never reached show at the end)
+and, under them, `verify_install`'s checks. A
 step with problems has **Why?**: what it reported (its `warn`/`die` lines) and
 its slice of the log, by the byte offsets in its `start`/`end` events. A failed
 check has **Why?** with the reason and a command that fixes it. If the
@@ -177,15 +239,14 @@ is decided by `select_apply_actions`. See
 
 | Page | Group | Holds |
 |---|---|---|
-| Glass | Appearance | A status group on top: the mode in force plus any adaptive overlay and its reason, a "Switch to X" button (the ordinary Apply), and an "Adaptive performance" combo running `aura-glass-adaptive profile` like the panel menu. It's watched live (`$C`, `$C/adaptive-performance`), and the header subtitle repeats it on every page. Then two mode tabs (Frosted, Performance) in an `Adw.ViewStack`, with a "Switch now" banner when the tab differs from the installed mode. **Frosted**: tints; a Glass group of three main sliders (Blur amount, Brightness, Opacity 70–100 %, where 100 % also stands for an opaque `0` install); "Blur behind windows" (All apps / GTK apps only / Off) and the popup blur switch, which covers notifications; the glass style; and a collapsed Advanced group with one expander per surface (Windows, Popups & notifications, Lock screen; the top bar shares the lock screen's blur, so it has none) holding that surface's own blur amount and brightness (plus opacity for popups & notifications), and a More expander for glass style behind app windows and fullscreen blur. A surface bar follows its main slider until moved; then it keeps its value, and a reset button hands it back (`main`). **Performance**: tints and one opacity scale. |
-| Animations | Appearance | Window, notification and menu speed (three scales read out in ms (50–300 % of GNOME's pace underneath), `--*-animation-speed`, not previewable), with the smooth animations switch above them |
-| Appearance | Appearance | Three tabs. **Look**: accent (nine names plus a link to GNOME Settings; there's no hex picker, by design), font. **Icons & pointer**: icon pack and colour, pointer and size. **Titlebar & top bar**: titlebar buttons and style, top bar height (24–48 px, with a reset to GNOME's 32) and its brightness over a maximized window |
+| Glass | Appearance | The mode in force shows at the top of every page, in the window's header bar: a button at its right (an icon for frosted, performance, or frosted under the adaptive overlay; the tooltip names the mode and any overlay reason) that switches to the other mode through the ordinary Apply, plus the title's subtitle. Both are watched live (`$C`, `$C/adaptive-performance`). The adaptive profile isn't offered here: the panel menu and `aura-glass-adaptive profile` switch it, and only the command while the top bar icon is hidden. Then the two modes in a `Gtk.Stack` inside one scroller (their pages are `GlassColumn`s, not `Adw.PreferencesPage`s, which would each scroll on their own), with a "Switch now" banner when the mode showing differs from the installed one. Each mode's page is a `GlassStudio`: three clickable thumbnails (desktop, overview, maximized app, which follow opacity, bar height and shade as they move) and six chips pick a surface, and that surface's colour button and settings show below. The colour button opens a non-modal palette window: three rows of eight suggestions, a hex entry and GTK's chooser (see [Tint suggestions](#tint-suggestions)). It follows the surface chosen while open, and a mode switch closes it. **Everything**: colour; the main sliders (Blur amount, Brightness, Opacity 70–100 %, where 100 % also stands for an opaque `0` install) and the glass style in frosted, one opacity scale in performance. **Windows**: blur behind windows (All apps / GTK apps only / Off), glass style behind app windows, fullscreen blur, static blur on maximized windows (with a Maximized windows group of bars, shown only while static, that follow the windows' own bars until moved), and its own blur amount and brightness. **Shell**: the popup blur switch, which covers notifications, and its own blur amount, brightness and opacity. **Dock & search**: colour only. **Top bar**: the lock screen's blur (the bar shares it) and the height. **Maximized top bar**: the shade. A surface bar follows its main slider until moved; then it keeps its value, and a reset button hands it back (`main`). Height and shade aren't per mode, so `_place_top_bar_groups` moves them to the mode showing. |
+| Appearance | Appearance | Three tabs. **Look**: accent (nine names plus a link to GNOME Settings; there's no hex picker, by design), font. **Icons & pointer**: icon pack and colour, pointer and size. **Titlebar & top bar**: titlebar buttons and style; the Aura Glass icon in the top bar (`--no-top-bar-icon`, whose subtitle says where the adaptive profile goes while hidden) |
 | Corner rounding | Appearance | Seven preset cards drawn with their own corners, reset, or eight per-surface spin rows with a live drawing |
-| Per-app blur | Appearance | A switch per installed app, live "Open now" windows (D-Bus), a default for unchosen apps, **fullscreen performance games** (written straight to `adaptive-fullscreen-apps`), wildcard patterns |
+| Per-app blur | Appearance | Three tabs. **Apps**: a search and filter held above the scroller, which cover both lists; two cards for the default for unchosen apps, with **Start from** (starting points) beside them; a switch for **Blur This App** in the window menu (`--window-menu`; a full retune on Apply, since the classifier has no narrow action for it); live "Open now" windows (D-Bus) as a grid of toggle tiles (`AppTile`: icon, name, the window class in its tooltip); every other installed app as a list (`AppRow`: click the row, a check when blurred, the window class as its subtitle) with a count of how many are blurred. An open app is only in the grid. Either shows a `via <pattern>` badge when a pattern decides it. **Patterns**: add a window class or wildcard, examples, a switch per pattern. **Games**: **fullscreen performance games** (written straight to `adaptive-fullscreen-apps`) and adding from open windows |
 | Extensions | System | Every catalogued extension: switch, install/remove, settings button (when it has `prefs.js`), recommended and full packs, via `bin/aura-glass-ext` |
 | Packages | System | Disk cost per pack and removal (`$HOME` packs deleted in place, `/usr` packs handed to a terminal) |
-| System | System | Dependencies, login screen, monitor sync |
-| Updates | System | Two tabs. **Updates**: version, check, and one Install on the version row for the update on offer; one list, newest first by date, of main's tip as a **Tag** (`v0.3.5+N`, its changelog every commit since the newest release; older tags are not listed) and **Releases** (`vX.Y.Z`, with notes): the 5 newest plus the installed one when older. One badge per row. Only the newest (main's tip, a release if tagged, else a tag) has Install, and not when it is the update the version row already offers; older rows are read-only. History graph of everything. **Maintenance**: daily update check; reapply settings; reset theme to defaults (`--reset --force --gui --interactive`). No channel row: the line follows what was installed from the list; `--update-channel` stays for the CLI |
+| System | System | **Login screen**, shown only with GDM or when something here was already done: theme it, with Reinstall when `gdm-gresource` or `gdm-look` no longer match (`gdm_theme_stale`, the same comparisons as `aura-glass-gdm-sync`), and monitor sync, shown only with more than one monitor or when already synced. **Installation**: Check installation (`--verify`, in a terminal) |
+| Updates | System | Two tabs. **Updates**: version, check, and one Install on the version row for the update on offer; one list, newest first by date, of main's tip as a **Tag** (`v0.3.5+N`, its changelog every commit since the newest release; older tags are not listed) and **Releases** (`vX.Y.Z`, with notes): the 5 newest plus the installed one when older. One badge per row. Only the newest (main's tip, a release if tagged, else a tag) has Install, and not when it is the update the version row already offers; older rows are read-only. History graph of everything. **Maintenance**: daily update check; command line dependencies (`--deps-only`, shown only while one is missing); reapply settings; reset theme to defaults (`--reset --force --gui --interactive`). No channel row: the line follows what was installed from the list; `--update-channel` stays for the CLI |
 | Uninstall | none | Built into the stack (other code needs its widgets), opened from the primary menu, not the sidebar |
 
 The order matters: Glass is built before Blur, because the Blur page's banner
@@ -198,17 +259,28 @@ that tab too. `FLAG_LABELS` maps flags to pages and labels for the
 what Apply will run: `_ask_plan` sends the same flags to `install.sh
 --settings-only --incremental --dry-run --plan-json` 300 ms after the last edit,
 drops an answer for flags that have since changed, and `plan_summary` words it
-as a quick apply and its steps or a full reapply and why. Under the list, **Discard changes** puts every row back to what is installed (reverting a live preview first), the same as closing and choosing Discard but without closing. **Ctrl+S** presses Apply when Apply is sensitive.
+as a quick apply and its steps or a full reapply and why. A quick apply also names
+any part it refreshes because Aura Glass changed underneath it, and anything only an
+update can install (`parts`, `pending_update`; ARCHITECTURE, "Parts"). Under the list, **Discard changes** puts every row back to what is installed (reverting a live preview first), the same as closing and choosing Discard but without closing. **Ctrl+S** presses Apply when Apply is sensitive.
+
+### The header bar scrolls away
+
+The content pane's header leaves once the page has scrolled past the header's own height and comes back only at the top of the page, not on any scroll up (`_sync_top_bar`, through `Adw.ToolbarView`'s `reveal-top-bars`, on the outermost scroller of the page or tab showing). It slides on the toolbar's animation rather than following the scroll pixel for pixel, which would take one scroller shared by every page. So the mode button, the title with its subtitle, the preview toggle and the main menu are at the top of each page, not always in view. What stays:
+
+- the bottom bar (Apply, the log, "Previewing" with Revert) and the sidebar with its search, whose header is also the window's drag handle,
+- the window buttons: a `Gtk.WindowControls` floats top right while the header is gone. A layout with them on the left has them in the sidebar's header already, so nothing floats,
+- the whole header below 700sp: collapsed, it holds the back button and no sidebar is showing, so it stays pinned.
 
 ### What doesn't ride on Apply
 
 - **Extension switches** apply immediately through `aura-glass-ext`, streamed into the same log.
 - **Packages**: a filesystem delete under `$HOME`, or the package manager in a terminal for `/usr`.
 - **Anything needing root** (deps `--deps-only`, GDM, monitor sync, uninstall scopes) and the long operations (reapply settings, reset to defaults, update) **open a real terminal** from `TERMINALS` (ptyxis, kgx, gnome-terminal, konsole, alacritty, kitty, foot, wezterm, x-terminal-emulator, xterm). `sudo` down a pipe would block forever. If no terminal is found, the command is shown to copy. Terminals aren't waited on, so those rows show the last state read.
-- **Reapply CSS** runs `aura-glass-apply --force-reload` in a terminal.
 - **Games list** writes `$CONF_DIR/adaptive-fullscreen-apps`, then `aura-glass-adaptive refresh`.
 
 ### Live preview
+
+A colour pick previews at once, where sliders wait 400 ms (and per-app switches 200 ms) to see whether they've stopped. The toggles behind a reload run with no gap in a preview (`PREVIEW_MODE` in `aura-glass-apply`), so the shell and open apps don't sit on the default theme, and a tint-only tick skips the dconf half (`$BACKUP/dconf-args`), because a tint reaches no dconf key.
 
 Backed by `bin/aura-glass-preview` and serialized by `gui/preview_queue.py`
 (one active operation, one replaceable pending one; Apply, Revert and Close
@@ -216,7 +288,7 @@ take precedence):
 
 ```
 aura-glass-preview begin                       snapshot sheets + BMS dconf dump + memos into $CONF_DIR/preview-backup, mark preview-active
-aura-glass-preview set [--app-tint HEX] [--shell-tint HEX] [--transparency L] [--radius-preset P]
+aura-glass-preview set [--maximized-blur static|dynamic] [--app-tint HEX] [--shell-tint HEX] [--dock-tint HEX|main] [--panel-tint HEX|main] [--maximized-panel-tint HEX|main] [--transparency L] [--radius-preset P]
                        [--radius-custom …] [--blur-strength P] [--blur-brightness P]
                        [--SURFACE-blur-strength P|main] [--SURFACE-brightness P|main] [--popup-opacity P|main]
                        [--popup-blur 0|1] [--window-blur 0|1] [--scope gtk|all, default all]
@@ -242,6 +314,22 @@ Glass Helper extension whenever it's enabled). It uses `ListWindows` and
 `WindowsChanged` for "Open now" and the games list, and `SetWindowOpacity` /
 `RefreshOpacity` for live opacity while dragging. The window uses the bridge
 only if it answers.
+
+### Tint suggestions
+
+The rows are `wallpaper_palette.suggest()`, for the surface chosen and the sliders as they stand. A pick is the same flag as a typed hex, so nothing here reaches the theme except through the resolver.
+
+1. **From your wallpaper**: its most telling hues (clustered in OKLab, ranked for colour as much as area, so near-black, near-white and grey pixels and near-duplicates don't fill the row), then its own neutral.
+2. **In harmony with it**: analogous, split-complementary, triadic and complementary hues of the main one. A hue the blur would cancel to grey is dropped.
+3. **Classics**: black as shipped, graphite, the GNOME accent, then fixed deep tints.
+
+Each colour is searched for by the result on the surface, not by its hex: the app tint's mix, the shell's hue-and-saturation on a dark ground, or the dock and top bar's exact colour at their alpha, over the wallpaper as a blur leaves it (`GlassModel`). The search aims at a depth and chroma per surface (`GOALS`) and keeps white text at 7:1 on windows and 4.5:1 on bars against the brightest part of that blur. Swatches paint that same result, so a suggestion's hex is in its tooltip and not on its face. The same swatch can therefore have a different hex under another chip.
+
+**Brightness** and **Intensity** under the rows adjust the colour in use and keep its hue, in OKLCH. Intensity is a share of the most chroma sRGB can show at that lightness, so 100 % is always this colour at its strongest. They're off for a surface with no colour, and Brightness is off for Shell, which keeps its own lightness. Each pause in a drag is an ordinary pick. These colours aren't fitted to the glass, so readability there is yours to judge.
+
+`WallpaperWatch` reads `picture-uri-dark`, then `picture-uri`, on a thread. An XML slideshow means the frame showing now, `picture-options=none` or no URI means `primary-color` (and `secondary-color` when shaded), and anything unreadable or colourless means rows 1 and 2 become fixed tints and the accent's harmonies. It's the same three rows of eight in every case. The wizards don't ask for a tint, so there's nothing there to keep in parity.
+
+The model reads Opacity, the maximized shade and the mode from the window. Blur brightness and per-surface opacity (`--popup-opacity`) aren't modelled: the shipped values stand in for them.
 
 ### Accent: why there's no colour picker
 

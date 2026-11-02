@@ -116,6 +116,12 @@ BMS_FADE_PATCH="blur-my-shell-overview-fade.patch"
 # the overview to settle (a new actor would cut BMS_FADE_PATCH's fades short).
 # See the patch's own comments.
 BMS_STATIC_PATCH="blur-my-shell-static-maximized.patch"
+# Applied after it: upstream rounds every popup's corners from one key,
+# `popup/rounded-corners`. --osd-style tab has flat top corners and rounded bottom
+# ones while every other popup stays round, and the blur behind a painted corner
+# has to match it (CLAUDE.md rule 3), so the volume and brightness popup gets a
+# key of its own, `popup/osd-window-rounded-corners`. apply_osd_style writes it.
+BMS_OSD_PATCH="blur-my-shell-osd-corners.patch"
 
 
 CUSTOMOSD_REPO="https://github.com/neuromorph/custom-osd.git"
@@ -260,7 +266,7 @@ ext_description() {
         blur-my-shell@aunetx)
             printf 'Blur My Shell — the blur behind windows, popups and the panel' ;;
         custom-osd@neuromorph)
-            printf 'Custom OSD — the volume and brightness pill' ;;
+            printf 'Custom OSD — the volume and brightness popup' ;;
         aura-glass-blur@aura-glass.local)
             printf 'Aura Glass helper — adaptive performance profile menu and per-app blur toggle' ;;
         status-tray@keithvassallo.com)

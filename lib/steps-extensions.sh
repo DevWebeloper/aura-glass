@@ -104,9 +104,9 @@ install_ext_ego() {
 # Blur My Shell carries the popup component upstream: menus, quick settings,
 # notifications, dialogs and the OSD get blur directly. We build from pinned
 # release v77 with the upstream-backports, subwindow, full-size-buffers,
-# overview-fade and static-maximized patches applied on top (see
-# BMS_BACKPORTS_PATCH, BMS_SUBWIN_PATCH, BMS_BUFFERS_PATCH, BMS_FADE_PATCH and
-# BMS_STATIC_PATCH in lib/steps.sh).
+# overview-fade, static-maximized and osd-corners patches applied on top (see
+# BMS_BACKPORTS_PATCH, BMS_SUBWIN_PATCH, BMS_BUFFERS_PATCH, BMS_FADE_PATCH,
+# BMS_STATIC_PATCH and BMS_OSD_PATCH in lib/steps.sh).
 # gnome-extensions pack and gnome-extensions install both write under $HOME, so
 # this needs no root.
 install_bms() {
@@ -132,13 +132,14 @@ install_bms() {
        && patch_stamp_current bms-buffers-patch "$REPO_ROOT/patches/$BMS_BUFFERS_PATCH" \
        && patch_stamp_current bms-fade-patch "$REPO_ROOT/patches/$BMS_FADE_PATCH" \
        && patch_stamp_current bms-static-patch "$REPO_ROOT/patches/$BMS_STATIC_PATCH" \
+       && patch_stamp_current bms-osd-patch "$REPO_ROOT/patches/$BMS_OSD_PATCH" \
        && ext_supports_shell "$EXT_DIR/$BMS_UUID" "$GNOME_MAJOR"; then
         pin_bms_version
         skip "$BMS_UUID already built from $BMS_REF"
         return 0
     fi
 
-    info "building Blur My Shell from $BMS_REF + patches/$BMS_BACKPORTS_PATCH + patches/$BMS_SUBWIN_PATCH + patches/$BMS_BUFFERS_PATCH + patches/$BMS_FADE_PATCH + patches/$BMS_STATIC_PATCH"
+    info "building Blur My Shell from $BMS_REF + patches/$BMS_BACKPORTS_PATCH + patches/$BMS_SUBWIN_PATCH + patches/$BMS_BUFFERS_PATCH + patches/$BMS_FADE_PATCH + patches/$BMS_STATIC_PATCH + patches/$BMS_OSD_PATCH"
     local src="$SRC_CACHE/blur-my-shell"
     if [ -d "$src/.git" ]; then
         run git -C "$src" checkout --quiet -- . 2>/dev/null || true
@@ -162,6 +163,8 @@ install_bms() {
             || die "the Blur My Shell overview-fade patch did not apply — upstream may have moved"
         git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_STATIC_PATCH" \
             || die "the Blur My Shell static-maximized patch did not apply — upstream may have moved"
+        git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_OSD_PATCH" \
+            || die "the Blur My Shell osd-corners patch did not apply — upstream may have moved"
     fi
 
     local podir=(--podir=../po)
@@ -171,7 +174,7 @@ install_bms() {
     fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: apply patches/$BMS_BACKPORTS_PATCH, patches/$BMS_SUBWIN_PATCH, patches/$BMS_BUFFERS_PATCH, patches/$BMS_FADE_PATCH and patches/$BMS_STATIC_PATCH, bundle the stylesheets, gnome-extensions pack in $src/src, then install the zip"
+        info "dry-run: apply patches/$BMS_BACKPORTS_PATCH, patches/$BMS_SUBWIN_PATCH, patches/$BMS_BUFFERS_PATCH, patches/$BMS_FADE_PATCH, patches/$BMS_STATIC_PATCH and patches/$BMS_OSD_PATCH, bundle the stylesheets, gnome-extensions pack in $src/src, then install the zip"
         return 0
     fi
 
@@ -241,8 +244,9 @@ install_bms() {
     patch_stamp_write bms-buffers-patch "$REPO_ROOT/patches/$BMS_BUFFERS_PATCH"
     patch_stamp_write bms-fade-patch "$REPO_ROOT/patches/$BMS_FADE_PATCH"
     patch_stamp_write bms-static-patch "$REPO_ROOT/patches/$BMS_STATIC_PATCH"
+    patch_stamp_write bms-osd-patch "$REPO_ROOT/patches/$BMS_OSD_PATCH"
     pin_bms_version
-    ok "$BMS_UUID (built from $BMS_REF, with the upstream-backports, subwindow, full-size-buffers, overview-fade and static-maximized patches)"
+    ok "$BMS_UUID (built from $BMS_REF, with the upstream-backports, subwindow, full-size-buffers, overview-fade, static-maximized and osd-corners patches)"
 }
 
 # GNOME Shell checks every user-installed extension against extensions.gnome.org
@@ -312,8 +316,10 @@ install_aura_ext() {
 # own. Upstream's last release is for GNOME 46 and its last commit does not run
 # on 50 — the ShellBlurEffect:sigma property, the meta_*_clutter_debug_flags()
 # calls and OsdWindowManager.show()'s signature have all gone since. The patch
-# in patches/ fixes exactly those and nothing else. The blur behind the pill,
-# and the rounding of it, come from Blur My Shell's popup component.
+# in patches/ fixes those, and takes the two --osd-style designs off upstream's
+# screen-height sums: its size, in logical pixels, comes from css/shell-00-flat.css.
+# The blur behind the pill, and the rounding of it, come from Blur My Shell's
+# popup component (apply_osd_style).
 install_custom_osd() {
     local uuid="custom-osd@neuromorph"
 
@@ -367,6 +373,17 @@ install_custom_osd() {
     ok "$uuid (patched for GNOME $GNOME_MAJOR)"
 }
 
+# What was on the machine before this run, which is how enable_extensions tells
+# an extension the user switched off from one that has only just arrived. Its
+# own step because an update can run enable_extensions without install_extensions.
+snapshot_preinstalled_exts() {
+    declare -g -A PRE_INSTALLED_EXTS=()
+    local d
+    for d in "$EXT_DIR"/* /usr/share/gnome-shell/extensions/*; do
+        if [ -d "$d" ]; then PRE_INSTALLED_EXTS["$(basename "$d")"]=1; fi
+    done
+}
+
 install_extensions() {
     step "Installing shell extensions"
     # The pack is a choice with no flag to reproduce it from on an update or a
@@ -388,11 +405,7 @@ install_extensions() {
     run gsettings set org.gnome.shell disable-extension-version-validation true
     disable_retired_extensions
 
-    declare -g -A PRE_INSTALLED_EXTS=()
-    local d
-    for d in "$EXT_DIR"/* /usr/share/gnome-shell/extensions/*; do
-        [ -d "$d" ] && PRE_INSTALLED_EXTS["$(basename "$d")"]=1
-    done
+    snapshot_preinstalled_exts
 
     local u
     for u in "${EXT_CORE[@]}"; do install_ext_ego "$u" || true; done

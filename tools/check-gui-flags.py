@@ -43,7 +43,7 @@ from aura_glass_settings import Settings, plan_summary  # noqa: E402
 
 # Every surface following the main sliders, which is what a fresh drawer holds.
 MAIN = {"window": "main", "popup": "main", "panel": "main",
-        "lockscreen": "main"}
+        "lockscreen": "main", "maximized": "main"}
 
 
 def state(**kw):
@@ -59,6 +59,9 @@ def state(**kw):
     s.popup_blur = kw.get("popup_blur", True)
     s.app_tint = kw.get("app_tint", "#000000")
     s.shell_tint = kw.get("shell_tint", "#000000")
+    s.dock_tint = kw.get("dock_tint", "main")
+    s.panel_tint = kw.get("panel_tint", "main")
+    s.maximized_panel_tint = kw.get("maximized_panel_tint", "main")
     s.blur_strength = kw.get("blur_strength", 100)
     s.blur_brightness = kw.get("blur_brightness", 100)
     s.surface_strength = dict(MAIN, **kw.get("surface_strength", {}))
@@ -75,7 +78,12 @@ def state(**kw):
     s.glass_style = kw.get("glass_style", "frosted")
     s.liquid_windows = kw.get("liquid_windows", False)
     s.fullscreen_blur = kw.get("fullscreen_blur", False)
+    s.maximized_blur = kw.get("maximized_blur", "static")
     s.osd_device_name = kw.get("osd_device_name", False)
+    s.osd_style = kw.get("osd_style", "capsule")
+    s.system_icons = kw.get("system_icons", "lucide")
+    s.window_menu = kw.get("window_menu", True)
+    s.top_bar_icon = kw.get("top_bar_icon", True)
     s.maximized_panel_brightness = kw.get("maximized_panel_brightness", 40)
     s.smooth_animations = kw.get("smooth_animations", False)
     s.animation_speed = kw.get(
@@ -95,7 +103,9 @@ def state(**kw):
     # this merges it over the seed.
     s.modes = {
         "frosted": {"transparency": "0", "app_tint": "#000000",
-                    "shell_tint": "#000000", "blur_strength": 100,
+                    "shell_tint": "#000000", "dock_tint": "main",
+                    "panel_tint": "main", "maximized_panel_tint": "main",
+                    "blur_strength": 100,
                     "blur_brightness": 100,
                     "surface_strength": dict(MAIN),
                     "surface_brightness": dict(MAIN),
@@ -103,7 +113,9 @@ def state(**kw):
                     "popup_blur": True,
                     "scope": "gtk"},
         "performance": {"transparency": "1.00", "app_tint": "#000000",
-                        "shell_tint": "#000000", "blur_strength": 100,
+                        "shell_tint": "#000000", "dock_tint": "main",
+                    "panel_tint": "main", "maximized_panel_tint": "main",
+                    "blur_strength": 100,
                         "blur_brightness": 100,
                         "surface_strength": dict(MAIN),
                         "surface_brightness": dict(MAIN),
@@ -250,6 +262,21 @@ CASES = [
     ("the shell tint is sent with the windows opaque", FROSTED,
      state(shell_tint="#101820", transparency="0"),
      ["--no-app-transparency", "--shell-tint-color", "#101820"]),
+
+    # The surfaces with a colour of their own. main is a value too: it is how
+    # one is undone.
+    ("dock tint picked", FROSTED, state(dock_tint="#101820"),
+     ["--dock-tint-color", "#101820"]),
+
+    ("dock tint undone", state(dock_tint="#101820"), state(),
+     ["--dock-tint-color", "main"]),
+
+    ("top bar tint picked", FROSTED, state(panel_tint="#101820"),
+     ["--panel-tint-color", "#101820"]),
+
+    ("maximized top bar tint picked", FROSTED,
+     state(maximized_panel_tint="#101820"),
+     ["--maximized-panel-tint-color", "#101820"]),
 
     ("blur strength moved", FROSTED, state(blur_strength=60),
      ["--blur-strength", "60"]),
@@ -406,6 +433,20 @@ CASES = [
      state(animation_speed={"window": 100, "notification": 100, "menu": 200}),
      ["--menu-animation-speed", "200"]),
 
+    ("maximized windows follow the others", FROSTED,
+     state(maximized_blur="dynamic"), ["--maximized-blur", "dynamic"]),
+
+    ("maximized windows back on static", state(maximized_blur="dynamic"),
+     FROSTED, ["--maximized-blur", "static"]),
+
+    ("maximized blur amount set apart", FROSTED,
+     state(surface_strength={"maximized": 150}),
+     ["--maximized-blur-strength", "150"]),
+
+    ("maximized brightness set apart", FROSTED,
+     state(surface_brightness={"maximized": 70}),
+     ["--maximized-brightness", "70"]),
+
     ("blur kept on fullscreen windows", FROSTED,
      state(fullscreen_blur=True), ["--fullscreen-blur"]),
 
@@ -417,6 +458,24 @@ CASES = [
 
     ("the OSD pill goes back to the bare level", state(osd_device_name=True),
      FROSTED, ["--no-osd-device-name"]),
+    ("the OSD popup becomes the tab", FROSTED,
+     state(osd_style="tab"), ["--osd-style", "tab"]),
+    ("the system icons go back to the pack's",
+     state(), state(system_icons="pack"), ["--system-icons", "pack"]),
+    ("the OSD popup goes back to the capsule", state(osd_style="tab"),
+     FROSTED, ["--osd-style", "capsule"]),
+
+    ("Blur This App leaves the window menu", FROSTED,
+     state(window_menu=False), ["--no-window-menu"]),
+
+    ("Blur This App returns to the window menu", state(window_menu=False),
+     FROSTED, ["--window-menu"]),
+
+    ("the Aura Glass icon leaves the top bar", FROSTED,
+     state(top_bar_icon=False), ["--no-top-bar-icon"]),
+
+    ("the Aura Glass icon returns to the top bar", state(top_bar_icon=False),
+     FROSTED, ["--top-bar-icon"]),
 
     ("smooth animations on", FROSTED,
      state(smooth_animations=True), ["--smooth-animations"]),
@@ -740,7 +799,7 @@ for plan, want in PLAN_CASES:
 
 # And the protocol itself, through the real parser, for one flag of each kind.
 for flags, first in ((["--accent", "teal"], "accent"),
-                     (["--blur-strength", "120"], "full")):
+                     (["--blur-strength", "120"], "blur-pipelines")):
     res = subprocess.run(
         ["bash", os.path.join(ROOT, "install.sh"), "--settings-only",
          "--incremental", "--dry-run", "--plan-json", "--yes"] + flags,

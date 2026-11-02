@@ -68,6 +68,13 @@ apply() {
     done
     [ -n "$want" ] || return 0
 
+    # --system-icons: the same missing-memo default as system_icons_choice, and
+    # a pack with no overlay written yet stays on the pack.
+    if [ "$(cat "$HOME/.config/aura-glass/system-icons" 2>/dev/null || true)" != pack ] \
+        && have_theme "Aura-Lucide--$want"; then
+        want="Aura-Lucide--$want"
+    fi
+
     local cur
     cur="$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d \")"
     cur="${cur#\'}"; cur="${cur%\'}"

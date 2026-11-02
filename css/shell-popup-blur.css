@@ -90,7 +90,7 @@
  * switch it depends on.
  */
 
-/* The OSD pill's fill comes from Custom OSD's inline style, not from here —
+/* The OSD popup's fill comes from Custom OSD's inline style, not from here —
  * see [custom-osd] alpha in dconf/core.ini. Only the level bar needs a nudge:
  * a blurred, moving ground is less predictable than the flat tint it used to
  * sit on, and the empty half of the bar was the first thing to disappear.

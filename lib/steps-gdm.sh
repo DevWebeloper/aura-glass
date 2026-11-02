@@ -310,7 +310,13 @@ gdm_theme_closure() {
     printf '%s\n' "$name"
     [ "$base" = "$name" ] || printf '%s\n' "$base"
     sed -n 's/^Inherits=//p' "$dir/$name/index.theme" 2>/dev/null | tr -d '"' | tr ',' '\n' \
-        | while read -r parent; do [ -n "$parent" ] && printf '%s\n' "$parent"; done
+        | while read -r parent; do
+            [ -n "$parent" ] || continue
+            printf '%s\n' "$parent"
+            # The system icon overlay holds almost nothing itself: the pack it
+            # inherits has links and parents of its own to bring along.
+            case "$name" in Aura-Lucide--*) gdm_theme_closure "$parent" ;; esac
+        done
 }
 
 copy_gdm_theme() {
@@ -331,7 +337,9 @@ copy_gdm_theme() {
         esac
     done < <(sudo find "$tmp" -type l -lname '/*' -print0)
     sudo chown -R root:root "$tmp"
-    sudo chmod -R a+rX "$tmp"
+    # go-w too: cp -a kept the pack's own modes, and Moga's cursors/ is 0777. A
+    # directory any local user can write must not feed the login screen.
+    sudo chmod -R a+rX,go-w "$tmp"
     sudo touch "$tmp/$GDM_THEME_MARKER"
     sudo rm -rf "$dest"
     sudo mv "$tmp" "$dest"
@@ -443,6 +451,16 @@ uninstall_gdm_sync_unit() {
     done
     run systemctl --user daemon-reload || true
     run rm -f "$HOME/.local/bin/aura-glass-gdm-sync" "$HOME/.local/bin/tahoe-glass-gdm-sync"
+}
+
+# After a change the login screen mirrors: the wallpaper, primary monitor, cursor
+# and icons. No root needed; see bin/aura-glass-gdm-sync.
+sync_gdm_look_if_installed() {
+    if [ -r "$CONF_DIR/gdm-installed" ] || [ -r "$CONF_DIR/gdm-monitors-synced" ]; then
+        install_gdm_sync_unit
+        # run, so a dry run reports it instead of copying into GDM's home.
+        run "$REPO_ROOT/bin/aura-glass-gdm-sync" --once >/dev/null 2>&1 || true
+    fi
 }
 
 install_gdm() {

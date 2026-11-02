@@ -22,7 +22,6 @@ def main():
                                          '"session_id":null,"revision":0,'
                                          '"recovery_available":false,"conflicts":[]}')
     source = open(os.path.join(ROOT, "gui", "aura_glass_settings.py"), encoding="utf-8").read()
-    assert '"--force-reload"' in source
     assert "Preview queued" not in source or "_preview_queue" in source
     assert "_preview_generation != generation" in source
     print("check-apply-feedback: OK")

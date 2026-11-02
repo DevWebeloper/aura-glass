@@ -67,6 +67,9 @@ const SELF_WM_CLASS = 'io.github.DevWebeloper.AuraGlassSettings';
 // none of it is near-white. The symbolic ring is white already, so the effect
 // leaves it alone.
 const APP_ICON = `${SELF_WM_CLASS}-symbolic`;
+// apply_top_bar_icon in lib/steps-dconf.sh writes this: '0' hides the indicator,
+// and anything else, a missing file included, shows it.
+const TOP_BAR_ICON_FILE = 'top-bar-icon';
 
 // How far into a thumbnail, from each side, a held window means "a new workspace
 // here" rather than "this workspace". GNOME's 10px gave a quarter of an 81px
@@ -141,6 +144,7 @@ const DBUS_IFACE = `
       <arg type="u" direction="in" name="opacity"/>
     </method>
     <method name="RefreshOpacity"/>
+    <method name="ReloadTheme"/>
     <method name="InspectOverviewState">
       <arg type="s" direction="out" name="state"/>
     </method>
@@ -988,6 +992,17 @@ export default class AuraGlassBlurExtension extends Extension {
         });
         this._refreshProfileState();
         Main.panel.addToStatusArea(this.metadata.uuid, this._indicator);
+        this._syncTopBarIcon();
+    }
+
+    // Hidden rather than destroyed, so the menu's state and _hookWhiteIcons keep
+    // the one icon they hold. On the container, after addToStatusArea, because
+    // that shows it and it is what holds the panel button's slot.
+    _syncTopBarIcon() {
+        const shown = readState(TOP_BAR_ICON_FILE) !== '0';
+        if (!shown)
+            this._indicator.menu.close();
+        this._indicator.container.visible = shown;
     }
 
     _refreshProfileState(statusOverride = null) {
@@ -1456,6 +1471,14 @@ export default class AuraGlassBlurExtension extends Extension {
                 const dir = Gio.File.new_for_path(configPath(...parts));
                 const monitor = dir.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, null);
                 const id = monitor.connect('changed', (_mon, file, other, eventType) => {
+                    // --reset moves the memos away, and this is the one a
+                    // missing file changes something live for: it means shown.
+                    if (eventType === Gio.FileMonitorEvent.DELETED ||
+                        eventType === Gio.FileMonitorEvent.MOVED_OUT) {
+                        if (file?.get_basename() === TOP_BAR_ICON_FILE)
+                            this._syncTopBarIcon();
+                        return;
+                    }
                     if (eventType !== Gio.FileMonitorEvent.CHANGES_DONE_HINT &&
                         eventType !== Gio.FileMonitorEvent.CREATED &&
                         eventType !== Gio.FileMonitorEvent.CHANGED &&
@@ -1470,6 +1493,8 @@ export default class AuraGlassBlurExtension extends Extension {
                         this._updateOpacityFromConfig();
                     else if (name === 'window-menu')
                         this._syncWindowMenu();
+                    else if (name === TOP_BAR_ICON_FILE)
+                        this._syncTopBarIcon();
                     else if (name === OVERRIDE_SHEET)
                         this._loadOverrideSheet();
                     else if (ANIMATION_SPEED_STATE_FILES.has(name))
@@ -1537,6 +1562,13 @@ export default class AuraGlassBlurExtension extends Extension {
 
     RefreshOpacity() {
         this._updateOpacityFromConfig();
+    }
+
+    // Reads the stylesheet again in one step. User Themes can only be made to
+    // reload by changing its key, which puts the shell through the default theme
+    // on the way; this is what aura-glass-apply asks for first.
+    ReloadTheme() {
+        Main.loadTheme();
     }
 
     setWindowOpacityAll(opacity) {

@@ -28,7 +28,8 @@ implementation view.
 | `-n`, `--dry-run` | Print what would happen. Skips the writer lock. |
 | `--settings-only` | Retune an existing install: no theme or extension fetch, no root, no network unless a pack or font flag asks for one. |
 | `--incremental` | With `--settings-only`: run only the classified actions (§1.4), else fall back to full. |
-| `--plan-json` | With `--settings-only --incremental --dry-run`: print the action plan as JSON and exit. |
+| `--plan-json` | With `--settings-only --incremental --dry-run` or `--update --dry-run`: print the plan as JSON (`actions`, `fallback_reason`, `parts`, `pending_update`) and exit. |
+| `--update` | Install only the parts out of date, then verify. Falls back to the full install when it cannot be sure. See ARCHITECTURE, "Parts". |
 | `--adaptive-blur active\|restore` | Private to the adaptive worker. Needs `--settings-only --incremental`. Never memoed. |
 | `--deps-only` | Install missing dependencies, then exit (needs root). |
 | `--progress-window` | Full install only: open the progress window (`gui/aura_glass_install_progress.py`) beside the terminal. On by itself after the GTK wizard. Not memoed. |
@@ -49,14 +50,17 @@ implementation view.
 | `--full` | | `extension-pack`, `osd` | all extras + icons + cursors + OSD |
 | `--osd` / `--no-osd` | on | `osd` (`0\|1`) | Custom OSD pill. A remembered `0` is what a flagless `--gui` update or `--force` reinstall reads back |
 | `--osd-device-name` / `--no-osd-device-name` | off | `osd-device-name` (`0\|1`) | Shows the speaker or screen name on the Custom OSD pill (`custom-osd/osd-all`, `label-all`) |
+| `--osd-style capsule\|tab` | `capsule` | `osd-style` | The Custom OSD popup's design: a thick bar at the popup's usual place, or a one-line tab hanging from the top bar (`custom-osd/osd-style`, Blur My Shell `osd-window-*`). Needs the patched Custom OSD and Blur My Shell builds. |
 | `--bms-git` / `--no-bms-git` | git | `bms-ref`, `bms-source` | `--no-bms-git` (EGO build) also forces popup blur off. A remembered `ego` keeps a flagless re-run on the EGO build; `--bms-git` or `--popup-blur` typed override it |
 | `--rounded-blur` / `--no-rounded-blur` | retired | none | accepted and ignored. gnome-rounded-blur is no longer installed: Blur My Shell v76 rounds its blur itself. An older install's `rounded-blur` stamp only tells `uninstall.sh` to explain how to remove the library |
 | `--gui` / `--no-gui` | on | none | settings window (needs PyGObject, libadwaita, pycairo) |
 | `--window-menu` / `--no-window-menu` | on | `window-menu` | "Blur This App" (the helper reads the memo live) |
+| `--top-bar-icon` / `--no-top-bar-icon` | on | `top-bar-icon` (`0\|1`, written only when a flag chose it; missing means shown) | The Aura Glass icon in the top bar (the helper reads the memo live). Hidden, its menu is gone, so the adaptive profile switches through `aura-glass-adaptive profile`. Quick apply |
 | `--update-check` / `--no-update-check` | on | `update-check` | daily timer |
 | `--update-channel release\|latest` | `release` | `update-channel` | what the check follows on `main`: tags, or commits (a new release is still announced) |
 | `--panel-blur-fix` / `--no-panel-blur-fix` | | none | retired: accepted and ignored. The rebuild service is removed on every run (`remove_panel_blur_unit`), with its `panel-blur-fix` memo |
-| `--gdm` / `--no-gdm`, `--gdm-background PATH` | off | `gdm-installed` | root |
+| `--gdm` / `--no-gdm` | off | `gdm-installed` | root |
+| `--gdm-background PATH` | | none | retired: accepted and warned, the path ignored, still implies `--gdm`. The login wallpaper follows the desktop wallpaper (`aura-glass-gdm-sync`) |
 | `--gdm-monitors` (`--sync-monitors`) / `--no-gdm-monitors` | off | `gdm-monitors-synced` | root |
 
 ### Look and behaviour
@@ -74,6 +78,9 @@ implementation view.
 | `--app-transparency L` (`--window-opacity`, `--window-transparency`); `--no-app-transparency` (+ the two `--no-` aliases) | `0.70–1.00`, `%`, or `0–255`. 0 = off. Fresh default 0.90 (0.95 without window blur, 1.00 in performance). Buckets snap to 0.82, 0.90 and 0.95 | `app-transparency` (`app-opacity` is always 255 now) | ✓ | `css` for the primary spelling, full for the aliases |
 | `--app-tint-color HEX` | `#000000` | `app-tint-color` | ✓ | `css` |
 | `--shell-tint-color HEX` | `#000000` (inherits app tint if unset) | `shell-tint-color` | ✓ | `css` |
+| `--dock-tint-color HEX` | `main` (follow the shell tint), or the overview's dock and search in exactly this colour | `dock-tint-color` | ✓ | `css` |
+| `--panel-tint-color HEX` | `main` (clear glass), or the top bar over the desktop in exactly this colour. Stays clear in the overview and on the lock and login screens | `panel-tint-color` | ✓ | `css` |
+| `--maximized-panel-tint-color HEX` | `main` (follow the shell tint), or the top bar over a maximized window in exactly this colour | `maximized-panel-tint-color` | ✓ | `css` |
 | `--maximized-panel-brightness P` | 0–100, default 40 (the sheet's 60% black). 0 solid black, 100 no shade. Rewrites the shade's alpha in the installed `shell-00-flat.css` (`apply_maximized_panel_brightness`) | `maximized-panel-brightness` | | `css` |
 | `--panel-height PX` | 24–48 logical px, default 40 (the theme's). 32 is GNOME's own and the settings app's reset. Snapped to whole device pixels at the primary scale (`panel_height_css`) | `panel-height` | | `css` |
 | `--refresh-display` | With `--settings-only` only: re-measure the primary display, rewrite `shell-90-density.css` and the tray icon size, re-splice. Run by `aura-glass-display-sync`; no memo of its own. |
@@ -81,12 +88,13 @@ implementation view.
 | `--notification-opacity P` | retired: accepted, warned, ignored. The banner ground follows `--popup-opacity` | none | | full |
 | `--blur-strength P` | 25–200 % of each pipeline's tuned radius, default 100. The main blur amount: every pipeline | `blur-strength` | ✓ | `blur-pipelines` |
 | `--blur-brightness P` | 50–100 % of each pipeline's tuned brightness, default 100. The main brightness: every pipeline (the lock screen's tuned 80 % scales with it) | `blur-brightness` | ✓ | `blur-pipelines` |
-| `--window-blur-strength`, `--popup-blur-strength`, `--lockscreen-blur-strength` `P\|main` | 25–200, or `main` (default): that surface's own blur amount, replacing `--blur-strength` for it. `popup` is menus, Quick Settings and notifications; `lockscreen` is also the overview and the top bar, which share its pipeline. `--panel-blur-strength` is retired: accepted and ignored | `<surface>-blur-strength` | ✓ | `blur-pipelines` |
-| `--window-brightness` (`--app-brightness`, `--window-blur-brightness`), `--popup-brightness`, `--lockscreen-brightness` `P\|main` | 50–100, or `main` (default): that surface's own brightness, replacing `--blur-brightness` for it. `--panel-brightness` is retired: accepted and ignored | `<surface>-blur-brightness` (legacy `window-brightness` 100 and `popup-brightness` 100/115 read as `main`, other legacy values as the override) | ✓ | `blur-pipelines` |
+| `--window-blur-strength`, `--popup-blur-strength`, `--lockscreen-blur-strength`, `--maximized-blur-strength` `P\|main` | 25–200, or `main` (default): that surface's own blur amount, replacing `--blur-strength` for it. `maximized` is a window under `--maximized-blur static`, and its `main` is the windows' own value, not `--blur-strength`. `popup` is menus, Quick Settings and notifications; `lockscreen` is also the overview and the top bar, which share its pipeline. `--panel-blur-strength` is retired: accepted and ignored | `<surface>-blur-strength` | ✓ | `blur-pipelines` |
+| `--window-brightness` (`--app-brightness`, `--window-blur-brightness`), `--popup-brightness`, `--lockscreen-brightness`, `--maximized-brightness` `P\|main` | 50–100, or `main` (default): that surface's own brightness, replacing `--blur-brightness` for it (`maximized`: the windows' own value). `--panel-brightness` is retired: accepted and ignored | `<surface>-blur-brightness` (legacy `window-brightness` 100 and `popup-brightness` 100/115 read as `main`, other legacy values as the override) | ✓ | `blur-pipelines` |
 | `--grain N` / `--no-grain` | 0–1, default 0 | `grain` | | full |
 | `--glass-style S` | `frosted` (default), `liquid`, `vibrant`, `tinted` (accent colour), `smoked`. Liquid: the dock alone, and makes its blur static; the top bar stays frosted. The others: pipeline `lock screen`, so top bar, overview and lock screen together; the dock stays frosted | `glass-style` | | full |
 | `--liquid-windows` / `--no-liquid-windows` | off. Liquid or vibrant behind app windows too (ignored under tinted and smoked); makes `[applications] static-blur` true | `liquid-windows` | | full |
 | `--fullscreen-blur` / `--no-fullscreen-blur` | off. On keeps the window blur behind a fullscreen window; off drops it and puts the window at opacity 255 (`[applications] unblur-when-fullscreen`) | `fullscreen-blur` | | `fullscreen-blur` |
+| `--maximized-blur static\|dynamic` | `static`. Static: a window covering its monitor blurs only the wallpaper, through pipeline `maximized` with its own amount and brightness. Dynamic: it blurs what is behind it and follows the other windows (`[applications] maximized-static-blur`, read by the patched Blur My Shell, so a build from before the key needs a full run and a new login). No effect while `--liquid-windows` makes every window static | `maximized-blur` | ✓ | `maximized-blur` |
 | `--smooth-animations` / `--no-smooth-animations` | off. On sets Blur My Shell's patched `full-size-buffers` (blur textures allocated once at the largest monitor's size and kept, about 50 MB per blurred surface at 3440×1440) and writes `~/.config/environment.d/aura-glass.conf` with `CLUTTER_PAINT=disable-dynamic-max-render-time` (read at next login). Off clears the key and removes the file | `smooth-animations` | | `smooth-animations` |
 | `--window-animation-speed P`, `--notification-animation-speed P`, `--menu-animation-speed P` | 50–300, default 100 (GNOME's pace; 200 twice as fast). Memos only: the Aura Glass Helper reads them live and scales the shell's own `ease()` durations for window actors (map, destroy, minimize, size change, tile preview), the notification banner and every `BoxPointer` menu, opening and closing alike. Not previewable | `window-animation-speed`, `notification-animation-speed`, `menu-animation-speed` | | `animation-speed` |
 | `--radius-preset P` | `flat sharp adwaita soft medium default rounded` (`pill` → `rounded`). Default `default` | `radius-preset` | | full |
@@ -95,6 +103,7 @@ implementation view.
 | `--titlebar-button-style S` | `minimal` (default), `adwaita`, `material`, `flat` | `titlebutton-style` | | `css` |
 | `--icons X` | `colloid` (flagless default), `reversal`, `hatter`, `-<colour>` variants, `original`, or an installed theme name | `icon-pack` (+ `icons` = resolved name) | | full |
 | `--no-icons` | leave the icon theme alone, permanently | `icon-pack` = `keep` | | full |
+| `--system-icons lucide\|pack` | `lucide` | `system-icons` | The small one-colour icons. `lucide` writes `Aura-Lucide--<pack>` themes that inherit the pack and points `icon-theme` at one. Ignored with `--no-icons`. | live |
 | `--cursors X` | `adwaita` (flagless default), `aosp`, `mactahoe`, `moga`, `original`, or an installed theme | `cursor-pack` | | `cursor-theme` |
 | `--no-cursors` | leave the pointer theme alone | `cursor-pack` = `keep` | | `cursor-theme` |
 | `--cursor-size PX` | 16–128. Unset = never written | `cursor-size` | | `cursor-size` |
@@ -116,16 +125,23 @@ implementation view.
 | `blur-pipelines` | `apply_blur_pipelines` (every blur amount and brightness flag) |
 | `app-blur` | `apply_app_blur` |
 | `css` | `install_css` (the whole CSS pipeline + `aura-glass-apply`) |
+| `maximized-blur` | `apply_maximized_blur` |
 | `glass-style` | `apply_glass_style` (an accent edit under the tinted style) |
 | `animation-speed` | `apply_animation_speed` (the three memos; the helper picks them up live) |
 | `adaptive-blur` | `apply_adaptive_blur active\|restore` |
 
+| `update-check` | `install_update_check` |
+| `window-menu` | `install_aura_ext` (writes the memo; the helper reads it live) |
+| `font` | `install_fonts`, then `apply_font` |
+| `icons` | `install_icons` if a pack was typed, then `apply_icon_theme`, `install_icon_sync` and the login-screen sync. An `--accent` edit adds it for a pack that follows the accent |
+| `radius` | `apply_radius_dconf`, beside `css` |
+| `popup-blur` | `apply_popup_blur`, beside `css` |
+
 These are ignored by the classifier: `--settings-only --incremental --plan-json --yes -y --dry-run -n`.
-Any other flag makes the action `full`. The incremental path also falls back to
-`full` when `$C/apply-source-fingerprint` (a sha256 of `install.sh`, `lib/*.sh`,
-`tokens.sh`, `aura-glass-apply`, `aura_glass_operation.py`, `css/*.css` and
-`dconf/*.ini`) is absent or differs. **The incremental path doesn't call
-`remember_glass_mode`**, so drawers are not updated (KI-01).
+Any other flag makes the action `full`, and so does `--glass-mode`, which moves every
+setting at once. So does having no `$C/installed-parts`, or a change to a file no part
+claims. Any local part out of date runs too; see ARCHITECTURE, "Parts".
+`check-incremental-apply.py` compares every class against the full retune.
 
 ---
 
@@ -146,18 +162,20 @@ not adaptive).
 | `app-transparency` | `0` or `0.70`–`1.00` | `install_transparency_css` |
 | `app-opacity` | BMS applications actor opacity (follows the transparency level, level × 255) | `apply_app_opacity` |
 | `app-tint-color`, `shell-tint-color` | `#rrggbb` | `apply_app_tint_color`, `apply_shell_tint_color` |
+| `dock-tint-color`, `panel-tint-color`, `maximized-panel-tint-color` | `#rrggbb\|main` | `apply_surface_tint_colors` |
 | `popup-opacity` | 70–100 or `main` (written under frosted only) | `apply_popup_transparency` |
 | `panel-height` | 24–48 | `install_css` |
 | `tray-icon-size` | the Status Tray `icon-size` last written from the display density; a different live value counts as set by hand | `sync_tray_icon_size` |
 | `maximized-panel-brightness` | 0–100 | `install_css` |
 | `blur-strength`, `blur-brightness` | 25–200, 50–100 | `apply_blur_pipelines` |
-| `{window,popup,panel,lockscreen}-blur-strength` | 25–200 or `main` | `apply_blur_pipelines` |
-| `{window,popup,panel,lockscreen}-blur-brightness` | 50–100 or `main` | `apply_blur_pipelines` |
+| `{window,popup,panel,lockscreen,maximized}-blur-strength` | 25–200 or `main` | `apply_blur_pipelines` |
+| `{window,popup,panel,lockscreen,maximized}-blur-brightness` | 50–100 or `main` | `apply_blur_pipelines` |
 | `popup-brightness`, `window-brightness`, `notification-opacity`, `notification-blur` | legacy, no longer written. The two brightness memos are read once as the per-surface value when the new memo is absent | none |
 | `grain` | 0–1 | `apply_grain` |
 | `glass-style` | `frosted\|liquid\|vibrant\|tinted\|smoked` | `apply_glass_style` |
 | `liquid-windows` | `0\|1`, kept under frosted | `apply_glass_style` |
 | `fullscreen-blur` | `0\|1`, top-level | `apply_fullscreen_blur` |
+| `maximized-blur` | `static\|dynamic`, top-level | `apply_maximized_blur` |
 | `smooth-animations` | `0\|1`, top-level | `apply_smooth_animations` |
 | `window-animation-speed`, `notification-animation-speed`, `menu-animation-speed` | 50–300, top-level | `apply_animation_speed` |
 | `titlebutton-style` | `minimal\|adwaita\|material\|flat` | `install_window_control_style` |
@@ -174,7 +192,7 @@ not adaptive).
 
 ### Mode drawers: `$C/modes/<frosted|performance>/`
 
-`app-transparency app-tint-color shell-tint-color app-blur-scope popup-blur`, and
+`app-transparency app-tint-color shell-tint-color dock-tint-color panel-tint-color maximized-panel-tint-color app-blur-scope popup-blur`, and
 under frosted `blur-strength blur-brightness popup-opacity` plus each surface's
 `<surface>-blur-strength` and `<surface>-blur-brightness` (an older drawer's
 `window-brightness`/`popup-brightness` are read as those). Created by `seed_glass_mode`, read by
@@ -207,7 +225,7 @@ by `save_glass_mode_memos`.
 | File | Holds | Writer / reader |
 |---|---|---|
 | `repo-path` | the checkout the GUI, preview, update check and worker run from. **Only written when the GUI is installed** | `install_gui` |
-| `apply-source-fingerprint` | sha256 of the apply sources | `--incremental` full fallback |
+| `installed-parts` | one `PART HASH` per line: what each part last installed | written after each part by `update_stamp`; read by `--update` and `--incremental`. Replaces `apply-source-fingerprint` |
 | `update-check` | `0\|1` | `install_update_check` |
 | `update-channel` | `release\|latest`. Still written, **no longer read**: every commit on main is offered as a tag (`v0.3.5+N`) either way | `install_update_check` |
 | `update-available` | the version a check found: a release `vX.Y.Z`, a tag `vX.Y.Z+N`, or `branch@sha` on a test build | `aura-glass-update-check` |
@@ -219,6 +237,8 @@ by `save_glass_mode_memos`.
 | `kept-extensions` | one UUID per line: retired extensions the user chose to keep when asked. Not asked again | `disable_retired_extensions` |
 | `osd` | `0\|1`. Only a `0` is read back | `install_custom_osd`; read in the resolution block |
 | `osd-device-name` | `0\|1`, top-level | `apply_osd_device_name` |
+| `osd-style` | `capsule\|tab`, top-level | `apply_osd_style` |
+| `system-icons` | `lucide\|pack`, top-level | `apply_icon_theme` |
 | `bms-ref`, `bms-source` | installed BMS commit and `git\|ego`. `ego` is read back as `--no-bms-git` | `install_bms`; read in the resolution block |
 | `bms-backports-patch`, `bms-subwindow-patch`, `bms-buffers-patch`, `bms-fade-patch`, `bms-static-patch`, `custom-osd-patch` (legacy `openbar-patch`) | patch stamps. `bms-overview-patch`, `bms-notification-patch`, `bms-panel-patch` and `rounded-blur-patch` are left by older releases and no longer read | `patch_stamp_write` |
 | `gdm-installed`, `gdm-monitors-synced` | login-screen state | `lib/steps-gdm.sh` |
@@ -267,7 +287,8 @@ cursor-size and font keys (what `original` / `system` restore).
 ```
 /org/gnome/shell/extensions/blur-my-shell/   pipelines, panel, popup (+ patched notification key), applications,
                                              overview, appfolder, lockscreen, window-list, screenshot, dash-to-dock, …,
-                                             patched full-size-buffers (--smooth-animations)
+                                             patched full-size-buffers (--smooth-animations),
+                                             patched applications/maximized-static-blur (--maximized-blur)
 /org/gnome/shell/extensions/custom-osd/
 /org/gnome/shell/extensions/{vitals,hotedge,status-tray}/   (extras.ini)
 ```

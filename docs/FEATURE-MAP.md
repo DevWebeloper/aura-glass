@@ -19,7 +19,7 @@ a restart.
 | Top bar shaded behind a maximized window | `shell-00-flat` (`#panel.aura-glass-maximized`, 60% black shipped, alpha rewritten by `apply_maximized_panel_brightness` from `--maximized-panel-brightness`, settings app → Appearance → Titlebar & top bar; 250ms fade both ways) | none | none | Aura Glass Helper `_syncPanelShade`: focused window on the primary monitor that is maximized, fullscreen or covers the work area (Tiling Assistant `maximize-with-gap`), outside the overview |
 | Panel blur after monitor changes | none | none | none | Blur My Shell v76 keeps it aligned itself. The old `aura-glass-panel-blur.service` is removed by `remove_panel_blur_unit` |
 | Panel icon size for this display, Copyous and tray icons included | generated `shell-90-density`, Status Tray `icon-size` | none | `TUNED_PPI` (in `steps-css.sh`) | `measure_logical_ppi`, `density_css`, `sync_tray_icon_size`; re-measured on a layout change by the Helper (`aura-glass-display-sync`, `write_display_sheet`) |
-| Top bar height (24–48 px, settings app → Appearance → Top bar; reset goes to GNOME's 32), snapped so there is no seam under a maximized window | generated `shell-90-density` (`#panel { height }`: the asked height snapped to whole device pixels, so 39px for the theme's 40 at 1.33/1.67; absent when that is the theme's own 40) | none | `PANEL_HEIGHT_THEME` 40, `PANEL_HEIGHT_GNOME` 32 (`steps-css.sh`, copied in `gui/aura_glass_settings.py`, held by `check-gui-flags.py`) | `resolve_panel_height`, `measure_primary_scale`, `panel_height_css`. Memo `$C/panel-height` |
+| Top bar height (24–48 px, settings app → Glass → Top bar; reset goes to GNOME's 32), snapped so there is no seam under a maximized window | generated `shell-90-density` (`#panel { height }`: the asked height snapped to whole device pixels, so 39px for the theme's 40 at 1.33/1.67; absent when that is the theme's own 40) | none | `PANEL_HEIGHT_THEME` 40, `PANEL_HEIGHT_GNOME` 32 (`steps-css.sh`, copied in `gui/aura_glass_settings.py`, held by `check-gui-flags.py`) | `resolve_panel_height`, `measure_primary_scale`, `panel_height_css`. Memo `$C/panel-height` |
 | Quick Settings panel | `shell-20-popup-menus`, `shell-popup-blur` | `[blur-my-shell/popup] quick-settings-corner-radius` | `TOKEN_RADIUS_QUICK_SETTINGS` | `install_css`, `apply_radius_*` |
 | Quick Settings sliders | `shell-10-quick-settings` | none | none | `install_css` |
 | Quick toggles and switches | `shell-40-quick-toggles` | none | none (follows `-st-accent-color`) | `install_css` |
@@ -36,6 +36,7 @@ a restart.
 | Overview dash, Dash to Dock / window list | `#dash .dash-background` in `shell-00-flat`, `shell-80-solid` (the fill only shows with `override-background=false`) | `[blur-my-shell/dash-to-dock]`, `[…/window-list]`, pipelines `dock`, `window list`. The overview dash blurs the app grid under it (`patches/blur-my-shell-upstream-backports.patch`, #1211) because `unblur-in-overview=false` | `TOKEN_BLUR_RADIUS_DASH_TO_DOCK`, `TOKEN_BLUR_RADIUS_WINDOW_LIST` | `load_dconf` |
 | Lock screen blur | none | `[blur-my-shell/lockscreen]` | none | `load_dconf` |
 | Shell tint (hue of dark surfaces) | every shell sheet (installed copies) | none | none | `apply_shell_tint_color` → `tools/apply-shell-tint.py`. Memo `$C/shell-tint-color` |
+| Dock & search colour, top bar colour (desktop, maximized) | `#dash .dash-background`, `#overview .search-entry`, `#panel.aura-glass-maximized` (channels rewritten in the installed copies); the desktop bar's rule is appended to `shell-00-flat`, and `aura-glass-apply` copies its `#panel.transparent-panel` half into `extension-overrides.css` | none | none | `apply_surface_tint_colors` → `tools/apply-shell-tint.py --surface`. Memos `$C/dock-tint-color`, `$C/panel-tint-color`, `$C/maximized-panel-tint-color` |
 | Performance mode shell look | `shell-80-solid` (opaque ladder) | `dconf/solid.ini` (fresh preset loads only) | `TOKEN_RADIUS_NOTIFICATION` | `install_css` (when `WANT_BLUR=0`), `apply_popup_transparency` |
 | Accent colour in the shell | substituted by `bin/aura-glass-apply` (`-st-accent-color`) | none | none | `apply_accent`. gsettings `accent-color` |
 | Login screen (GDM) | `gdm-auth-menu` (session switcher menu), `shell-50-dialogs` | none | none | `lib/steps-gdm.sh`, `bin/aura-glass-gdm-sync` (opt-in, root) |
@@ -72,7 +73,7 @@ a restart.
 | Feature | Where | Applied by |
 |---|---|---|
 | Main blur amount (25–200 %) and brightness (50–100 %) | every `dual_kawase_blur` effect's `unscaled_radius` and `brightness` in `pipelines`, from `core.ini`'s values, capped at v76's 100 and 1.0 | `apply_blur_pipelines`. Memos `$C/blur-strength`, `$C/blur-brightness` (frosted drawer) |
-| One surface's own blur amount and brightness (windows, popups & notifications, top bar, lock screen + overview) | the pipeline its component (`applications`, `popup`, `panel`, `lockscreen`) points at; `main` follows the main values. Dock, app folders and window list follow the main values only | `apply_blur_pipelines` (`BLUR_SURFACES`). Memos `$C/<surface>-blur-strength`, `$C/<surface>-blur-brightness` (frosted drawer) |
+| One surface's own blur amount and brightness (windows, maximized windows, popups & notifications, top bar, lock screen + overview) | the pipeline its component (`applications`, `popup`, `panel`, `lockscreen`) points at; `main` follows the main values. Dock, app folders and window list follow the main values only | `apply_blur_pipelines` (`BLUR_SURFACES`). Memos `$C/<surface>-blur-strength`, `$C/<surface>-blur-brightness` (frosted drawer) |
 | Popups & notifications opacity (70–100, or follow the windows) | `shell-popup-blur.css` alphas and the banner ground in `shell-notification-blur.css` | `apply_popup_transparency`, `apply_notification_opacity`. Memo `$C/popup-opacity` (frosted drawer) |
 | Moving an install onto v76's pipelines | `pipelines`, `settings-version`, every component's `pipeline`; legacy `sigma`/`brightness`/`customize` reset | `upgrade_bms_settings` (once: below version 7, or after v76's own migration) |
 | Grain (0–1) | the noise effect in pipelines | `apply_grain` |
@@ -82,6 +83,7 @@ a restart.
 | Popup blur on/off | `[popup] blur` + `shell-popup-blur.css` present/absent | `apply_popup_blur`, `install_css` |
 | Notification blur | follows the popup blur: `shell-notification-blur.css` is installed with `shell-popup-blur.css` (`--notification-blur` is retired) | `install_css` |
 | Static or dynamic blur per window | none | `[blur-my-shell/applications] static-blur=false`, with `patches/blur-my-shell-static-maximized.patch` turning a window static while it covers its monitor (shows the wallpaper only, not the windows behind it) and dynamic otherwise. `covers_monitor` is the same test as `coversMonitor` in the helper. `--liquid-windows` sets `static-blur=true`: every window static | none | `apply_glass_style` (`--liquid-windows`), `install_bms` |
+| Maximized windows: static or dynamic, and a static one's own blur amount and brightness (settings app → Glass → app chip) | none | `[blur-my-shell/applications] maximized-static-blur`, pipeline `maximized` (named by the patch, not a key; unused while `static-blur=true`) | `TOKEN_BLUR_RADIUS_APPLICATIONS` | `apply_maximized_blur` (`--maximized-blur`), `apply_blur_pipelines` (`--maximized-blur-strength`, `--maximized-brightness`, inserts the pipeline on an existing install) |
 | Per-app blur lists | `[applications] whitelist/blacklist`, memos `app-blur-allow/-block` | `apply_app_blur`. Window menu: `aura-glass-preview app-blur` |
 
 ## 5. Modes and adaptive
@@ -89,21 +91,23 @@ a restart.
 | Feature | Files | Notes |
 |---|---|---|
 | Frosted / Performance | `lib/steps-modes.sh`, `$C/glass-mode`, `$C/modes/<mode>/` | See ARCHITECTURE §3 |
-| Adaptive profiles (Auto / Full Glass / Performance) | `extensions/…/extension.js` (menu), `bin/aura-glass-adaptive`, `tools/aura_glass_adaptive.py`, `apply_adaptive_blur` in `lib/steps-dconf.sh`, `systemd/aura-glass-adaptive.service` | State in `$C/adaptive-profile`, `$C/adaptive-performance/`. Shown and switchable in the settings app's Glass status group |
-| Fullscreen games list | settings app → Per-app blur | `$C/adaptive-fullscreen-apps` |
+| Adaptive profiles (Auto / Full Glass / Performance) | `extensions/…/extension.js` (menu), `bin/aura-glass-adaptive`, `tools/aura_glass_adaptive.py`, `apply_adaptive_blur` in `lib/steps-dconf.sh`, `systemd/aura-glass-adaptive.service` | State in `$C/adaptive-profile`, `$C/adaptive-performance/`. Shown in the settings app's header button, switched from the panel menu, or `aura-glass-adaptive profile` while that icon is hidden |
+| Aura Glass icon in the top bar (settings app → Appearance → Titlebar & top bar) | Helper `_buildPanelMenu`, `_syncTopBarIcon`, `apply_top_bar_icon` in `lib/steps-dconf.sh` | Memo `$C/top-bar-icon`, read live by the Helper's config monitor. Hiding it keeps the indicator built and hides its container |
+| Fullscreen games list | settings app → Per-app blur → Games | `$C/adaptive-fullscreen-apps` |
 
 ## 6. Assets, fonts, extensions
 
 | Feature | Files |
 |---|---|
 | Icon packs + accent mapping | `lib/steps-assets.sh` (`install_icons`, `icon_base`, `accent_to_*`), `bin/aura-glass-icon-sync` (light/dark) |
+| System icons over a pack (`--system-icons`) | `symbols/lucide/` (Lucide with strokes outlined, generated and committed), `system_icons_choice`, `write_system_icons`, `prune_system_icons` in `lib/steps-assets.sh`, `apply_icon_theme`, `bin/aura-glass-icon-sync`, `gdm_theme_closure` |
 | Pointer packs, size | `lib/steps-assets.sh` (`install_cursors`, `install_moga_cursors`), `tools/moga_cursor.py`, `apply_cursor_theme`, `apply_cursor_size`, Wiggly's magnified pointer: `patch_wiggly_extension` + `patches/wiggly-follow-cursor.patch` |
 | Tray icon default effect (desaturation, brightness, contrast, tint) | `patch_status_tray_extension` in `lib/steps-extensions.sh`; per-app tuning is Status Tray's `icon-effect-overrides` |
 | Tray icons only the theme has (Solaar's battery level) | `patch_status_tray_icon_lookup` in `lib/steps-extensions.sh` |
 | Fonts | `lib/steps-fonts.sh`, `apply_font` |
 | Extension catalogue | `lib/steps.sh` (arrays, `ext_description`), `bin/aura-glass-ext`, `lib/steps-extensions.sh` |
 | Tiling Assistant's drag-to-top and `tile-maximize` really maximize, so the titlebar button shows restore (`maximize-with-gap` reset unless a screen gap needs it) | `lib/steps-dconf.sh` (`apply_tiling_maximize`, from `apply_gsettings`) |
-| Blur This App (window menu) | `extensions/aura-glass-blur@aura-glass.local/extension.js` → `aura-glass-operation app-blur` |
+| Blur This App (window menu) | `extensions/aura-glass-blur@aura-glass.local/extension.js` → `aura-glass-operation app-blur`. Shown or hidden by `--window-menu` (memo `window-menu`, set in the settings app's Per-app blur) |
 | Mouse wheel switches workspaces while dragging in the overview | `extensions/aura-glass-blur@aura-glass.local/extension.js` (`_attachDragScroll`, `_onDragScroll`) |
 | A window let go near a workspace or thumbnail in the overview still lands there | `extensions/aura-glass-blur@aura-glass.local/extension.js` (`_hookDropTargets`, `_workspaceNear`, `_delegateOtherScreens`) |
 | The log out dialog starts keyboard focus on Log Out | `extensions/aura-glass-blur@aura-glass.local/extension.js` (`_hookEndSessionDialog`) |
@@ -114,9 +118,11 @@ a restart.
 |---|---|
 | Flag parsing, resolution, step order | `install.sh` |
 | Incremental Apply classification | `lib/steps-apply-plan.sh` |
+| What an update runs (parts, hashes, `$C/installed-parts`) | `lib/steps-apply-plan.sh` |
 | Writer lock | `bin/aura-glass-operation`, `tools/aura_glass_operation.py` |
 | Splicing, flattening, accent swap, atomic publish | `bin/aura-glass-apply` |
 | Live preview | `bin/aura-glass-preview`, `gui/preview_queue.py` |
+| Tint picker's suggestions (three rows, from the wallpaper) | `gui/wallpaper_palette.py` (colour work, stdlib only), `WallpaperWatch`, `GlassSwatch` and `TintPalette` in `gui/aura_glass_settings.py`. They only propose: a pick is the same `--*-tint-color` flag as a typed hex |
 | Backups, dry-run, memo guard | `lib/common.sh` (`backup_once`, `run`, `remembering`) |
 | Dependencies, distro detection | `lib/distro.sh` |
 | Legacy rename (`tahoe-glass`) | `lib/steps-migrate.sh` |
@@ -136,9 +142,9 @@ a restart.
 | `TOKEN_RADIUS_POPUP` | 20 | `core.ini [popup] corner-radius` | `check-tokens.sh` |
 | `TOKEN_RADIUS_OSD` | 12 | `core.ini [popup] osd-corner-radius` | `check-tokens.sh` |
 | `TOKEN_RADIUS_BUTTON` | 9999 | `gtk4-20-buttons.css` | `check-tokens.sh` |
-| `TOKEN_BLUR_RADIUS_{PANEL,APPFOLDER,POPUP,WINDOW_LIST,APPLICATIONS,DASH_TO_DOCK}` | 12 / 100 / 60 / 60 / 24 / 8 | the `unscaled_radius` of the matching pipeline in `core.ini` | `check-tokens.sh` |
+| `TOKEN_BLUR_RADIUS_{PANEL,APPFOLDER,POPUP,WINDOW_LIST,APPLICATIONS,DASH_TO_DOCK}` | 12 / 100 / 60 / 60 / 24 / 8 | the `unscaled_radius` of the matching pipeline in `core.ini` (`APPLICATIONS`: both `windows` and `maximized`) | `check-tokens.sh` |
 | `TOKEN_APP_TRANSPARENCY_SHIPPED` | 0.92 | `gtk4-transparency.css` | `check-tokens.sh` |
-| `TOKEN_APP_TINT` | 45 | `gtk4-transparency.css` | `check-tokens.sh` |
+| `TOKEN_APP_TINT` | 45 | `gtk4-transparency.css`, `gui/wallpaper_palette.py` (`APP_TINT_SHARE`) | `check-tokens.sh` |
 
 Radius presets also live in `radius_preset_values`/`radius_bounds`
 (`tokens.sh`) **and** in `RADIUS_PRESET_VALUES`/`RADIUS_SURFACES`

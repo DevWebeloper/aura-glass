@@ -2,6 +2,7 @@
 """Give the shell's dark surfaces a colour, without changing how dark they are.
 
     apply-shell-tint.py CONF_DIR HEX
+    apply-shell-tint.py --surface dock|panel|maximized-panel CONF_DIR HEX
 
 The GTK sheet has one tint colour in one place (see tools/apply-tint-color.py).
 The shell sheets do not: a notification ground, a menu ground and a dialog
@@ -35,6 +36,15 @@ untouched, so the default costs nothing and going back to it is exact.
 Run against the installed copies in $CONF_DIR. install_css lays those down
 fresh from css/ on every run, so this never compounds and css/ stays at the one
 state tools/check-tokens.sh checks.
+
+--surface is the other question: one surface wearing exactly the colour picked,
+rather than every ground leaning toward a hue. Hue-only is right for eight
+grounds whose contrast was tuned one by one; the dock and the top bar are a
+single colour the user is looking straight at, and a pick that came out at some
+other lightness would read as the picker being wrong. Only the channels move,
+so each mode's alpha stands (0.42 over frosted's blur, 0.99 in the solid sheet)
+and --maximized-panel-brightness keeps owning the shade's. Runs after the shell
+tint, so the surface's own answer is the one left in the sheet.
 """
 import colorsys
 import glob
@@ -48,17 +58,111 @@ RGBA = re.compile(r"rgba?\((\d+), *(\d+), *(\d+)(?:, *([0-9.]+))?\)")
 MAX_CHANNEL = 96      # anything brighter is an overlay, not a ground
 MAX_SPREAD = 12       # anything less neutral is already a colour
 
+# The rules a --surface owns, by the selectors they are written with. Dock and
+# search are one surface because shell-00-flat.css makes them one: the search
+# bar and its results card take the dash's ground so the overview reads as a
+# single material. The solid sheet groups the same selectors.
+SURFACE_RULES = {
+    "dock": ("#dash .dash-background", "#overview .search-entry",
+             ".search-section-content"),
+    "maximized-panel": ("#panel.aura-glass-maximized",
+                        "#panel.transparent-panel.aura-glass-maximized"),
+}
+
+COMMENT = re.compile(r"(/\*.*?\*/)", re.S)
+RULE = re.compile(r"([^{}]+)\{([^{}]*)\}")
+BACKGROUND = re.compile(r"(background-color: *)rgba?\(\d+, *\d+, *\d+(, *[0-9.]+)?\)")
+
+# A top bar over the desktop ships with no colour of its own, so there is no
+# literal to recolour and the rule has to be written. The dock's alpha, so a
+# bar and a dock given one colour read as one material. Blur My Shell's
+# #panel.transparent-panel is in an extension sheet, so aura-glass-apply copies
+# that selector's half out to extension-overrides.css; plain #panel is what the
+# bar is once the solid preset has turned the panel's blur off. The overview
+# gives the bar its own look (the helper lifts the maximized shade for the same
+# reason) and the lock and login screens draw it over their own backgrounds, so
+# all three stay clear.
+PANEL_ALPHA = 0.42
+PANEL_RULE = """
+#panel,
+#panel.transparent-panel {
+  background-color: rgba(%d, %d, %d, %s) !important;
+}
+
+#panel:overview,
+#panel.unlock-screen,
+#panel.login-screen,
+#panel.lock-screen,
+#panel.transparent-panel:overview,
+#panel.transparent-panel.unlock-screen,
+#panel.transparent-panel.login-screen,
+#panel.transparent-panel.lock-screen {
+  background-color: transparent !important;
+}
+"""
+
+
+def recolour_rules(conf, selectors, red, green, blue):
+    """Set the channels of the backgrounds in the rules naming `selectors`."""
+    def recolour(match):
+        named = {s.strip() for s in match.group(1).split(",")}
+        if not named.intersection(selectors):
+            return match.group(0)
+        def channels(found):
+            alpha = found.group(2) or ", 1"
+            return "%srgba(%d, %d, %d%s)" % (found.group(1), red, green, blue,
+                                             alpha)
+        return "%s{%s}" % (match.group(1),
+                           BACKGROUND.sub(channels, match.group(2)))
+
+    touched = 0
+    for path in sorted(glob.glob(os.path.join(conf, "shell-*.css"))):
+        text = open(path, encoding="utf-8").read()
+        # Comment by comment: these sheets quote rules in their prose, braces
+        # and all, and a quoted rule is not one to rewrite.
+        parts = COMMENT.split(text)
+        parts[::2] = [RULE.sub(recolour, part) for part in parts[::2]]
+        new = "".join(parts)
+        if new != text:
+            open(path, "w", encoding="utf-8").write(new)
+            touched += 1
+    return touched
+
+
+def apply_surface(surface, conf, colour):
+    red, green, blue = (int(colour[i:i + 2], 16) for i in (1, 3, 5))
+    if surface == "panel":
+        path = os.path.join(conf, "shell-00-flat.css")
+        with open(path, "a", encoding="utf-8") as sheet:
+            sheet.write(PANEL_RULE % (red, green, blue, PANEL_ALPHA))
+        touched = 1
+    else:
+        touched = recolour_rules(conf, SURFACE_RULES[surface], red, green, blue)
+    print("%s tinted %s in %d sheet%s"
+          % (surface, colour, touched, "" if touched == 1 else "s"))
+    return 0
+
 
 def main():
-    if len(sys.argv) != 3:
-        print("usage: apply-shell-tint.py CONF_DIR HEX", file=sys.stderr)
+    args = sys.argv[1:]
+    surface = None
+    if len(args) == 4 and args[0] == "--surface" \
+            and args[1] in ("dock", "panel", "maximized-panel"):
+        surface = args[1]
+        args = args[2:]
+    if len(args) != 2:
+        print("usage: apply-shell-tint.py [--surface dock|panel|maximized-panel] "
+              "CONF_DIR HEX", file=sys.stderr)
         return 2
-    conf, colour = sys.argv[1], sys.argv[2].strip()
+    conf, colour = args[0], args[1].strip()
 
     if not HEX.match(colour):
         print("apply-shell-tint.py: '%s' is not a #rrggbb colour" % colour,
               file=sys.stderr)
         return 2
+
+    if surface is not None:
+        return apply_surface(surface, conf, colour)
 
     red = int(colour[1:3], 16) / 255.0
     green = int(colour[3:5], 16) / 255.0

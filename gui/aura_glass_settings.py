@@ -75,6 +75,7 @@ the apply log and the confirmations have as much reason to be dragged off as
 the tint picker does.
 """
 import fnmatch
+import hashlib
 import json
 import math
 import os
@@ -87,14 +88,16 @@ import tempfile
 import threading
 
 from preview_queue import PreviewQueue
+import wallpaper_palette
 
 import cairo
 import gi
 
 gi.require_version("Adw", "1")
+gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("Gtk", "4.0")
-from gi.repository import (Adw, Gdk, Gio, GLib, GObject, Gtk,  # noqa: E402
-                           Pango)
+from gi.repository import (Adw, Gdk, GdkPixbuf, Gio, GLib,  # noqa: E402
+                           GObject, Gtk, Pango)
 
 APP_ID = "io.github.DevWebeloper.AuraGlassSettings"
 
@@ -167,9 +170,11 @@ RADIUS_SURFACES = [
      "Log out, restart, power off"),
     ("popup", "Other popups", 4, 26,
      "Anything the more specific ones above don't claim"),
-    ("osd", "Volume and brightness", 2, 16,
-     "The volume/brightness pill — past its ceiling the corners meet and "
-     "it turns into an ellipse"),
+    # The id is the token's. Blur My Shell's key of that name rounds the switchers
+    # now; the volume and brightness popup's radius belongs to its design.
+    ("osd", "Window switcher", 2, 16,
+     "Alt+Tab and the workspace switcher — past its ceiling the corners meet "
+     "and it turns into an ellipse"),
     ("button", "Buttons", 4, 9999,
      "Apply, Save and every other labelled button — pill-shaped by default"),
 ]
@@ -293,7 +298,13 @@ BLUR_SURFACES = [
     # No top bar row: the bar shares the overview's blur, so it follows this
     # one (dconf/core.ini, above [blur-my-shell/panel]).
     ("lockscreen", "Lock screen", "Also the overview and the top bar"),
+    # After window, whose bars it reads: its "main" follows those.
+    ("maximized", "Maximized windows", "While their blur is static"),
 ]
+
+# A surface whose "main" is another surface's answer rather than the main bar's,
+# as apply_blur_pipelines in lib/steps-dconf.sh resolves it.
+SURFACE_FOLLOWS = {"maximized": "window"}
 
 # The two brightness memos an earlier release wrote under other names, and the
 # values it wrote by default — read as `main`, as surface_brightness_legacy in
@@ -343,43 +354,23 @@ ANIMATION_SPEED_MARKS = [
 HEX_COLOR = re.compile(r"^#[0-9a-f]{6}$")
 TINT_DEFAULT = "#000000"
 
-# The colours TintPickerWindow offers, in three rows of six.
-#
-# All of them are dark, and that is the entire point of having our own. A tint
-# is mixed into an already dark ground at TINT_WEIGHT and then read through
-# white text, so lightness in a tint does not arrive as colour — it arrives as
-# a grey wash that takes the dimmed text with it. GTK's stock chooser offers
-# GNOME's palette, which is nine saturated hues at several light steps each,
-# and every one of those steps is that failure. So: a neutral ramp, then ten
-# hues an even distance apart, all of them held at the same 6.5% lightness so
-# picking between them is a choice of hue and nothing else. Anything not on
-# here is still one click away, under Any colour.
-TINT_PALETTE = [
-    ("Neutral", [
-        ("#000000", "Black"),
-        ("#08080a", "Ink"),
-        ("#101014", "Charcoal"),
-        ("#18181e", "Slate"),
-        ("#212129", "Graphite"),
-        ("#2a2a33", "Ash"),
-    ]),
-    ("Cool", [
-        ("#061b11", "Deep forest"),
-        ("#061b1a", "Deep pine"),
-        ("#06151b", "Deep teal"),
-        ("#06101b", "Deep ocean"),
-        ("#060a1b", "Midnight"),
-        ("#0a061b", "Deep indigo"),
-    ]),
-    ("Warm", [
-        ("#13061b", "Deep violet"),
-        ("#1b061b", "Deep grape"),
-        ("#1b0611", "Deep plum"),
-        ("#1b0609", "Deep wine"),
-        ("#1b0c06", "Deep ember"),
-        ("#1b1406", "Deep amber"),
-    ]),
-]
+# What a surface with a colour of its own holds while it has none. A value
+# rather than an absence, so that asking for it is how a colour is undone. See
+# apply_surface_tint_colors in lib/steps-css.sh.
+TINT_MAIN = "main"
+
+# The surfaces GlassStudio can open, in the order its chips show them. "all" is not a
+# memo: it writes the two tints together and hands back the surfaces that
+# follow them. It leaves the top bar over the desktop clear, because clear is
+# what that bar is rather than a colour it follows.
+TINT_TARGETS = (
+    ("all", "Everything", "Windows, shell, dock and the shaded top bar"),
+    ("app", "Windows", "GTK and libadwaita windows"),
+    ("shell", "Shell", "Menus, Quick Settings, notifications and dialogs"),
+    ("dock", "Dock & search", "The overview's dock and search"),
+    ("panel", "Top bar", "The top bar over the desktop"),
+    ("maximized", "Maximized top bar", "The top bar over a maximized window"),
+)
 
 
 def level_to_percent(level):
@@ -467,18 +458,20 @@ CURSOR_PACKS = [
     ("adwaita", "Adwaita", "GNOME's default. Sharpest"),
     ("aosp", "AOSP", "Android pointers. Recommended"),
     ("mactahoe", "MacTahoe", "The macOS pointer set"),
-    ("moga", "Moga Neon", "Neon pointers in your accent colour"),
+    ("moga", "Aura Moga Neon", "Neon pointers in your accent colour"),
     ("keep", "Default", "Don't change"),
     ("original", "Original", "What you had before Aura Glass"),
 ]
 
 # org.gnome.desktop.interface cursor-size, a separate key from the theme
 # above and independent of it — see apply_cursor_size in lib/steps-dconf.sh.
-# 20 is this project's recommendation for the packs above; 24 is GNOME's own
-# shipped default, used when nothing has ever set the key.
+# 32 is this project's recommendation at 1440p, the display it was looked at on;
+# the wizards pick 24 at 1080p and 48 at 4K the same way (recommended_cursor_size
+# in lib/common.sh). 24 is also GNOME's own shipped default, used when nothing
+# has ever set the key.
 CURSOR_SIZE_MIN = 16
 CURSOR_SIZE_MAX = 128
-CURSOR_SIZE_RECOMMENDED = 20
+CURSOR_SIZE_RECOMMENDED = 32
 CURSOR_SIZE_GNOME = 24
 
 # The four answers --font takes. The download size is in the subtitle for the
@@ -546,6 +539,18 @@ TITLEBUTTON_STYLES = [
 # The material on the glass. Install-side: apply_glass_style in
 # lib/steps-dconf.sh, whose comment says which surfaces each style reaches, why
 # liquid stays off the top bar and why it makes the dock's blur static.
+# --system-icons. The same options, order and recommendation as both wizards.
+SYSTEM_ICONS = [
+    ("lucide", "Lucide", "Thin modern icons for sound, Wi-Fi, battery and more. Recommended"),
+    ("pack", "From the icon pack", "Whatever the pack above draws"),
+]
+
+# --osd-style. The same options, order and recommendation as both wizards.
+OSD_STYLES = [
+    ("capsule", "Capsule", "A thick bar, where the popup has always been"),
+    ("tab", "Top bar tab", "Hangs from the top bar, everything on one line"),
+]
+
 GLASS_STYLES = [
     ("frosted", "Frosted", "Blur alone"),
     ("liquid", "Liquid",
@@ -626,28 +631,33 @@ NAV_SECTIONS = [
 # simply saying what is on it, the same trade-off EXT_TIERS already makes
 # elsewhere in this file.
 SEARCH_INDEX = {
-    "glass": ["frosted", "performance", "blur", "tint", "opacity",
+    "glass": ["frosted", "performance", "blur", "tint", "opacity", "dock",
+             "search", "colour", "color", "maximized",
              "transparency", "popup blur", "window blur", "scope",
              "notification", "notifications", "banner", "brightness",
-             "top bar", "lock screen", "advanced"],
+             "top bar", "panel", "height", "lock screen", "advanced"],
     "animations": ["animation", "speed", "fast", "slow", "smooth", "motion",
                    "minimize", "maximize", "open", "close"],
-    "appearance": ["top bar", "panel", "height", "accent", "colour", "color", "font", "icon", "cursor",
+    "appearance": ["accent", "colour", "color", "font", "icon", "cursor",
                   "pointer", "cursor size", "pointer size", "titlebar",
                   "window buttons", "colloid", "reversal", "hatter",
                   "mactahoe", "aosp", "traffic lights", "button style",
-                  "close button", "top bar", "panel", "maximized", "height",
-                  "volume", "device name", "speaker"],
+                  "close button", "tray", "indicator", "top bar icon",
+                  "volume", "device name", "speaker", "osd", "popup design",
+                  "capsule", "tab"],
     "radius": ["corner", "rounding", "square", "rounded", "pill"],
-    "apps": ["allow", "block", "per-app", "whitelist", "blacklist"],
+    "apps": ["allow", "block", "per-app", "whitelist", "blacklist",
+             "patterns", "wildcard", "window class",
+             "games", "fullscreen games", "blur this app", "window menu"],
     "extensions": ["gnome extensions", "blur my shell", "space-bar",
                   "custom osd", "open bar"],
     "packages": ["icon pack", "cursor pack", "remove pack", "disk"],
-    "system": ["dependencies", "gdm", "login screen",
-              "monitor", "password", "sudo"],
+    "system": ["gdm", "login screen", "monitor", "password", "sudo",
+              "check installation", "verify"],
     "updates": ["release", "version", "changelog", "history", "tag",
                 "downgrade", "maintenance", "update check", "notification",
-                "repair", "reapply", "reinstall", "reset", "defaults"],
+                "repair", "reapply", "reinstall", "reset", "defaults",
+                "dependencies"],
     "uninstall": ["remove", "revert", "delete"],
 }
 
@@ -662,8 +672,14 @@ SEARCH_TABS = {
         "packs": ["icon", "cursor", "pointer", "colloid", "reversal",
                   "hatter", "mactahoe", "aosp"],
         "bars": ["titlebar", "window buttons", "traffic lights",
-                 "button style", "close button", "top bar", "panel",
-                 "maximized"],
+                 "button style", "close button", "tray", "indicator",
+                 "top bar icon"],
+    },
+    "apps": {
+        "apps": ["allow", "block", "per-app", "whitelist", "blacklist",
+                 "blur this app", "window menu"],
+        "patterns": ["patterns", "wildcard", "window class"],
+        "games": ["games", "fullscreen games"],
     },
 }
 
@@ -688,12 +704,15 @@ FLAG_LABELS = {
     "--glass-style": ("glass", "Glass style"),
     "--liquid-windows": ("glass", "Glass style behind app windows"),
     "--no-liquid-windows": ("glass", "Glass style behind app windows"),
-    "--panel-height": ("appearance", "Top bar height"),
+    "--panel-height": ("glass", "Top bar height"),
     "--fullscreen-blur": ("glass", "Blur fullscreen windows"),
     "--no-fullscreen-blur": ("glass", "Blur fullscreen windows"),
+    "--maximized-blur": ("glass", "Static blur on maximized windows"),
     "--osd-device-name": ("appearance", "Show device name"),
     "--no-osd-device-name": ("appearance", "Show device name"),
-    "--maximized-panel-brightness": ("appearance", "Top bar over a maximized window"),
+    "--osd-style": ("appearance", "Popup design"),
+    "--system-icons": ("appearance", "System icons"),
+    "--maximized-panel-brightness": ("glass", "Top bar over a maximized window"),
     "--smooth-animations": ("animations", "Smooth animations"),
     "--no-smooth-animations": ("animations", "Smooth animations"),
     "--window-animation-speed": ("animations", "Window animation speed"),
@@ -715,11 +734,18 @@ FLAG_LABELS = {
     "--no-popup-blur": ("glass", "Popup blur"),
     "--app-tint-color": ("glass", "App tint"),
     "--shell-tint-color": ("glass", "Shell tint"),
+    "--dock-tint-color": ("glass", "Dock and search tint"),
+    "--panel-tint-color": ("glass", "Top bar tint"),
+    "--maximized-panel-tint-color": ("glass", "Maximized top bar tint"),
     "--blur-strength": ("glass", "Blur amount"),
     "--blur-brightness": ("glass", "Brightness"),
     "--popup-opacity": ("glass", "Popups & notifications opacity"),
     "--app-blur-allow": ("apps", "Blur allow list"),
     "--app-blur-block": ("apps", "Blur block list"),
+    "--window-menu": ("apps", "Blur This App in the window menu"),
+    "--no-window-menu": ("apps", "Blur This App in the window menu"),
+    "--top-bar-icon": ("appearance", "Aura Glass icon in the top bar"),
+    "--no-top-bar-icon": ("appearance", "Aura Glass icon in the top bar"),
 }
 
 # Each surface's own blur amount and brightness, in the Advanced group's words.
@@ -739,7 +765,47 @@ PLAN_ACTIONS = {
     "css": "the stylesheets",
     "app-opacity": "the window opacity",
     "glass-style": "the tinted glass",
+    "maximized-blur": "the maximized window blur",
+    "top-bar-icon": "the top bar icon",
+    "fullscreen-blur": "the fullscreen window blur",
+    "osd-device-name": "the device name",
+    "osd-style": "the volume and brightness popup",
+    "system-icons": "the system icons",
+    "smooth-animations": "the smooth animations",
+    "animation-speed": "the animation speed",
+    "update-check": "the update check",
+    "window-menu": "the window menu",
+    "font": "the interface font",
+    "icons": "the icons",
+    "radius": "the corner rounding",
+    "popup-blur": "the popup blur",
 }
+
+# install.sh's parts (lib/steps-apply-plan.sh): what an Apply also refreshes when
+# Aura Glass changed underneath it, and what only an update can install.
+PLAN_PARTS = {
+    "theme": "the base theme",
+    "extensions": "the extensions",
+    "icons": "the icons",
+    "cursors": "the pointer",
+    "fonts": "the fonts",
+    "look": "the look",
+    "icon-sync": "the icon sync",
+    "gui": "this window",
+    "update-check": "the update check",
+    "wallpapers": "the wallpapers",
+    "flatpak": "the Flatpak override",
+    "retired": "a retired service",
+    "adaptive": "adaptive performance",
+    "enable": "the extension switches",
+    "gdm": "the login screen",
+}
+
+
+def plan_list(words):
+    """words as a phrase: a, b and c."""
+    return words[0] if len(words) == 1 else \
+        ", ".join(words[:-1]) + " and " + words[-1]
 
 
 def plan_summary(plan):
@@ -752,9 +818,13 @@ def plan_summary(plan):
     actions = plan.get("actions") or ["full"]
     if actions[0] != "full":
         words = [PLAN_ACTIONS.get(a, a) for a in actions]
-        listed = words[0] if len(words) == 1 else \
-            ", ".join(words[:-1]) + " and " + words[-1]
-        return ("Quick apply", "Updates only %s, in a second or two" % listed)
+        words += [PLAN_PARTS.get(p, p) for p in plan.get("parts") or []
+                  if PLAN_PARTS.get(p, p) not in words]
+        said = "Updates only %s, in a second or two" % plan_list(words)
+        pending = [PLAN_PARTS.get(p, p) for p in plan.get("pending_update") or []]
+        if pending:
+            said += ". An update is needed for %s" % plan_list(pending)
+        return ("Quick apply", said)
     reason = plan.get("fallback_reason") or ""
     if reason.startswith("unclassified flag: "):
         flag = reason[len("unclassified flag: "):]
@@ -799,6 +869,11 @@ def pack_family(name):
     return None
 
 
+# What apply_icon_theme names the theme it lays over a pack. The key holds this
+# while the pack is what is really in use.
+SYSTEM_ICONS_PREFIX = "Aura-Lucide--"
+
+
 def theme_stem(name):
     """A theme name with any light/dark half stripped.
 
@@ -807,7 +882,7 @@ def theme_stem(name):
     changes. So the halves of a pair are both in use when either is set, and
     saying otherwise would offer to delete half of the theme in the screenshot.
     """
-    stem = name
+    stem = name.removeprefix(SYSTEM_ICONS_PREFIX)
     for suffix in ("-Dark", "-Light", "-dark", "-light"):
         if stem.endswith(suffix):
             stem = stem[:-len(suffix)]
@@ -919,7 +994,7 @@ def find_system_icon_themes():
                 if not os.path.isdir(path):
                     continue
                 lower = name.lower()
-                if any(lower.startswith(k) for k in known) or name.startswith("Aura-Glass-Moga-") or name.startswith("Moga-"):
+                if any(lower.startswith(k) for k in known) or name.startswith(("Aura-Glass-Moga-", "Moga-", SYSTEM_ICONS_PREFIX)):
                     continue
                 theme_file = os.path.join(path, "index.theme")
                 if os.path.exists(theme_file):
@@ -941,7 +1016,7 @@ def find_system_icon_themes():
 
 def get_cursor_packs():
     base_packs = [
-        ("moga", "Moga Neon", "Neon pointers in your accent colour"),
+        ("moga", "Aura Moga Neon", "Neon pointers in your accent colour"),
         ("adwaita", "Adwaita", "GNOME's default. Sharpest"),
         ("aosp", "AOSP", "Android pointers. Recommended"),
         ("mactahoe", "MacTahoe", "The macOS pointer set"),
@@ -1137,6 +1212,48 @@ def read_memo(name, default=""):
         return default
 
 
+def gdm_present():
+    """A login manager to theme. The same test as lib/steps-wizard.sh's and the
+    text wizard's GDM step."""
+    return bool(shutil.which("gdm") or shutil.which("gdm3")
+                or os.path.exists("/usr/sbin/gdm3"))
+
+
+def gdm_theme_stale():
+    """Why the installed login theme no longer matches, or None.
+
+    The same two comparisons as check_gresource and check_look in
+    bin/aura-glass-gdm-sync, which only warns at login. Light and dark of one
+    icon pack count as the same, because icon-sync swaps between them. No memo
+    means an install too old to have recorded one: nothing to compare.
+    """
+    gresource = read_memo("gdm-gresource")
+    if gresource:
+        digest, _sep, path = gresource.splitlines()[0].partition("  ")
+        try:
+            with open(path, "rb") as fh:
+                current = hashlib.sha256(fh.read()).hexdigest()
+        except OSError:
+            current = None
+        if current != digest:
+            return ("A system update put GNOME's own login screen back. "
+                    "Reinstall needs your password")
+
+    look = read_memo("gdm-look")
+    if look:
+        lines = (look.split("\n") + ["", "", ""])[:3]
+        iface = Gio.Settings.new("org.gnome.desktop.interface")
+        icon = iface.get_string("icon-theme")
+        cursor = iface.get_string("cursor-theme")
+        size = str(iface.get_int("cursor-size"))
+        if icon and cursor and (icon.removesuffix("-dark"),
+                                cursor, size) != (lines[0].removesuffix("-dark"),
+                                                  lines[1], lines[2]):
+            return ("Your cursor or icons changed since the login screen was "
+                    "themed. Reinstall needs your password")
+    return None
+
+
 def read_mode_memo(mode, key, default):
     """One value out of a mode's drawer under $CONF_DIR/modes/<mode>/.
 
@@ -1164,6 +1281,19 @@ def read_hex_memo(name):
     """A colour memo, or black — which is the shipped tint and the default."""
     value = read_memo(name, "").lower()
     return value if HEX_COLOR.match(value) else "#000000"
+
+
+def read_surface_tint(mode, key):
+    """A surface's own colour, from where load_glass_mode_memos reads it.
+
+    The drawer first, then the top-level memo seed_glass_mode would copy in
+    (performance seeds main whatever that holds), then main. Anything that is
+    neither a colour nor main is main too, as apply_surface_tint_colors refuses
+    it.
+    """
+    seed = TINT_MAIN if mode == "performance" else read_memo(key, TINT_MAIN)
+    value = read_mode_memo(mode, key, seed).lower()
+    return value if HEX_COLOR.match(value) else TINT_MAIN
 
 
 def read_percent_memo(name, low=BLUR_STRENGTH_MIN, high=BLUR_STRENGTH_MAX):
@@ -1543,6 +1673,62 @@ button.aura-preset:hover .aura-preset-window {
   background-color: alpha(@window_fg_color, 0.25);
 }
 
+/* The per-app page's default for unchosen apps: two of the same cards, carrying
+ * words rather than a drawing, because the difference is not a shape. */
+.aura-app-default {
+  padding: 12px;
+  border-radius: 12px;
+}
+button.aura-preset:checked .aura-app-default {
+  border-color: @accent_bg_color;
+  background-color: alpha(@accent_bg_color, 0.13);
+}
+
+/* One app's blur on the per-app page. No fill when off, and the same accent
+ * wash and edge as a chosen preset card when on, so a screen of them reads as
+ * which are glass. The border is there when off too, transparent, or a tile
+ * would shift 2px each way as it toggled. */
+button.aura-app-tile {
+  padding: 8px 6px;
+  min-width: 0;
+  min-height: 0;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: none;
+  box-shadow: none;
+}
+button.aura-app-tile:hover {
+  background-color: alpha(@window_fg_color, 0.08);
+}
+button.aura-app-tile:checked {
+  color: @window_fg_color;
+  border-color: @accent_bg_color;
+  background-color: alpha(@accent_bg_color, 0.13);
+}
+button.aura-app-tile:checked:hover {
+  background-color: alpha(@accent_bg_color, 0.2);
+}
+button.aura-app-tile .aura-app-tile-icon {
+  opacity: 0.55;
+}
+button.aura-app-tile:checked .aura-app-tile-icon {
+  opacity: 1;
+}
+
+/* The check on a blurred app, tile or row: the colour Apply and a chosen card
+ * already use for "this one". */
+.aura-app-check {
+  color: @accent_color;
+}
+
+/* The window buttons left floating once the header bar has scrolled away. A
+ * backing of their own, because what passes under them is any page's rows. */
+.aura-float-controls {
+  padding: 3px;
+  border-radius: 99px;
+  background-color: alpha(@window_bg_color, 0.85);
+}
+
 /* The palette buttons, for the same reason button.aura-preset gives: the chip
  * inside is the whole of the picture, and button chrome around a colour is a
  * second edge competing with the one the swatch draws. */
@@ -1557,6 +1743,17 @@ button.aura-swatch {
 }
 button.aura-swatch:hover {
   background-color: alpha(@window_fg_color, 0.12);
+}
+
+/* The tint editor's surface chips: small, so six of them sit in two rows, and
+ * lit in the accent so which surface a pick lands on is never in doubt. */
+button.aura-tint-chip {
+  padding: 4px 10px;
+  min-height: 0;
+  border-radius: 99px;
+}
+button.aura-tint-chip:checked {
+  background-color: alpha(@accent_bg_color, 0.4);
 }
 
 /* The badges on the Updates page's releases. Tinted rather than filled, so a
@@ -2808,6 +3005,10 @@ class Settings:
             self.blur = False
             self.app_tint = read_mode_memo("performance", "app-tint-color", "#000000") or "#000000"
             self.shell_tint = read_mode_memo("performance", "shell-tint-color", "#000000") or "#000000"
+            self.dock_tint = read_surface_tint("performance", "dock-tint-color")
+            self.panel_tint = read_surface_tint("performance", "panel-tint-color")
+            self.maximized_panel_tint = read_surface_tint(
+                "performance", "maximized-panel-tint-color")
             self.blur_strength = 100
             self.blur_brightness = 100
             self.surface_strength = {sid: "main" for sid, _t, _s in BLUR_SURFACES}
@@ -2816,6 +3017,10 @@ class Settings:
         else:
             self.app_tint = read_mode_memo(self.glass_mode, "app-tint-color", read_hex_memo("app-tint-color"))
             self.shell_tint = read_mode_memo(self.glass_mode, "shell-tint-color", read_hex_memo("shell-tint-color"))
+            self.dock_tint = read_surface_tint(self.glass_mode, "dock-tint-color")
+            self.panel_tint = read_surface_tint(self.glass_mode, "panel-tint-color")
+            self.maximized_panel_tint = read_surface_tint(
+                self.glass_mode, "maximized-panel-tint-color")
             self.blur_strength = read_percent_memo("blur-strength")
             self.blur_brightness = read_percent_memo(
                 "blur-brightness", BLUR_BRIGHTNESS_MIN, BLUR_BRIGHTNESS_MAX)
@@ -2889,8 +3094,19 @@ class Settings:
         self.liquid_windows = read_memo("liquid-windows", "0") == "1"
         # Off unless asked, as apply_fullscreen_blur defaults it.
         self.fullscreen_blur = read_memo("fullscreen-blur", "0") == "1"
+        # Static unless asked, as apply_maximized_blur defaults it.
+        self.maximized_blur = ("dynamic" if read_memo("maximized-blur", "static")
+                               == "dynamic" else "static")
         # Off unless asked, as apply_osd_device_name defaults it.
         self.osd_device_name = read_memo("osd-device-name", "0") == "1"
+        # The capsule unless asked, as apply_osd_style defaults it.
+        self.osd_style = "tab" if read_memo("osd-style", "capsule") == "tab" else "capsule"
+        # Lucide unless asked, as system_icons_choice defaults it.
+        self.system_icons = "pack" if read_memo("system-icons", "lucide") == "pack" else "lucide"
+        # On unless asked, and only a 0 turns it off: the resolution block's
+        # own reading of this memo, and the helper's.
+        self.window_menu = read_memo("window-menu", "1") != "0"
+        self.top_bar_icon = read_memo("top-bar-icon", "1") != "0"
         # Top-level, and out of bounds is the shipped 40, as
         # resolve_maximized_panel_brightness has it.
         try:
@@ -2996,6 +3212,10 @@ class Settings:
                 "app_tint": read_mode_memo(mode, "app-tint-color", tint_default),
                 "shell_tint": read_mode_memo(mode, "shell-tint-color",
                                              shell_default),
+                "dock_tint": read_surface_tint(mode, "dock-tint-color"),
+                "panel_tint": read_surface_tint(mode, "panel-tint-color"),
+                "maximized_panel_tint": read_surface_tint(
+                    mode, "maximized-panel-tint-color"),
                 "blur_strength": strength,
                 "blur_brightness": brightness,
                 "surface_strength": surface_strength,
@@ -3013,6 +3233,9 @@ class Settings:
                 "transparency": self.transparency,
                 "app_tint": self.app_tint,
                 "shell_tint": self.shell_tint,
+                "dock_tint": self.dock_tint,
+                "panel_tint": self.panel_tint,
+                "maximized_panel_tint": self.maximized_panel_tint,
                 "blur_strength": self.blur_strength,
                 "blur_brightness": self.blur_brightness,
                 "surface_strength": dict(self.surface_strength),
@@ -3084,9 +3307,21 @@ class Settings:
         if self.fullscreen_blur != other.fullscreen_blur:
             args.append("--fullscreen-blur" if self.fullscreen_blur
                         else "--no-fullscreen-blur")
+        if self.maximized_blur != other.maximized_blur:
+            args += ["--maximized-blur", self.maximized_blur]
         if self.osd_device_name != other.osd_device_name:
             args.append("--osd-device-name" if self.osd_device_name
                         else "--no-osd-device-name")
+        if self.osd_style != other.osd_style:
+            args += ["--osd-style", self.osd_style]
+        if self.system_icons != other.system_icons:
+            args += ["--system-icons", self.system_icons]
+        if self.window_menu != other.window_menu:
+            args.append("--window-menu" if self.window_menu
+                        else "--no-window-menu")
+        if self.top_bar_icon != other.top_bar_icon:
+            args.append("--top-bar-icon" if self.top_bar_icon
+                        else "--no-top-bar-icon")
         if self.maximized_panel_brightness != other.maximized_panel_brightness:
             args += ["--maximized-panel-brightness",
                      str(self.maximized_panel_brightness)]
@@ -3172,6 +3407,14 @@ class Settings:
             args += ["--app-tint-color", self.app_tint]
         if self.shell_tint != shell_tint_base:
             args += ["--shell-tint-color", self.shell_tint]
+        # The surfaces with a colour of their own. Sent as a value for the same
+        # reason, with main as the one that undoes it.
+        if self.dock_tint != base("dock_tint"):
+            args += ["--dock-tint-color", self.dock_tint]
+        if self.panel_tint != base("panel_tint"):
+            args += ["--panel-tint-color", self.panel_tint]
+        if self.maximized_panel_tint != base("maximized_panel_tint"):
+            args += ["--maximized-panel-tint-color", self.maximized_panel_tint]
 
         # The blur strength is not part of a mode's identity the way level and
         # tint are — every mode's drawer seeds it to the same 100, and nothing
@@ -3219,8 +3462,9 @@ class Swatch(Gtk.DrawingArea):
     """One colour as a rounded chip, with a ring on it when it is the one in use.
 
     Drawn rather than styled: a CSS class per colour would mean loading a
-    provider every time a swatch changed, and there are nineteen of them on
-    screen at once.
+    provider every time a swatch changed, and there are dozens of them on
+    screen at once. A colour of None is an empty chip with a slash through it,
+    for the top bar over the desktop while it is clear glass.
     """
 
     def __init__(self, colour, size=22, radius=6):
@@ -3241,19 +3485,25 @@ class Swatch(Gtk.DrawingArea):
             self.queue_draw()
 
     def _draw(self, _area, cr, width, height):
-        rgba = parse_hex(self._colour)
         # Pulled in when a ring is around it, so the ring is outside the colour
         # rather than sitting on top of the edge of it.
         inset = 4.0 if self._ring else 0.0
         rounded_path(cr, inset, inset, width - inset * 2, height - inset * 2,
                      max(2.0, self._radius - inset))
-        cr.set_source_rgb(rgba.red, rgba.green, rgba.blue)
-        cr.fill_preserve()
-        # A hairline, because most of this palette is within a few percent of
-        # the window's own ground and would otherwise have no edge at all.
-        cr.set_source_rgba(1, 1, 1, 0.22)
-        cr.set_line_width(1)
-        cr.stroke()
+        # Borderless. A hairline gave the near-black chips an edge against the
+        # window's ground, but it read as a white border round every colour.
+        if self._colour is not None:
+            rgba = parse_hex(self._colour)
+            cr.set_source_rgb(rgba.red, rgba.green, rgba.blue)
+            cr.fill()
+        else:
+            # No colour to fill with, so the outline is all there is to see.
+            cr.set_source_rgba(1, 1, 1, 0.22)
+            cr.set_line_width(1)
+            cr.stroke()
+            cr.move_to(inset + 3, height - inset - 3)
+            cr.line_to(width - inset - 3, inset + 3)
+            cr.stroke()
 
         if self._ring:
             accent = accent_rgba(self)
@@ -3263,183 +3513,589 @@ class Swatch(Gtk.DrawingArea):
             cr.stroke()
 
 
-class TintButton(Gtk.Button):
-    """A colour button that opens this project's own palette.
+class TintScene(Gtk.DrawingArea):
+    """Three small desktops, wearing the tints, whose surfaces can be clicked.
 
-    Gtk.ColorDialogButton opens GTK's stock chooser, and the stock chooser's
-    palette is GNOME's — saturated hues at several light steps each, with no
-    way to replace it. Every light step of it is the wrong answer here, for the
-    reason TINT_PALETTE gives, so the whole grid was a wall of colours that all
-    look bad on a glass desktop. This opens TintPickerWindow instead.
-
-    Keeps Gtk.ColorDialogButton's shape — an "rgba" property with set_rgba and
-    get_rgba either side of it — so the rows around it, the link switch and the
-    reload all carried over unchanged, notify::rgba included.
+    Desktop, overview and a maximized window, because those are the three
+    places the surfaces differ: the top bar is two different colours across
+    them, and the dock is only ever in one. It paints each surface at the alpha
+    its sheet does, over a stand-in wallpaper, so a low-alpha surface looks like
+    one, and the bars and windows move with the sliders under it (set_look).
+    The chips beside it do the same job for a keyboard or a screen reader.
     """
 
-    rgba = GObject.Property(type=Gdk.RGBA)
+    # Bright and many-coloured because it is only there to be seen through.
+    WALLPAPER = ((0.0, 0.33, 0.45, 0.72), (0.55, 0.55, 0.37, 0.64),
+                 (1.0, 0.80, 0.52, 0.45))
+    LABEL_HEIGHT = 20
+    GAP = 10
 
-    def __init__(self, title, on_open=None, on_close=None):
-        super().__init__(valign=Gtk.Align.CENTER)
-        self._title = title
-        self._picker = None
-        # What the window around this button wants to do either side of the
-        # palette being open. It brings the tint preview up with it and takes it
-        # down again — a colour is picked against the preview or it is picked
-        # blind, so the two belong to one another rather than to two buttons.
-        self._on_open = on_open
-        self._on_close = on_close
+    def __init__(self, solid, on_select):
+        super().__init__(content_height=136, hexpand=True)
+        # The dock's alpha in the sheet this mode wears: shell-00-flat.css, or
+        # shell-80-solid.css with no blur behind it.
+        self._dock_alpha = 0.99 if solid else 0.42
+        self._on_select = on_select
+        self._tints = {}
+        self._target = "all"
+        self._hover = None
+        self._regions = []
+        self._window_alpha = 0.85
+        self._bar_share = 0.13
+        self._shade_alpha = 0.6
+        self.set_draw_func(self._draw)
 
-        self._swatch = Swatch(TINT_DEFAULT, size=20, radius=5)
-        # The hex next to the swatch, which the stock button only showed once
-        # the chooser was already open. Two tints being a shade apart is worth
-        # being able to see from the row.
-        self._label = Gtk.Label(label=TINT_DEFAULT)
-        self._label.add_css_class("monospace")
-        self._label.add_css_class("dim-label")
+        click = Gtk.GestureClick()
+        click.connect("released", self._on_released)
+        self.add_controller(click)
+        motion = Gtk.EventControllerMotion()
+        motion.connect("motion", self._on_motion)
+        motion.connect("leave", self._on_leave)
+        self.add_controller(motion)
+        self.set_has_tooltip(True)
+        self.connect("query-tooltip", self._on_tooltip)
 
-        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        box.append(self._swatch)
-        box.append(self._label)
-        self.set_child(box)
+    def show_state(self, tints, target):
+        self._tints = tints
+        self._target = target
+        self.queue_draw()
 
-        self.connect("clicked", self._on_clicked)
-        self.connect("notify::rgba", self._on_rgba)
+    def set_look(self, opacity, panel_height, maximized_brightness):
+        """The sliders that show at this size: opacity 0-1, bar in px, shade %."""
+        self._window_alpha = opacity
+        # A thumbnail stands for about a 280 px tall screen: enough that the
+        # bar's whole 24-48 px range is a visible move without it looking huge.
+        self._bar_share = panel_height / 280
+        self._shade_alpha = (100 - maximized_brightness) / 100
+        self.queue_draw()
 
-    def set_rgba(self, rgba):
-        self.set_property("rgba", rgba)
+    def _surface_at(self, x, y):
+        # Backwards, so what is painted on top is what gets the click.
+        for surface, rx, ry, rw, rh, _radius in reversed(self._regions):
+            if rx <= x <= rx + rw and ry <= y <= ry + rh:
+                return surface
+        return None
 
-    def get_rgba(self):
-        # None until the row sets one, which it does before it is ever shown.
-        return self.get_property("rgba") or parse_hex(TINT_DEFAULT)
+    def _on_released(self, _gesture, _count, x, y):
+        surface = self._surface_at(x, y)
+        if surface is not None:
+            self._on_select(surface)
 
-    def _on_rgba(self, *_args):
-        colour = rgba_hex(self.get_rgba())
-        self._swatch.set_colour(colour)
-        self._label.set_label(colour)
-        # However the colour changed — this button, the link switch, a reload —
-        # an open palette shows the same answer. This is also the return leg of
-        # a click on a swatch: the picker asks, the row decides, and the ring
-        # only moves once the row has agreed.
-        if self._picker is not None:
-            self._picker.select(colour)
+    def _on_motion(self, _controller, x, y):
+        surface = self._surface_at(x, y)
+        if surface != self._hover:
+            self._hover = surface
+            self.set_cursor_from_name("pointer" if surface else None)
+            self.queue_draw()
 
-    def _on_clicked(self, _button):
-        if self._picker is not None:
-            self._picker.present()
-            if self._on_open is not None:
-                self._on_open(self)
+    def _on_leave(self, _controller):
+        self._hover = None
+        self.queue_draw()
+
+    def _on_tooltip(self, _widget, x, y, _keyboard, tooltip):
+        surface = self._surface_at(x, y)
+        if surface is None:
+            return False
+        tooltip.set_text(dict((t, title) for t, title, _s in TINT_TARGETS)[surface])
+        return True
+
+    def _paint(self, cr, surface, x, y, w, h, radius, alpha):
+        """One surface, in its colour at its sheet's alpha, as a click target."""
+        colour = resolve_tint(self._tints, surface) if self._tints else None
+        rounded_path(cr, x, y, w, h, radius)
+        if colour is None:
+            # Clear glass: no colour of its own, so only a faint lift to find it by.
+            cr.set_source_rgba(1, 1, 1, 0.06)
+        else:
+            rgba = parse_hex(colour)
+            cr.set_source_rgba(rgba.red, rgba.green, rgba.blue, alpha)
+        cr.fill()
+        self._regions.append((surface, x, y, w, h, radius))
+
+    @staticmethod
+    def _marks(cr, x, y, size, count, step):
+        """A row of small pale squares: the icons on a dock, the bar's items."""
+        cr.set_source_rgba(1, 1, 1, 0.75)
+        for index in range(count):
+            rounded_path(cr, x + index * step, y, size, size, size * 0.25)
+            cr.fill()
+
+    def _draw_desktop(self, cr, x, y, w, h):
+        bar = h * self._bar_share
+        self._paint(cr, "panel", x, y, w, bar, 0, 0.42)
+        self._marks(cr, x + 6, y + bar * 0.3, bar * 0.4, 3, bar * 0.7)
+        self._paint(cr, "app", x + w * 0.08, y + h * 0.24, w * 0.56, h * 0.62, 5,
+                    self._window_alpha)
+        self._paint(cr, "shell", x + w * 0.58, y + h * 0.17, w * 0.34, h * 0.44, 4,
+                    0.85)
+
+    def _draw_overview(self, cr, x, y, w, h):
+        self._paint(cr, "dock", x + w * 0.30, y + h * 0.08, w * 0.40, h * 0.12,
+                    h * 0.06, self._dock_alpha)
+        self._paint(cr, "app", x + w * 0.20, y + h * 0.27, w * 0.60, h * 0.42, 3,
+                    self._window_alpha)
+        dock_h = h * 0.17
+        dock_y = y + h * 0.77
+        self._paint(cr, "dock", x + w * 0.20, dock_y, w * 0.60, dock_h, 5,
+                    self._dock_alpha)
+        icon = dock_h * 0.55
+        self._marks(cr, x + w * 0.20 + icon * 0.6, dock_y + dock_h * 0.22, icon,
+                    4, icon * 1.5)
+
+    def _draw_maximized(self, cr, x, y, w, h):
+        bar = h * self._bar_share
+        self._paint(cr, "app", x, y + bar, w, h - bar, 0, self._window_alpha)
+        self._paint(cr, "maximized", x, y, w, bar, 0, self._shade_alpha)
+        self._marks(cr, x + 6, y + bar * 0.3, bar * 0.4, 3, bar * 0.7)
+
+    def _draw(self, _area, cr, width, height):
+        self._regions = []
+        accent = accent_rgba(self)
+        fg = self.get_color()
+        thumb_h = height - self.LABEL_HEIGHT
+        thumb_w = (width - self.GAP * 2) / 3
+        scenes = (("Desktop", self._draw_desktop),
+                  ("Overview", self._draw_overview),
+                  ("Maximized app", self._draw_maximized))
+        for index, (title, paint) in enumerate(scenes):
+            x = index * (thumb_w + self.GAP)
+            cr.save()
+            rounded_path(cr, x, 0, thumb_w, thumb_h, 8)
+            cr.clip()
+            gradient = cairo.LinearGradient(x, 0, x + thumb_w, thumb_h)
+            for stop, red, green, blue in self.WALLPAPER:
+                gradient.add_color_stop_rgb(stop, red, green, blue)
+            cr.set_source(gradient)
+            cr.paint()
+            paint(cr, x, 0, thumb_w, thumb_h)
+            cr.restore()
+
+            cr.select_font_face("sans")
+            cr.set_font_size(11)
+            extents = cr.text_extents(title)
+            cr.move_to(x + (thumb_w - extents.width) / 2, height - 5)
+            cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.7)
+            cr.show_text(title)
+
+        # Over everything, so an outline is never painted over by its neighbour.
+        for surface, x, y, w, h, radius in self._regions:
+            if tint_target_covers(self._target, surface):
+                cr.set_source_rgba(accent.red, accent.green, accent.blue, 1)
+                cr.set_line_width(2)
+            elif surface == self._hover:
+                cr.set_source_rgba(1, 1, 1, 0.8)
+                cr.set_line_width(1)
+            else:
+                continue
+            rounded_path(cr, x + 1, y + 1, w - 2, h - 2, max(0, radius - 1))
+            cr.stroke()
+
+
+class WallpaperWatch:
+    """The wallpaper GNOME is showing, read for colour and kept current.
+
+    One for the whole window, because there is one wallpaper and a palette per
+    mode. The picture is decoded and sampled on a thread: the settings window
+    must not stall on a 4K JPEG, or on a JXL, which takes far longer. A palette
+    opened before that is done starts on the fixed set and is refilled.
+
+    Dark first, then the other, because the theme is dark-only: picture-uri-dark
+    is the key GNOME is using whenever this desktop is as it is meant to be.
+    """
+
+    SCHEMA = "org.gnome.desktop.background"
+    # Sampling more than this finds nothing new: the colours that matter are
+    # regions, and an edge's worth of pixels can't outvote them.
+    SAMPLE_SIZE = 72
+
+    _shared = None
+
+    @classmethod
+    def shared(cls):
+        if cls._shared is None:
+            cls._shared = cls()
+        return cls._shared
+
+    def __init__(self):
+        self.analysis = None
+        self._source = None
+        self._generation = 0
+        self._listeners = []
+        self._settings = None
+        schemas = Gio.SettingsSchemaSource.get_default()
+        if schemas is not None and schemas.lookup(self.SCHEMA, True) is not None:
+            self._settings = Gio.Settings(schema_id=self.SCHEMA)
+            self._settings.connect("changed", lambda *_args: self.refresh())
+        self.refresh()
+
+    def subscribe(self, listener):
+        self._listeners.append(listener)
+
+    def unsubscribe(self, listener):
+        self._listeners.remove(listener)
+
+    def _colours(self):
+        """A background with no picture: one colour, or the two of a gradient."""
+        keys = ["primary-color"]
+        if self._settings.get_string("color-shading-type") != "solid":
+            keys.append("secondary-color")
+        colours = []
+        for key in keys:
+            rgba = Gdk.RGBA()
+            if not rgba.parse(self._settings.get_string(key)):
+                return None
+            colours.append((rgba.red, rgba.green, rgba.blue))
+        return ("colours", tuple(colours))
+
+    def _read_source(self):
+        """What is being shown, as something that compares unequal if it changes."""
+        if self._settings is None:
+            return None
+        if self._settings.get_string("picture-options") == "none":
+            return self._colours()
+        uri = self._settings.get_string("picture-uri-dark") \
+            or self._settings.get_string("picture-uri")
+        if not uri:
+            return self._colours()
+        path = Gio.File.new_for_uri(uri).get_path()
+        if path is not None and path.endswith(".xml"):
+            path = wallpaper_palette.slideshow_frame(path)
+        if path is None:
+            return None
+        try:
+            return ("picture", path, os.stat(path).st_mtime)
+        except OSError:
+            return None
+
+    def refresh(self):
+        """Read the wallpaper again if it is not the one last read."""
+        source = self._read_source()
+        if source == self._source and self.analysis is not None:
             return
+        self._source = source
+        self._generation += 1
+        if source is None:
+            self._finish(self._generation, None)
+            return
+        threading.Thread(target=self._analyse,
+                         args=(source, self._generation), daemon=True).start()
 
-        def pick(colour):
-            self.set_rgba(parse_hex(colour))
+    def _analyse(self, source, generation):
+        analysis = None
+        try:
+            if source[0] == "colours":
+                analysis = wallpaper_palette.analyse_colours(source[1])
+            else:
+                pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                    source[1], self.SAMPLE_SIZE, self.SAMPLE_SIZE, True)
+                analysis = wallpaper_palette.analyse_pixels(
+                    pixbuf.get_pixels(), pixbuf.get_width(), pixbuf.get_height(),
+                    pixbuf.get_rowstride(), pixbuf.get_n_channels())
+        except (GLib.Error, OSError, ValueError):
+            pass                        # the fixed set is the answer to this
+        GLib.idle_add(self._finish, generation, analysis)
 
-        self._picker = open_over(
-            TintPickerWindow(self._title, rgba_hex(self.get_rgba()), pick),
-            self.get_root(), modal=False)
-        self._picker.connect("close-request", self._picker_closed)
-        if self._on_open is not None:
-            self._on_open(self)
-
-    def _picker_closed(self, *_args):
-        self._picker = None
-        if self._on_close is not None:
-            self._on_close(self)
-        return False
-
-    def close_picker(self):
-        """Take the palette down from outside — the preview closing does this.
-
-        Cleared first, so the close-request handler on the way out finds nothing
-        left to close and the two windows cannot chase each other in a circle.
-        """
-        picker, self._picker = self._picker, None
-        if picker is not None:
-            picker.close()
+    def _finish(self, generation, analysis):
+        # A wallpaper changed twice quickly can finish out of order.
+        if generation == self._generation:
+            self.analysis = analysis
+            for listener in list(self._listeners):
+                listener()
+        return GLib.SOURCE_REMOVE
 
 
-class TintPickerWindow(Adw.Window):
-    """The palette behind one tint button.
+def backdrop_surface(backdrop):
+    """A blur's grid of averages as a tiny image, for GlassSwatch to stretch."""
+    grid = backdrop.grid
+    surface = cairo.ImageSurface(cairo.FORMAT_RGB24, len(grid[0]), len(grid))
+    data = surface.get_data()
+    for y, row in enumerate(grid):
+        for x, (red, green, blue) in enumerate(row):
+            pixel = (round(red * 255) << 16) | (round(green * 255) << 8) \
+                | round(blue * 255)
+            offset = y * surface.get_stride() + x * 4
+            data[offset:offset + 4] = pixel.to_bytes(4, sys.byteorder)
+    surface.mark_dirty()
+    return surface
 
-    Live rather than OK and Cancel. What a tint does is only legible on the
-    real desktop, which live preview repaints as this moves — a picker that
-    withholds its answer until it closes cannot show that. Every click here
-    goes straight back to the row it came from, which is still nothing anyone
-    has installed: Apply is the only thing that writes a tint to disk.
 
-    A window rather than an Adw.Dialog, for the reason open_over gives.
+class GlassSwatch(Swatch):
+    """A suggestion as it looks in use: its ground, at its alpha, over the blur.
+
+    Rather than the flat hex, which tells nobody anything here: two tints a long
+    way apart in hex can land together on the glass, and the one that looks
+    vivid as paint is often the one that disappears there. Hover names the hex.
     """
 
-    def __init__(self, title, colour, on_pick):
-        super().__init__(title=title, default_width=440, default_height=620)
-        # Three rows of six 44px swatches, plus their spacing and the page's
-        # margins. Narrower and the rows wrap into something that is no longer
-        # a palette.
-        self.set_size_request(400, 420)
+    def __init__(self, size=36, radius=10):
+        super().__init__(TINT_DEFAULT, size=size, radius=radius)
+        self._backdrop = None
+        self._ground = (0.0, 0.0, 0.0)
+        self._alpha = 1.0
+
+    def show_on_glass(self, backdrop, ground, alpha):
+        self._backdrop = backdrop
+        self._ground = ground
+        self._alpha = alpha
+        self.queue_draw()
+
+    def _draw(self, _area, cr, width, height):
+        inset = 4.0 if self._ring else 0.0
+        radius = max(2.0, self._radius - inset)
+        if self._backdrop is not None:
+            cr.save()
+            rounded_path(cr, inset, inset, width - inset * 2, height - inset * 2,
+                         radius)
+            cr.clip()
+            cr.scale(width / self._backdrop.get_width(),
+                     height / self._backdrop.get_height())
+            cr.set_source_surface(self._backdrop, 0, 0)
+            # Stretched smooth, so the grid looks like the blur it stands for.
+            cr.get_source().set_filter(cairo.FILTER_BILINEAR)
+            cr.get_source().set_extend(cairo.EXTEND_PAD)
+            cr.paint()
+            cr.restore()
+        rounded_path(cr, inset, inset, width - inset * 2, height - inset * 2, radius)
+        cr.set_source_rgba(*self._ground, self._alpha)
+        cr.fill()
+
+        if self._ring:
+            accent = accent_rgba(self)
+            rounded_path(cr, 1, 1, width - 2, height - 2, self._radius)
+            cr.set_source_rgba(accent.red, accent.green, accent.blue, 1)
+            cr.set_line_width(2)
+            cr.stroke()
+
+
+class TintPalette(Gtk.Box):
+    """The colours on offer: three rows, for the wallpaper and the surface in hand.
+
+    Worked out in wallpaper_palette.py, per surface, because each one does
+    something else with a tint: the same hex is a hint of colour on a window and
+    all of it on a dock. So the rows move when the chosen surface does, and when
+    its sliders do, and when the wallpaper or the accent changes.
+
+    Live rather than OK and Cancel, because what a tint does is only legible on the real
+    desktop, which live preview repaints as this moves. Every click goes
+    straight back to the editor, which is still nothing anyone has installed:
+    Apply is the only thing that writes a tint to disk.
+
+    GTK's stock chooser stays behind More colours, for anything not on here. It
+    cannot be the palette itself: its swatches are GNOME's, with no way to
+    replace them, and they are nearly all too light to be a tint.
+    """
+
+    # After the last move of a slider: filling the rows takes long enough to be
+    # felt as a stutter in a drag.
+    LOOK_SETTLE_MS = 150
+    # A pick is a whole preview, so a drag asks for one each time it pauses.
+    TONE_SETTLE_MS = 120
+
+    def __init__(self, on_pick, target, look):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self._on_pick = on_pick
-        self._current = colour
+        self._current = None
         self._loading = False
-        self._swatches = []
+        self._target = target
+        self._look = look
+        self._settle = 0
+        self._painted = (None, None)
 
-        page = Adw.PreferencesPage()
-        for heading, colours in TINT_PALETTE:
-            group = Adw.PreferencesGroup(title=heading)
-            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10,
-                          halign=Gtk.Align.CENTER, margin_top=4)
-            for value, name in colours:
-                row.append(self._swatch_button(value, name))
-            group.add(row)
-            page.add(group)
+        self._rows = []
+        for index in range(3):
+            title = self._heading("")
+            if index:
+                title.set_margin_top(6)
+            self.append(title)
+            buttons = [self._swatch_button()
+                       for _i in range(wallpaper_palette.ROW_LENGTH)]
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
+                          halign=Gtk.Align.CENTER)
+            for button in buttons:
+                row.append(button)
+            self.append(row)
+            self._rows.append((title, buttons))
 
-        custom = Adw.PreferencesGroup(
-            title="Any colour",
-            description="Any colour. Dark ones read best.")
+        tone = Gtk.Grid(column_spacing=12, row_spacing=2, margin_top=6)
+        self._brightness = self._tone_scale(tone, 0, "Brightness")
+        self._intensity = self._tone_scale(tone, 1, "Intensity")
+        self.append(tone)
+        # What the sliders are holding, rather than read back from the hex each
+        # move: a colour rounded to eight bits and pulled back into sRGB would
+        # drift in hue as it was dragged, and one taken down to black would have
+        # no hue left to come back up with. A grey starts from the accent's.
+        self._tone_hue = wallpaper_palette.oklch_of(rgba_hex(Adw.AccentColor.to_rgba(
+            Adw.StyleManager.get_default().get_accent_color())))[2]
+        self._tone_colour = None
+        self._tone_timer = 0
 
-        self._entry = Adw.EntryRow(title="Hex")
+        custom = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6,
+                         halign=Gtk.Align.CENTER, margin_top=6)
+        self._entry = Gtk.Entry(width_chars=9, max_length=7,
+                                placeholder_text="#rrggbb",
+                                tooltip_text="Any colour, as hex")
+        self._entry.add_css_class("monospace")
         self._entry.connect("changed", self._on_entry)
-        custom.add(self._entry)
+        custom.append(self._entry)
+        more = Gtk.Button(label="More colours…")
+        more.connect("clicked", self._on_custom)
+        custom.append(more)
+        self.append(custom)
 
-        self._custom_swatch = Swatch(colour, size=20, radius=5)
-        chooser = Adw.ActionRow(
-            title="Pick one")
-        chooser.add_prefix(self._custom_swatch)
-        button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
-        button.connect("clicked", self._on_custom)
-        chooser.add_suffix(button)
-        chooser.set_activatable_widget(button)
-        custom.add(chooser)
-        page.add(custom)
+        self._accent_handler = Adw.StyleManager.get_default().connect(
+            "notify::accent-color", self._fill)
+        self._watch = WallpaperWatch.shared()
+        self._watch.subscribe(self._fill)
+        self._fill()
+        # A slideshow moves on, and a file can be replaced under the same name,
+        # with nothing in gsettings to say so.
+        self._watch.refresh()
 
-        view = Adw.ToolbarView(content=page)
-        view.add_top_bar(Adw.HeaderBar())
-        self.set_content(view)
+    def release(self):
+        """Let go of what would outlive this otherwise."""
+        Adw.StyleManager.get_default().disconnect(self._accent_handler)
+        self._watch.unsubscribe(self._fill)
+        if self._settle:
+            GLib.source_remove(self._settle)
+            self._settle = 0
+        self._cancel_tone()
 
-        self.select(colour)
+    @staticmethod
+    def _heading(text):
+        label = Gtk.Label(label=text, xalign=0)
+        label.add_css_class("caption-heading")
+        label.add_css_class("dim-label")
+        return label
 
-    def _swatch_button(self, value, name):
-        swatch = Swatch(value, size=44, radius=12)
-        button = Gtk.Button(child=swatch, tooltip_text="%s — %s"
-                            % (name, value))
+    def _swatch_button(self):
+        swatch = GlassSwatch()
+        button = Gtk.Button(child=swatch)
         button.add_css_class("aura-swatch")
-        button.connect("clicked", lambda _b: self._pick(value))
-        self._swatches.append((value, swatch))
+        button._swatch = swatch
+        button._value = TINT_DEFAULT
+        button.connect("clicked", lambda b: self._on_pick(b._value))
         return button
+
+    def set_context(self, target, look):
+        """The surface a pick lands on, and the sliders it is seen through."""
+        if target != self._target:
+            # A drag still settling was about the surface being left.
+            self._cancel_tone()
+            self._target = target
+            self._look = look
+            self._fill()
+        elif look != self._look:
+            self._look = look
+            if self._settle:
+                GLib.source_remove(self._settle)
+            self._settle = GLib.timeout_add(self.LOOK_SETTLE_MS, self._on_settled)
+
+    def _on_settled(self):
+        self._settle = 0
+        self._fill()
+        return GLib.SOURCE_REMOVE
+
+    def _backdrop_surface(self, backdrop):
+        # Twenty-four swatches, one wallpaper. Kept until the wallpaper changes.
+        if self._painted[0] is not backdrop:
+            self._painted = (backdrop, backdrop_surface(backdrop))
+        return self._painted[1]
+
+    def _fill(self, *_args):
+        """Fill the swatches for the wallpaper and accent showing right now."""
+        analysis = self._watch.analysis
+        accent = Adw.StyleManager.get_default().get_accent_color()
+        rows = wallpaper_palette.suggest(
+            analysis,
+            wallpaper_palette.GlassModel(self._target, **self._look),
+            rgba_hex(Adw.AccentColor.to_rgba(accent)), accent.value_nick)
+        backdrop = self._backdrop_surface(
+            analysis.backdrop if analysis is not None
+            else wallpaper_palette.FALLBACK)
+        for (label, buttons), (title, suggestions) in zip(self._rows, rows):
+            label.set_label(title)
+            for button, suggestion in zip(buttons, suggestions):
+                button._value = suggestion.colour
+                button.set_tooltip_text("%s · %s" % (suggestion.role,
+                                                     suggestion.colour))
+                button._swatch.show_on_glass(backdrop, suggestion.ground,
+                                             suggestion.alpha)
+        self.select(self._current)
 
     def select(self, colour):
         """Show a colour as the one in use, without asking for it again."""
         self._current = colour
-        for value, swatch in self._swatches:
-            swatch.set_ring(value == colour)
-        self._custom_swatch.set_colour(colour)
-        if self._entry.get_text().strip().lower() != colour:
+        for _title, buttons in self._rows:
+            for button in buttons:
+                button._swatch.set_ring(button._value == colour)
+        self._sync_tone(colour)
+        # Empty for a surface with no colour, rather than the last one's hex.
+        if self._entry.get_text().strip().lower() != (colour or ""):
             self._loading = True
-            self._entry.set_text(colour)
+            self._entry.set_text(colour or "")
             self._loading = False
 
-    def _pick(self, colour):
-        # Only asks. select() runs when the row has taken it, so a colour the
-        # row refuses cannot leave a ring behind claiming it was applied.
-        self._on_pick(colour)
+    def _tone_scale(self, grid, line, title):
+        label = Gtk.Label(label=title, xalign=0)
+        label.add_css_class("caption")
+        grid.attach(label, 0, line, 1, 1)
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+        scale.set_hexpand(True)
+        scale.set_draw_value(False)
+        scale.connect("value-changed", self._on_tone_changed)
+        grid.attach(scale, 1, line, 1, 1)
+        return scale
+
+    def _sync_tone(self, colour):
+        """Set the sliders to a colour that did not come from them."""
+        # The shell keeps its grounds' own lightness and takes only hue and
+        # saturation from a tint (tools/apply-shell-tint.py), so this slider would
+        # do next to nothing there.
+        shell = self._target == "shell"
+        self._brightness.set_sensitive(colour is not None and not shell)
+        self._brightness.set_tooltip_text(
+            "The shell keeps its own lightness" if shell else None)
+        self._intensity.set_sensitive(colour is not None)
+        if colour is None or colour == self._tone_colour:
+            return
+        self._cancel_tone()
+        self._tone_colour = None
+        lightness, chroma, hue = wallpaper_palette.oklch_of(colour)
+        # Under this it is a grey, and its "hue" is rounding error.
+        if chroma >= 0.004:
+            self._tone_hue = hue
+        most = wallpaper_palette.max_chroma(lightness, self._tone_hue)
+        self._loading = True
+        self._brightness.set_value(lightness * 100)
+        self._intensity.set_value(min(1.0, chroma / most) * 100 if most else 0)
+        self._loading = False
+
+    def _on_tone_changed(self, _scale):
+        if self._loading:
+            return
+        lightness = self._brightness.get_value() / 100
+        # Intensity as a share of what this hue can show at this lightness, not
+        # as raw chroma: sRGB holds far less of it near black and near white, so
+        # raw chroma would leave most of the slider doing nothing there, and full
+        # is always the most this colour can be.
+        chroma = self._intensity.get_value() / 100 \
+            * wallpaper_palette.max_chroma(lightness, self._tone_hue)
+        self._tone_colour = wallpaper_palette.hex_of(wallpaper_palette.oklch_to_rgb(
+            lightness, chroma, self._tone_hue))
+        if self._tone_timer:
+            GLib.source_remove(self._tone_timer)
+        self._tone_timer = GLib.timeout_add(self.TONE_SETTLE_MS, self._on_tone_settled)
+
+    def _on_tone_settled(self):
+        self._tone_timer = 0
+        if self._tone_colour != self._current:
+            self._on_pick(self._tone_colour)
+        return GLib.SOURCE_REMOVE
+
+    def _cancel_tone(self):
+        if self._tone_timer:
+            GLib.source_remove(self._tone_timer)
+            self._tone_timer = 0
 
     def _on_entry(self, entry):
         if self._loading:
@@ -3451,11 +4107,12 @@ class TintPickerWindow(Adw.Window):
         # typed, not a mistake, and an error label that flashed through six
         # characters of every entry would be noise.
         if HEX_COLOR.match(text) and text != self._current:
-            self._pick(text)
+            self._on_pick(text)
 
     def _on_custom(self, _button):
-        dialog = Gtk.ColorDialog(with_alpha=False, title=self.get_title())
-        dialog.choose_rgba(self, parse_hex(self._current), None,
+        dialog = Gtk.ColorDialog(with_alpha=False, title="Tint")
+        dialog.choose_rgba(self.get_root(),
+                           parse_hex(self._current or TINT_DEFAULT), None,
                            self._on_custom_done)
 
     def _on_custom_done(self, dialog, result):
@@ -3464,7 +4121,399 @@ class TintPickerWindow(Adw.Window):
         except GLib.Error:
             return                      # dismissed
         if rgba is not None:
-            self._pick(rgba_hex(rgba))
+            self._on_pick(rgba_hex(rgba))
+
+
+class TintPickerWindow(Adw.Window):
+    """TintPalette in a window, behind GlassStudio's colour button.
+
+    A window rather than more of the page: the palette is most of a screen of
+    swatches, and it is only wanted while a colour is being chosen. Not modal,
+    for the reason open_over gives: it has to be dragged clear of whatever it
+    is recolouring. A window rather than an Adw.Dialog for the same reason.
+    """
+
+    def __init__(self, title, colour, on_pick, target, look):
+        super().__init__(title=title, default_width=420)
+        self.palette = TintPalette(on_pick, target, look)
+        self.palette.set_margin_top(12)
+        self.palette.set_margin_bottom(18)
+        self.palette.set_margin_start(18)
+        self.palette.set_margin_end(18)
+        view = Adw.ToolbarView(content=self.palette)
+        view.add_top_bar(Adw.HeaderBar())
+        self.set_content(view)
+        self.palette.select(colour)
+        self.connect("close-request", self._on_close_request)
+
+    def _on_close_request(self, _window):
+        self.palette.release()
+        return False
+
+
+def resolve_tint(tints, surface):
+    """The colour a surface shows, or None for a top bar left as clear glass."""
+    value = tints["app" if surface == "all" else surface]
+    if value != TINT_MAIN:
+        return value
+    return None if surface == "panel" else tints["shell"]
+
+
+def tint_target_covers(target, surface):
+    """Whether a pick on this chip lands on this surface. See TINT_TARGETS."""
+    return surface == target or (target == "all" and surface != "panel")
+
+
+class GlassStudio(Gtk.Box):
+    """Pick a surface, by clicking it or its chip, and everything about it shows.
+
+    Its colour button and whatever else that surface has: the window fills each
+    one's settings in with add_settings. They all answer the same question,
+    "what does this part of the desktop look like", and laid out by surface a
+    page of a dozen bars comes down to the two or three of the part in hand.
+
+    The palette the colour button opens follows the surface chosen here while it
+    is open, so several surfaces can be coloured without closing it.
+
+    Holds the mode's tints dict by reference: Window._current reads the same one
+    this writes, and Window._reload fills it and calls reload().
+    """
+
+    def __init__(self, tints, solid, on_change, on_picker_open):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self._tints = tints
+        self._on_change = on_change
+        self._on_picker_open = on_picker_open
+        self._picker = None
+        self._target = self._opening_target()
+        self._loading = False
+        self._solid = solid
+        self._window_alpha = 0.92
+        self._shade_alpha = 0.6
+        # Now rather than when the palette opens, so that it opens on the
+        # wallpaper's colours and not on a blink of the fixed ones first.
+        WallpaperWatch.shared()
+
+        self._scene = TintScene(solid, self._select)
+        self.append(self._scene)
+
+        chips = Gtk.Grid(column_spacing=6, row_spacing=6,
+                         column_homogeneous=True)
+        self._chips = {}
+        leader = None
+        for index, (target, title, _subtitle) in enumerate(TINT_TARGETS):
+            swatch = Swatch(TINT_DEFAULT, size=14, radius=7)
+            box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6,
+                          halign=Gtk.Align.CENTER)
+            box.append(swatch)
+            box.append(Gtk.Label(label=title))
+            chip = Gtk.ToggleButton(child=box, group=leader)
+            chip.add_css_class("aura-tint-chip")
+            chip._swatch = swatch
+            chip.connect("toggled", self._on_chip, target)
+            leader = leader or chip
+            self._chips[target] = chip
+            chips.attach(chip, index % 3, index // 3, 1, 1)
+        self.append(chips)
+
+        status = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        words = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
+        self._status_title = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
+        self._status_title.add_css_class("heading")
+        words.append(self._status_title)
+        self._status_detail = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
+        self._status_detail.add_css_class("caption")
+        self._status_detail.add_css_class("dim-label")
+        words.append(self._status_detail)
+        status.append(words)
+        self._colour_swatch = Swatch(TINT_DEFAULT, size=20, radius=5)
+        # The hex next to the swatch, because two tints being a shade apart is
+        # worth being able to see without opening anything.
+        self._colour_label = Gtk.Label()
+        self._colour_label.add_css_class("monospace")
+        self._colour_label.add_css_class("dim-label")
+        colour_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        colour_box.append(self._colour_swatch)
+        colour_box.append(self._colour_label)
+        colour_button = Gtk.Button(child=colour_box, valign=Gtk.Align.CENTER,
+                                   tooltip_text="Choose a colour")
+        colour_button.connect("clicked", self._on_colour_button)
+        status.append(colour_button)
+        self._reset = Gtk.Button(label="Reset", valign=Gtk.Align.CENTER)
+        self._reset.add_css_class("flat")
+        self._reset.connect("clicked", self._on_reset)
+        status.append(self._reset)
+        self.append(status)
+
+        # Sized to the surface showing: most have far less than Everything.
+        self._settings = Gtk.Stack(
+            vhomogeneous=False, hhomogeneous=False,
+            transition_type=Gtk.StackTransitionType.CROSSFADE,
+            transition_duration=120, margin_top=6)
+        self._settings_pages = {}
+        for target, _title, _subtitle in TINT_TARGETS:
+            page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+            self._settings.add_named(page, target)
+            self._settings_pages[target] = page
+        self.append(self._settings)
+        self._refresh()
+
+    def add_settings(self, target, widget):
+        """Show a group of rows under this surface's chip."""
+        self._settings_pages[target].append(widget)
+
+    def add_note(self, target, text):
+        """A line for a surface with nothing else to set, so it does not look broken."""
+        label = Gtk.Label(label=text, xalign=0, wrap=True)
+        label.add_css_class("dim-label")
+        self.add_settings(target, label)
+
+    def set_look(self, opacity, panel_height, maximized_brightness):
+        self._scene.set_look(opacity, panel_height, maximized_brightness)
+        self._window_alpha = opacity
+        self._shade_alpha = (100 - maximized_brightness) / 100
+        if self._picker is not None:
+            self._picker.palette.set_context(self._target, self._glass_look())
+
+    def _glass_look(self):
+        """What wallpaper_palette.GlassModel needs of the sliders at this moment."""
+        return {"window_alpha": self._window_alpha,
+                "shade_alpha": self._shade_alpha, "solid": self._solid}
+
+    def _opening_target(self):
+        """Everything when the desktop is one colour, Windows when it is not."""
+        tints = self._tints
+        uniform = tints["app"] == tints["shell"] \
+            and tints["panel"] == TINT_MAIN \
+            and tints["dock"] == tints["maximized"] == TINT_MAIN
+        return "all" if uniform else "app"
+
+    def reload(self):
+        # Only __init__ opens on _opening_target. This runs after Apply, Discard
+        # and an outside mode change, and none of those is a reason to move
+        # someone off the surface they were working on.
+        self._refresh()
+
+    def _select(self, target):
+        self._target = target
+        self._refresh()
+
+    def _picker_title(self):
+        titles = dict((t, title) for t, title, _s in TINT_TARGETS)
+        return "%s colour" % titles[self._target]
+
+    def _on_colour_button(self, _button):
+        if self._picker is None:
+            self._picker = open_over(
+                TintPickerWindow(self._picker_title(),
+                                 resolve_tint(self._tints, self._target),
+                                 self._pick, self._target, self._glass_look()),
+                self.get_root(), modal=False)
+            self._picker.connect("close-request", self._on_picker_closed)
+        else:
+            self._picker.present()
+        self._on_picker_open(self)
+
+    def _on_picker_closed(self, _window):
+        self._picker = None
+        return False
+
+    def close_picker(self):
+        """Take the palette down from outside, as a mode switch does."""
+        if self._picker is not None:
+            self._picker.close()
+
+    def _on_chip(self, chip, target):
+        if chip.get_active() and not self._loading and target != self._target:
+            self._select(target)
+
+    def _pick(self, colour):
+        if self._target == "all":
+            self._tints["app"] = self._tints["shell"] = colour
+            for surface in ("dock", "panel", "maximized"):
+                self._tints[surface] = TINT_MAIN
+        else:
+            self._tints[self._target] = colour
+        self._refresh()
+        self._on_change()
+
+    def _default(self, target):
+        return TINT_DEFAULT if target in ("app", "shell") else TINT_MAIN
+
+    def _is_default(self):
+        if self._target != "all":
+            return self._tints[self._target] == self._default(self._target)
+        return all(self._tints[surface] == self._default(surface)
+                   for surface in self._tints)
+
+    def _on_reset(self, _button):
+        for surface in self._tints:
+            if self._target in ("all", surface):
+                self._tints[surface] = self._default(surface)
+        self._refresh()
+        self._on_change()
+
+    def _detail(self):
+        """What this surface is, and what it does with no colour of its own."""
+        what = dict((t, s) for t, _title, s in TINT_TARGETS)[self._target]
+        if self._tints["app" if self._target == "all" else self._target] != TINT_MAIN:
+            return what
+        return "%s · %s" % (what, "clear glass" if self._target == "panel"
+                            else "follows Shell")
+
+    def _refresh(self):
+        self._loading = True
+        for target, chip in self._chips.items():
+            chip._swatch.set_colour(resolve_tint(self._tints, target))
+            chip.set_active(target == self._target)
+        self._loading = False
+        titles = dict((t, title) for t, title, _s in TINT_TARGETS)
+        self._status_title.set_label(titles[self._target])
+        self._status_detail.set_label(self._detail())
+        self._reset.set_sensitive(not self._is_default())
+        self._scene.show_state(self._tints, self._target)
+        self._settings.set_visible_child_name(self._target)
+        colour = resolve_tint(self._tints, self._target)
+        self._colour_swatch.set_colour(colour)
+        self._colour_label.set_label(colour or "none")
+        if self._picker is not None:
+            self._picker.set_title(self._picker_title())
+            self._picker.palette.set_context(self._target, self._glass_look())
+            self._picker.palette.select(colour)
+
+
+class SurfaceBlurGroup(Adw.PreferencesGroup):
+    """One surface's own blur bars, under its chip in GlassStudio.
+
+    Takes rows and a summary as the expander it replaced did, because
+    _surface_row and _sync_surface_summary only ever needed those two.
+    """
+
+    def __init__(self, sid, title):
+        super().__init__(title=title)
+        self._sid = sid
+
+    def add_row(self, row):
+        self.add(row)
+
+    def set_subtitle(self, text):
+        self.set_description(text)
+
+
+class GlassColumn(Gtk.Box):
+    """What Adw.PreferencesPage is, minus its scroller, for the Glass page.
+
+    Same width, gutters and gap between groups, so these pages read as every
+    other page does. Without the scroller because that page has one around its
+    stack, and a page's own would give it two.
+    """
+
+    def __init__(self):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL)
+        self._groups = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
+        self.append(Adw.Clamp(child=self._groups, maximum_size=600,
+                              tightening_threshold=400, margin_top=24,
+                              margin_bottom=24, margin_start=12, margin_end=12))
+
+    def add(self, group):
+        self._groups.append(group)
+
+
+class AppTile(Gtk.ToggleButton):
+    """One open app's blur as a tile, in the Open now grid.
+
+    A few apps, each already in front of whoever is choosing, so the icon is
+    enough to recognise it by. It has AppRow's set_active, get_active,
+    notify::active and set_shown, so every caller treats the two alike. The
+    window class AppRow subtitles is in the tooltip, and the search still
+    matches it.
+    """
+
+    def __init__(self, name, wm, gicon=None, note=None):
+        super().__init__()
+        self.add_css_class("aura-app-tile")
+        self._name = name
+        self.set_tooltip_text("\n".join(t for t in (name, wm, note) if t))
+
+        if gicon is not None:
+            icon = Gtk.Image.new_from_gicon(gicon)
+        else:
+            icon = Gtk.Image.new_from_icon_name(
+                "application-x-executable-symbolic")
+        icon.set_pixel_size(40)
+        icon.add_css_class("aura-app-tile-icon")
+        # Ten characters, both ways, is what sizes the tile, so a long name
+        # cannot widen every tile in the grid. Button text is bold, which makes
+        # that about 130 wide with the padding, and the 600px the page clamps to
+        # holds four on a line (measured, not chosen: 98 apps in a test HOME).
+        label = Gtk.Label(label=name, width_chars=10, max_width_chars=10,
+                          ellipsize=Pango.EllipsizeMode.END)
+        # Which pattern decides this app, when one does: _apply_app_pill.
+        self._pill = Gtk.Label(max_width_chars=10, visible=False,
+                               ellipsize=Pango.EllipsizeMode.MIDDLE)
+        self._pill.add_css_class("caption")
+        self._pill.add_css_class("aura-badge")
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        box.append(icon)
+        box.append(label)
+        box.append(self._pill)
+
+        # On says so in a shape too, not only in the accent: the accent is the
+        # user's, and some of the nine sit close to a dimmed icon's greys.
+        check = Gtk.Image(icon_name="object-select-symbolic", pixel_size=16,
+                          halign=Gtk.Align.END, valign=Gtk.Align.START,
+                          visible=False)
+        check.add_css_class("aura-app-check")
+        self.connect("toggled", lambda b: check.set_visible(b.get_active()))
+        overlay = Gtk.Overlay(child=box)
+        overlay.add_overlay(check)
+        self.set_child(overlay)
+
+    def set_shown(self, shown):
+        # On the FlowBoxChild around it: a hidden tile inside a visible child
+        # would leave a gap in the grid.
+        self.get_parent().set_visible(shown)
+
+
+class AppRow(Adw.ActionRow):
+    """One app that isn't open: a line of the list, a check when it's blurred.
+
+    The whole row is the control, because there are hundreds of them and a
+    column of switches is a lot of furniture to read a yes or no off.
+    """
+
+    active = GObject.Property(type=bool, default=False)
+
+    def __init__(self, name, wm, gicon=None, note=None):
+        super().__init__(activatable=True)
+        self._name = name
+        plain_row(self, name, wm)
+        self.set_tooltip_text(note)
+        if gicon is not None:
+            self.add_prefix(Gtk.Image.new_from_gicon(gicon))
+        # Which pattern decides this app, when one does: _apply_app_pill.
+        self._pill = Gtk.Label(visible=False)
+        self._pill.add_css_class("caption")
+        self._pill.add_css_class("aura-badge")
+        self.add_suffix(self._pill)
+        # Faded out rather than hidden, so the badge beside it stays put.
+        check = Gtk.Image(icon_name="object-select-symbolic", opacity=0)
+        check.add_css_class("aura-app-check")
+        self.add_suffix(check)
+        self.connect("notify::active", lambda r, _p: check.set_opacity(
+            1 if r.get_active() else 0))
+        self.connect("activated", lambda r: r.set_active(not r.get_active()))
+
+    def get_active(self):
+        return self.active
+
+    def set_active(self, value):
+        if self.active != value:
+            self.active = value
+
+    def set_shown(self, shown):
+        self.set_visible(shown)
 
 
 # Lines install.sh prints when part of what it did only lands at the next
@@ -3665,10 +4714,6 @@ class Window(Adw.ApplicationWindow):
         pressed.append(self._apply_text)
         self._apply.set_child(pressed)
 
-        # The palette that is open. Kept here rather than on the button
-        # because there are six colour buttons and only one may be open.
-        self._tint_picker = None
-
         # The Per-app blur page's window into the real desktop: what is open
         # right now (ListWindows), over D-Bus from the aura-glass-blur
         # extension. Built before NAV_SECTIONS below, since _build_apps_page
@@ -3687,7 +4732,10 @@ class Window(Adw.ApplicationWindow):
         # _tab_stack as each one is built.
         self._page_stacks = {}
         self._speed_scales = {}
-        self._tint_rows = {}
+        self._studios = {}
+        # The editor whose palette was opened last. Kept here rather than on the
+        # editor because there is one per mode and only one may be open.
+        self._tint_picker = None
         self._strength_scales = {}
         # Live preview: tint, transparency, radius, blur strength, popup blur
         # and window-blur scope show on the real desktop as they move, through
@@ -3707,6 +4755,7 @@ class Window(Adw.ApplicationWindow):
         self._preview_timer = 0
         self._preview_proc = None
         self._preview_queue = PreviewQueue(self._launch_preview_operation)
+        self._preview_now = False
         self._preview_terminal_requested = False
         self._preview_fast_by_argv = {}
         self._preview_generation = None
@@ -3758,8 +4807,27 @@ class Window(Adw.ApplicationWindow):
         # only a button: what it has to say while it runs, and what it has to
         # show when a run fails, needs a line of its own — and a header bar is
         # the one place in the window with no room for one.
-        content_view = Adw.ToolbarView(content=self._toasts)
+        #
+        # The header is the other way about: it leaves with the page's content
+        # (_sync_top_bar), so a page gets the height back while it is being read.
+        # That takes the window buttons with it, so a second set stays behind
+        # over the content, shown only while the header is gone.
+        self._float_controls = Gtk.WindowControls(side=Gtk.PackType.END)
+        self._float_controls.add_css_class("aura-float-controls")
+        self._float_controls.connect("notify::empty",
+                                     lambda *_a: self._sync_top_bar())
+        self._float_reveal = Gtk.Revealer(
+            child=self._float_controls, can_target=False,
+            transition_type=Gtk.RevealerTransitionType.CROSSFADE,
+            halign=Gtk.Align.END, valign=Gtk.Align.START,
+            margin_top=6, margin_end=6)
+        content_overlay = Gtk.Overlay(child=self._toasts)
+        content_overlay.add_overlay(self._float_reveal)
+
+        self._content_view = Adw.ToolbarView(content=content_overlay)
+        content_view = self._content_view
         header = Adw.HeaderBar()
+        self._top_bar = header
         # The page's name over the mode in force, so the answer to "which
         # glass am I in?" is on every page rather than only on Glass. The
         # subtitle is filled by _sync_mode_status.
@@ -3774,18 +4842,12 @@ class Window(Adw.ApplicationWindow):
         self._preview_toggle.connect("toggled", self._on_preview_toggle)
         header.pack_end(self._preview_toggle)
 
-        # Beside the preview toggle because it is the same kind of thing: one
-        # icon that acts on the desktop right now and asks nothing. It is not
-        # Apply — nothing is installed and no widget is read — it runs
-        # bin/aura-glass-apply, which splices the CSS block back into the
-        # theme's own sheets from what is already in $CONF_DIR. A theme
-        # update overwrites those four generated files, and this is the one
-        # command that puts the block back without a full install.
-        self._reapply = Gtk.Button(
-            icon_name="view-refresh-symbolic",
-            tooltip_text="Re-apply the theme CSS")
-        self._reapply.connect("clicked", self._on_reapply)
-        header.pack_end(self._reapply)
+        # The same answer at a glance, with the why in its tooltip, and the one
+        # place the mode is changed from: a click applies the other one.
+        self._mode_button = Gtk.Button()
+        self._mode_button.connect("clicked", self._on_mode_button)
+        self._sync_mode_icon()
+        header.pack_end(self._mode_button)
 
         # Uninstall left the sidebar (see NAV_SECTIONS) and lives here now,
         # beside About rather than among the pages someone opens to retune a
@@ -3844,6 +4906,7 @@ class Window(Adw.ApplicationWindow):
             sidebar=sidebar_page, content=self._content_page,
             min_sidebar_width=210, max_sidebar_width=260)
         self.set_content(split)
+        self._split = split
 
         # Below 700sp the sidebar and the content pane no longer both fit at a
         # width either can read at, so the split collapses into the one
@@ -3854,6 +4917,12 @@ class Window(Adw.ApplicationWindow):
             Adw.BreakpointCondition.parse("max-width: 700sp"))
         narrow.add_setter(split, "collapsed", True)
         self.add_breakpoint(narrow)
+
+        self._page_adjustment = None
+        self._page_adjustment_handler = None
+        split.connect("notify::collapsed", lambda *_a: self._sync_top_bar())
+        self._watch_tab_stacks(self._stack)
+        self._track_page_scroller()
 
         search_shortcut = Gtk.ShortcutController()
         search_shortcut.add_shortcut(Gtk.Shortcut(
@@ -3889,6 +4958,81 @@ class Window(Adw.ApplicationWindow):
             self._preview_active = True
             self._recovering_preview = True
             self._preview_revert()
+
+    def _watch_tab_stacks(self, widget):
+        """Follow every stack in the page tree, tabs inside pages included."""
+        if isinstance(widget, (Gtk.Stack, Adw.ViewStack)):
+            widget.connect("notify::visible-child", self._track_page_scroller)
+        child = widget.get_first_child()
+        while child is not None:
+            self._watch_tab_stacks(child)
+            child = child.get_next_sibling()
+
+    def _visible_scroller(self, widget):
+        """The outermost scroller of what is on screen under `widget`.
+
+        Breadth first, so a page's own scroller is found before a list inside
+        it that happens to scroll too (the Updates page has some), and only down
+        the visible child of a stack, because the tabs not showing have
+        scrollers of their own.
+        """
+        queue = [widget]
+        while queue:
+            current = queue.pop(0)
+            if isinstance(current, Gtk.ScrolledWindow):
+                return current
+            if isinstance(current, (Gtk.Stack, Adw.ViewStack)):
+                visible = current.get_visible_child()
+                if visible is not None:
+                    queue.append(visible)
+                continue
+            child = current.get_first_child()
+            while child is not None:
+                if child.get_visible():
+                    queue.append(child)
+                child = child.get_next_sibling()
+        return None
+
+    def _track_page_scroller(self, *_a):
+        if self._page_adjustment_handler is not None:
+            self._page_adjustment.disconnect(self._page_adjustment_handler)
+        scroller = self._visible_scroller(self._stack)
+        self._page_adjustment = scroller.get_vadjustment() if scroller else None
+        self._page_adjustment_handler = None
+        if self._page_adjustment is not None:
+            self._page_adjustment_handler = self._page_adjustment.connect(
+                "value-changed", self._sync_top_bar)
+        self._sync_top_bar()
+
+    def _sync_top_bar(self, *_a):
+        """Show the header at the top of a page, and only there.
+
+        It slides off once the page has scrolled past the header's own height,
+        not at the first pixel. Hiding it gives the page that much more room,
+        which lowers how far the page can scroll: a page with less overflow than
+        this never reaches the height, and one that does can't be clamped back
+        to 0 by the room it just gained, so the two never chase each other.
+
+        Pinned while the split is collapsed: the back button is in this bar, and
+        then no sidebar is showing to go back with.
+        """
+        if not hasattr(self, "_page_adjustment"):
+            return
+        value = (self._page_adjustment.get_value()
+                 if self._page_adjustment is not None else 0)
+        shown = self._content_view.get_reveal_top_bars()
+        if self._split.get_collapsed() or value <= 0:
+            shown = True
+        elif shown and value >= self._top_bar.get_height() > 0:
+            shown = False
+        self._content_view.set_reveal_top_bars(shown)
+        # An empty side is a layout with its buttons at the other end, which
+        # the sidebar's header still has.
+        floating = not shown and not self._float_controls.get_empty()
+        self._float_reveal.set_reveal_child(floating)
+        # A revealer keeps its size while hidden, and would swallow the clicks
+        # meant for the rows under it.
+        self._float_reveal.set_can_target(floating)
 
     def _build_apply_bar(self):
         """Apply, and everything a run of install.sh has to say, along the bottom.
@@ -4008,12 +5152,13 @@ class Window(Adw.ApplicationWindow):
     ))
 
     _PREVIEWABLE_FLAGS = frozenset((
-        "--app-tint-color", "--shell-tint-color",
+        "--app-tint-color", "--shell-tint-color", "--dock-tint-color",
+        "--panel-tint-color", "--maximized-panel-tint-color",
         "--app-transparency", "--no-app-transparency",
         "--radius-preset", "--radius-custom",
         "--blur-strength", "--blur-brightness", "--popup-opacity",
         "--popup-blur", "--no-popup-blur", "--panel-height",
-        "--maximized-panel-brightness",
+        "--maximized-panel-brightness", "--maximized-blur",
     )) | frozenset(
         flag for sid, _t, _s in BLUR_SURFACES
         for flag in ("--%s-blur-strength" % sid, "--%s-brightness" % sid)
@@ -4033,6 +5178,7 @@ class Window(Adw.ApplicationWindow):
         preview that is already on the desktop go if the last previewable
         edit was just undone by hand.
         """
+        now, self._preview_now = self._preview_now, False
         if not self._preview_enabled or self._repo is None or self._running:
             return
         pending = [a for a in args if a in self._PREVIEWABLE_FLAGS]
@@ -4043,7 +5189,7 @@ class Window(Adw.ApplicationWindow):
             GLib.source_remove(self._preview_timer)
         fast = all(a in self._APP_ONLY_FLAGS for a in pending)
         self._preview_timer = GLib.timeout_add(
-            200 if fast else 400, self._fire_preview)
+            0 if now else 200 if fast else 400, self._fire_preview)
 
     def _fire_preview(self):
         """Send what the widgets are asking for to the real desktop.
@@ -4074,14 +5220,17 @@ class Window(Adw.ApplicationWindow):
         else:
             cmd = ("session=$(%s begin) && %s set --session \"$session\" "
                   "--glass-mode %s --app-tint %s --shell-tint %s "
+                  "--dock-tint %s --panel-tint %s --maximized-panel-tint %s "
                   "--transparency %s --radius-custom %s --blur-strength %s "
                   "--blur-brightness %s %s --popup-opacity %s "
                   "--popup-blur %s --panel-height %s "
-                  "--maximized-panel-brightness %s "
+                  "--maximized-panel-brightness %s --maximized-blur %s "
                   "--window-blur %s --scope %s "
                   "--app-blur-allow %s --app-blur-block %s"
                   % (q(script), q(script), q(current.glass_mode), q(current.app_tint),
-                     q(current.shell_tint), q(current.transparency),
+                     q(current.shell_tint), q(current.dock_tint),
+                     q(current.panel_tint), q(current.maximized_panel_tint),
+                     q(current.transparency),
                      q(",".join(str(v) for v in current.radius_custom)),
                      q(str(current.blur_strength)),
                      q(str(current.blur_brightness)),
@@ -4094,6 +5243,7 @@ class Window(Adw.ApplicationWindow):
                      q("1" if current.popup_blur else "0"),
                      q(str(current.panel_height)),
                      q(str(current.maximized_panel_brightness)),
+                     q(current.maximized_blur),
                      q(window_blur),
                      q(scope), q(",".join(current.allow)),
                      q(",".join(current.block))))
@@ -4292,7 +5442,6 @@ class Window(Adw.ApplicationWindow):
         # Two installers over the same files is the one thing neither button
         # may allow, so each of them switches the other off for the duration.
         self._update_button.set_sensitive(False)
-        self._reapply.set_sensitive(False)
         self._repair_reapply.set_sensitive(False)
         self._repair_full.set_sensitive(False)
         self._apply_text.set_label("Applying…")
@@ -4328,7 +5477,6 @@ class Window(Adw.ApplicationWindow):
 
     def _run_finished(self, ok, message):
         self._running = False
-        self._reapply.set_sensitive(True)
         self._repair_reapply.set_sensitive(self._repo is not None)
         self._repair_full.set_sensitive(self._repo is not None)
         self._sync_updates()
@@ -4342,6 +5490,8 @@ class Window(Adw.ApplicationWindow):
             self._apply_expander.set_expanded(True)
             self._apply_reveal.set_reveal_child(True)
             self._log_toggle_btn.set_label("Hide Log")
+        # A failed switch has to spring back: the button says what is in use.
+        self._sync_mode_status()
         self._mark_dirty()
 
     def _applied_message(self):
@@ -4544,9 +5694,12 @@ class Window(Adw.ApplicationWindow):
         page.add(look)
 
         osd = Adw.PreferencesGroup(title="Volume and brightness")
+        self._osd_style_row = self._combo(
+            "Popup design", "", OSD_STYLES, self._applied.osd_style, "osd_style")
+        osd.add(self._osd_style_row)
         self._osd_device_name_row = Adw.SwitchRow(
             title="Show device name",
-            subtitle="Name the speaker or screen on the pill",
+            subtitle="Name the speaker or screen on the popup",
             active=self._applied.osd_device_name)
         self._osd_device_name_row.connect("notify::active", self._on_changed,
                                           "osd_device_name")
@@ -4573,6 +5726,9 @@ class Window(Adw.ApplicationWindow):
         self._icon_color_row = self._combo(
             "Icon colour", "", ICON_COLORS.get(family, [ICON_COLOR_FOLLOW]), color, "icon_color")
         packs.add(self._icon_color_row)
+        self._system_icons_row = self._combo(
+            "System icons", "", SYSTEM_ICONS, self._applied.system_icons, "system_icons")
+        packs.add(self._system_icons_row)
         self._cursors_row = self._combo(
             "Pointer", "", get_cursor_packs(), self._applied.cursors, "cursors")
         packs.add(self._cursors_row)
@@ -4584,7 +5740,7 @@ class Window(Adw.ApplicationWindow):
             CURSOR_SIZE_MIN, CURSOR_SIZE_MAX, 1)
         self._cursor_size_row.set_title("Pointer size")
         self._cursor_size_row.set_subtitle(
-            "%dpx recommended, GNOME's default is %dpx"
+            "%dpx recommended at 1440p, %dpx at 1080p, 48px at 4K"
             % (CURSOR_SIZE_RECOMMENDED, CURSOR_SIZE_GNOME))
         self._cursor_size_row.set_value(self._applied.cursor_size)
         self._cursor_size_row.connect(
@@ -4606,43 +5762,16 @@ class Window(Adw.ApplicationWindow):
         buttons.add(self._titlebutton_style_row)
         page.add(buttons)
 
-        # Pixels rather than a percentage: the bar's height is a length people
-        # compare against the one GNOME draws, and the reset button is that
-        # comparison made in one click.
-        bar = Adw.PreferencesGroup(
-            title="Top bar")
-        self._panel_height_scale = self._percent_scale(
-            PANEL_HEIGHT_MIN, PANEL_HEIGHT_MAX, PANEL_HEIGHT_MARKS, 4, 0,
-            self._applied.panel_height, step=1)
-        self._panel_height_scale.connect("value-changed",
-                                         self._on_panel_height_changed)
-        reset = Gtk.Button(icon_name="edit-undo-symbolic",
-                           valign=Gtk.Align.CENTER,
-                           tooltip_text="GNOME's own height (%d px)"
-                                        % PANEL_HEIGHT_GNOME)
-        reset.add_css_class("flat")
-        reset.connect("clicked", lambda _b: self._panel_height_scale.set_value(
-            PANEL_HEIGHT_GNOME))
-        self._panel_height_reset = reset
-        bar.add(self._slider_row(
-            "Height", "Theme %d px, GNOME %d px"
-            % (PANEL_HEIGHT_THEME, PANEL_HEIGHT_GNOME),
-            self._panel_height_scale, reset))
-        self._sync_panel_height()
-        page.add(bar)
-
-        # One bar, kept in a registry of one so it goes through the same
-        # percent group as the brightness and ground bars.
-        self._maximized_panel_scales = {}
-        page.add(self._build_percent_group(
-            "panel", "Top bar",
-            "Darkens the bar while a window is maximized.",
-            "Brightness over a maximized window",
-            "0% is black, 100% is clear",
-            MAXIMIZED_PANEL_BRIGHTNESS_MIN, MAXIMIZED_PANEL_BRIGHTNESS_MAX,
-            MAXIMIZED_PANEL_BRIGHTNESS_MARKS, 10, 4,
-            self._applied.maximized_panel_brightness,
-            self._maximized_panel_scales))
+        top_bar = Adw.PreferencesGroup(title="Top bar")
+        self._top_bar_icon_row = Adw.SwitchRow(
+            title="Aura Glass icon",
+            subtitle="Its menu switches the adaptive profile. While hidden, "
+                     "use aura-glass-adaptive profile in a terminal",
+            active=self._applied.top_bar_icon)
+        self._top_bar_icon_row.connect("notify::active", self._on_changed,
+                                       "top_bar_icon")
+        top_bar.add(self._top_bar_icon_row)
+        page.add(top_bar)
 
         return self._tab_stack("appearance", [
             ("look", "Look", "preferences-color-symbolic", look_page),
@@ -4964,62 +6093,103 @@ class Window(Adw.ApplicationWindow):
         self._mark_dirty()
 
     def _build_glass_page(self):
-        """The two modes, as two tabs.
+        """The two modes, one at a time.
 
-        The tab is the mode: switching one is asking for the other mode, in the
-        ordinary pending way every other control here works, and Apply is what
-        commits it. Which is why the tab bar cannot be the only mark — a
-        selected tab says "you are reading this", not "you are running this",
-        and those are two different answers until Apply. A banner at the top of
-        a tab is the second one, and only speaks on a tab that is not the one
-        the desktop is actually wearing. Above both sits a status row that
-        names the mode in force and the adaptive overlay over it: the panel
-        menu flips the overlay from outside this window, and a page that
-        showed neither left "which one am I in?" without an answer anywhere.
+        The page showing is the mode being asked for, and Apply is what commits
+        it. Which is why it cannot be the only mark — a page says "you are
+        reading this", not "you are running this", and those are two different
+        answers until Apply. A banner at the top of a mode's page is the second
+        one, and only speaks on a page that is not the one the desktop is
+        actually wearing. The button in the header names the mode in force and
+        the adaptive overlay over it, and switches: the panel menu flips the
+        overlay from outside this window, and showing neither left "which one
+        am I in?" without an answer anywhere.
 
-        Each tab owns its own controls rather than sharing dimmed ones. The page
-        this replaces spent four rows and a sensitivity pass explaining which of
-        its switches did not apply right now; a control that does not apply to
-        the mode you are in is simply in another tab.
+        One scroller around the modes, rather than an Adw.PreferencesPage per
+        mode: the modes' pages are GlassColumns, and the stack sizes to the mode
+        showing rather than the taller one.
+
+        Each mode owns its own controls rather than sharing dimmed ones. The
+        page this replaces spent four rows and a sensitivity pass explaining
+        which of its switches did not apply right now; a control that does not
+        apply to the mode you are in is simply on another page.
 
         Both are built here and now, like every page in this window and for
         the same reason: _reload and _mark_dirty read every widget there is, and
-        a tab built on first visit would be a tab whose rows do not exist when
+        a mode built on first visit would be a mode whose rows do not exist when
         they run.
         """
-        # Keyed by mode, filled in as each tab is built below.
+        # Keyed by mode, filled in as each page is built below.
         self._mode_banners = {}
+        self._build_top_bar_groups()
 
-        self._mode_stack = Adw.ViewStack()
-        self._mode_stack.add_titled_with_icon(
-            self._build_frosted_page(), "frosted", "Frosted glass",
-            "weather-fog-symbolic")
-        self._mode_stack.add_titled_with_icon(
-            self._build_performance_page(), "performance", "Performance",
-            "system-run-symbolic")
+        self._mode_stack = Gtk.Stack(vhomogeneous=False)
+        self._mode_stack.add_titled(
+            self._build_frosted_page(), "frosted", "Frosted glass")
+        self._mode_stack.add_titled(
+            self._build_performance_page(), "performance", "Performance")
         self._mode_stack.set_visible_child_name(self._applied.glass_mode)
-        self._mode_stack.set_vexpand(True)
+        self._place_top_bar_groups(self._applied.glass_mode)
         # After the child is set, so putting the window on the installed mode is
         # not itself a switch to react to.
         self._mode_stack.connect("notify::visible-child-name",
                                  self._on_mode_switched)
         self._sync_mode_banner()
 
-        switcher = Adw.ViewSwitcher(stack=self._mode_stack,
-                                    policy=Adw.ViewSwitcherPolicy.WIDE,
-                                    halign=Gtk.Align.CENTER,
-                                    margin_top=12)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        box.append(self._build_mode_status())
-        box.append(switcher)
-        box.append(self._mode_stack)
-        return box
+        self._watch_mode_files()
+        return Gtk.ScrolledWindow(child=self._mode_stack, vexpand=True,
+                                  hscrollbar_policy=Gtk.PolicyType.NEVER)
 
-    # The panel menu's three profiles, under the panel menu's own words
-    # (extension.js, _profileLabels): the same choice made from two places
-    # has to read the same in both.
-    ADAPTIVE_PROFILES = (("auto", "Auto"), ("full", "Frost Glass"),
-                         ("performance", "Performance"))
+    def _build_top_bar_groups(self):
+        """The top bar's height and shade, one set between the two modes.
+
+        They are not per-mode settings and a widget has one parent, so unlike
+        each studio's own rows these move to whichever mode is showing
+        (_place_top_bar_groups). Frosted and Performance alike have a bar.
+        """
+        # Pixels rather than a percentage: the bar's height is a length people
+        # compare against the one GNOME draws, and the reset button is that
+        # comparison made in one click.
+        self._panel_height_group = Adw.PreferencesGroup()
+        self._panel_height_scale = self._percent_scale(
+            PANEL_HEIGHT_MIN, PANEL_HEIGHT_MAX, PANEL_HEIGHT_MARKS, 4, 0,
+            self._applied.panel_height, step=1)
+        self._panel_height_scale.connect("value-changed",
+                                         self._on_panel_height_changed)
+        reset = Gtk.Button(icon_name="edit-undo-symbolic",
+                           valign=Gtk.Align.CENTER,
+                           tooltip_text="GNOME's own height (%d px)"
+                                        % PANEL_HEIGHT_GNOME)
+        reset.add_css_class("flat")
+        reset.connect("clicked", lambda _b: self._panel_height_scale.set_value(
+            PANEL_HEIGHT_GNOME))
+        self._panel_height_reset = reset
+        self._panel_height_group.add(self._slider_row(
+            "Height", "Theme %d px, GNOME %d px"
+            % (PANEL_HEIGHT_THEME, PANEL_HEIGHT_GNOME),
+            self._panel_height_scale, reset))
+        self._sync_panel_height()
+
+        # One bar, kept in a registry of one so it goes through the same
+        # percent group as the brightness and ground bars.
+        self._maximized_panel_scales = {}
+        self._maximized_panel_group = self._build_percent_group(
+            "panel", "Shade",
+            "Darkens the bar while a window is maximized.",
+            "Brightness over a maximized window",
+            "0% is black, 100% is clear",
+            MAXIMIZED_PANEL_BRIGHTNESS_MIN, MAXIMIZED_PANEL_BRIGHTNESS_MAX,
+            MAXIMIZED_PANEL_BRIGHTNESS_MARKS, 10, 4,
+            self._applied.maximized_panel_brightness,
+            self._maximized_panel_scales)
+
+    def _place_top_bar_groups(self, mode):
+        for target, group in (("panel", self._panel_height_group),
+                              ("maximized", self._maximized_panel_group)):
+            parent = group.get_parent()
+            if parent is not None:
+                parent.remove(group)
+            self._studios[mode].add_settings(target, group)
 
     # adaptive-performance/reason, as tools/aura_glass_adaptive.py writes it.
     ADAPTIVE_REASONS = {"performance": "chosen in the profile",
@@ -5027,45 +6197,16 @@ class Window(Adw.ApplicationWindow):
                         "gpu": "the GPU is busy",
                         "game": "a fullscreen game is running"}
 
-    # What the status row and the header subtitle read. glass-mode is the
-    # mode; the rest is the adaptive overlay the worker lays over frosted.
-    # shell-80-solid.css is watched for the timing alone: it lands with a
-    # transition, and the row should move when it does.
+    # What the header's button and subtitle read.
+    # glass-mode is the mode; the rest is the adaptive overlay the worker lays
+    # over frosted. shell-80-solid.css is watched for the timing alone: it
+    # lands with a transition, and the icon should move when it does.
     _MODE_FILES = ("glass-mode", "adaptive-profile", "shell-80-solid.css")
 
-    def _build_mode_status(self):
-        """The mode in force, the overlay over it, and the one-click switch.
-
-        Read off disk rather than off the tabs: a tab is a request, and this
-        row answers what the desktop is wearing right now — including the
-        adaptive overlay, which is never a glass mode (glass-mode stays
-        frosted under it) and so never moves a tab.
-        """
-        group = Adw.PreferencesGroup()
-        self._mode_row = Adw.ActionRow(title="Glass mode in use")
-        self._mode_pill = Gtk.Label(valign=Gtk.Align.CENTER)
-        self._mode_pill.add_css_class("aura-badge")
-        self._mode_pill.add_css_class("on")
-        self._mode_row.add_suffix(self._mode_pill)
-        self._mode_switch = Gtk.Button(valign=Gtk.Align.CENTER)
-        self._mode_switch.connect(
-            "clicked", lambda _b: self._switch_mode(self._other_mode()))
-        self._mode_row.add_suffix(self._mode_switch)
-        group.add(self._mode_row)
-
-        # The same command the panel menu runs, so the worker stays the one
-        # owner of the profile and of the transition it starts. Not an Apply
-        # flag: like an extension switch, it acts the moment it is chosen.
-        self._profile_row = Adw.ComboRow(
-            title="Adaptive performance",
-            model=Gtk.StringList.new(
-                [label for _p, label in self.ADAPTIVE_PROFILES]))
-        self._profile_syncing = False
-        self._profile_row.connect("notify::selected", self._on_profile_chosen)
-        group.add(self._profile_row)
-
+    def _watch_mode_files(self):
+        """Keep the header on what the desktop is wearing, however it changed."""
         # Its own monitors rather than the System page's: that one filters to
-        # stamp files, and this row is the only reader of these. The overlay
+        # stamp files, and this status is the only reader of these. The overlay
         # lives in a subdirectory, which a directory monitor does not descend
         # into, so it gets a second one.
         self._mode_watch_timer = 0
@@ -5076,75 +6217,52 @@ class Window(Adw.ApplicationWindow):
             monitor.connect("changed", self._on_mode_file_changed)
             self._mode_monitors.append(monitor)
 
-        clamp = Adw.Clamp(child=group, maximum_size=600,
-                          tightening_threshold=400, margin_top=12,
-                          margin_start=12, margin_end=12)
-        self._sync_mode_status()
-        return clamp
-
-    def _other_mode(self):
-        return ("frosted" if self._applied.glass_mode == "performance"
-                else "performance")
-
     def _adaptive_state(self):
-        """(profile, active, reason), read where the worker writes them and
-        with the worker's own defaults (selected_profile, recorded_active)."""
-        profile = read_memo("adaptive-profile", "auto")
-        if profile not in [p for p, _l in self.ADAPTIVE_PROFILES]:
-            profile = "auto"
+        """(active, reason), read where the worker writes them and with the
+        worker's own default (recorded_active)."""
         active = read_memo("adaptive-performance/active") == "1"
         reason = read_memo("adaptive-performance/reason") or "normal"
-        return profile, active, reason
+        return active, reason
 
     def _mode_summary(self):
-        """One line for the pill and the header subtitle."""
+        """One line for the header subtitle."""
         mode = self._mode_title(self._applied.glass_mode)
-        _profile, active, _reason = self._adaptive_state()
+        active, _reason = self._adaptive_state()
         if self._applied.glass_mode == "frosted" and active:
             return "%s · Performance overlay" % mode
         return mode
 
-    def _sync_mode_status(self):
+    def _on_mode_button(self, _button):
         applied = self._applied.glass_mode
-        profile, active, reason = self._adaptive_state()
-        summary = self._mode_summary()
-        self._mode_pill.set_label(summary)
-        self._mode_switch.set_label(
-            "Switch to %s" % self._mode_title(self._other_mode()))
-        self._mode_switch.set_sensitive(self._repo is not None)
-        if applied == "performance":
-            self._mode_row.set_subtitle(
-                "No blur, solid surfaces")
-        elif active:
-            self._mode_row.set_subtitle(
-                "Blur paused: %s"
-                % self.ADAPTIVE_REASONS.get(reason, reason))
-        else:
-            self._mode_row.set_subtitle("Blur behind the shell and apps")
-        if hasattr(self, "_window_title"):
-            self._window_title.set_subtitle(summary)
+        self._switch_mode(next(m for m in GLASS_MODES if m != applied))
 
-        self._profile_syncing = True
-        self._profile_row.set_selected(
-            [p for p, _l in self.ADAPTIVE_PROFILES].index(profile))
-        self._profile_syncing = False
-        # The worker skips Performance mode outright (performance_mode in
-        # tools/aura_glass_adaptive.py): there is no blur there to lighten.
-        self._profile_row.set_sensitive(applied == "frosted")
+    def _sync_mode_icon(self):
+        """The header's button: one icon per state, and the tooltip says which."""
+        applied = self._applied.glass_mode
+        active, reason = self._adaptive_state()
         if applied == "performance":
-            self._profile_row.set_subtitle(
-                "Only in Frosted glass")
-        elif profile == "auto":
-            self._profile_row.set_subtitle(
-                "Turns blur off on battery, high GPU load or fullscreen games")
-        elif profile == "full":
-            self._profile_row.set_subtitle("Always full blur")
+            icon = "power-profile-performance-symbolic"
+            detail = "no blur, solid surfaces"
+        elif active:
+            icon = "power-profile-balanced-symbolic"
+            detail = "blur paused, %s" % self.ADAPTIVE_REASONS.get(reason, reason)
         else:
-            self._profile_row.set_subtitle(
-                "Performance stays on until you change it")
+            icon = "weather-fog-symbolic"
+            detail = "blur behind the shell and apps"
+        other = next(m for m in GLASS_MODES if m != applied)
+        self._mode_button.set_icon_name(icon)
+        self._mode_button.set_tooltip_text(
+            "%s: %s. Click to switch to %s."
+            % (self._mode_title(applied), detail, self._mode_title(other)))
+        self._mode_button.set_sensitive(self._repo is not None)
+
+    def _sync_mode_status(self):
+        if hasattr(self, "_window_title"):
+            self._window_title.set_subtitle(self._mode_summary())
+            self._sync_mode_icon()
 
     def _switch_mode(self, mode):
-        """Apply the other mode in one click: show its tab, then Apply.
+        """Apply a mode in one click: show its page, then Apply.
 
         Through the ordinary Apply, so flags_against sends --glass-mode and
         install.sh is still the only thing that resolves it. Edits already
@@ -5153,44 +6271,11 @@ class Window(Adw.ApplicationWindow):
         if self._running:
             self._toasts.add_toast(Adw.Toast(
                 title="Already applying something — try again in a moment"))
+            self._sync_mode_status()
             return
         if self._glass_mode() != mode:
             self._mode_stack.set_visible_child_name(mode)
         self._on_apply(None)
-
-    def _on_profile_chosen(self, row, _param):
-        if self._profile_syncing or self._loading:
-            return
-        profile = self.ADAPTIVE_PROFILES[row.get_selected()][0]
-        if profile == self._adaptive_state()[0]:
-            return
-        if self._running:
-            self._toasts.add_toast(Adw.Toast(
-                title="Already applying something — try again in a moment"))
-            self._sync_mode_status()
-            return
-        argv = self._adaptive_argv("profile", profile)
-        if argv is None:
-            self._toasts.add_toast(Adw.Toast(
-                title="The Aura Glass folder is missing"))
-            self._sync_mode_status()
-            return
-        label = dict(self.ADAPTIVE_PROFILES)[profile]
-        self._run_started("Switching the adaptive profile to %s…" % label)
-        log_append(self._apply_log, "$ aura-glass-adaptive profile " + profile)
-
-        def done(ok, message):
-            self._sync_mode_status()
-            if ok:
-                self._run_finished(True, "Adaptive profile: %s" % label)
-                return
-            failed = "Could not switch the adaptive profile"
-            if message:
-                failed = "%s — %s" % (failed, message)
-            self._run_finished(False, failed)
-            self._toasts.add_toast(Adw.Toast(title=failed))
-
-        stream_command(argv, self._run_line, done)
 
     def _on_mode_file_changed(self, _monitor, file, _other, _event):
         parent = file.get_parent()
@@ -5232,10 +6317,10 @@ class Window(Adw.ApplicationWindow):
         self._mark_dirty()
 
     def _mode_tab(self, mode, page):
-        """A tab's page, with the banner that speaks when this is not the
+        """A mode's page, with the banner that speaks when this is not the
         mode the desktop is actually wearing.
 
-        Not revealed by default: the common case is opening the tab that is
+        Not revealed by default: the common case is opening the page that is
         already applied, and a banner reading "In use" at every visit is the
         same noise the badge this replaces was — the alternative considered
         and rejected was Adw.ViewStackPage's needs-attention dot, which means
@@ -5246,32 +6331,30 @@ class Window(Adw.ApplicationWindow):
         banner = Adw.Banner(revealed=False, button_label="Switch now")
         banner.connect("button-clicked", lambda _b: self._switch_mode(mode))
         self._mode_banners[mode] = banner
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, vexpand=True)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         box.append(banner)
-        page.set_vexpand(True)
         box.append(page)
         return box
 
     def _glass_mode(self):
-        """The mode the tabs are showing, which is the mode being asked for."""
+        """The mode the page is showing, which is the mode being asked for."""
         return self._mode_stack.get_visible_child_name()
 
     def _mode_title(self, mode):
-        """A mode's name, read back off the tab that carries it.
+        """A mode's name, read back off the stack page that carries it.
 
-        Off the tab rather than out of a second list beside GLASS_MODES: the
-        switcher is already showing these three words, and a copy of them here
-        is a copy that can disagree with what the user is looking at.
+        Off the page rather than out of a second list beside GLASS_MODES: a copy
+        of these words here is a copy that can disagree with the page's own.
         """
         return self._mode_stack.get_page(
             self._mode_stack.get_child_by_name(mode)).get_title()
 
     def _sync_mode_banner(self):
-        """Reveal the banner on every tab that is not the mode installed.
+        """Reveal the banner on every page that is not the mode installed.
 
-        A property of each tab against self._applied, not of which tab is
-        currently showing — so this sets all three banners at once and does
-        not need to run again on a plain tab switch. Called anyway from
+        A property of each page against self._applied, not of which page is
+        currently showing — so this sets both banners at once and does
+        not need to run again on a plain switch. Called anyway from
         _on_mode_switched, harmlessly, for the same reason the opacity readout
         stays outside the loading guard: whatever moved the applied mode
         should not have to remember to call this too.
@@ -5281,9 +6364,8 @@ class Window(Adw.ApplicationWindow):
             if mode == applied:
                 banner.set_revealed(False)
                 continue
-            # The applied mode by name, rather than a bare "not this one". The
-            # tab bar stops answering "so which one am I in?" the moment you
-            # click away from it, which is exactly when the question gets asked.
+            # The applied mode by name, rather than a bare "not this one": on
+            # this page is exactly when "so which one am I in?" gets asked.
             banner.set_title("%s is in use — switch now, or Apply with "
                              "your other edits" % self._mode_title(applied))
             banner.set_revealed(True)
@@ -5293,6 +6375,10 @@ class Window(Adw.ApplicationWindow):
         # banners have to follow the applied mode even when _reload was what
         # moved it.
         self._sync_mode_banner()
+        # Its surface has just left the page, and picks would land out of sight.
+        if self._tint_picker is not None:
+            self._tint_picker.close_picker()
+        self._place_top_bar_groups(self._glass_mode())
         if self._loading:
             return
         # Which list the blur consults is a property of the mode, so the
@@ -5312,20 +6398,22 @@ class Window(Adw.ApplicationWindow):
         the top-level memos instead would show a machine in Performance its
         own forced zeroes under a Frosted heading.
 
-        Tint, opacity, blur amount and glass style: what the glass looks
-        like. Which surfaces it reaches and how bright it comes out are the
-        Blur page's, and smooth animations the Animations page's — they made
-        this tab a long scroll, and none of them is what brings anyone here.
+        Everything here is about how a surface looks, so everything here is
+        behind that surface's chip in the studio. Which apps the blur reaches
+        is the Per-app blur page's, and smooth animations the Animations
+        page's: they made this page a long scroll, and neither is what brings
+        anyone here.
         """
         frosted = self._applied.modes["frosted"]
-        page = Adw.PreferencesPage()
+        page = GlassColumn()
 
-        page.add(self._build_tint_group("frosted"))
+        page.add(self._build_studio_group("frosted"))
+        studio = self._studios["frosted"]
 
         # The three main sliders, one row each. Every surface follows them
-        # unless the Advanced group below gives it a value of its own.
+        # unless its own chip gives it a value of its own.
         glass = Adw.PreferencesGroup(
-            title="Glass",
+            title="All surfaces",
             description="Sets windows, popups and notifications together.")
 
         strength = self._percent_scale(
@@ -5354,25 +6442,7 @@ class Window(Adw.ApplicationWindow):
         self._transparency_scale.connect("value-changed", self._on_main_changed)
         glass.add(self._slider_row("Opacity", OPACITY_SUBTITLE,
                                    self._transparency_scale))
-        page.add(glass)
-
-        # Which surfaces the blur reaches. One dropdown for the windows, not the
-        # two switches this was: the three answers are the ones both wizards
-        # already offer, and a second switch that only meant anything while the
-        # first was on read as two settings when it was one.
-        reach = Adw.PreferencesGroup(title="Where the blur reaches")
-        self._window_blur_row = self._combo(
-            "Blur behind windows", "", WINDOW_BLUR_CHOICES,
-            frosted.get("scope", "all"), "scope")
-        reach.add(self._window_blur_row)
-
-        self._popup_row = Adw.SwitchRow(
-            title="Blur behind menus, notifications and the top bar",
-            subtitle=POPUP_BLUR_SUBTITLE,
-            active=frosted["popup_blur"])
-        self._popup_row.connect("notify::active", self._on_changed, "popup_blur")
-        reach.add(self._popup_row)
-        page.add(reach)
+        studio.add_settings("all", glass)
 
         style = Adw.PreferencesGroup(
             title="Glass style")
@@ -5380,9 +6450,9 @@ class Window(Adw.ApplicationWindow):
             "Style", "", GLASS_STYLES, self._applied.glass_style,
             "glass_style")
         style.add(self._glass_style_row)
-        page.add(style)
+        studio.add_settings("all", style)
 
-        page.add(self._build_advanced_group(frosted))
+        self._build_surface_settings(frosted, studio)
 
         # Last on the page rather than first: the cost is worth knowing, but
         # not the reason anyone opened this tab.
@@ -5393,30 +6463,73 @@ class Window(Adw.ApplicationWindow):
 
         return self._mode_tab("frosted", page)
 
-    def _build_advanced_group(self, frosted):
-        """Each surface on its own, collapsed until asked for.
+    def _build_surface_settings(self, frosted, studio):
+        """Each surface's own settings, under its chip.
 
         A surface follows the main sliders until one of its own bars is moved;
         from then on it keeps that value whatever the main slider does, and a
         reset button hands it back. That is the whole of the model, and it is
         install.sh's: an override is a number, following is "main".
         """
-        group = Adw.PreferencesGroup(
-            title="Advanced",
-            description="Change one surface on its own.")
         # (sid, kind) -> row, for _current, _reload and the main sliders.
         self._surface_rows = {}
-        for sid, title, subtitle in BLUR_SURFACES:
-            # No markup: "&" in a title is invalid Pango and blanks the row.
-            expander = Adw.ExpanderRow(title=title, subtitle=subtitle,
-                                       use_markup=False)
-            expander._sid = sid
+        # The chip each surface's bars sit under. The top bar has none of its
+        # own: it shares the lock screen's blur (BLUR_SURFACES says why).
+        chips = {"window": ("app", "Blur"), "popup": ("shell", "Blur"),
+                 "lockscreen": ("panel", "Blur"),
+                 "maximized": ("app", "Maximized windows")}
+
+        # What reaches a window, above its bars. One dropdown, not the two
+        # switches this was: the three answers are the ones both wizards
+        # already offer, and a second switch that only meant anything while the
+        # first was on read as two settings when it was one.
+        reach = Adw.PreferencesGroup(title="Behind windows")
+        self._window_blur_row = self._combo(
+            "Blur behind windows", "", WINDOW_BLUR_CHOICES,
+            frosted.get("scope", "all"), "scope")
+        reach.add(self._window_blur_row)
+        self._liquid_windows_row = Adw.SwitchRow(
+            title="Glass style behind app windows",
+            subtitle="Windows blur only the wallpaper. Lighter on the GPU",
+            active=self._applied.liquid_windows)
+        self._liquid_windows_row.connect("notify::active", self._on_changed,
+                                         "liquid_windows")
+        reach.add(self._liquid_windows_row)
+        self._fullscreen_blur_row = Adw.SwitchRow(
+            title="Blur fullscreen windows",
+            subtitle="Off makes fullscreen apps solid",
+            active=self._applied.fullscreen_blur)
+        self._fullscreen_blur_row.connect("notify::active", self._on_changed,
+                                          "fullscreen_blur")
+        reach.add(self._fullscreen_blur_row)
+        self._maximized_blur_row = Adw.SwitchRow(
+            title="Static blur on maximized windows",
+            subtitle="Blurs only the wallpaper, with its own settings. "
+                     "Lighter on the GPU. Off follows other windows",
+            active=self._applied.maximized_blur == "static")
+        self._maximized_blur_row.connect("notify::active", self._on_changed,
+                                         "maximized_blur")
+        reach.add(self._maximized_blur_row)
+        studio.add_settings("app", reach)
+
+        shell = Adw.PreferencesGroup()
+        self._popup_row = Adw.SwitchRow(
+            title="Blur behind menus, notifications and the top bar",
+            subtitle=POPUP_BLUR_SUBTITLE,
+            active=frosted["popup_blur"])
+        self._popup_row.connect("notify::active", self._on_changed, "popup_blur")
+        shell.add(self._popup_row)
+        studio.add_settings("shell", shell)
+
+        for sid, _title, _subtitle in BLUR_SURFACES:
+            chip, title = chips[sid]
+            section = SurfaceBlurGroup(sid, title)
             self._surface_rows[(sid, "strength")] = self._surface_row(
-                expander, sid, "strength", "Blur amount",
+                section, sid, "strength", "Blur amount",
                 BLUR_STRENGTH_MIN, BLUR_STRENGTH_MAX, BLUR_STRENGTH_MARKS, 25,
                 BLUR_STRENGTH_SNAP, frosted["surface_strength"][sid])
             self._surface_rows[(sid, "brightness")] = self._surface_row(
-                expander, sid, "brightness", "Brightness",
+                section, sid, "brightness", "Brightness",
                 BLUR_BRIGHTNESS_MIN, BLUR_BRIGHTNESS_MAX,
                 BLUR_BRIGHTNESS_MARKS, 10, BLUR_BRIGHTNESS_SNAP,
                 frosted["surface_brightness"][sid])
@@ -5425,30 +6538,18 @@ class Window(Adw.ApplicationWindow):
             # their own grounds.
             if sid == "popup":
                 self._surface_rows[(sid, "opacity")] = self._surface_row(
-                    expander, sid, "opacity", "Opacity",
+                    section, sid, "opacity", "Opacity",
                     POPUP_OPACITY_MIN, POPUP_OPACITY_MAX, TRANSPARENCY_MARKS, 5,
                     TRANSPARENCY_SNAP, frosted["popup_opacity"], step=1)
-            group.add(expander)
-            self._sync_surface_summary(expander)
+            studio.add_settings(chip, section)
+            self._sync_surface_summary(section)
+            if sid == "maximized":
+                self._maximized_section = section
 
-        more = Adw.ExpanderRow(title="More",
-                               subtitle="Window blur behaviour")
-        self._liquid_windows_row = Adw.SwitchRow(
-            title="Glass style behind app windows",
-            subtitle="Windows blur only the wallpaper. Lighter on the GPU",
-            active=self._applied.liquid_windows)
-        self._liquid_windows_row.connect("notify::active", self._on_changed,
-                                         "liquid_windows")
-        more.add_row(self._liquid_windows_row)
-        self._fullscreen_blur_row = Adw.SwitchRow(
-            title="Blur fullscreen windows",
-            subtitle="Off makes fullscreen apps solid",
-            active=self._applied.fullscreen_blur)
-        self._fullscreen_blur_row.connect("notify::active", self._on_changed,
-                                          "fullscreen_blur")
-        more.add_row(self._fullscreen_blur_row)
-        group.add(more)
-        return group
+        # The dock's pipeline is not one of BLUR_SURFACES, so there is no bar to
+        # put here. Said rather than left blank.
+        studio.add_note("dock", "The dock's blur has no setting of its own. "
+                                "Glass style, under Everything, changes it.")
 
     def _percent_scale(self, low, high, marks, page, snap, value, step=5):
         """A bar over whole percentages, with its readout kept on its side.
@@ -5506,14 +6607,16 @@ class Window(Adw.ApplicationWindow):
         """One surface's own bar, following its main slider or not."""
         reset = Gtk.Button(icon_name="edit-undo-symbolic",
                            valign=Gtk.Align.CENTER,
-                           tooltip_text="Follow the main slider again")
+                           tooltip_text="Follow %s again"
+                                        % self._followed_name(sid))
         reset.add_css_class("flat")
         scale = self._percent_scale(low, high, marks, page, snap,
-                                    self._main_value(kind) if value == "main"
-                                    else value, step)
+                                    self._followed_value(sid, kind)
+                                    if value == "main" else value, step)
         row = self._slider_row(title, "", scale, reset)
         row._follows = value == "main"
         row._expander = expander
+        row._sid = sid
         row._kind = kind
         row._reset = reset
         scale.connect("value-changed", self._on_surface_changed, row)
@@ -5529,16 +6632,30 @@ class Window(Adw.ApplicationWindow):
                  "opacity": getattr(self, "_transparency_scale", None)}[kind]
         return round(scale.get_value())
 
+    def _followed_name(self, sid):
+        """What a following surface follows, in the bars' own words."""
+        followed = SURFACE_FOLLOWS.get(sid)
+        return (dict((s, t) for s, t, _sub in BLUR_SURFACES)[followed]
+                if followed else "Everything")
+
+    def _followed_value(self, sid, kind):
+        """What a following surface shows: the bar it follows."""
+        followed = SURFACE_FOLLOWS.get(sid)
+        if followed:
+            return round(self._surface_rows[(followed, kind)]._scale.get_value())
+        return self._main_value(kind)
+
     def _sync_surface_row(self, row):
+        name = self._followed_name(row._sid)
         row._reset.set_visible(not row._follows)
-        row._subtitle.set_label("Follows the main slider" if row._follows
-                                else "Set apart — the main slider leaves it")
+        row._subtitle.set_label("Follows %s" % name if row._follows
+                                else "Set apart from %s" % name)
 
     def _sync_surface_summary(self, expander):
         custom = [row._scale for (sid, _k), row in self._surface_rows.items()
                   if sid == expander._sid and not row._follows]
         expander.set_subtitle(
-            "Set apart from the main sliders" if custom else
+            "Set apart from %s" % self._followed_name(expander._sid) if custom else
             dict((s, sub) for s, _t, sub in BLUR_SURFACES)[expander._sid])
 
     def _on_main_changed(self, scale):
@@ -5552,8 +6669,8 @@ class Window(Adw.ApplicationWindow):
                 else "brightness" if scale is
                 getattr(self, "_glass_brightness_scale", None) else "opacity")
         loading, self._loading = self._loading, True
-        for (_sid, k), row in getattr(self, "_surface_rows", {}).items():
-            if k == kind and row._follows:
+        for (sid, k), row in getattr(self, "_surface_rows", {}).items():
+            if k == kind and row._follows and sid not in SURFACE_FOLLOWS:
                 row._scale.set_value(round(scale.get_value()))
         self._loading = loading
         if kind == "opacity":
@@ -5564,6 +6681,14 @@ class Window(Adw.ApplicationWindow):
 
     def _on_surface_changed(self, scale, row):
         self._sync_percent_value(scale)
+        # A surface following this one moves with it, under the same rule as
+        # one following a main bar.
+        loading, self._loading = self._loading, True
+        for (sid, kind), other in self._surface_rows.items():
+            if (SURFACE_FOLLOWS.get(sid) == row._sid and kind == row._kind
+                    and other._follows):
+                other._scale.set_value(round(scale.get_value()))
+        self._loading = loading
         if self._loading:
             return
         if row._follows:
@@ -5575,7 +6700,7 @@ class Window(Adw.ApplicationWindow):
     def _on_surface_reset(self, _button, row):
         row._follows = True
         self._loading = True
-        row._scale.set_value(self._main_value(row._kind))
+        row._scale.set_value(self._followed_value(row._sid, row._kind))
         self._loading = False
         self._sync_surface_row(row)
         self._sync_surface_summary(row._expander)
@@ -5589,8 +6714,8 @@ class Window(Adw.ApplicationWindow):
     def _load_surface_row(self, row, value):
         """Put a surface back to a value read off the disk (_reload)."""
         row._follows = value == "main"
-        row._scale.set_value(self._main_value(row._kind) if row._follows
-                             else value)
+        row._scale.set_value(self._followed_value(row._sid, row._kind)
+                             if row._follows else value)
         self._sync_surface_row(row)
         self._sync_surface_summary(row._expander)
 
@@ -5680,10 +6805,10 @@ class Window(Adw.ApplicationWindow):
         with customizable tints and adjustable opacity for windows, popups and menus.
         """
         performance = self._applied.modes["performance"]
-        page = Adw.PreferencesPage()
+        page = GlassColumn()
 
-        page.add(self._build_tint_group(
-            "performance"))
+        page.add(self._build_studio_group("performance"))
+        studio = self._studios["performance"]
 
         group = Adw.PreferencesGroup(
             title="Transparency")
@@ -5700,7 +6825,10 @@ class Window(Adw.ApplicationWindow):
                       margin_bottom=4)
         bar.append(self._p_transparency_scale)
         group.add(bar)
-        page.add(group)
+        studio.add_settings("all", group)
+        for target in ("app", "shell", "dock"):
+            studio.add_note(target, "No blur in Performance, so only its "
+                                    "colour to set here.")
 
         page.add(tip_card(
             "<b>The fastest mode.</b> No blur, so no GPU cost. Corners, "
@@ -5710,115 +6838,65 @@ class Window(Adw.ApplicationWindow):
 
     # ---- the tint ---------------------------------------------------------
 
-    def _build_tint_group(self, mode, description=None):
-        """The colour under the glass, for the two halves of the desktop.
+    def _build_studio_group(self, mode):
+        """The studio: each part of the desktop, starting with its colour.
 
-        Two colours rather than one, because they are two different mechanisms
+        Separate colours rather than one, because they are different mechanisms
         and pretending otherwise would be a lie the first time one of them
         could not do what the other did. A translucent app window has a single
         tint the whole sheet mixes toward; the shell has eight separately tuned
         grounds and gets the hue and saturation applied to each of them with
-        their own lightness kept. The switch between the two rows is for the
-        common case, which is wanting one colour everywhere.
+        their own lightness kept; the dock and the top bar wear exactly the
+        colour picked. GlassStudio's Everything is for the common case, which is
+        wanting one colour everywhere.
 
-        Neither is an on/off. Black is what the sheets ship with, so choosing
-        black is how a tint is undone — and there is no third state to have a
-        switch for.
-
-        One group per mode, and one pair of colours per mode with it. Sharing a
-        single group between two tabs is not on offer — a widget has one parent
-        — and sharing the colours would be wrong anyway: the two modes seed
-        different blacks, the drawer on disk keeps them apart, and a tint picked
-        for a blurred window is not the one picked for a bare wallpaper.
+        One editor per mode, and one set of colours per mode with it. Sharing a
+        single editor between two pages is not on offer — a widget has one
+        parent — and sharing the colours would be wrong anyway: the two modes
+        seed different blacks, the drawer on disk keeps them apart, and a tint
+        picked for a blurred window is not the one picked for a bare wallpaper.
         """
+        drawer = self._applied.modes[mode]
         tints = self._tints.setdefault(mode, {
-            "app": self._applied.modes[mode]["app_tint"],
-            "shell": self._applied.modes[mode]["shell_tint"],
+            "app": drawer["app_tint"],
+            "shell": drawer["shell_tint"],
+            "dock": drawer["dock_tint"],
+            "panel": drawer["panel_tint"],
+            "maximized": drawer["maximized_panel_tint"],
         })
-        rows = self._tint_rows.setdefault(mode, {})
-
         group = Adw.PreferencesGroup(
-            title="Tint",
-            description=description or
-            "What the glass is coloured with. This is the colour it darkens "
-            "toward — how dark it stays is Opacity's job, not this one.")
-
-        rows["link"] = Adw.SwitchRow(
-            title="One colour for both",
-            subtitle="Use the app tint for the shell too",
-            active=tints["app"] == tints["shell"])
-        rows["link"].connect("notify::active", self._on_tint_link, mode)
-        group.add(rows["link"])
-
-        rows["app"] = self._tint_row(
-            "App windows", "GTK and libadwaita windows", "app", mode)
-        group.add(rows["app"])
-
-        rows["shell"] = self._tint_row(
-            "Shell surfaces", "The panel, menus and Quick Settings",
-            "shell", mode)
-        group.add(rows["shell"])
+            title="Surfaces",
+            description="Click a part of the desktop to set its colour, blur "
+                        "and more.")
+        self._studios[mode] = GlassStudio(
+            tints, mode == "performance", self._on_tint_changed,
+            self._on_tint_picker_opened)
+        self._studios[mode].set_look(
+            self._window_opacity(drawer["transparency"]),
+            self._applied.panel_height,
+            self._applied.maximized_panel_brightness)
+        group.add(self._studios[mode])
         return group
 
-    def _tint_row(self, title, subtitle, which, mode):
-        """One colour button, with the swatch and the hex both readable."""
-        row = Adw.ActionRow(title=title, subtitle=subtitle)
-        button = TintButton(
-            "%s tint" % title,
-            on_open=lambda b, m=mode: self._on_tint_picker_opened(b, m),
-            on_close=self._on_tint_picker_closed)
-        button.set_rgba(parse_hex(self._tints[mode][which]))
-        button.connect("notify::rgba", self._on_tint_picked, which, mode)
-        row.add_suffix(button)
-        row._button = button
-        return row
+    @staticmethod
+    def _window_opacity(transparency):
+        """A level memo as an alpha: "0" is opaque windows, not clear ones."""
+        return 1.0 if transparency == "0" else float(transparency)
 
-    def _on_tint_picked(self, button, _param, which, mode):
-        if self._loading:
-            return
-        colour = rgba_hex(button.get_rgba())
-        self._tints[mode][which] = colour
-        rows = self._tint_rows[mode]
-
-        # The link is one-directional on purpose: the app windows are the side
-        # with a single honest tint behind it, so they are the side that leads.
-        # Dragging the shell's own colour while the two are linked is a choice
-        # to stop linking them, and the switch says so rather than snapping the
-        # value back.
-        if rows["link"].get_active():
-            if which == "app":
-                self._tints[mode]["shell"] = colour
-                self._loading = True
-                rows["shell"]._button.set_rgba(parse_hex(colour))
-                self._loading = False
-            else:
-                rows["link"].set_active(False)
-
-        self._mark_dirty()
-
-    def _on_tint_link(self, row, _param, mode):
-        if self._loading:
-            return
-        if row.get_active():
-            tints = self._tints[mode]
-            tints["shell"] = tints["app"]
-            self._loading = True
-            self._tint_rows[mode]["shell"]._button.set_rgba(
-                parse_hex(tints["shell"]))
-            self._loading = False
+    def _on_tint_changed(self):
+        if not self._loading:
+            # A colour is one deliberate click, with none of a slider's reason to
+            # wait and see whether it is still moving.
+            self._preview_now = True
             self._mark_dirty()
 
-    def _on_tint_picker_opened(self, button, _mode):
-        """A colour was pressed: close whichever other palette is open."""
+    def _on_tint_picker_opened(self, editor):
+        """A colour button was pressed: close the other mode's palette."""
         # One palette at a time. Live preview repaints the real desktop as
         # this one moves, which is judgment enough without a second window.
-        if self._tint_picker is not None and self._tint_picker is not button:
+        if self._tint_picker is not None and self._tint_picker is not editor:
             self._tint_picker.close_picker()
-        self._tint_picker = button
-
-    def _on_tint_picker_closed(self, button):
-        if self._tint_picker is button:
-            self._tint_picker = None
+        self._tint_picker = editor
 
     # ---- how far the blur reaches -----------------------------------------
 
@@ -5960,9 +7038,12 @@ class Window(Adw.ApplicationWindow):
             return
 
         for entry in catalogue:
-            # There is no pill to name a device on while Custom OSD is off.
+            # There is no popup to design or name a device on while Custom OSD
+            # is off.
             if entry["uuid"] == "custom-osd@neuromorph":
                 self._osd_device_name_row.set_sensitive(
+                    entry["installed"] and entry["enabled"])
+                self._osd_style_row.set_sensitive(
                     entry["installed"] and entry["enabled"])
 
             group = self._ext_groups.get(entry["tier"])
@@ -6159,8 +7240,8 @@ class Window(Adw.ApplicationWindow):
     def _build_system_page(self):
         page = Adw.PreferencesPage()
 
-        group = Adw.PreferencesGroup(
-            title="Needs a password",
+        self._gdm_group = Adw.PreferencesGroup(
+            title="Login screen",
             description="These need your password, so they open in a terminal.")
         # Watched rather than left to a Re-read button: there was never a
         # signal that a spawned terminal finished, only a signal that the
@@ -6175,44 +7256,58 @@ class Window(Adw.ApplicationWindow):
         # read by _on_system_settled once the shared debounce fires.
         self._pending_app_blur_sync = False
 
-        self._deps_row = Adw.ActionRow(
-            title="Command line dependencies",
-            subtitle="Checking…")
-        deps_check = Gtk.Button(label="Check", valign=Gtk.Align.CENTER)
-        deps_check.connect("clicked", lambda _b: self._check_deps())
-        self._deps_install = Gtk.Button(label="Install",
-                                        valign=Gtk.Align.CENTER,
-                                        sensitive=False)
-        self._deps_install.add_css_class("suggested-action")
-        self._deps_install.connect("clicked", self._on_install_deps)
-        self._deps_row.add_suffix(deps_check)
-        self._deps_row.add_suffix(self._deps_install)
-        group.add(self._deps_row)
-
         self._gdm_monitors_row = Adw.ActionRow(
             title="Sync the monitor layout to the login screen",
             subtitle="Login screen uses the same monitor as your desktop")
         self._gdm_monitors_button = Gtk.Button(valign=Gtk.Align.CENTER)
         self._gdm_monitors_button.connect("clicked", self._on_gdm_monitors)
         self._gdm_monitors_row.add_suffix(self._gdm_monitors_button)
-        group.add(self._gdm_monitors_row)
+        self._gdm_group.add(self._gdm_monitors_row)
 
         self._gdm_row = Adw.ActionRow(title="Theme the login screen")
+        # Beside Remove, not instead of it: a theme a package update reverted
+        # can still be wanted gone, along with the sync service it left behind.
+        self._gdm_reinstall = Gtk.Button(label="Reinstall",
+                                         valign=Gtk.Align.CENTER,
+                                         visible=False)
+        self._gdm_reinstall.add_css_class("suggested-action")
+        self._gdm_reinstall.connect("clicked", self._on_gdm_reinstall)
+        self._gdm_row.add_suffix(self._gdm_reinstall)
         self._gdm_button = Gtk.Button(valign=Gtk.Align.CENTER)
         self._gdm_button.connect("clicked", self._on_gdm)
         self._gdm_row.add_suffix(self._gdm_button)
-        group.add(self._gdm_row)
-        page.add(group)
+        self._gdm_group.add(self._gdm_row)
+        page.add(self._gdm_group)
+
+        install = Adw.PreferencesGroup(title="Installation")
+        verify_row = Adw.ActionRow(
+            title="Check installation",
+            subtitle="Looks for anything missing from what you chose, in a "
+                     "terminal. Changes nothing")
+        self._verify_button = Gtk.Button(label="Check",
+                                         valign=Gtk.Align.CENTER,
+                                         sensitive=self._repo is not None)
+        self._verify_button.connect("clicked", self._on_verify)
+        verify_row.add_suffix(self._verify_button)
+        install.add(verify_row)
+        page.add(install)
+
+        # A monitor plugged in while this window is open changes whether the
+        # sync row applies.
+        display = Gdk.Display.get_default()
+        if display is not None:
+            display.get_monitors().connect(
+                "items-changed", lambda *_a: self._sync_system())
 
         self._sync_system()
-        self._check_deps()
         return page
 
-    # The two stamp files _sync_system reads. Anything else changing under
+    # The stamp files _sync_system reads. Anything else changing under
     # $CONF_DIR — a CSS sheet mid-preview, a memo Apply just wrote — is not
     # this page's business, so the monitor filters to these rather than
     # re-syncing on every unrelated write.
-    _SYSTEM_STAMPS = ("gdm-monitors-synced", "gdm-installed")
+    _SYSTEM_STAMPS = ("gdm-monitors-synced", "gdm-installed",
+                      "gdm-gresource", "gdm-look")
 
     # Watched on the same debounce, for a different reason: a wm_class toggled
     # from the titlebar's "Blur This App" writes these two memos directly
@@ -6327,6 +7422,21 @@ class Window(Adw.ApplicationWindow):
             self._install_cmd("--gdm --yes --progress-window"),
             "Theming the login screen")
 
+    def _on_gdm_reinstall(self, _button):
+        self._confirm_root(
+            "Reinstall the login screen theme?",
+            "This rebuilds the theme for the GNOME Shell now installed and "
+            "copies your current cursor and icons to the login screen. It "
+            "modifies files under /usr, so it needs your password — a terminal "
+            "will open and ask for it.",
+            "Reinstall",
+            self._install_cmd("--gdm --yes --progress-window"),
+            "Reinstalling the login screen theme")
+
+    def _on_verify(self, _button):
+        self.run_in_terminal(self._install_cmd("--verify"),
+                             "Checking the installation")
+
     def _confirm_root(self, heading, body, verb, command, what):
         dialog = AlertWindow(heading=heading, body=body)
         dialog.add_response("cancel", "Cancel")
@@ -6355,42 +7465,72 @@ class Window(Adw.ApplicationWindow):
             "Synced" if synced else
             "Copies ~/.config/monitors.xml where GDM will read it, so the login "
             "screen comes up on the same monitor your session does")
+        # One monitor has nothing to sync, as the wizards recommend. A sync
+        # already done stays listed, so its Remove can still be reached undocked.
+        display = Gdk.Display.get_default()
+        self._gdm_monitors_row.set_visible(
+            synced or (display is not None
+                       and display.get_monitors().get_n_items() > 1))
 
         gdm = read_memo("gdm-installed")
+        stale = gdm_theme_stale() if gdm else None
         self._gdm_button.set_label("Remove" if gdm else "Theme it")
+        self._gdm_reinstall.set_visible(stale is not None)
         self._gdm_row.set_subtitle(
-            "Themed" if gdm else
+            stale or ("Themed" if gdm else
             "Blurs and darkens your wallpaper behind the login screen. Needs "
-            "your password, and keeps GNOME's accent rather than this theme's")
+            "your password, and keeps GNOME's accent rather than this theme's"))
 
-        for widget in (self._gdm_monitors_button, self._gdm_button):
+        # Without a login manager to theme, the group has nothing to offer. What
+        # this project already did stays listed, so it can still be removed.
+        self._gdm_group.set_visible(gdm_present() or synced or bool(gdm))
+
+        for widget in (self._gdm_monitors_button, self._gdm_button,
+                       self._gdm_reinstall):
             widget.set_sensitive(self._repo is not None)
 
-    def _check_deps(self):
-        """Ask install.sh's own missing_cmds, which needs no root to answer."""
-        self._deps_row.set_subtitle("Checking…")
-        if self._repo is None:
-            self._deps_row.set_subtitle("The Aura Glass folder is missing")
-            return
+    def _on_window_active(self, *_args):
+        """Coming back from a terminal, or after a system update.
 
+        Neither says when it finished, and a package update replacing the login
+        theme writes nothing under $CONF_DIR for the monitor to see.
+        """
+        if not self.is_active():
+            return
+        self._sync_system()
+        if self._deps_row.get_visible():
+            self._check_deps()
+
+    def _check_deps(self):
+        """Ask install.sh's own missing_cmds, which needs no root to answer.
+
+        The row shows only while something is missing: a full install and an
+        update both already install these, so nearly always there is nothing to
+        say. Asked off the main loop, since this runs as the window opens.
+        """
+        if self._repo is None:
+            return
         script = (". %s/lib/common.sh; . %s/lib/distro.sh; "
                   "detect_distro >/dev/null 2>&1; missing_cmds"
                   % (GLib.shell_quote(self._repo), GLib.shell_quote(self._repo)))
         try:
-            res = subprocess.run(["bash", "-c", script], capture_output=True,
-                                 text=True, timeout=20)
-        except (OSError, subprocess.SubprocessError) as exc:
-            self._deps_row.set_subtitle("Could not check: %s" % exc)
+            proc = Gio.Subprocess.new(
+                ["bash", "-c", script], Gio.SubprocessFlags.STDOUT_PIPE
+                | Gio.SubprocessFlags.STDERR_SILENCE)
+        except GLib.Error:
             return
 
-        missing = [line.strip() for line in res.stdout.splitlines()
-                   if line.strip()]
-        if missing:
-            self._deps_row.set_subtitle(
-                "Missing: %s" % ", ".join(missing))
-        else:
-            self._deps_row.set_subtitle("All present")
-        self._deps_install.set_sensitive(bool(missing) and self._repo is not None)
+        def done(proc, res):
+            try:
+                _ok, out, _err = proc.communicate_utf8_finish(res)
+            except GLib.Error:
+                return
+            missing = [line.strip() for line in (out or "").splitlines()
+                       if line.strip()]
+            self._deps_row.set_subtitle("Missing: %s" % ", ".join(missing))
+            self._deps_row.set_visible(bool(missing))
+
+        proc.communicate_utf8_async(None, None, done)
 
     def _on_install_deps(self, _button):
         self.run_in_terminal(self._install_cmd("--deps-only"),
@@ -6723,6 +7863,9 @@ class Window(Adw.ApplicationWindow):
         self._app_infos = [(wm, info) for wm, info in self._installed_apps()
                            if wm.lower() != SELF_WM_CLASS.lower()]
 
+        self._app_icons = {wm.lower(): info.get_icon()
+                           for wm, info in self._app_infos}
+
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
 
         self._app_banner = Adw.Banner(revealed=False)
@@ -6733,10 +7876,6 @@ class Window(Adw.ApplicationWindow):
         popover_box = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL, spacing=4,
             margin_top=6, margin_bottom=6, margin_start=6, margin_end=6)
-        starts_label = Gtk.Label(label="Start from", xalign=0)
-        starts_label.add_css_class("dim-label")
-        starts_label.add_css_class("caption")
-        popover_box.append(starts_label)
 
         self._app_more_popover = Gtk.Popover(child=popover_box)
         for label, handler in (
@@ -6752,34 +7891,28 @@ class Window(Adw.ApplicationWindow):
             popover_box.append(button)
 
         self._app_more_button = Gtk.MenuButton(
-            icon_name="view-more-symbolic",
+            label="Start from",
             valign=Gtk.Align.CENTER,
-            tooltip_text="Starting points",
             popover=self._app_more_popover)
+        self._app_more_button.add_css_class("flat")
 
-        self._app_head = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
-            margin_top=12, margin_start=12, margin_end=12, margin_bottom=6)
-        head = self._app_head
+        default_group = Adw.PreferencesGroup(title="Apps you haven't chosen")
+        default_group.set_header_suffix(self._app_more_button)
+        cards = Gtk.Box(spacing=12, homogeneous=True)
+        self._app_default_cards = {}
+        leader = None
+        for scope, title, subtitle in (
+            ("gtk", "Leave unblurred", "Only apps switched on below get blur."),
+            ("all", "Blur them",
+             "Includes browsers. Heavy on the GPU. Turn apps off below."),
+        ):
+            card = self._app_default_card(scope, title, subtitle, leader)
+            leader = leader or card
+            cards.append(card)
+            self._app_default_cards[scope] = card
+        default_group.add(cards)
 
-        default_title = Gtk.Label(
-            label="Apps you haven't chosen", xalign=0, hexpand=True)
-        default_title.add_css_class("heading")
-        head.append(default_title)
-
-        self._app_default_switcher = Adw.ToggleGroup(homogeneous=True)
-        self._app_default_switcher.add(
-            Adw.Toggle(name="gtk", label="Leave unblurred"))
-        self._app_default_switcher.add(
-            Adw.Toggle(name="all", label="Blur them"))
-        self._app_default_switcher.set_valign(Gtk.Align.CENTER)
-        self._app_default_switcher.connect(
-            "notify::active-name", self._on_app_default_switched)
-        head.append(self._app_default_switcher)
-        head.append(self._app_more_button)
-        box.append(head)
-
-        # ---- the sticky bar: search, filter — inside the Apps tab
+        # ---- search and filter, held above the Apps tab's scroller
         self._app_search = Gtk.SearchEntry(
             placeholder_text="Search apps", hexpand=True)
         self._app_search.connect("search-changed",
@@ -6794,10 +7927,13 @@ class Window(Adw.ApplicationWindow):
         self._app_filter_switcher.connect(
             "notify::active-name", self._on_app_filter_changed)
 
-        bar = Gtk.Box(spacing=8, margin_start=12, margin_end=12,
-                      margin_top=6, margin_bottom=6)
+        bar = Gtk.Box(spacing=8)
         bar.append(self._app_search)
         bar.append(self._app_filter_switcher)
+        # The same width and gutters as the groups scrolling under it.
+        bar_clamp = Adw.Clamp(child=bar, maximum_size=600,
+                              tightening_threshold=400, margin_start=12,
+                              margin_end=12, margin_top=6, margin_bottom=6)
 
         # ---- patterns tab: entry, examples, patterns group
         self._app_add_group = Adw.PreferencesGroup(
@@ -6841,6 +7977,8 @@ class Window(Adw.ApplicationWindow):
         self._app_open_placeholder = Adw.ActionRow(
             title="No other windows open right now", sensitive=False)
         self._app_open_group.add(self._app_open_placeholder)
+        self._app_open_flow = self._app_tile_flow()
+        self._app_open_group.add(self._app_open_flow)
         self._app_open_wm_rows = {}
 
         self._app_installed_group = Adw.PreferencesGroup(title="All apps")
@@ -6848,31 +7986,20 @@ class Window(Adw.ApplicationWindow):
             title="No apps match", sensitive=False)
         self._app_installed_group.add(self._app_empty_row)
 
-        self._app_self_row = Adw.ActionRow(
-            title=app_name(SELF_WM_CLASS),
-            subtitle="%s — always blurred"
-                     % SELF_WM_CLASS)
-        self._app_self_row.set_sensitive(False)
-        self._app_installed_group.add(self._app_self_row)
+        self._app_self_tile = AppRow(
+            app_name(SELF_WM_CLASS), SELF_WM_CLASS, note="Always blurred")
+        self._app_self_tile.set_active(True)
+        self._app_self_tile.set_sensitive(False)
+        self._app_installed_group.add(self._app_self_tile)
 
         self._app_rows = {}
         for wm, info in self._app_infos:
             name = info.get_display_name() or wm
-            row = Adw.SwitchRow()
-            plain_row(row, name, wm)
-            icon = info.get_icon()
-            if icon is not None:
-                row.add_prefix(Gtk.Image.new_from_gicon(icon))
-            pill = Gtk.Label()
-            pill.add_css_class("caption")
-            pill.add_css_class("aura-badge")
-            pill.set_visible(False)
-            row.add_suffix(pill)
-            row._pill = pill
-            row._name = name
-            if any(pattern_matches(d, wm) for d in self._app_shipped_block):
-                row.set_tooltip_text(
-                    "Heavy: redraws all the time, so its blur costs more.")
+            heavy = any(pattern_matches(d, wm)
+                        for d in self._app_shipped_block)
+            row = AppRow(name, wm, info.get_icon(), note=(
+                "Heavy: redraws all the time, so its blur costs more."
+                if heavy else None))
             self._app_row_guard = True
             row.set_active(self._app_is_on(wm))
             self._app_row_guard = False
@@ -6893,7 +8020,7 @@ class Window(Adw.ApplicationWindow):
             sensitive=False)
         self._adaptive_games_group.add(self._adaptive_games_empty_row)
 
-        self._adaptive_open_expander = Adw.ExpanderRow(
+        self._adaptive_open_group = Adw.PreferencesGroup(
             title="Add from open windows")
         refresh_button = Gtk.Button(
             icon_name="view-refresh-symbolic",
@@ -6901,44 +8028,76 @@ class Window(Adw.ApplicationWindow):
             tooltip_text="Refresh open windows")
         refresh_button.add_css_class("flat")
         refresh_button.connect("clicked", lambda _b: self._refresh_adaptive_open_windows())
-        self._adaptive_open_expander.add_suffix(refresh_button)
+        self._adaptive_open_group.set_header_suffix(refresh_button)
 
         self._adaptive_open_placeholder = Adw.ActionRow(
             title="No other windows open right now", sensitive=False)
-        self._adaptive_open_expander.add_row(self._adaptive_open_placeholder)
-        self._adaptive_games_group.add(self._adaptive_open_expander)
+        self._adaptive_open_group.add(self._adaptive_open_placeholder)
+
+        window_menu_group = Adw.PreferencesGroup()
+        self._window_menu_row = Adw.SwitchRow(
+            title="Blur This App in the window menu",
+            subtitle="Right-click a titlebar to switch that app's blur",
+            active=self._applied.window_menu)
+        self._window_menu_row.connect("notify::active", self._on_changed,
+                                      "window_menu")
+        window_menu_group.add(self._window_menu_row)
 
         apps_page = Adw.PreferencesPage(vexpand=True)
+        apps_page.add(default_group)
+        apps_page.add(window_menu_group)
         apps_page.add(self._app_open_group)
-        apps_page.add(self._adaptive_games_group)
         apps_page.add(self._app_installed_group)
 
         apps_tab = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        apps_tab.append(bar)
+        apps_tab.append(bar_clamp)
         apps_tab.append(apps_page)
 
         pat_tab = Adw.PreferencesPage(vexpand=True)
         pat_tab.add(self._app_add_group)
         pat_tab.add(self._app_patterns_group)
 
-        self._app_stack = Adw.ViewStack(vexpand=True)
-        self._app_stack.add_titled_with_icon(
-            apps_tab, "apps", "Apps", "view-list-symbolic")
-        self._app_stack.add_titled_with_icon(
-            pat_tab, "patterns", "Patterns", "edit-find-symbolic")
-        self._app_switcher = Adw.ViewSwitcher(
-            stack=self._app_stack,
-            policy=Adw.ViewSwitcherPolicy.WIDE,
-            halign=Gtk.Align.CENTER)
+        # Its own tab because it is its own list: the blur lists wait for Apply,
+        # and this one is written the moment it changes.
+        games_tab = Adw.PreferencesPage(vexpand=True)
+        games_tab.add(self._adaptive_games_group)
+        games_tab.add(self._adaptive_open_group)
 
-        box.append(self._app_switcher)
-        box.append(self._app_stack)
+        self._app_tabs = self._tab_stack("apps", (
+            ("apps", "Apps", "view-list-symbolic", apps_tab),
+            ("patterns", "Patterns", "edit-find-symbolic", pat_tab),
+            ("games", "Games", "applications-games-symbolic", games_tab),
+        ))
+        box.append(self._app_tabs)
 
         self._rebuild_app_list()
         self._sync_adaptive_game_rows()
         self._refresh_app_open_group()
         self._refresh_adaptive_open_windows()
         return box
+
+    def _app_tile_flow(self):
+        return Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,
+                           homogeneous=True, column_spacing=6, row_spacing=6,
+                           min_children_per_line=3, max_children_per_line=6,
+                           valign=Gtk.Align.START)
+
+    def _app_default_card(self, scope, title, subtitle, leader):
+        """One answer for unchosen apps, as a card saying what it means."""
+        frame = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        frame.add_css_class("aura-preset-window")
+        frame.add_css_class("aura-app-default")
+        heading = Gtk.Label(label=title, xalign=0, wrap=True)
+        heading.add_css_class("heading")
+        frame.append(heading)
+        detail = Gtk.Label(label=subtitle, xalign=0, wrap=True)
+        detail.add_css_class("dim-label")
+        detail.add_css_class("caption")
+        frame.append(detail)
+        card = Gtk.ToggleButton(child=frame, group=leader)
+        card.add_css_class("aura-preset")
+        card.connect("toggled", self._on_app_default_switched, scope)
+        return card
 
     # ---- installed apps ---------------------------------------------------
 
@@ -6989,18 +8148,15 @@ class Window(Adw.ApplicationWindow):
 
     # ---- the default toggle ------------------------------------------------
 
-    def _on_app_default_switched(self, _group, _param):
-        if self._loading:
-            return
-        name = self._app_default_switcher.get_active_name()
-        if name is None:
+    def _on_app_default_switched(self, card, scope):
+        if self._loading or not card.get_active():
             return
         # This page keeps no state of its own for the default — only a
         # shortcut onto the frosted tab's own dropdown. See _scope() and
         # the "scope" branch of _on_changed, which is what actually notices
         # this and cascades into _rebuild_app_list.
-        if name in ("all", "gtk") and self._scope() != name:
-            self._set_scope(name)
+        if self._scope() != scope:
+            self._set_scope(scope)
 
     def _on_app_banner_clicked(self, _banner):
         self._mode_stack.set_visible_child_name("frosted")
@@ -7020,11 +8176,9 @@ class Window(Adw.ApplicationWindow):
         idle = (not perf) and scope == "none"
         live = not perf and not idle
 
-        # self._app_head carries the default toggle and the starting-point
-        # buttons — one set_sensitive on the box reaches all of them, since
+        # One set_sensitive on the tabs reaches everything under them, since
         # GTK derives child sensitivity from ancestors across switcher and stack.
-        for widget in (self._app_head, self._app_switcher, self._app_stack):
-            widget.set_sensitive(live)
+        self._app_tabs.set_sensitive(live)
 
         self._app_banner.set_revealed(perf or idle)
         if mode == "performance":
@@ -7046,13 +8200,7 @@ class Window(Adw.ApplicationWindow):
             return
 
         if scope in ("gtk", "all"):
-            self._app_default_switcher.set_active_name(scope)
-        if scope == "all":
-            self._app_default_switcher.set_tooltip_text(
-                "Includes browsers. Heavy on the GPU. Turn apps off below.")
-        else:
-            self._app_default_switcher.set_tooltip_text(
-                "Only apps switched on below get blur.")
+            self._app_default_cards[scope].set_active(True)
 
     # ---- keeping every row in step ------------------------------------------
 
@@ -7075,17 +8223,45 @@ class Window(Adw.ApplicationWindow):
                 self._apply_app_pill(row, wm)
             for wm, row in self._app_open_wm_rows.items():
                 row.set_active(self._app_is_on(wm))
+                self._apply_app_pill(row, wm)
         finally:
             self._app_row_guard = False
 
         self._rebuild_app_patterns()
 
-        needle = self._app_search.get_text().strip().lower()
-        any_visible = False
+        # An open app is in the grid above, so the list is the rest of them.
+        open_now = {wm.lower() for wm in self._app_open_wm_rows}
+        rest = {wm: row for wm, row in self._app_rows.items()
+                if wm.lower() not in open_now}
         for wm, row in self._app_rows.items():
-            self._apply_app_row_filter(row, wm, row._name, needle)
-            any_visible = any_visible or row.get_visible()
+            if wm not in rest:
+                row.set_shown(False)
+
+        any_visible = self._filter_app_tile(self._app_self_tile, SELF_WM_CLASS)
+        for wm, row in rest.items():
+            if self._filter_app_tile(row, wm):
+                any_visible = True
         self._app_empty_row.set_visible(not any_visible)
+        self._sync_app_open_filter()
+
+        blurred = sum(row.get_active() for row in rest.values())
+        self._app_installed_group.set_title(
+            "Other apps" if open_now else "All apps")
+        self._app_installed_group.set_description(
+            "%d of %d blurred" % (blurred, len(rest)))
+
+    def _sync_app_open_filter(self):
+        """The one search bar is over both groups, so it answers for both.
+
+        With no windows open at all there is nothing to filter, and the group
+        stays for its placeholder.
+        """
+        any_visible = not self._app_open_wm_rows
+        for wm, row in self._app_open_wm_rows.items():
+            if self._filter_app_tile(row, wm):
+                any_visible = True
+        self._app_open_group.set_visible(
+            self._shell_bridge.available and any_visible)
 
     def _apply_app_pill(self, row, wm):
         _on, reason, pattern = blur_state(
@@ -7096,18 +8272,16 @@ class Window(Adw.ApplicationWindow):
         else:
             row._pill.set_visible(False)
 
-    def _apply_app_row_filter(self, row, key, name, needle):
-        if needle and needle not in name.lower() and needle not in key.lower():
-            row.set_visible(False)
-            return
+    def _filter_app_tile(self, tile, key):
+        """Show or hide a tile or row for the search and filter; True if it shows."""
+        needle = self._app_search.get_text().strip().lower()
         on = self._app_is_on(key)
-        if self._app_filter == "on" and not on:
-            row.set_visible(False)
-            return
-        if self._app_filter == "off" and on:
-            row.set_visible(False)
-            return
-        row.set_visible(True)
+        shown = (not needle or needle in tile._name.lower()
+                 or needle in key.lower()) \
+            and not (self._app_filter == "on" and not on) \
+            and not (self._app_filter == "off" and on)
+        tile.set_shown(shown)
+        return shown
 
     def _on_app_filter_changed(self, _group, _param):
         self._app_filter = self._app_filter_switcher.get_active_name() or "all"
@@ -7263,26 +8437,27 @@ class Window(Adw.ApplicationWindow):
         self._shell_bridge.list_windows(self._on_app_windows_listed)
 
     def _on_app_windows_listed(self, rows):
-        for row in self._app_open_wm_rows.values():
-            self._app_open_group.remove(row)
+        self._app_open_flow.remove_all()
         self._app_open_wm_rows = {}
 
         rows = sorted(
             (r for r in rows if r[0].lower() != SELF_WM_CLASS.lower()),
             key=lambda r: (r[1] or r[0]).lower())
         for wm, name, count in rows:
-            row = Adw.SwitchRow()
-            title = name or wm
-            subtitle = wm if count <= 1 else "%s — %d windows" % (wm, count)
-            plain_row(row, title, subtitle)
+            row = AppTile(name or wm, wm, self._app_icons.get(wm.lower()),
+                          note="%d windows" % count if count > 1 else None)
             self._app_row_guard = True
             row.set_active(self._app_is_on(wm))
+            self._apply_app_pill(row, wm)
             self._app_row_guard = False
             row.connect("notify::active", self._on_app_toggle, wm)
-            self._app_open_group.add(row)
+            self._app_open_flow.append(row)
             self._app_open_wm_rows[wm] = row
 
         self._app_open_placeholder.set_visible(not self._app_open_wm_rows)
+        # All of the page rather than only this group: an app that opened or
+        # closed also leaves or joins the list below.
+        self._sync_app_rows()
 
     # ---- fullscreen performance games ----------------------------------------
 
@@ -7338,12 +8513,11 @@ class Window(Adw.ApplicationWindow):
             self._adaptive_games_group.remove(row)
         self._adaptive_game_rows = {}
 
-        self._adaptive_games_group.remove(self._adaptive_open_expander)
-
         self._adaptive_games_empty_row.set_visible(not self._adaptive_games)
         for wm in self._adaptive_games:
             row = Adw.ActionRow()
             plain_row(row, app_name(wm), wm)
+            self._add_app_icon(row, wm)
             remove = Gtk.Button(
                 icon_name="user-trash-symbolic",
                 valign=Gtk.Align.CENTER,
@@ -7354,20 +8528,23 @@ class Window(Adw.ApplicationWindow):
             self._adaptive_games_group.add(row)
             self._adaptive_game_rows[wm] = row
 
-        self._adaptive_games_group.add(self._adaptive_open_expander)
+    def _add_app_icon(self, row, wm):
+        icon = self._app_icons.get(wm.lower())
+        if icon is not None:
+            row.add_prefix(Gtk.Image.new_from_gicon(icon))
 
     def _refresh_adaptive_open_windows(self):
-        if not hasattr(self, "_adaptive_open_expander"):
+        if not hasattr(self, "_adaptive_open_group"):
             return
         if not self._shell_bridge.available:
-            self._adaptive_open_expander.set_visible(False)
+            self._adaptive_open_group.set_visible(False)
             return
-        self._adaptive_open_expander.set_visible(True)
+        self._adaptive_open_group.set_visible(True)
         self._shell_bridge.list_windows(self._on_adaptive_open_windows_listed)
 
     def _on_adaptive_open_windows_listed(self, rows):
         for row in list(self._adaptive_open_rows.values()):
-            self._adaptive_open_expander.remove(row)
+            self._adaptive_open_group.remove(row)
         self._adaptive_open_rows = {}
 
         games_lower = {g.lower() for g in self._adaptive_games}
@@ -7383,6 +8560,7 @@ class Window(Adw.ApplicationWindow):
             title = name or wm
             subtitle = wm if count <= 1 else "%s — %d windows" % (wm, count)
             plain_row(row, title, subtitle)
+            self._add_app_icon(row, wm)
             add_btn = Gtk.Button(
                 icon_name="list-add-symbolic",
                 valign=Gtk.Align.CENTER,
@@ -7391,7 +8569,7 @@ class Window(Adw.ApplicationWindow):
             add_btn.connect("clicked", self._on_adaptive_game_add, wm)
             row.add_suffix(add_btn)
             row.set_activatable_widget(add_btn)
-            self._adaptive_open_expander.add_row(row)
+            self._adaptive_open_group.add(row)
             self._adaptive_open_rows[wm] = row
 
     def _on_adaptive_game_add(self, _button, wm):
@@ -7493,6 +8671,18 @@ class Window(Adw.ApplicationWindow):
         repair = Adw.PreferencesGroup(
             title="Repair installation",
             description="Reapply keeps your choices. Reset starts over.")
+
+        self._deps_row = Adw.ActionRow(
+            title="Command line dependencies",
+            visible=False)
+        deps_install = Gtk.Button(label="Install", valign=Gtk.Align.CENTER)
+        deps_install.add_css_class("suggested-action")
+        deps_install.connect("clicked", self._on_install_deps)
+        self._deps_row.add_suffix(deps_install)
+        repair.add(self._deps_row)
+        self._check_deps()
+        # Here because this is built after the System page, and both are read.
+        self.connect("notify::is-active", self._on_window_active)
 
         reapply_row = Adw.ActionRow(
             title="Reapply settings",
@@ -7700,6 +8890,9 @@ class Window(Adw.ApplicationWindow):
             tints = self._tints["performance"]
             s.app_tint = tints["app"]
             s.shell_tint = tints["shell"]
+            s.dock_tint = tints["dock"]
+            s.panel_tint = tints["panel"]
+            s.maximized_panel_tint = tints["maximized"]
             performance = self._applied.modes["performance"]
             s.blur_strength = performance["blur_strength"]
             s.blur_brightness = performance["blur_brightness"]
@@ -7714,6 +8907,9 @@ class Window(Adw.ApplicationWindow):
             tints = self._tints[s.glass_mode]
             s.app_tint = tints["app"]
             s.shell_tint = tints["shell"]
+            s.dock_tint = tints["dock"]
+            s.panel_tint = tints["panel"]
+            s.maximized_panel_tint = tints["maximized"]
             s.blur_strength = int(round(
                 self._strength_scales[s.glass_mode].get_value()))
             s.blur_brightness = int(round(
@@ -7757,7 +8953,13 @@ class Window(Adw.ApplicationWindow):
             self._glass_style_row.get_selected()]
         s.liquid_windows = self._liquid_windows_row.get_active()
         s.fullscreen_blur = self._fullscreen_blur_row.get_active()
+        s.maximized_blur = ("static" if self._maximized_blur_row.get_active()
+                            else "dynamic")
         s.osd_device_name = self._osd_device_name_row.get_active()
+        s.osd_style = self._osd_style_row._ids[self._osd_style_row.get_selected()]
+        s.system_icons = self._system_icons_row._ids[self._system_icons_row.get_selected()]
+        s.window_menu = self._window_menu_row.get_active()
+        s.top_bar_icon = self._top_bar_icon_row.get_active()
         s.maximized_panel_brightness = int(round(
             self._maximized_panel_scales["panel"].get_value()))
         s.smooth_animations = self._smooth_animations_row.get_active()
@@ -7788,8 +8990,23 @@ class Window(Adw.ApplicationWindow):
             self._glass_style_row._ids[self._glass_style_row.get_selected()]
             in ("liquid", "vibrant"))
 
+        # The glass style behind windows makes every window static on one
+        # pipeline, and no window blur leaves nothing to choose between. The
+        # bars only mean something while the blur is static.
+        style = self._glass_style_row._ids[self._glass_style_row.get_selected()]
+        maximized = (self._scope() != "none" and not (
+            style in ("liquid", "vibrant")
+            and self._liquid_windows_row.get_active()))
+        self._maximized_blur_row.set_visible(maximized)
+        self._maximized_section.set_visible(
+            maximized and self._maximized_blur_row.get_active())
+
     def _mark_dirty(self):
-        args = self._current().flags_against(self._applied)
+        current = self._current()
+        args = current.flags_against(self._applied)
+        self._studios[current.glass_mode].set_look(
+            self._window_opacity(current.transparency), current.panel_height,
+            current.maximized_panel_brightness)
         self._apply.set_sensitive(bool(args) and self._repo is not None
                                   and not self._running)
         self._sync_pending(args)
@@ -7935,7 +9152,8 @@ class Window(Adw.ApplicationWindow):
             self._button_pixels = int(self._radius_rows["button"].get_value())
             self._sync_radius_state()
 
-        if key in ("transparency", "scope", "icons", "glass_style"):
+        if key in ("transparency", "scope", "icons", "glass_style",
+                   "liquid_windows", "maximized_blur"):
             self._sync_sensitivity()
         # The scope decides which list is consulted, so it decides which badge
         # is lit. The mode does too, and _on_mode_switched says so there.
@@ -7982,10 +9200,10 @@ class Window(Adw.ApplicationWindow):
             drawer = self._applied.modes[mode]
             tints["app"] = drawer["app_tint"]
             tints["shell"] = drawer["shell_tint"]
-            rows = self._tint_rows[mode]
-            rows["app"]._button.set_rgba(parse_hex(tints["app"]))
-            rows["shell"]._button.set_rgba(parse_hex(tints["shell"]))
-            rows["link"].set_active(tints["app"] == tints["shell"])
+            tints["dock"] = drawer["dock_tint"]
+            tints["panel"] = drawer["panel_tint"]
+            tints["maximized"] = drawer["maximized_panel_tint"]
+            self._studios[mode].reload()
             if mode in self._strength_scales:
                 self._strength_scales[mode].set_value(drawer["blur_strength"])
         # After the main bars, which a following surface reads its value off.
@@ -8022,7 +9240,14 @@ class Window(Adw.ApplicationWindow):
             self._applied.glass_style, "glass_style")
         self._liquid_windows_row.set_active(self._applied.liquid_windows)
         self._fullscreen_blur_row.set_active(self._applied.fullscreen_blur)
+        self._maximized_blur_row.set_active(self._applied.maximized_blur == "static")
         self._osd_device_name_row.set_active(self._applied.osd_device_name)
+        self._osd_style_row.set_selected(
+            self._osd_style_row._ids.index(self._applied.osd_style))
+        self._system_icons_row.set_selected(
+            self._system_icons_row._ids.index(self._applied.system_icons))
+        self._window_menu_row.set_active(self._applied.window_menu)
+        self._top_bar_icon_row.set_active(self._applied.top_bar_icon)
         self._maximized_panel_scales["panel"].set_value(
             self._applied.maximized_panel_brightness)
         self._smooth_animations_row.set_active(self._applied.smooth_animations)
@@ -8531,7 +9756,8 @@ class Window(Adw.ApplicationWindow):
         it runs from a main() it has read in full before the checkout moves.
 
         A terminal rather than this window's log for the reasons that always
-        applied: git can ask for credentials and the full installer for sudo.
+        applied: git can ask for credentials, and an update that touches the
+        login screen or a missing package for sudo.
         The update-available memo goes only once the install finished, so the
         window stops offering what it just did.
         """
@@ -8571,8 +9797,8 @@ class Window(Adw.ApplicationWindow):
 
         script = "bash %s %s\n" % (GLib.shell_quote(updater),
                                    GLib.shell_quote(target))
-        # Opened by aura-glass-update, not here: it asks for the sudo password
-        # in the terminal first, and the window would cover that prompt.
+        # Opened by aura-glass-update, not here, so a release from before it
+        # did that still gets the password prompt in front of its window.
         window = self._update_window_path()
         if run_dir and window:
             script = "AURA_GLASS_PROGRESS_DIR=%s AURA_GLASS_UPDATE_WINDOW=%s %s" % (
@@ -8674,49 +9900,6 @@ class Window(Adw.ApplicationWindow):
         Gio.AppInfo.launch_default_for_uri("gnome-control-center://background",
                                            None)
 
-    def _apply_script(self):
-        """bin/aura-glass-apply — the checkout's copy, or the installed one.
-
-        The checkout first, for the same reason every other run in this window
-        reaches for it: a repo that has moved on is the one being edited. The
-        installed copy is the fallback, because aura-glass-apply outlives the
-        checkout by design — steps-css.sh puts it in ~/.local/bin precisely so
-        it can be run after a theme update with nothing else around.
-        """
-        if self._repo is not None:
-            path = os.path.join(self._repo, "bin", "aura-glass-apply")
-            if os.path.exists(path):
-                return path
-        path = os.path.expanduser("~/.local/bin/aura-glass-apply")
-        return path if os.path.exists(path) else None
-
-    def _on_reapply(self, _button):
-        """Run aura-glass-apply in a real terminal window."""
-        if self._running:
-            self._toasts.add_toast(Adw.Toast(
-                title="Already applying something — try again in a moment"))
-            return
-        # A preview writes the same $CONF_DIR sheets this reads and the same
-        # theme files it writes, so the two are kept apart rather than allowed
-        # to overlap — the interlock _on_apply keeps, for the same reason.
-        if self._preview_proc is not None or self._preview_timer:
-            self._toasts.add_toast(Adw.Toast(
-                title="A preview is still running — try again in a moment"))
-            return
-        script = self._apply_script()
-        if script is None:
-            self._toasts.add_toast(Adw.Toast(
-                title="aura-glass-apply is not installed and the checkout "
-                      "is gone"))
-            return
-
-        cmd = "bash %s " "--force-reload" % GLib.shell_quote(script)
-        if self.run_in_terminal(cmd, "Reapply CSS"):
-            self._apply_status.remove_css_class("error")
-            self._apply_status.set_label(
-                "Reapplying CSS in a terminal")
-            self._reload_preview_css()
-
     def _on_apply(self, _button):
         args = self._current().flags_against(self._applied)
         if not args or self._repo is None:
@@ -8746,8 +9929,7 @@ class Window(Adw.ApplicationWindow):
             argv = ["bash", os.path.join(self._repo, "bin",
                                            "aura-glass-preview"),
                     "commit", "--session", self._preview_session, "--"] + installer
-        self._run_started("Reapplying the dconf preset, the CSS and the "
-                          "gsettings…")
+        self._run_started("Applying what changed…")
         log_append(self._apply_log, "$ " + " ".join(argv[1:]))
 
         def done(ok, message):

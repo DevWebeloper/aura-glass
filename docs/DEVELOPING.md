@@ -121,7 +121,7 @@ commit. If the reason for a number changed, update its comment.
 3. Resolve and validate it in the resolution block (flag → drawer if mode-owned → memo → default). A typo must `die` before anything is written.
 4. Consume it in an `apply_*`, and write the memo last, under `remembering`.
 5. If it's mode-owned, add it to `seed_glass_mode`, `load_glass_mode_memos` and `save_glass_mode_memos`, to `Settings.modes` in the GUI, and to the restore branch of `apply_adaptive_blur`.
-6. If the GUI sends it, decide its incremental class in `select_apply_actions`. If it's narrow, make sure the narrow path writes everything the full path does.
+6. If the GUI sends it, decide its incremental class in `select_apply_actions`. If it's narrow, make sure the narrow path writes everything the full path does. Add the flag to `cases` in `check-incremental-apply.py`, which compares the two.
 7. Add it to `--help` (`usage`), [CONFIG-REFERENCE.md](CONFIG-REFERENCE.md), and, if user-facing, the settings app plus **both** wizards.
 8. Run `python3 tools/check-gui-flags.py && python3 tools/check-wizard-flags.py && python3 tools/check-incremental-apply.py`.
 
@@ -194,3 +194,13 @@ Checks: `check-adaptive-worker.py`, `check-adaptive-installer.sh`.
 - **Comments are the deliverable.** Every non-obvious number says why it's that number, usually the result of a bisection against a screenshot. Change the reason with the value. Don't change a value whose reason you can't state.
 - **Naming.** New code writes only `aura-glass`. Legacy `tahoe-glass` read paths stay until `check-migration.sh` says otherwise.
 - **Commits.** `type(scope): lower-case sentence, no trailing period`, e.g. `fix(modes): …`, `feat(gui): …`, `docs: …`. No AI attribution anywhere (see [RELEASING.md](RELEASING.md)).
+
+## Adding an install step
+
+Call it through a part. In `lib/steps-apply-plan.sh`, add it to `UPDATE_PARTS`,
+`UPDATE_PART_FUNCS` and `run_update_part`, plus `UPDATE_PART_FILES` if it installs a
+repository file and `update_part_present` if it can go missing. Add it to the full
+sequence in `install.sh` with `run_update_part`, and to a group in
+`run_selective_update`. `check-incremental-apply.py` fails until both agree, and until
+a new file is claimed or ignored. Add it to `UPDATE_LOCAL_PARTS` only if it is offline,
+rootless and quick.

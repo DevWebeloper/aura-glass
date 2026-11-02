@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Put the aura-glass checkout on exactly one release, or one branch's newest
-# commit, and run the full installer from it.
+# commit, and install what that changed (install.sh --update): only the parts
+# out of date, with the full install as its fallback whenever it cannot be sure.
 #
 #   aura-glass-update vX.Y.Z      a release tag
 #   aura-glass-update main        main's newest commit (or any other branch)
@@ -33,8 +34,7 @@ set -euo pipefail
 # The update window. The settings window writes the changelog it read into a
 # run directory, names it in AURA_GLASS_PROGRESS_DIR and names
 # gui/aura_glass_install_progress.py in AURA_GLASS_UPDATE_WINDOW, which main()
-# opens in update mode once the sudo password is in. This script then sends
-# its output to the window's log and its two steps, fetching and switching, to
+# opens in update mode. This script then sends its output to the window's log and its two steps, fetching and switching, to
 # its events, in the format lib/progress.sh documents; the install.sh it runs
 # inherits the variable and adds its own steps and the finish. Repeated here
 # rather than sourced, because the copy in ~/.local/bin has no lib/ beside it.
@@ -103,17 +103,11 @@ main() {
     local repo
     repo="$(cat "$conf/repo-path" 2>/dev/null || true)"
 
-    # The sudo password, asked once here in the terminal before the update
-    # window opens over it. The install.sh below finds it in sudo's cache and
-    # holds it to the end (its own sudo step says why). Refused, the install
-    # asks again where it needs root.
-    if [ "$install" = 1 ] && [ "$EUID" -ne 0 ]; then
-        echo "==> Asking for the sudo password once, for the parts installed outside your home folder"
-        sudo -v || true
-    fi
-    # The settings window names the update window rather than opening it, so
-    # it appears once the password is in. Its own session, so it outlives this
-    # terminal and the checkout move below.
+    # The settings window names the update window rather than opening it. Its
+    # own session, so it outlives this terminal and the checkout move below.
+    # There is no password to ask for first: which parts this update touches,
+    # and so whether any of them needs root, is only known once the target is
+    # checked out. install.sh --update asks then, and says so in the window.
     if [ -n "${AURA_GLASS_UPDATE_WINDOW:-}" ] && [ -n "${AURA_GLASS_PROGRESS_DIR:-}" ]; then
         setsid -f python3 "$AURA_GLASS_UPDATE_WINDOW" --dir "$AURA_GLASS_PROGRESS_DIR" \
             --update </dev/null >/dev/null 2>&1 || true
@@ -215,8 +209,21 @@ main() {
 
     # The installer's own steps follow in the window; this script has none left.
     pstart ""
-    echo "==> Running the installer"
-    bash "$repo/install.sh" --gui
+    # A release from before there were parts has no --update, and its full
+    # install writes no stamps either, so the ones left here would describe a
+    # copy that is no longer what is installed.
+    if grep -qE '^ *--update\)' "$repo/install.sh"; then
+        echo "==> Installing what changed"
+        bash "$repo/install.sh" --update --gui
+    else
+        rm -f "$conf/installed-parts"
+        echo "==> Asking for the sudo password once, for the parts installed outside your home folder"
+        pevent wait text "sudo password, for the parts installed outside your home folder"
+        sudo -v || true
+        pevent resume
+        echo "==> Running the installer"
+        bash "$repo/install.sh" --gui
+    fi
     pin_settings_to_dock
     restart_settings_window
     # The installer finished, so whatever the update check found is now what is

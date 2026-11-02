@@ -13,8 +13,9 @@ into a temporary directory and applies
 `patches/blur-my-shell-upstream-backports.patch`, then
 `patches/blur-my-shell-subwindows.patch`, then
 `patches/blur-my-shell-full-size-buffers.patch`,
-`patches/blur-my-shell-overview-fade.patch` and
-`patches/blur-my-shell-static-maximized.patch`. It never fetches or
+`patches/blur-my-shell-overview-fade.patch`,
+`patches/blur-my-shell-static-maximized.patch` and
+`patches/blur-my-shell-osd-corners.patch`. It never fetches or
 modifies the clone.
 
 The patched `components/applications/window_rules.js` runs against simulated

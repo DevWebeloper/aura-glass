@@ -41,7 +41,7 @@ upstream pieces and then ties them together so they agree with each other:
 | Blur | [Blur My Shell](https://github.com/aunetx/blur-my-shell) v77, built from a pinned commit | one patch (a blurred app's dialogs and tool palettes blur too) plus a tuned preset |
 | Volume / brightness OSD | [Custom OSD](https://github.com/neuromorph/custom-osd), pinned and patched for GNOME 50/51 | a compact pill that sits on the blur |
 | Aura Glass Helper | first-party extension in `extensions/` | "Blur This App" in the window menu, the adaptive-performance menu in the top bar, a D-Bus bridge for the settings app |
-| Icons, pointers, fonts | Colloid / Reversal / Hatter icons; Adwaita / AOSP / MacTahoe / Moga pointers; Inter / MiSans / SF Pro | optional, picked in the wizard, accent-matched where the pack supports it |
+| Icons, pointers, fonts | Colloid / Reversal / Hatter icons; Aura Moga Neon / AOSP / MacTahoe pointers (Adwaita from the settings app or `--cursors`); Inter / MiSans / SF Pro | optional, picked in the wizard, accent-matched where the pack supports it |
 | Settings app | `gui/` (GTK4 + libadwaita) | retunes everything without re-running the installer by hand |
 
 ## Quick start
@@ -57,11 +57,11 @@ when one can be shown, the same questions in the terminal otherwise). It asks
 for:
 
 - **Accent colour.** One of GNOME's nine accents. The shell and GTK apps follow it live.
-- **Blur.** Behind popups and menus, and behind app windows: all apps (the default), GTK/GNOME apps only, or none.
-- **Window transparency.** 90 % (default), 82 % or 95 %.
-- **Icons, pointer, pointer size, interface font.**
+- **Blur behind app windows.** Every app window (the default) or GTK and GNOME apps only. The install is always frosted; Performance is a switch in the settings app.
+- **Window opacity.** Anywhere from 70 % to 100 %: 90 % balanced (default), 82 % deep, 95 % subtle.
+- **Icons, pointer, pointer size, interface font.** The pointer size follows your display: 24 px at 1080p, 32 px at 1440p, 48 px at 4K, or 64 px for extra large.
 - **Extensions.** The wizard offers Full (all 7) or Minimal. `--recommended` (6 curated) and `--extensions LIST` pick a smaller set from the command line.
-- **Login screen (GDM).** Optional. Themed and blurred, with live wallpaper sync. This needs `sudo`.
+- **Login screen (GDM).** On by default, and can be turned off. Themed and blurred, with live wallpaper sync. This needs `sudo`.
 
 Non-interactive: `./install.sh --full -y`.
 
@@ -115,6 +115,11 @@ Open **Aura Glass** from the app grid, or run `aura-glass-settings`.
 
 **Blur fullscreen windows** (`--fullscreen-blur`) is off by default, so a
 fullscreen video or game drops the blur behind it and turns opaque.
+
+**Static blur on maximized windows** (`--maximized-blur`) is on by default. A
+maximized window blurs only the wallpaper, with a blur amount and brightness of
+its own (`--maximized-blur-strength`, `--maximized-brightness`). Off, it blurs
+what is behind it and follows the other windows, at some GPU cost.
 
 A window that fills the screen blurs the wallpaper rather than the windows
 stacked under it, which is cheaper while it redraws. Smaller and half-tiled
@@ -172,5 +177,6 @@ install and the GDM login screen.
 
 MIT for the scripts, stylesheets, patches and tooling in this repository (see
 [LICENSE](LICENSE)). Upstream themes, extensions, icon/pointer packs and fonts
-keep their own licences. SF Pro is Apple's and is fetched from a third-party
-mirror only if you choose it.
+keep their own licences, including the samples of them in `gui/samples/` (see
+its `NOTICE.md`). SF Pro is Apple's and is fetched from a third-party mirror only
+if you choose it.
