@@ -31,6 +31,9 @@ GDM_DCONF_DEFAULT_PROFILE="/usr/share/dconf/profile/gdm"
 # In each copy, so only what this project put in the shared directory is replaced
 # or removed: a pack from a distribution package has the same shape and no marker.
 GDM_THEME_MARKER=".aura-glass-gdm"
+# The interface font, when it is one this project installed under $FONT_DIR: that
+# is a home directory too, so the login screen gets its own marked copy.
+GDM_FONT_ROOT="/usr/share/fonts/aura-glass"
 
 get_desktop_wallpaper() {
     local uri
@@ -360,6 +363,27 @@ remove_gdm_themes() {
     done
 }
 
+# One font family dir as a root-owned copy the login screen can read, marked like
+# the icon packs so a font a package put there is never replaced or removed.
+copy_gdm_font() {
+    local src="$1" tmp="$GDM_FONT_ROOT.aura-glass-tmp"
+    sudo rm -rf "$tmp"
+    sudo mkdir -p "$tmp"
+    sudo cp -a "$src/." "$tmp/"
+    sudo chown -R root:root "$tmp"
+    sudo chmod -R a+rX,go-w "$tmp"
+    sudo touch "$tmp/$GDM_THEME_MARKER"
+    sudo rm -rf "$GDM_FONT_ROOT"
+    sudo mv "$tmp" "$GDM_FONT_ROOT"
+    sudo fc-cache -f "$GDM_FONT_ROOT" >/dev/null 2>&1 || true
+}
+
+remove_gdm_font() {
+    [ -e "$GDM_FONT_ROOT/$GDM_THEME_MARKER" ] || return 0
+    sudo rm -rf "$GDM_FONT_ROOT"
+    sudo fc-cache -f >/dev/null 2>&1 || true
+}
+
 # dconf only reads /etc/dconf/db/gdm when the profile names it, and not every
 # distribution's does (Arch's has no system-db line). /etc/dconf/profile outranks
 # the packaged profile, so that's where the line goes. Created is remembered:
@@ -385,16 +409,32 @@ ensure_gdm_dconf_profile() {
     printf '%s\n' "$content" | sudo tee "$profile" >/dev/null
 }
 
+# The family dir under $FONT_DIR the desktop's font came from, empty for the
+# system font or one a package installed (the login screen already reaches those).
+gdm_font_dir() {
+    local vendor="${FONT:-}"
+    [ -n "$vendor" ] || vendor="$(cat "$CONF_DIR/font" 2>/dev/null || true)"
+    case "$vendor" in
+        inter|misans|sf-pro) [ -d "$FONT_DIR/$vendor" ] && printf '%s\n' "$FONT_DIR/$vendor" ;;
+    esac
+    return 0
+}
+
 # The login screen's cursor and icons, as the desktop has them now. The settings
 # are the resolved answer to --cursors, --icons and the accent, and this runs after
 # apply_gsettings. A later change needs root to get here, so the choice is left in
 # the gdm-look memo for aura-glass-gdm-sync to compare at login.
 sync_gdm_look() {
-    local icon cursor size name
+    local icon cursor size name font fontdir
     icon="$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d "'")"
     cursor="$(gsettings get org.gnome.desktop.interface cursor-theme 2>/dev/null | tr -d "'")"
     size="$(gsettings get org.gnome.desktop.interface cursor-size 2>/dev/null || true)"
     size="${size##* }"
+    font=""
+    fontdir="$(gdm_font_dir)"
+    if [ -n "$fontdir" ]; then
+        font="$(gsettings get org.gnome.desktop.interface font-name 2>/dev/null | tr -d "'")"
+    fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
         info "dry-run: copy $icon and $cursor to $GDM_ICON_ROOT and set them in $GDM_DCONF_DIR/db/gdm.d/90-aura-glass"
@@ -409,6 +449,11 @@ sync_gdm_look() {
         copy_gdm_theme "$name"
     done
     remove_gdm_themes "${names[@]}"
+    if [ -n "$fontdir" ]; then
+        copy_gdm_font "$fontdir"
+    else
+        remove_gdm_font
+    fi
 
     ensure_gdm_dconf_profile
     sudo mkdir -p "$GDM_DCONF_DIR/db/gdm.d"
@@ -416,22 +461,24 @@ sync_gdm_look() {
         printf '[org/gnome/desktop/interface]\n'
         printf "icon-theme='%s'\ncursor-theme='%s'\n" "$icon" "$cursor"
         [ -n "$size" ] && printf 'cursor-size=%s\n' "$size"
+        [ -n "$font" ] && printf "font-name='%s'\n" "$font"
     } | sudo tee "$GDM_DCONF_DIR/db/gdm.d/90-aura-glass" >/dev/null
     sudo dconf update
 
     if remembering; then
         mkdir -p "$CONF_DIR"
-        printf '%s\n%s\n%s\n' "$icon" "$cursor" "$size" > "$CONF_DIR/gdm-look"
+        printf '%s\n%s\n%s\n%s\n' "$icon" "$cursor" "$size" "$font" > "$CONF_DIR/gdm-look"
     fi
-    ok "login screen uses $icon icons and the $cursor cursor"
+    ok "login screen uses $icon icons and the $cursor cursor${font:+ and $font}"
 }
 
 unsync_gdm_look() {
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: remove $GDM_DCONF_DIR/db/gdm.d/90-aura-glass and the theme copies in $GDM_ICON_ROOT"
+        info "dry-run: remove $GDM_DCONF_DIR/db/gdm.d/90-aura-glass, the theme copies in $GDM_ICON_ROOT and $GDM_FONT_ROOT"
         return 0
     fi
     remove_gdm_themes
+    remove_gdm_font
     if [ -e "$GDM_DCONF_DIR/db/gdm.d/90-aura-glass" ]; then
         sudo rm -f "$GDM_DCONF_DIR/db/gdm.d/90-aura-glass"
         sudo dconf update 2>/dev/null || true
@@ -453,13 +500,18 @@ uninstall_gdm_sync_unit() {
     run rm -f "$HOME/.local/bin/aura-glass-gdm-sync" "$HOME/.local/bin/tahoe-glass-gdm-sync"
 }
 
-# After a change the login screen mirrors: the wallpaper, primary monitor, cursor
-# and icons. No root needed; see bin/aura-glass-gdm-sync.
+# After a change the login screen mirrors: the wallpaper, primary monitor, cursor,
+# icons and font. The wallpaper and monitor need no root; the look does, so it
+# follows every change only where sudo asks for no password. Elsewhere it waits
+# for --gdm, and aura-glass-gdm-sync warns at login.
 sync_gdm_look_if_installed() {
     if [ -r "$CONF_DIR/gdm-installed" ] || [ -r "$CONF_DIR/gdm-monitors-synced" ]; then
         install_gdm_sync_unit
         # run, so a dry run reports it instead of copying into GDM's home.
         run "$REPO_ROOT/bin/aura-glass-gdm-sync" --once >/dev/null 2>&1 || true
+    fi
+    if [ -r "$CONF_DIR/gdm-look" ] && { [ "${DRY_RUN:-0}" = 1 ] || sudo -n true 2>/dev/null; }; then
+        sync_gdm_look
     fi
 }
 

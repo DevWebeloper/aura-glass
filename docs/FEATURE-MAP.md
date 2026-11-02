@@ -40,7 +40,7 @@ a restart.
 | Performance mode shell look | `shell-80-solid` (opaque ladder) | `dconf/solid.ini` (fresh preset loads only) | `TOKEN_RADIUS_NOTIFICATION` | `install_css` (when `WANT_BLUR=0`), `apply_popup_transparency` |
 | Accent colour in the shell | substituted by `bin/aura-glass-apply` (`-st-accent-color`) | none | none | `apply_accent`. gsettings `accent-color` |
 | Login screen (GDM) | `gdm-auth-menu` (session switcher menu), `shell-50-dialogs` | none | none | `lib/steps-gdm.sh`, `bin/aura-glass-gdm-sync` (opt-in, root) |
-| Login screen cursor and icons | none | `/etc/dconf/db/gdm.d/90-aura-glass` | none | `sync_gdm_look` copies the desktop's packs to `/usr/share/icons`, marked `.aura-glass-gdm`. A later change warns at login via `aura-glass-gdm-sync`; `--gdm` applies it |
+| Login screen cursor, icons and font | none | `/etc/dconf/db/gdm.d/90-aura-glass` | none | `sync_gdm_look` copies the desktop's packs to `/usr/share/icons` and an Aura-installed font to `/usr/share/fonts/aura-glass`, marked `.aura-glass-gdm`, and sets `font-name`. Every retune that changes icons, cursor or font re-runs it (`sync_gdm_look_if_installed`) where `sudo -n` works; elsewhere a change warns at login via `aura-glass-gdm-sync`, and `--gdm` applies it |
 
 ## 2. GTK4 / libadwaita apps
 

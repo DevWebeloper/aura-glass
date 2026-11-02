@@ -1833,7 +1833,7 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
                     accent) apply_accent ;;
                     update-check) install_update_check ;;
                     window-menu) install_aura_ext ;;
-                    font) install_fonts; apply_font ;;
+                    font) install_fonts; apply_font; sync_gdm_look_if_installed ;;
                     icons)
                         if [ "$WANT_ICONS" = 1 ] && [ -n "$ICONS_EXPLICIT" ]; then install_icons; fi
                         apply_icon_theme
@@ -1842,8 +1842,8 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
                         ;;
                     radius) apply_radius_dconf ;;
                     popup-blur) apply_popup_blur ;;
-                    cursor-theme) apply_cursor_theme ;;
-                    cursor-size) apply_cursor_size ;;
+                    cursor-theme) apply_cursor_theme; sync_gdm_look_if_installed ;;
+                    cursor-size) apply_cursor_size; sync_gdm_look_if_installed ;;
                     window-buttons) apply_window_buttons ;;
                     blur-pipelines) apply_blur_pipelines ;;
                     app-blur) apply_app_blur ;;
