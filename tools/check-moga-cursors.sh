@@ -99,6 +99,8 @@ python3 "$ROOT/tools/moga_cursor.py" resolve purple "$metadata" >/dev/null 2>&1 
 incremental_actions="$(
     cd "$ROOT"
     CURSORS=moga
+    WANT_ICONS=0           # an accent edit also moves a bare icon pack's key
+    CONF_DIR="$TMP/conf"   # select_apply_actions reads the glass-style memo
     ACCENT_EXPLICIT=1
     TYPED_FLAGS=(--accent)
     source lib/steps-apply-plan.sh
