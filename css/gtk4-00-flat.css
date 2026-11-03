@@ -45,6 +45,30 @@
   box-shadow: none;
 }
 
+/* ---------- Text labels stay square ----------
+ * The theme's blanket `* { border-radius: 20px }` rounds every label too, and a
+ * rounded box clips what is painted in it: the heading of a libadwaita group
+ * ("All surfaces" in the settings app) lost the bottom-left foot of its bold
+ * capital A, where the glyph's ink reaches past the label's own box. Only the
+ * typography classes are reset, because those never carry a background; a label
+ * with a pill background of its own keeps the theme's rounding. This file is read
+ * at USER priority, so an app's own rule for these classes cannot undo it.
+ */
+label.heading,
+label.title,
+label.subtitle,
+label.title-1,
+label.title-2,
+label.title-3,
+label.title-4,
+label.large-title,
+label.caption-heading,
+label.body,
+label.caption,
+label.dim-label {
+  border-radius: 0;
+}
+
 /* ---------- Window reset ----------
  * Upstream Tahoe-Dark set `padding: 10px` on `window`, `.maximized window`,
  * and `window.maximized`. In GTK4, this insets all window contents by 10px,
