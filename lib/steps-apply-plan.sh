@@ -37,6 +37,7 @@ select_apply_actions() {
             --maximized-blur|--maximized-blur=*) _apply_add maximized-blur ;;
             --osd-device-name|--no-osd-device-name) _apply_add osd-device-name ;;
             --osd-style|--osd-style=*) _apply_add osd-style ;;
+            --osd-opacity|--osd-opacity=*|--osd-tint|--osd-tint=*) _apply_add osd-background ;;
             --system-icons|--system-icons=*) _apply_add system-icons ;;
             --smooth-animations|--no-smooth-animations) _apply_add smooth-animations ;;
             --window-animation-speed|--window-animation-speed=*|--notification-animation-speed|--notification-animation-speed=*|--menu-animation-speed|--menu-animation-speed=*) _apply_add animation-speed ;;

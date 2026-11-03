@@ -495,6 +495,7 @@ run rm -f "$CONF_DIR/bms-ref" "$CONF_DIR/bms-source" \
           "$CONF_DIR/extension-catalog" \
           "$CONF_DIR/dconf-shipped" \
           "$CONF_DIR/osd" "$CONF_DIR/osd-device-name" "$CONF_DIR/osd-style" \
+          "$CONF_DIR/osd-opacity" "$CONF_DIR/osd-tint" \
           "$CONF_DIR/window-menu" "$CONF_DIR/top-bar-icon" \
           "$CONF_DIR/app-transparency" \
           "$CONF_DIR/app-opacity" \

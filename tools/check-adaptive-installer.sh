@@ -110,6 +110,7 @@ state() {   # state NAME
 memos() {       # memos NAME — the persistent answers
     (cd "$scratch/$1/.config/aura-glass" && \
         sha256sum glass-mode app-transparency app-opacity app-tint-color shell-tint-color \
+                  osd-opacity osd-tint \
                   blur-strength popup-blur notification-blur app-blur-scope \
                   notification-opacity popup-brightness window-brightness 2>/dev/null
      find modes -type f -print0 2>/dev/null | sort -z | xargs -0 -r sha256sum) | sort

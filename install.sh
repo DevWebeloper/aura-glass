@@ -90,6 +90,10 @@ OSD_DEVICE_NAME=""  # empty = remembered choice, then 0
 OSD_DEVICE_NAME_EXPLICIT=""
 OSD_STYLE=""        # empty = remembered choice, then capsule
 OSD_STYLE_EXPLICIT=""
+OSD_OPACITY=""      # empty = remembered choice, then 60 (10..100)
+OSD_OPACITY_EXPLICIT=""
+OSD_TINT=""         # empty = remembered choice, then #000000
+OSD_TINT_EXPLICIT=""
 SYSTEM_ICONS=""     # empty = remembered choice, then lucide
 SYSTEM_ICONS_EXPLICIT=""
 WINDOW_MENU_EXPLICIT=""
@@ -346,6 +350,8 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       the OSD popup's design. capsule (the default) sits where
                       it always has, with a thick bar. tab hangs from the top
                       bar on one line
+    --osd-opacity N   volume & brightness popup opacity: 10-100% (default: 60)
+    --osd-tint HEX    volume & brightness popup tint colour (default: #000000)
     --no-popup-blur   keep flat translucent popups, menus and notifications, and
                       skip the blur behind them
     --no-bms-git      use Blur My Shell published build (implies --no-popup-blur)
@@ -552,6 +558,10 @@ parse_flags() {
         --no-osd-device-name) OSD_DEVICE_NAME=0; OSD_DEVICE_NAME_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --osd-style)     OSD_STYLE="${2:-}"; OSD_STYLE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --osd-style=*)   OSD_STYLE="${1#*=}"; OSD_STYLE_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --osd-opacity)   OSD_OPACITY="${2:-60}"; OSD_OPACITY_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --osd-opacity=*) OSD_OPACITY="${1#*=}"; OSD_OPACITY_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --osd-tint)      OSD_TINT="${2:-}"; OSD_TINT_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
+        --osd-tint=*)    OSD_TINT="${1#*=}"; OSD_TINT_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --bms-git)       WANT_BMS_GIT=1; BMS_GIT_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-bms-git)    WANT_BMS_GIT=0; BMS_GIT_EXPLICIT=1; WANT_POPUP_BLUR=0
                          POPUP_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
@@ -1406,6 +1416,20 @@ if [ -z "$APP_BLUR_SCOPE_EXPLICIT" ] && [ -r "$CONF_DIR/app-blur-scope" ]; then
     APP_BLUR_SCOPE="$(cat "$CONF_DIR/app-blur-scope" 2>/dev/null || true)"
 fi
 APP_BLUR_SCOPE="${APP_BLUR_SCOPE:-all}"
+if [ -z "$OSD_OPACITY" ]; then
+    if [ -r "$CONF_DIR/osd-opacity" ]; then
+        OSD_OPACITY="$(cat "$CONF_DIR/osd-opacity" 2>/dev/null || true)"
+    else
+        OSD_OPACITY=60
+    fi
+fi
+if [ -z "$OSD_TINT" ]; then
+    if [ -r "$CONF_DIR/osd-tint" ]; then
+        OSD_TINT="$(cat "$CONF_DIR/osd-tint" 2>/dev/null || true)"
+    else
+        OSD_TINT="#000000"
+    fi
+fi
 
 # A typed blur, brightness, popup opacity or top bar height outside its bounds fails here,
 # before anything is written, like --radius-preset below. A remembered one is
@@ -1606,6 +1630,32 @@ PY
 fi
 APP_TRANSPARENCY="${APP_TRANSPARENCY:-0}"
 APP_OPACITY="${APP_OPACITY:-255}"
+if [ -n "$OSD_OPACITY" ]; then
+    OSD_OPACITY="$(python3 - "${OSD_OPACITY:-60}" <<'PY'
+import sys
+raw = sys.argv[1].strip().rstrip("%") if len(sys.argv) > 1 else "60"
+try:
+    val = float(raw)
+    if 0.0 < val <= 1.0:
+        pct = round(val * 100)
+    else:
+        pct = round(val)
+except ValueError:
+    pct = 60
+if pct < 10:
+    pct = 10
+elif pct > 100:
+    pct = 100
+print(pct)
+PY
+)"
+fi
+OSD_OPACITY="${OSD_OPACITY:-60}"
+case "$OSD_TINT" in
+    \#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;;
+    [0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) OSD_TINT="#$OSD_TINT" ;;
+    *) OSD_TINT="#000000" ;;
+esac
 
 # The one line tools/check-glass-modes.sh reads. Printed on every dry run rather
 # than behind a flag of its own: the resolution is the whole of what a mode is,
@@ -1853,6 +1903,7 @@ if [ "$SETTINGS_ONLY" = 1 ]; then
                     maximized-blur) apply_maximized_blur ;;
                     osd-device-name) apply_osd_device_name; sync_osd_profile ;;
                     osd-style) apply_osd_style; sync_osd_profile ;;
+                    osd-background) apply_osd_background; sync_osd_profile ;;
                     system-icons)
                         apply_icon_theme
                         install_icon_sync

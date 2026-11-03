@@ -81,6 +81,8 @@ def state(**kw):
     s.maximized_blur = kw.get("maximized_blur", "static")
     s.osd_device_name = kw.get("osd_device_name", False)
     s.osd_style = kw.get("osd_style", "capsule")
+    s.osd_opacity = kw.get("osd_opacity", 60)
+    s.osd_tint = kw.get("osd_tint", "#000000")
     s.system_icons = kw.get("system_icons", "lucide")
     s.window_menu = kw.get("window_menu", True)
     s.top_bar_icon = kw.get("top_bar_icon", True)
@@ -111,7 +113,7 @@ def state(**kw):
                     "surface_brightness": dict(MAIN),
                     "popup_opacity": "main",
                     "popup_blur": True,
-                    "scope": "gtk"},
+                    "scope": "gtk", "osd_opacity": 60, "osd_tint": "#000000"},
         "performance": {"transparency": "1.00", "app_tint": "#000000",
                         "shell_tint": "#000000", "dock_tint": "main",
                     "panel_tint": "main", "maximized_panel_tint": "main",
@@ -121,7 +123,7 @@ def state(**kw):
                         "surface_brightness": dict(MAIN),
                         "popup_opacity": "main",
                         "popup_blur": False,
-                        "scope": "none"},
+                        "scope": "none", "osd_opacity": 100, "osd_tint": "#000000"},
     }
     for mode, overrides in kw.get("modes", {}).items():
         s.modes[mode].update(overrides)
@@ -464,6 +466,10 @@ CASES = [
      state(), state(system_icons="pack"), ["--system-icons", "pack"]),
     ("the OSD popup goes back to the capsule", state(osd_style="tab"),
      FROSTED, ["--osd-style", "capsule"]),
+    ("the OSD popup gets clearer", FROSTED,
+     state(osd_opacity=40), ["--osd-opacity", "40"]),
+    ("the OSD popup gets a tint", FROSTED,
+     state(osd_tint="#112233"), ["--osd-tint", "#112233"]),
 
     ("Blur This App leaves the window menu", FROSTED,
      state(window_menu=False), ["--no-window-menu"]),

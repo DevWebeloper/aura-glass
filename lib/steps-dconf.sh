@@ -329,6 +329,7 @@ load_dconf() {
     apply_glass_style
     apply_osd_device_name
     apply_osd_style
+    apply_osd_background
     sync_osd_profile
     refresh_bms_after_dconf
 }
@@ -1332,6 +1333,59 @@ apply_osd_style() {
     fi
 
     ok "the volume and brightness popup is the $want (remembered for later runs)"
+}
+
+# Opacity and background tint for the volume and brightness popup.
+# Solid/performance mode forces alpha=100.0, matching dconf/solid.ini.
+apply_osd_background() {
+    local osd=/org/gnome/shell/extensions/custom-osd
+    local opacity="${OSD_OPACITY:-}" memo_opacity="$CONF_DIR/osd-opacity"
+    local tint="${OSD_TINT:-}" memo_tint="$CONF_DIR/osd-tint"
+
+    if [ -z "${OSD_OPACITY_EXPLICIT:-}" ] || [ -z "$opacity" ]; then
+        opacity="$(cat "$memo_opacity" 2>/dev/null || true)"
+    fi
+    case "$opacity" in
+        ''|*[!0-9]*) opacity=60 ;;
+        *) [ "$opacity" -ge 10 ] && [ "$opacity" -le 100 ] || opacity=60 ;;
+    esac
+
+    if [ -z "${OSD_TINT_EXPLICIT:-}" ] || [ -z "$tint" ]; then
+        tint="$(cat "$memo_tint" 2>/dev/null || true)"
+    fi
+    case "$tint" in
+        \#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;;
+        *) tint="#000000" ;;
+    esac
+
+    if remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$opacity" > "$memo_opacity"
+        printf '%s\n' "$tint" > "$memo_tint"
+    fi
+
+    local alpha
+    if [ "${GLASS_MODE:-}" = performance ]; then
+        alpha="100.0"
+    else
+        alpha="$(printf '%.1f' "$opacity")"
+    fi
+
+    local bgcolor
+    if [ "$tint" = "#000000" ]; then
+        bgcolor="['0.11', '0.11', '0.12', '1.0']"
+    else
+        bgcolor="$(python3 -c "
+t = '$tint'
+r, g, b = int(t[1:3], 16) / 255.0, int(t[3:5], 16) / 255.0, int(t[5:7], 16) / 255.0
+print(f\"['{r:.2f}', '{g:.2f}', '{b:.2f}', '1.0']\")
+")"
+    fi
+
+    run dconf write "$osd/alpha" "$alpha"
+    run dconf write "$osd/bgcolor" "$bgcolor"
+
+    ok "volume and brightness popup background updated (remembered for later runs)"
 }
 
 # Custom OSD keeps a set of named profiles beside the live settings, and its

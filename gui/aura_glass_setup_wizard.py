@@ -135,9 +135,9 @@ SAMPLE_WEIGHTS = {"normal": Pango.Weight.NORMAL, "medium": Pango.Weight.MEDIUM,
 # installed: nothing here follows the screen. tools/check-wizard-flags.py compares
 # them, and the radii are also TOKEN_RADIUS_OSD_CAPSULE and TOKEN_RADIUS_OSD_TAB.
 OSD_DESIGNS = {
-    "capsule": {"width": 320, "padding_x": 16, "padding_y": 14, "gap": 13,
+    "capsule": {"width": 260, "padding_x": 16, "padding_y": 14, "gap": 13,
                 "radius": 20, "icon": 20, "thickness": 12, "name_gap": 8},
-    "tab": {"width": 360, "height": 38, "padding_x": 16, "gap": 10,
+    "tab": {"width": 300, "height": 38, "padding_x": 16, "gap": 10,
             "radius": 16, "icon": 16, "thickness": 6, "bar": 120},
 }
 # The same options, order and recommendation as Step 5 of the text wizard and

@@ -182,8 +182,9 @@ StDrawingArea {
  */
 
 /* Capsule: the default. A thick bar that reads at a glance, the name above it. */
+/* Narrowed 60px because the long pill read as a banner, not a volume bar. */
 .osd-window.aura-osd-capsule {
-  width: 320px;
+  width: 260px;
   padding: 14px 16px;
   spacing: 13px;
   border-radius: 20px;
@@ -219,8 +220,9 @@ StDrawingArea {
  * top corners are square, here and in the blur behind them (--osd-style tab writes
  * popup/osd-window-rounded-corners). One line: icon, name, bar. The name takes the
  * slack and ellipsizes. Without one the bar takes it, and Custom OSD sets that. */
+/* Narrowed 60px because the long pill read as a banner, not a volume bar. */
 .osd-window.aura-osd-tab {
-  width: 360px;
+  width: 300px;
   height: 38px;
   padding: 0 16px;
   spacing: 10px;

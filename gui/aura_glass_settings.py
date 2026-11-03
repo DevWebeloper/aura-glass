@@ -222,6 +222,13 @@ TRANSPARENCY_MARKS = [
 # key's step in both cases, so the keyboard can always walk off a mark.
 TRANSPARENCY_SNAP = 1
 
+OSD_OPACITY_MIN = 10
+OSD_OPACITY_MAX = 100
+OSD_OPACITY_MARKS = [
+    (60, "default"),
+]
+OSD_OPACITY_SNAP = 2
+
 # Byte-identical on both glass tabs, and kept as one constant rather than two
 # copies of a sentence: shortening one without the other would visibly desync
 # the two tabs' Opacity rows.
@@ -740,6 +747,8 @@ FLAG_LABELS = {
     "--blur-strength": ("glass", "Blur amount"),
     "--blur-brightness": ("glass", "Brightness"),
     "--popup-opacity": ("glass", "Popups & notifications opacity"),
+    "--osd-opacity": ("glass", "Volume popup opacity"),
+    "--osd-tint": ("glass", "Volume popup tint"),
     "--app-blur-allow": ("apps", "Blur allow list"),
     "--app-blur-block": ("apps", "Blur block list"),
     "--window-menu": ("apps", "Blur This App in the window menu"),
@@ -770,6 +779,7 @@ PLAN_ACTIONS = {
     "fullscreen-blur": "the fullscreen window blur",
     "osd-device-name": "the device name",
     "osd-style": "the volume and brightness popup",
+    "osd-background": "the volume popup",
     "system-icons": "the system icons",
     "smooth-animations": "the smooth animations",
     "animation-speed": "the animation speed",
@@ -3014,7 +3024,14 @@ class Settings:
             self.surface_strength = {sid: "main" for sid, _t, _s in BLUR_SURFACES}
             self.surface_brightness = {sid: "main" for sid, _t, _s in BLUR_SURFACES}
             self.popup_opacity = "main"
+            self.osd_opacity = int(read_mode_memo("performance", "osd-opacity", "100") or "100")
+            self.osd_tint = read_mode_memo("performance", "osd-tint", "#000000") or "#000000"
         else:
+            try:
+                self.osd_opacity = int(read_mode_memo(self.glass_mode, "osd-opacity", read_memo("osd-opacity", "60") or "60"))
+            except ValueError:
+                self.osd_opacity = 60
+            self.osd_tint = read_mode_memo(self.glass_mode, "osd-tint", read_hex_memo("osd-tint"))
             self.app_tint = read_mode_memo(self.glass_mode, "app-tint-color", read_hex_memo("app-tint-color"))
             self.shell_tint = read_mode_memo(self.glass_mode, "shell-tint-color", read_hex_memo("shell-tint-color"))
             self.dock_tint = read_surface_tint(self.glass_mode, "dock-tint-color")
@@ -3157,6 +3174,8 @@ class Settings:
         # mode-specific literal exactly as the shell's disk_app/disk_shell/
         # disk_strength/disk_scope do.
         disk_transparency = read_memo("app-transparency", "")
+        disk_osd_opacity = read_memo("osd-opacity", "")
+        disk_osd_tint = read_memo("osd-tint", "")
         disk_app_tint = read_memo("app-tint-color", "")
         disk_shell_tint = read_memo("shell-tint-color", "")
         disk_strength = read_memo("blur-strength", "")
@@ -3169,10 +3188,20 @@ class Settings:
                 level = "1.00"
                 tint_default = "#000000"
                 shell_default = "#000000"
+                osd_opacity_default = 100
+                osd_tint_default = "#000000"
             else:
                 level = disk_transparency or "0"
                 tint_default = disk_app_tint or "#000000"
                 shell_default = disk_shell_tint or "#000000"
+                osd_opacity_default = int(disk_osd_opacity or "60")
+                osd_tint_default = disk_osd_tint or "#000000"
+            try:
+                mode_osd_opacity = int(read_mode_memo(mode, "osd-opacity",
+                                                      str(osd_opacity_default)))
+            except ValueError:
+                mode_osd_opacity = osd_opacity_default
+            mode_osd_tint = read_mode_memo(mode, "osd-tint", osd_tint_default)
             try:
                 strength = int(read_mode_memo(mode, "blur-strength",
                                               disk_strength or "100"))
@@ -3223,6 +3252,8 @@ class Settings:
                 "popup_opacity": popup_opacity,
                 "popup_blur": read_mode_memo(mode, "popup-blur", def_popup) != "0",
                 "scope": read_mode_memo(mode, "app-blur-scope", def_scope),
+                "osd_opacity": mode_osd_opacity,
+                "osd_tint": mode_osd_tint,
             }
 
         # The mode in force is the live state whatever its drawer says: the
@@ -3243,6 +3274,8 @@ class Settings:
                 "popup_opacity": self.popup_opacity,
                 "popup_blur": self.popup_blur,
                 "scope": self.scope,
+                "osd_opacity": self.osd_opacity,
+                "osd_tint": self.osd_tint,
             })
 
     def flags_against(self, other):
@@ -3371,6 +3404,8 @@ class Settings:
         popup_base = base("popup_blur")
         app_tint_base = base("app_tint")
         shell_tint_base = base("shell_tint")
+        osd_opacity_base = base("osd_opacity")
+        osd_tint_base = base("osd_tint")
 
         # Only frosted has a scope to send: performance has blur disabled.
         if self.glass_mode == "frosted" and self.scope != scope_base:
@@ -3440,6 +3475,10 @@ class Settings:
                              str(self.surface_brightness[sid])]
             if self.popup_opacity != other.popup_opacity:
                 args += ["--popup-opacity", str(self.popup_opacity)]
+            if self.osd_opacity != osd_opacity_base:
+                args += ["--osd-opacity", str(self.osd_opacity)]
+            if self.osd_tint != osd_tint_base:
+                args += ["--osd-tint", self.osd_tint]
 
         # Whichever list changed, consulted by the mode in force or not.
         #
@@ -6203,10 +6242,50 @@ class Window(Adw.ApplicationWindow):
             MAXIMIZED_PANEL_BRIGHTNESS_MARKS, 10, 4,
             self._applied.maximized_panel_brightness,
             self._maximized_panel_scales)
+        self._build_osd_group()
+
+    def _build_osd_group(self):
+        """The volume popup opacity and tint settings group."""
+        self._osd_group = Adw.PreferencesGroup(title="Volume popup")
+        frosted = self._applied.modes["frosted"]
+        self._osd_opacity_scale = self._make_osd_opacity_scale(frosted["osd_opacity"])
+        reset_opacity = Gtk.Button(icon_name="edit-undo-symbolic",
+                                   valign=Gtk.Align.CENTER,
+                                   tooltip_text="Default opacity (60%)")
+        reset_opacity.add_css_class("flat")
+        reset_opacity.connect("clicked", lambda _b: self._osd_opacity_scale.set_value(60))
+        self._osd_opacity_reset = reset_opacity
+        self._osd_opacity_row = self._slider_row(
+            "Opacity", "Volume and brightness popup background opacity",
+            self._osd_opacity_scale, reset_opacity)
+        self._osd_group.add(self._osd_opacity_row)
+
+        self._osd_tint = frosted["osd_tint"]
+        self._osd_tint_row = Adw.ActionRow(
+            title="Tint", subtitle="Background tint colour")
+        self._osd_tint_swatch = Swatch(self._osd_tint, size=20, radius=5)
+        self._osd_tint_label = Gtk.Label(label=self._osd_tint)
+        self._osd_tint_label.add_css_class("monospace")
+        self._osd_tint_label.add_css_class("dim-label")
+        colour_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        colour_box.append(self._osd_tint_swatch)
+        colour_box.append(self._osd_tint_label)
+        colour_button = Gtk.Button(child=colour_box, valign=Gtk.Align.CENTER,
+                                   tooltip_text="Choose a colour")
+        colour_button.connect("clicked", self._on_osd_tint_button)
+        self._osd_tint_button = colour_button
+        self._osd_tint_row.add_suffix(colour_button)
+        reset_tint = Gtk.Button(label="Reset", valign=Gtk.Align.CENTER)
+        reset_tint.add_css_class("flat")
+        reset_tint.connect("clicked", self._on_osd_tint_reset)
+        self._osd_tint_reset = reset_tint
+        self._osd_tint_row.add_suffix(reset_tint)
+        self._osd_group.add(self._osd_tint_row)
 
     def _place_top_bar_groups(self, mode):
         for target, group in (("panel", self._panel_height_group),
-                              ("maximized", self._maximized_panel_group)):
+                              ("maximized", self._maximized_panel_group),
+                              ("shell", self._osd_group)):
             parent = group.get_parent()
             if parent is not None:
                 parent.remove(group)
@@ -6399,6 +6478,8 @@ class Window(Adw.ApplicationWindow):
         # Its surface has just left the page, and picks would land out of sight.
         if self._tint_picker is not None:
             self._tint_picker.close_picker()
+        if getattr(self, "_osd_tint_picker", None) is not None:
+            self._osd_tint_picker.close()
         self._place_top_bar_groups(self._glass_mode())
         if self._loading:
             return
@@ -6817,6 +6898,25 @@ class Window(Adw.ApplicationWindow):
         scale.connect("value-changed", self._on_scale_changed)
         return scale
 
+    def _make_osd_opacity_scale(self, percent):
+        """One opacity bar for the volume popup."""
+        scale = Gtk.Scale.new_with_range(
+            Gtk.Orientation.HORIZONTAL, OSD_OPACITY_MIN, OSD_OPACITY_MAX, 1)
+        scale.set_hexpand(True)
+        scale.set_draw_value(False)
+        for at, label in OSD_OPACITY_MARKS:
+            scale.add_mark(at, Gtk.PositionType.BOTTOM, label)
+        tame_scale(scale, OSD_OPACITY_MARKS, 1, 5, OSD_OPACITY_SNAP)
+
+        scale._readout = Gtk.Label(valign=Gtk.Align.CENTER)
+        scale._readout.add_css_class("numeric")
+        scale._readout.add_css_class("dim-label")
+
+        scale.set_value(percent)
+        self._sync_transparency_value(scale)
+        scale.connect("value-changed", self._on_scale_changed)
+        return scale
+
     # ---- performance ------------------------------------------------------
 
     def _build_performance_page(self):
@@ -6918,6 +7018,46 @@ class Window(Adw.ApplicationWindow):
         if self._tint_picker is not None and self._tint_picker is not editor:
             self._tint_picker.close_picker()
         self._tint_picker = editor
+        if getattr(self, "_osd_tint_picker", None) is not None:
+            self._osd_tint_picker.close()
+
+    def _on_osd_tint_button(self, _button):
+        if getattr(self, "_osd_tint_picker", None) is None:
+            self._osd_tint_picker = open_over(
+                TintPickerWindow("Volume popup colour",
+                                 self._osd_tint,
+                                 self._on_osd_tint_picked, "shell",
+                                 self._studios["frosted"]._glass_look()),
+                self.get_root(), modal=False)
+            self._osd_tint_picker.connect("close-request",
+                                          self._on_osd_tint_picker_closed)
+        else:
+            self._osd_tint_picker.present()
+        if self._tint_picker is not None:
+            self._tint_picker.close_picker()
+
+    def _on_osd_tint_picker_closed(self, _window):
+        self._osd_tint_picker = None
+        return False
+
+    def _on_osd_tint_picked(self, colour):
+        self._set_osd_tint(colour)
+        if not self._loading:
+            self._mark_dirty()
+
+    def _on_osd_tint_reset(self, _button):
+        self._set_osd_tint("#000000")
+        if not self._loading:
+            self._mark_dirty()
+
+    def _set_osd_tint(self, colour):
+        self._osd_tint = colour
+        if hasattr(self, "_osd_tint_swatch"):
+            self._osd_tint_swatch.set_colour(colour)
+        if hasattr(self, "_osd_tint_label"):
+            self._osd_tint_label.set_label(colour)
+        if getattr(self, "_osd_tint_picker", None) is not None:
+            self._osd_tint_picker.palette.select(colour)
 
     # ---- how far the blur reaches -----------------------------------------
 
@@ -7062,10 +7202,13 @@ class Window(Adw.ApplicationWindow):
             # There is no popup to design or name a device on while Custom OSD
             # is off.
             if entry["uuid"] == "custom-osd@neuromorph":
-                self._osd_device_name_row.set_sensitive(
-                    entry["installed"] and entry["enabled"])
-                self._osd_style_row.set_sensitive(
-                    entry["installed"] and entry["enabled"])
+                active = bool(entry["installed"] and entry["enabled"])
+                self._osd_device_name_row.set_sensitive(active)
+                self._osd_style_row.set_sensitive(active)
+                if hasattr(self, "_osd_opacity_row"):
+                    self._osd_opacity_row.set_sensitive(active)
+                if hasattr(self, "_osd_tint_row"):
+                    self._osd_tint_row.set_sensitive(active)
 
             group = self._ext_groups.get(entry["tier"])
             if group is None:
@@ -8978,6 +9121,13 @@ class Window(Adw.ApplicationWindow):
                             else "dynamic")
         s.osd_device_name = self._osd_device_name_row.get_active()
         s.osd_style = self._osd_style_row._ids[self._osd_style_row.get_selected()]
+        if s.glass_mode == "performance":
+            performance = self._applied.modes["performance"]
+            s.osd_opacity = performance["osd_opacity"]
+            s.osd_tint = performance["osd_tint"]
+        else:
+            s.osd_opacity = int(round(self._osd_opacity_scale.get_value()))
+            s.osd_tint = self._osd_tint
         s.system_icons = self._system_icons_row._ids[self._system_icons_row.get_selected()]
         s.window_menu = self._window_menu_row.get_active()
         s.top_bar_icon = self._top_bar_icon_row.get_active()
@@ -9265,6 +9415,9 @@ class Window(Adw.ApplicationWindow):
         self._osd_device_name_row.set_active(self._applied.osd_device_name)
         self._osd_style_row.set_selected(
             self._osd_style_row._ids.index(self._applied.osd_style))
+        self._osd_opacity_scale.set_value(
+            self._applied.modes["frosted"]["osd_opacity"])
+        self._set_osd_tint(self._applied.modes["frosted"]["osd_tint"])
         self._system_icons_row.set_selected(
             self._system_icons_row._ids.index(self._applied.system_icons))
         self._window_menu_row.set_active(self._applied.window_menu)
