@@ -38,7 +38,7 @@ if ! command -v dconf >/dev/null 2>&1; then
     exit 0
 fi
 
-MEMOS="app-tint-color shell-tint-color dock-tint-color panel-tint-color maximized-panel-tint-color app-transparency radius-preset radius-custom blur-strength blur-brightness maximized-blur popup-opacity popup-blur window-blur app-blur-scope app-blur-allow app-blur-block"
+MEMOS="app-tint-color shell-tint-color dock-tint-color panel-tint-color maximized-panel-tint-color app-transparency radius-preset radius-custom blur-strength blur-brightness maximized-blur maximized-opacity popup-opacity popup-blur window-blur app-blur-scope app-blur-allow app-blur-block"
 
 hash_sheets() {
     # shellcheck disable=SC2012

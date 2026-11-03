@@ -87,6 +87,8 @@ def state(**kw):
     s.window_menu = kw.get("window_menu", True)
     s.top_bar_icon = kw.get("top_bar_icon", True)
     s.maximized_panel_brightness = kw.get("maximized_panel_brightness", 40)
+    # 100 is whole static blur (default)
+    s.maximized_opacity = kw.get("maximized_opacity", 100)
     s.smooth_animations = kw.get("smooth_animations", False)
     s.animation_speed = kw.get(
         "animation_speed", {"window": 100, "notification": 100, "menu": 100})
@@ -112,6 +114,7 @@ def state(**kw):
                     "surface_strength": dict(MAIN),
                     "surface_brightness": dict(MAIN),
                     "popup_opacity": "main",
+                    "maximized_opacity": 100,  # 100 is whole static blur (default)
                     "popup_blur": True,
                     "scope": "gtk", "osd_opacity": 60, "osd_tint": "#000000"},
         "performance": {"transparency": "1.00", "app_tint": "#000000",
@@ -122,6 +125,7 @@ def state(**kw):
                         "surface_strength": dict(MAIN),
                         "surface_brightness": dict(MAIN),
                         "popup_opacity": "main",
+                        "maximized_opacity": 100,  # 100 is whole static blur (default)
                         "popup_blur": False,
                         "scope": "none", "osd_opacity": 100, "osd_tint": "#000000"},
     }
@@ -448,6 +452,14 @@ CASES = [
     ("maximized brightness set apart", FROSTED,
      state(surface_brightness={"maximized": 70}),
      ["--maximized-brightness", "70"]),
+
+    ("maximized static blur clear", FROSTED,
+     state(maximized_opacity=0),  # 0 is clear
+     ["--maximized-opacity", "0"]),
+
+    ("maximized static blur partly clear", FROSTED,
+     state(maximized_opacity=45),  # 45 is 45% opacity
+     ["--maximized-opacity", "45"]),
 
     ("blur kept on fullscreen windows", FROSTED,
      state(fullscreen_blur=True), ["--fullscreen-blur"]),
@@ -830,7 +842,10 @@ for name in ("steps-dconf.sh", "steps-css.sh"):
     with open(os.path.join(ROOT, "lib", name), encoding="utf-8") as fh:
         shell += fh.read()
 for const in ("BLUR_STRENGTH_MIN", "BLUR_STRENGTH_MAX", "BLUR_BRIGHTNESS_MIN",
-              "BLUR_BRIGHTNESS_MAX", "POPUP_OPACITY_MIN", "POPUP_OPACITY_MAX",
+              "BLUR_BRIGHTNESS_MAX", "MAXIMIZED_BRIGHTNESS_MIN",
+              "MAXIMIZED_OPACITY_MIN", "MAXIMIZED_OPACITY_MAX",
+              "MAXIMIZED_OPACITY_SHIPPED",
+              "POPUP_OPACITY_MIN", "POPUP_OPACITY_MAX",
               "PANEL_HEIGHT_MIN", "PANEL_HEIGHT_MAX", "PANEL_HEIGHT_THEME",
               "PANEL_HEIGHT_GNOME"):
     m = re.search(r"^%s=(\d+)$" % const, shell, re.M)

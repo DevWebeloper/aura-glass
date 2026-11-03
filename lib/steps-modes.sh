@@ -126,7 +126,7 @@ seed_glass_mode() {
     mkdir -p "$dir"
 
     local disk_level disk_app disk_shell disk_strength disk_scope disk_popup
-    local disk_brightness disk_popup_opacity entry surface legacy
+    local disk_brightness disk_popup_opacity disk_maximized_opacity entry surface legacy
     local disk_dock disk_panel disk_maximized_panel
     local disk_osd_opacity disk_osd_tint
     disk_level="$(cat "$CONF_DIR/app-transparency" 2>/dev/null || true)"
@@ -140,6 +140,7 @@ seed_glass_mode() {
     disk_popup="$(cat "$CONF_DIR/popup-blur" 2>/dev/null || true)"
     disk_brightness="$(cat "$CONF_DIR/blur-brightness" 2>/dev/null || true)"
     disk_popup_opacity="$(cat "$CONF_DIR/popup-opacity" 2>/dev/null || true)"
+    disk_maximized_opacity="$(cat "$CONF_DIR/maximized-opacity" 2>/dev/null || true)"
     disk_osd_opacity="$(cat "$CONF_DIR/osd-opacity" 2>/dev/null || true)"
     disk_osd_tint="$(cat "$CONF_DIR/osd-tint" 2>/dev/null || true)"
 
@@ -173,6 +174,7 @@ seed_glass_mode() {
         mode_memo_write blur-strength    "${disk_strength:-100}"
         mode_memo_write blur-brightness  "${disk_brightness:-100}"
         mode_memo_write popup-opacity    "${disk_popup_opacity:-main}"
+        mode_memo_write maximized-opacity "${disk_maximized_opacity:-100}"
         mode_memo_write popup-blur       "${disk_popup:-1}"
         # Each surface's own blur, from the top-level memos (and the two
         # brightness memos an earlier release wrote under other names) the
@@ -242,6 +244,8 @@ load_glass_mode_memos() {
             || BLUR_BRIGHTNESS="$(mode_memo_read blur-brightness 100)"
         [ -n "${POPUP_OPACITY:-}" ] \
             || POPUP_OPACITY="$(mode_memo_read popup-opacity main)"
+        [ -n "${MAXIMIZED_OPACITY:-}" ] \
+            || MAXIMIZED_OPACITY="$(mode_memo_read maximized-opacity 100)"
         local entry surface var bvar legacy dir
         dir="$(modes_root)/$GLASS_MODE"
         for entry in $BLUR_SURFACES; do
@@ -285,6 +289,7 @@ save_glass_mode_memos() {
         mode_memo_write blur-strength    "${BLUR_STRENGTH:-100}"
         mode_memo_write blur-brightness  "${BLUR_BRIGHTNESS:-100}"
         mode_memo_write popup-opacity    "${POPUP_OPACITY:-main}"
+        mode_memo_write maximized-opacity "${MAXIMIZED_OPACITY:-100}"
         local entry surface var bvar
         for entry in $BLUR_SURFACES; do
             surface="${entry%%:*}"

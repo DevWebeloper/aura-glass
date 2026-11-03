@@ -145,6 +145,7 @@ FULLSCREEN_BLUR=""  # empty = remembered choice, then 0
 FULLSCREEN_BLUR_EXPLICIT=""
 MAXIMIZED_BLUR=""   # empty = remembered choice, then static
 MAXIMIZED_BLUR_EXPLICIT=""
+MAXIMIZED_OPACITY="" # empty = remembered choice, then 100
 SMOOTH_ANIMATIONS=""  # empty = remembered choice, then 0
 SMOOTH_ANIMATIONS_EXPLICIT=""
 WINDOW_ANIMATION_SPEED=""       # empty = remembered choice, then 100 (GNOME's pace)
@@ -250,6 +251,9 @@ ${C_BLD}aura-glass${C_OFF} — a fluid frosted-glass desktop for GNOME 48-51
                       only the wallpaper, with a blur amount and brightness of
                       its own. Lighter on the GPU. dynamic: it blurs what is
                       behind it and follows the other windows (remembered)
+    --maximized-opacity P
+                      how much of a maximized window's static blur shows: 0-100,
+                      default 100 (remembered, per glass mode)
     --smooth-animations
                       menus, folders and notifications open faster, with no
                       stutter. No extra CPU or GPU load, but it uses a lot
@@ -468,6 +472,8 @@ parse_flags() {
         --no-liquid-windows) LIQUID_WINDOWS=0; LIQUID_WINDOWS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --maximized-blur)     MAXIMIZED_BLUR="${2:-}"; MAXIMIZED_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift 2 ;;
         --maximized-blur=*)   MAXIMIZED_BLUR="${1#*=}"; MAXIMIZED_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
+        --maximized-opacity)  MAXIMIZED_OPACITY="${2:-}"; EXPLICIT_FLAGS=1; shift 2 ;;
+        --maximized-opacity=*) MAXIMIZED_OPACITY="${1#*=}"; EXPLICIT_FLAGS=1; shift ;;
         --fullscreen-blur)    FULLSCREEN_BLUR=1; FULLSCREEN_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --no-fullscreen-blur) FULLSCREEN_BLUR=0; FULLSCREEN_BLUR_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
         --smooth-animations)    SMOOTH_ANIMATIONS=1; SMOOTH_ANIMATIONS_EXPLICIT=1; EXPLICIT_FLAGS=1; shift ;;
@@ -1447,6 +1453,7 @@ for _flag in "${TYPED_FLAGS[@]}"; do
         --blur-strength) _typed_percent "$_flag" "$BLUR_STRENGTH" "$BLUR_STRENGTH_MIN" "$BLUR_STRENGTH_MAX" ;;
         --blur-brightness) _typed_percent "$_flag" "$BLUR_BRIGHTNESS" "$BLUR_BRIGHTNESS_MIN" "$BLUR_BRIGHTNESS_MAX" ;;
         --popup-opacity) _typed_percent "$_flag" "$POPUP_OPACITY" "$POPUP_OPACITY_MIN" "$POPUP_OPACITY_MAX" main ;;
+        --maximized-opacity) _typed_percent "$_flag" "$MAXIMIZED_OPACITY" "$MAXIMIZED_OPACITY_MIN" "$MAXIMIZED_OPACITY_MAX" ;;
         --panel-height) _typed_percent "$_flag" "$PANEL_HEIGHT" "$PANEL_HEIGHT_MIN" "$PANEL_HEIGHT_MAX" ;;
         --panel-blur-strength|--panel-brightness) ;;   # retired, ignored
         --*-blur-strength)
@@ -1455,7 +1462,12 @@ for _flag in "${TYPED_FLAGS[@]}"; do
             _typed_percent "$_flag" "${!_var}" "$BLUR_STRENGTH_MIN" "$BLUR_STRENGTH_MAX" main ;;
         --window-brightness|--app-brightness|--window-blur-brightness)
             _typed_percent "$_flag" "$WINDOW_BRIGHTNESS" "$BLUR_BRIGHTNESS_MIN" "$BLUR_BRIGHTNESS_MAX" main ;;
-        --popup-brightness|--lockscreen-brightness|--maximized-brightness)
+        --maximized-brightness)
+            # Maximized static blur can go fully black (0); floor is for other surfaces
+            _surface="${_flag%%=*}"; _surface="${_surface#--}"; _surface="${_surface%-brightness}"
+            _var="$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS"
+            _typed_percent "$_flag" "${!_var}" "$MAXIMIZED_BRIGHTNESS_MIN" "$BLUR_BRIGHTNESS_MAX" main ;;
+        --popup-brightness|--lockscreen-brightness)
             _surface="${_flag%%=*}"; _surface="${_surface#--}"; _surface="${_surface%-brightness}"
             _var="$(printf '%s' "$_surface" | tr '[:lower:]' '[:upper:]')_BRIGHTNESS"
             _typed_percent "$_flag" "${!_var}" "$BLUR_BRIGHTNESS_MIN" "$BLUR_BRIGHTNESS_MAX" main ;;

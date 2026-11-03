@@ -89,7 +89,8 @@ implementation view.
 | `--blur-strength P` | 25–200 % of each pipeline's tuned radius, default 100. The main blur amount: every pipeline | `blur-strength` | ✓ | `blur-pipelines` |
 | `--blur-brightness P` | 50–100 % of each pipeline's tuned brightness, default 100. The main brightness: every pipeline (the lock screen's tuned 80 % scales with it) | `blur-brightness` | ✓ | `blur-pipelines` |
 | `--window-blur-strength`, `--popup-blur-strength`, `--lockscreen-blur-strength`, `--maximized-blur-strength` `P\|main` | 25–200, or `main` (default): that surface's own blur amount, replacing `--blur-strength` for it. `maximized` is a window under `--maximized-blur static`, and its `main` is the windows' own value, not `--blur-strength`. `popup` is menus, Quick Settings and notifications; `lockscreen` is also the overview and the top bar, which share its pipeline. `--panel-blur-strength` is retired: accepted and ignored | `<surface>-blur-strength` | ✓ | `blur-pipelines` |
-| `--window-brightness` (`--app-brightness`, `--window-blur-brightness`), `--popup-brightness`, `--lockscreen-brightness`, `--maximized-brightness` `P\|main` | 50–100, or `main` (default): that surface's own brightness, replacing `--blur-brightness` for it (`maximized`: the windows' own value). `--panel-brightness` is retired: accepted and ignored | `<surface>-blur-brightness` (legacy `window-brightness` 100 and `popup-brightness` 100/115 read as `main`, other legacy values as the override) | ✓ | `blur-pipelines` |
+| `--window-brightness` (`--app-brightness`, `--window-blur-brightness`), `--popup-brightness`, `--lockscreen-brightness`, `--maximized-brightness` `P\|main` | 50–100 (0–100 for `--maximized-brightness`), or `main` (default): that surface's own brightness, replacing `--blur-brightness` for it (`maximized`: the windows' own value). `--panel-brightness` is retired: accepted and ignored | `<surface>-blur-brightness` (legacy `window-brightness` 100 and `popup-brightness` 100/115 read as `main`, other legacy values as the override) | ✓ | `blur-pipelines` |
+| `--maximized-opacity P` | 0–100, default 100: how much of a maximized window's static blur shows | `maximized-opacity` | ✓ | `maximized-blur` |
 | `--grain N` / `--no-grain` | 0–1, default 0 | `grain` | | full |
 | `--glass-style S` | `frosted` (default), `liquid`, `vibrant`, `tinted` (accent colour), `smoked`. Liquid: the dock alone, and makes its blur static; the top bar stays frosted. The others: pipeline `lock screen`, so top bar, overview and lock screen together; the dock stays frosted | `glass-style` | | full |
 | `--liquid-windows` / `--no-liquid-windows` | off. Liquid or vibrant behind app windows too (ignored under tinted and smoked); makes `[applications] static-blur` true | `liquid-windows` | | full |
@@ -167,9 +168,10 @@ not adaptive).
 | `panel-height` | 24–48 | `install_css` |
 | `tray-icon-size` | the Status Tray `icon-size` last written from the display density; a different live value counts as set by hand | `sync_tray_icon_size` |
 | `maximized-panel-brightness` | 0–100 | `install_css` |
+| `maximized-opacity` | 0-100 | `apply_maximized_blur` |
 | `blur-strength`, `blur-brightness` | 25–200, 50–100 | `apply_blur_pipelines` |
 | `{window,popup,panel,lockscreen,maximized}-blur-strength` | 25–200 or `main` | `apply_blur_pipelines` |
-| `{window,popup,panel,lockscreen,maximized}-blur-brightness` | 50–100 or `main` | `apply_blur_pipelines` |
+| `{window,popup,panel,lockscreen,maximized}-blur-brightness` | 50–100 (0–100 for `maximized`) or `main` | `apply_blur_pipelines` |
 | `popup-brightness`, `window-brightness`, `notification-opacity`, `notification-blur` | legacy, no longer written. The two brightness memos are read once as the per-surface value when the new memo is absent | none |
 | `grain` | 0–1 | `apply_grain` |
 | `glass-style` | `frosted\|liquid\|vibrant\|tinted\|smoked` | `apply_glass_style` |

@@ -34,7 +34,7 @@ select_apply_actions() {
             # of them, alone or together, is that one step.
             --blur-strength|--blur-strength=*|--blur-brightness|--blur-brightness=*|--*-blur-strength|--*-blur-strength=*|--window-brightness|--window-brightness=*|--app-brightness|--app-brightness=*|--window-blur-brightness|--window-blur-brightness=*|--popup-brightness|--popup-brightness=*|--panel-brightness|--panel-brightness=*|--lockscreen-brightness|--lockscreen-brightness=*|--maximized-brightness|--maximized-brightness=*) _apply_add blur-pipelines ;;
             --fullscreen-blur|--no-fullscreen-blur) _apply_add fullscreen-blur ;;
-            --maximized-blur|--maximized-blur=*) _apply_add maximized-blur ;;
+            --maximized-blur|--maximized-blur=*|--maximized-opacity|--maximized-opacity=*) _apply_add maximized-blur ;;
             --osd-device-name|--no-osd-device-name) _apply_add osd-device-name ;;
             --osd-style|--osd-style=*) _apply_add osd-style ;;
             --osd-opacity|--osd-opacity=*|--osd-tint|--osd-tint=*) _apply_add osd-background ;;

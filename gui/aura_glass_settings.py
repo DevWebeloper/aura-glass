@@ -268,6 +268,14 @@ BLUR_STRENGTH_SNAP = 4
 # them is; 100 is the tuned set and the default.
 BLUR_BRIGHTNESS_MIN = 50
 BLUR_BRIGHTNESS_MAX = 100
+# The user asked for a maximized static blur that can go fully black; the floor
+# exists for the other surfaces only (0 allows fully black).
+MAXIMIZED_BRIGHTNESS_MIN = 0
+
+
+def surface_brightness_min(sid=None):
+    # 0 allows maximized static blur to go fully black; the floor exists for other surfaces
+    return MAXIMIZED_BRIGHTNESS_MIN if sid == "maximized" else BLUR_BRIGHTNESS_MIN
 
 BLUR_BRIGHTNESS_MARKS = [
     (70, "dim"),
@@ -327,6 +335,12 @@ SURFACE_BRIGHTNESS_LEGACY = {
 MAXIMIZED_PANEL_BRIGHTNESS_MIN = 0
 MAXIMIZED_PANEL_BRIGHTNESS_MAX = 100
 MAXIMIZED_PANEL_BRIGHTNESS_SHIPPED = 40
+
+# --maximized-opacity, how much of the static blur shows: 0 clear, 100 whole.
+# MAXIMIZED_OPACITY_MIN, _MAX and _SHIPPED in lib/steps-dconf.sh hold the shell copy.
+MAXIMIZED_OPACITY_MIN = 0  # 0 is clear glass (no static blur)
+MAXIMIZED_OPACITY_MAX = 100  # 100 is whole static blur
+MAXIMIZED_OPACITY_SHIPPED = 100  # 100 is shipped default
 
 MAXIMIZED_PANEL_BRIGHTNESS_MARKS = [
     (MAXIMIZED_PANEL_BRIGHTNESS_MIN, "black"),
@@ -747,6 +761,7 @@ FLAG_LABELS = {
     "--blur-strength": ("glass", "Blur amount"),
     "--blur-brightness": ("glass", "Brightness"),
     "--popup-opacity": ("glass", "Popups & notifications opacity"),
+    "--maximized-opacity": ("glass", "Maximized windows blur opacity"),
     "--osd-opacity": ("glass", "Volume popup opacity"),
     "--osd-tint": ("glass", "Volume popup tint"),
     "--app-blur-allow": ("apps", "Blur allow list"),
@@ -1382,7 +1397,7 @@ def read_surface_memos(directory):
             directory, "%s-blur-strength" % sid, BLUR_STRENGTH_MIN,
             BLUR_STRENGTH_MAX)
         brightness[sid] = read_surface_memo(
-            directory, "%s-blur-brightness" % sid, BLUR_BRIGHTNESS_MIN,
+            directory, "%s-blur-brightness" % sid, surface_brightness_min(sid),
             BLUR_BRIGHTNESS_MAX, surface=sid)
     return strength, brightness
 
@@ -3024,6 +3039,8 @@ class Settings:
             self.surface_strength = {sid: "main" for sid, _t, _s in BLUR_SURFACES}
             self.surface_brightness = {sid: "main" for sid, _t, _s in BLUR_SURFACES}
             self.popup_opacity = "main"
+            # 100 is whole static blur (performance default)
+            self.maximized_opacity = 100
             self.osd_opacity = int(read_mode_memo("performance", "osd-opacity", "100") or "100")
             self.osd_tint = read_mode_memo("performance", "osd-tint", "#000000") or "#000000"
         else:
@@ -3045,6 +3062,10 @@ class Settings:
                 read_surface_memos(CONF_DIR)
             self.popup_opacity = read_surface_memo(
                 CONF_DIR, "popup-opacity", POPUP_OPACITY_MIN, POPUP_OPACITY_MAX)
+            # 0 clear, 100 whole; default 100
+            self.maximized_opacity = read_bounded_memo(
+                "maximized-opacity", MAXIMIZED_OPACITY_MIN,
+                MAXIMIZED_OPACITY_MAX, MAXIMIZED_OPACITY_SHIPPED)
 
         # Which windows the applications component treats. Blur My Shell reads
         # one or the other depending on enable-all, which is the same choice
@@ -3218,16 +3239,25 @@ class Settings:
                 surface_strength = {sid: "main" for sid, _t, _s in BLUR_SURFACES}
                 surface_brightness = dict(surface_strength)
                 popup_opacity = "main"
+                # 100 is whole static blur (performance default)
+                maximized_opacity = 100
             else:
                 source = drawer if os.path.isdir(drawer) else CONF_DIR
                 brightness = surface_value(
                     read_dir_memo(source, "blur-brightness"),
-                    BLUR_BRIGHTNESS_MIN, BLUR_BRIGHTNESS_MAX)
+                    surface_brightness_min(), BLUR_BRIGHTNESS_MAX)
                 brightness = 100 if brightness == "main" else brightness
                 surface_strength, surface_brightness = read_surface_memos(source)
                 popup_opacity = read_surface_memo(
                     source, "popup-opacity", POPUP_OPACITY_MIN,
                     POPUP_OPACITY_MAX)
+                # 0 clear, 100 whole; default 100
+                maximized_opacity = surface_value(
+                    read_dir_memo(source, "maximized-opacity"),
+                    MAXIMIZED_OPACITY_MIN, MAXIMIZED_OPACITY_MAX)
+                maximized_opacity = (MAXIMIZED_OPACITY_SHIPPED
+                                     if maximized_opacity == "main"
+                                     else maximized_opacity)
 
             if mode == "performance":
                 def_popup = "0"
@@ -3250,6 +3280,7 @@ class Settings:
                 "surface_strength": surface_strength,
                 "surface_brightness": surface_brightness,
                 "popup_opacity": popup_opacity,
+                "maximized_opacity": maximized_opacity,
                 "popup_blur": read_mode_memo(mode, "popup-blur", def_popup) != "0",
                 "scope": read_mode_memo(mode, "app-blur-scope", def_scope),
                 "osd_opacity": mode_osd_opacity,
@@ -3272,6 +3303,7 @@ class Settings:
                 "surface_strength": dict(self.surface_strength),
                 "surface_brightness": dict(self.surface_brightness),
                 "popup_opacity": self.popup_opacity,
+                "maximized_opacity": self.maximized_opacity,
                 "popup_blur": self.popup_blur,
                 "scope": self.scope,
                 "osd_opacity": self.osd_opacity,
@@ -3475,6 +3507,8 @@ class Settings:
                              str(self.surface_brightness[sid])]
             if self.popup_opacity != other.popup_opacity:
                 args += ["--popup-opacity", str(self.popup_opacity)]
+            if self.maximized_opacity != other.maximized_opacity:
+                args += ["--maximized-opacity", str(self.maximized_opacity)]
             if self.osd_opacity != osd_opacity_base:
                 args += ["--osd-opacity", str(self.osd_opacity)]
             if self.osd_tint != osd_tint_base:
@@ -5196,6 +5230,7 @@ class Window(Adw.ApplicationWindow):
         "--app-transparency", "--no-app-transparency",
         "--radius-preset", "--radius-custom",
         "--blur-strength", "--blur-brightness", "--popup-opacity",
+        "--maximized-opacity",
         "--popup-blur", "--no-popup-blur", "--panel-height",
         "--maximized-panel-brightness", "--maximized-blur",
     )) | frozenset(
@@ -5262,7 +5297,7 @@ class Window(Adw.ApplicationWindow):
                   "--dock-tint %s --panel-tint %s --maximized-panel-tint %s "
                   "--transparency %s --radius-custom %s --blur-strength %s "
                   "--blur-brightness %s %s --popup-opacity %s "
-                  "--popup-blur %s --panel-height %s "
+                  "--maximized-opacity %s --popup-blur %s --panel-height %s "
                   "--maximized-panel-brightness %s --maximized-blur %s "
                   "--window-blur %s --scope %s "
                   "--app-blur-allow %s --app-blur-block %s"
@@ -5279,6 +5314,7 @@ class Window(Adw.ApplicationWindow):
                             sid, q(str(current.surface_brightness[sid])))
                          for sid, _t, _s in BLUR_SURFACES),
                      q(str(current.popup_opacity)),
+                     q(str(current.maximized_opacity)),
                      q("1" if current.popup_blur else "0"),
                      q(str(current.panel_height)),
                      q(str(current.maximized_panel_brightness)),
@@ -6630,11 +6666,13 @@ class Window(Adw.ApplicationWindow):
                 section, sid, "strength", "Blur amount",
                 BLUR_STRENGTH_MIN, BLUR_STRENGTH_MAX, BLUR_STRENGTH_MARKS, 25,
                 BLUR_STRENGTH_SNAP, frosted["surface_strength"][sid])
+            # 0 allows fully black static blur, 100 tuned look
+            bmarks = [(0, "black"), (100, "tuned")] if sid == "maximized" else BLUR_BRIGHTNESS_MARKS
             self._surface_rows[(sid, "brightness")] = self._surface_row(
                 section, sid, "brightness", "Brightness",
-                BLUR_BRIGHTNESS_MIN, BLUR_BRIGHTNESS_MAX,
-                BLUR_BRIGHTNESS_MARKS, 10, BLUR_BRIGHTNESS_SNAP,
-                frosted["surface_brightness"][sid])
+                surface_brightness_min(sid), BLUR_BRIGHTNESS_MAX,
+                bmarks, 10, BLUR_BRIGHTNESS_SNAP,
+                frosted["surface_brightness"][sid], step=5)
             # One opacity for popups and banners together; the windows' own is
             # the main Opacity bar, and the top bar and lock screen paint
             # their own grounds.
@@ -6643,6 +6681,18 @@ class Window(Adw.ApplicationWindow):
                     section, sid, "opacity", "Opacity",
                     POPUP_OPACITY_MIN, POPUP_OPACITY_MAX, TRANSPARENCY_MARKS, 5,
                     TRANSPARENCY_SNAP, frosted["popup_opacity"], step=1)
+            if sid == "maximized":
+                # 0 shows the desktop through, 100 the whole static blur. Fives like the bars above it.
+                scale = self._percent_scale(
+                    0, 100, [(0, "clear"), (100, "whole")], 10,
+                    BLUR_BRIGHTNESS_SNAP, frosted["maximized_opacity"], step=5)
+                self._maximized_opacity_scale = scale
+                scale.connect("value-changed", self._on_percent_changed)
+                row = self._slider_row(
+                    "Opacity",
+                    "How much of the static blur shows. Lower lets the desktop behind it through",
+                    scale)
+                section.add(row)
             studio.add_settings(chip, section)
             self._sync_surface_summary(section)
             if sid == "maximized":
@@ -9063,6 +9113,7 @@ class Window(Adw.ApplicationWindow):
             s.surface_strength = dict(performance["surface_strength"])
             s.surface_brightness = dict(performance["surface_brightness"])
             s.popup_opacity = performance["popup_opacity"]
+            s.maximized_opacity = performance["maximized_opacity"]
             s.scope = "none"
             s.transparency = percent_to_level(
                 round(self._p_transparency_scale.get_value()))
@@ -9085,6 +9136,7 @@ class Window(Adw.ApplicationWindow):
                 sid: self._surface_value(sid, "brightness")
                 for sid, _t, _s in BLUR_SURFACES}
             s.popup_opacity = self._surface_value("popup", "opacity")
+            s.maximized_opacity = int(round(self._maximized_opacity_scale.get_value()))
             s.scope = self._scope()
             # Opaque windows are a flat "0", shown at the bar's 100%. Left at
             # 100 the "0" stands, so an untouched bar sends nothing — unless
@@ -9383,6 +9435,7 @@ class Window(Adw.ApplicationWindow):
                 "strength": frosted["surface_strength"][sid],
                 "brightness": frosted["surface_brightness"][sid],
                 "opacity": frosted["popup_opacity"]}[kind])
+        self._maximized_opacity_scale.set_value(frosted["maximized_opacity"])
 
         # In place rather than rebound: the per-app page's rows read
         # self._allow / self._block straight off this window on every rebuild,

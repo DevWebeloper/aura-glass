@@ -813,11 +813,22 @@ apply_fullscreen_blur() {
     fi
 }
 
+# --maximized-opacity: how much of a static maximized window's blur shows. It is
+# the blur layer's own opacity (maximized-blur-opacity, a key
+# patches/blur-my-shell-static-maximized.patch adds), so the unblurred desktop
+# behind it shows through by the rest. 100, the blur whole, is the shipped value
+# and changes nothing; 0 is no blur at all. The settings app keeps its own copy
+# (MAXIMIZED_OPACITY_* in gui/aura_glass_settings.py).
+MAXIMIZED_OPACITY_MIN=0
+MAXIMIZED_OPACITY_MAX=100
+MAXIMIZED_OPACITY_SHIPPED=100
+
 # Whether a window covering its monitor keeps the cheaper static blur, through
-# pipeline `maximized`, or is one more dynamic window on the windows' pipeline.
+# pipeline `maximized`, or is one more dynamic window on the windows' pipeline,
+# and how much of that blur shows (maximized-blur-opacity).
 # Static unless asked: maximized-static-blur in dconf/core.ini says why. Written
 # on every run for the reason apply_fullscreen_blur is. An installed Blur My Shell
-# without patches/blur-my-shell-static-maximized.patch's key ignores it.
+# without patches/blur-my-shell-static-maximized.patch's keys ignores them.
 apply_maximized_blur() {
     local base=/org/gnome/shell/extensions/blur-my-shell
     local want="${MAXIMIZED_BLUR:-}" memo="$CONF_DIR/maximized-blur"
@@ -839,6 +850,27 @@ apply_maximized_blur() {
         run dconf write "$base/applications/maximized-static-blur" true
         ok "maximized windows keep a static blur of their own"
     fi
+
+    want="${MAXIMIZED_OPACITY:-}"
+    local op_memo="$CONF_DIR/maximized-opacity" shipped="$MAXIMIZED_OPACITY_SHIPPED"
+    [ -n "$want" ] || want="$(cat "$op_memo" 2>/dev/null || true)"
+    case "$want" in
+        '') want="$shipped" ;;
+        *[!0-9]*) warn "--maximized-opacity '$want' is not a whole percentage — using ${shipped}" >&2
+                  want="$shipped" ;;
+        *) if [ "$want" -lt "$MAXIMIZED_OPACITY_MIN" ] || [ "$want" -gt "$MAXIMIZED_OPACITY_MAX" ]; then
+               warn "--maximized-opacity $want is outside ${MAXIMIZED_OPACITY_MIN}-${MAXIMIZED_OPACITY_MAX} — using ${shipped}" >&2
+               want="$shipped"
+           fi ;;
+    esac
+
+    if remembering; then
+        mkdir -p "$CONF_DIR"
+        printf '%s\n' "$want" > "$op_memo"
+    fi
+
+    run dconf write "$base/applications/maximized-blur-opacity" "$want"
+    ok "static blur on maximized windows at ${want}% opacity (remembered for later runs)"
 }
 
 # --smooth-animations: VRAM and a little latency traded for animations that
@@ -1518,6 +1550,9 @@ BLUR_STRENGTH_MAX=200
 # --popup-brightness had, below which the glass reads as a grey film.
 BLUR_BRIGHTNESS_MIN=50
 BLUR_BRIGHTNESS_MAX=100
+# The user asked for a maximized static blur that can go fully black; the floor
+# exists for the other surfaces only (0 allows fully black).
+MAXIMIZED_BRIGHTNESS_MIN=0
 
 # surface:memo-prefix:dconf component. The memo prefix names the flags too
 # (--window-blur-strength, --window-brightness). maximized has no component key
@@ -1585,7 +1620,7 @@ surface_value_checked() {
 # mode (load_glass_mode_memos), so this only reaches the memos for a run
 # without one.
 resolve_blur_pipelines() {
-    local entry surface var bvar legacy memo
+    local entry surface var bvar legacy memo bmin
     [ -n "${BLUR_STRENGTH:-}" ] || BLUR_STRENGTH="$(cat "$CONF_DIR/blur-strength" 2>/dev/null || true)"
     BLUR_STRENGTH="${BLUR_STRENGTH:-100}"
     [ -n "${BLUR_BRIGHTNESS:-}" ] || BLUR_BRIGHTNESS="$(cat "$CONF_DIR/blur-brightness" 2>/dev/null || true)"
@@ -1603,7 +1638,9 @@ resolve_blur_pipelines() {
             printf -v "$bvar" '%s' "$(surface_memo_read "$CONF_DIR" "$surface-blur-brightness" $legacy)"
         fi
         printf -v "$var" '%s' "$(surface_value_checked "--$surface-blur-strength" "${!var}" "$BLUR_STRENGTH_MIN" "$BLUR_STRENGTH_MAX")"
-        printf -v "$bvar" '%s' "$(surface_value_checked "--$surface-brightness" "${!bvar}" "$BLUR_BRIGHTNESS_MIN" "$BLUR_BRIGHTNESS_MAX")"
+        bmin="$BLUR_BRIGHTNESS_MIN"
+        [ "$surface" = maximized ] && bmin="$MAXIMIZED_BRIGHTNESS_MIN"
+        printf -v "$bvar" '%s' "$(surface_value_checked "--$surface-brightness" "${!bvar}" "$bmin" "$BLUR_BRIGHTNESS_MAX")"
     done
     # The two main numbers have no `main` to fall back to, so a bad memo goes
     # back to the tuned 100.

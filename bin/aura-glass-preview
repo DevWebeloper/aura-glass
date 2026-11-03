@@ -15,6 +15,7 @@
 #                            [--popup-opacity PCT|main] [--popup-blur 0|1]
 #                            [--panel-height PX]
 #                            [--maximized-panel-brightness PCT]
+#                            [--maximized-opacity PCT]
 #                            [--maximized-blur static|dynamic]
 #                            [--window-blur 0|1] [--scope gtk|all]
 #                            [--app-blur-allow LIST] [--app-blur-block LIST]
@@ -112,7 +113,7 @@ BMS=/org/gnome/shell/extensions/blur-my-shell
 # stop it. set no longer touches any of them, but begin still snapshots them and
 # revert still restores them: that is what repairs a $CONF_DIR left mid-preview
 # by an older build of this script.
-PREVIEW_MEMOS="app-tint-color shell-tint-color dock-tint-color panel-tint-color maximized-panel-tint-color app-transparency radius-preset radius-custom blur-strength blur-brightness window-blur-strength popup-blur-strength lockscreen-blur-strength maximized-blur-strength window-blur-brightness popup-blur-brightness lockscreen-blur-brightness maximized-blur-brightness maximized-blur popup-opacity panel-height maximized-panel-brightness popup-blur window-blur app-blur-scope app-blur-allow app-blur-block"
+PREVIEW_MEMOS="app-tint-color shell-tint-color dock-tint-color panel-tint-color maximized-panel-tint-color app-transparency radius-preset radius-custom blur-strength blur-brightness window-blur-strength popup-blur-strength lockscreen-blur-strength maximized-blur-strength window-blur-brightness popup-blur-brightness lockscreen-blur-brightness maximized-blur-brightness maximized-blur popup-opacity panel-height maximized-panel-brightness maximized-opacity popup-blur window-blur app-blur-scope app-blur-allow app-blur-block"
 
 usage() {
     printf 'usage: aura-glass-preview begin|set [options]|apps [options]|app-blur --wm-class CLASS --enabled 0|1|commit --session ID -- INSTALLER [ARG...]|revert [--session ID]|status [--json]\n' >&2
@@ -185,7 +186,8 @@ cmd_set() {
     done
 
     local session="" app_tint="" shell_tint="" transparency="" radius_preset="" \
-        radius_custom="" blur_strength="" blur_brightness="" popup_opacity="" panel_height="" maximized_panel_brightness="" \
+        radius_custom="" blur_strength="" blur_brightness="" popup_opacity="" panel_height="" \
+        maximized_panel_brightness="" maximized_opacity="" \
         popup_blur="" window_blur="" scope="" glass_mode="" surface_var="" maximized_blur="" \
         app_blur_allow="" app_blur_allow_given=0 \
         app_blur_block="" app_blur_block_given=0
@@ -216,6 +218,7 @@ cmd_set() {
             --popup-opacity) popup_opacity="$2"; shift 2 ;;
             --panel-height) panel_height="$2"; shift 2 ;;
             --maximized-panel-brightness) maximized_panel_brightness="$2"; shift 2 ;;
+            --maximized-opacity) maximized_opacity="$2"; shift 2 ;;
             --maximized-blur) maximized_blur="$2"; shift 2 ;;
             --popup-blur) popup_blur="$2"; shift 2 ;;
             --window-blur) window_blur="$2"; shift 2 ;;
@@ -259,6 +262,7 @@ cmd_set() {
     [ -n "$popup_opacity" ] && export POPUP_OPACITY="$popup_opacity"
     [ -n "$panel_height" ] && export PANEL_HEIGHT="$panel_height"
     [ -n "$maximized_panel_brightness" ] && export MAXIMIZED_PANEL_BRIGHTNESS="$maximized_panel_brightness"
+    [ -n "$maximized_opacity" ] && export MAXIMIZED_OPACITY="$maximized_opacity"
 
     if [ -n "$radius_custom" ]; then
         IFS=',' read -r TOKEN_RADIUS_WINDOW TOKEN_RADIUS_MENU \
