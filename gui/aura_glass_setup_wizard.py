@@ -120,7 +120,6 @@ FONT_SAMPLES = {
     "side-home": ("Home", 8.5, "normal"),
     "side-photos": ("Photos", 8.5, "normal"),
     "side-music": ("Music", 8.5, "normal"),
-    "heading": ("Recent", 10, "bold"),
     "osd-capsule": ("Speakers – Built-in Audio", 12.5, "medium"),
     "osd-tab": ("Speakers – Built-in Audio", 12, "normal"),
     "osd-stock": ("Speakers – Built-in Audio", 14.67, "bold"),
@@ -254,6 +253,11 @@ checkbutton radio:checked, checkbutton check:checked {
 }
 switch:checked { background-color: @aura_accent; background-image: none; }
 scale > trough > highlight { background-color: @aura_accent; background-image: none; }
+.welcome-title {
+    font-size: 34px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+}
 .page-eyebrow {
     font-size: smaller;
     font-weight: bold;
@@ -1446,10 +1450,7 @@ class Window(Adw.ApplicationWindow):
             inner.append(side)
             text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6,
                            hexpand=True)
-            heading = self.mock_text("heading")
-            heading.set_halign(Gtk.Align.START)
-            text.append(heading)
-            for _ in range(3):
+            for _ in range(4):
                 line = Gtk.Box()
                 line.add_css_class("mock-line")
                 text.append(line)
@@ -1457,15 +1458,17 @@ class Window(Adw.ApplicationWindow):
             frame.append(inner)
             return frame
 
+        # Both windows start below the top bar tab popup, which hangs 14 + 23
+        # px down in the middle (osd_scene), so it never covers a title.
         unit = height / 210
         overlay.add_overlay(window(
-            "browser", "title-web", int(250 * unit), int(120 * unit),
+            "browser", "title-web", int(250 * unit), int(100 * unit),
             halign=Gtk.Align.CENTER, valign=Gtk.Align.START,
-            margin_top=int(26 * unit), margin_end=int(110 * unit)))
+            margin_top=int(44 * unit), margin_end=int(110 * unit)))
         overlay.add_overlay(window(
-            None, "title-files", int(250 * unit), int(120 * unit),
+            None, "title-files", int(250 * unit), int(100 * unit),
             halign=Gtk.Align.CENTER, valign=Gtk.Align.START,
-            margin_top=int(48 * unit), margin_start=int(110 * unit)))
+            margin_top=int(62 * unit), margin_start=int(110 * unit)))
 
         dock = Gtk.Box(spacing=5, halign=Gtk.Align.CENTER,
                        valign=Gtk.Align.END, margin_bottom=8)
@@ -1489,14 +1492,31 @@ class Window(Adw.ApplicationWindow):
             self.repo, "gui", "icons",
             "io.github.DevWebeloper.AuraGlassSettings.svg"))))
 
+        eyebrow = Gtk.Label(label="WELCOME TO", xalign=0)
+        eyebrow.add_css_class("page-eyebrow")
         title = Gtk.Label(label="Aura Glass", xalign=0)
-        title.add_css_class("title-1")
+        title.add_css_class("welcome-title")
         tagline = Gtk.Label(
-            label="One frosted material across the shell and your apps. Take "
-                  "the best of it in one click, or choose each part yourself. "
-                  "Everything can be changed later in Aura Glass Settings.",
+            label="Your whole desktop, in frosted glass. The shell, your apps, "
+                  "the icons, the pointer, even the login screen, all one "
+                  "material.",
             xalign=0, wrap=True)
         tagline.add_css_class("dim-label")
+
+        def perk(icon, heading, text):
+            box = Gtk.Box(spacing=10, hexpand=True, valign=Gtk.Align.START)
+            box.append(self.badge(icon))
+            words = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1,
+                            hexpand=True, valign=Gtk.Align.CENTER)
+            head = Gtk.Label(label=heading, xalign=0)
+            head.add_css_class("heading")
+            words.append(head)
+            line = Gtk.Label(label=text, xalign=0, wrap=True)
+            line.add_css_class("caption")
+            line.add_css_class("dim-label")
+            words.append(line)
+            box.append(words)
+            return box
 
         def path_card(icon, heading, text, pill, primary, on_click, tooltip):
             button = Gtk.Button(hexpand=True)
@@ -1548,15 +1568,24 @@ class Window(Adw.ApplicationWindow):
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20,
                        margin_top=6, margin_bottom=24,
                        margin_start=20, margin_end=20)
-        body.append(self.mock_desktop(240, osd="welcome"))
+        body.append(self.mock_desktop(260, osd="welcome"))
         words = Gtk.Box(spacing=16)
         words.append(logo)
-        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4,
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2,
                        hexpand=True, valign=Gtk.Align.CENTER)
+        text.append(eyebrow)
         text.append(title)
-        text.append(tagline)
         words.append(text)
         body.append(words)
+        body.append(tagline)
+        perks = Gtk.Box(spacing=14, homogeneous=True)
+        perks.append(perk("applications-graphics-symbolic", "Frosted everywhere",
+                          "Shell, GTK4 and GTK3 apps share one look."))
+        perks.append(perk("starred-symbolic", "Made to match",
+                          "Icons, pointer, font and colour to go with it."))
+        perks.append(perk("edit-undo-symbolic", "Fully reversible",
+                          "Change anything later, or uninstall cleanly."))
+        body.append(perks)
         paths = Gtk.Box(spacing=10, homogeneous=True)
         paths.append(best)
         paths.append(custom)
