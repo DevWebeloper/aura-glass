@@ -5255,45 +5255,63 @@ class Window(Adw.ApplicationWindow):
     def _launch_preview_operation(self, kind, argv, generation):
         """Launch the queue's next operation and bind its immutable metadata."""
         self._preview_generation = generation
-        if kind == "apply":
-            self._start_apply(list(argv), generation)
-            return
-        if kind == "revert":
+        try:
+            if kind == "apply":
+                self._start_apply(list(argv), generation)
+                return
+            if kind == "revert":
+                self._preview_proc = stream_command(
+                    list(argv), lambda _line: None,
+                    lambda ok, message: self._on_preview_reverted(
+                        generation, ok, message))
+                return
+            fast = self._preview_fast_by_argv.pop(tuple(argv), False)
             self._preview_proc = stream_command(
                 list(argv), lambda _line: None,
-                lambda ok, message: self._on_preview_reverted(
-                    generation, ok, message))
-            return
-        fast = self._preview_fast_by_argv.pop(tuple(argv), False)
-        self._preview_proc = stream_command(
-            list(argv), lambda _line: None,
-            lambda ok, message: self._on_preview_set_done(
-                generation, fast, ok, message))
+                lambda ok, message: self._on_preview_set_done(
+                    generation, fast, ok, message))
+        except Exception:
+            # PreviewQueue frees its slot when a launch raises, but not what
+            # this window raised for it. Left up, _preview_terminal_requested
+            # answers every later Apply with "already finishing" and _running
+            # keeps Apply greyed out, for the rest of the session.
+            self._preview_proc = None
+            self._preview_terminal_requested = False
+            if kind == "apply":
+                self._close_after_apply = False
+                if self._running:
+                    self._run_finished(False, "Could not start the apply")
+            raise
 
     def _on_preview_set_done(self, generation, fast, ok, message):
         if self._preview_generation != generation:
             return
         self._preview_proc = None
-        if ok:
-            self._preview_active = True
-            try:
-                with open(os.path.join(CONF_DIR, "preview-backup", "session"),
-                          encoding="utf-8") as stream:
-                    self._preview_session = stream.read().strip() or None
-            except OSError:
-                self._preview_session = None
-            self._sync_preview_bar()
-            # The fast path never touches the CSS this window itself wears —
-            # apps mode is four dconf writes — so there is nothing on disk
-            # for a re-read to pick up.
-            if not fast:
-                self._reload_preview_css()
-        else:
-            self._preview_active = False
-            self._sync_preview_bar()
-            self._toasts.add_toast(Adw.Toast(
-                title="Preview failed — %s" % message))
-        self._preview_queue.finish(generation)
+        # try/finally because PreviewQueue holds its one slot until finish().
+        # Anything below raising used to skip it, and then the preview never
+        # fired again and Apply sat behind a request that could not complete.
+        try:
+            if ok:
+                self._preview_active = True
+                try:
+                    with open(os.path.join(CONF_DIR, "preview-backup", "session"),
+                              encoding="utf-8") as stream:
+                        self._preview_session = stream.read().strip() or None
+                except OSError:
+                    self._preview_session = None
+                self._sync_preview_bar()
+                # The fast path never touches the CSS this window itself wears —
+                # apps mode is four dconf writes — so there is nothing on disk
+                # for a re-read to pick up.
+                if not fast:
+                    self._reload_preview_css()
+            else:
+                self._preview_active = False
+                self._sync_preview_bar()
+                self._toasts.add_toast(Adw.Toast(
+                    title="Preview failed — %s" % message))
+        finally:
+            self._preview_queue.finish(generation)
 
     def _reload_preview_css(self):
         """The GTK4 half of the preview: this window wearing its own candidate.
@@ -5355,25 +5373,28 @@ class Window(Adw.ApplicationWindow):
             return
         self._preview_proc = None
         self._preview_terminal_requested = False
-        if ok:
-            self._preview_active = False
-            self._preview_session = None
-            self._sync_preview_bar()
-            self._clear_preview_css()
-            if hasattr(self, "_applied") and getattr(self._applied, "glass_mode", None) == "performance":
-                self._sync_live_window_opacity(level_to_percent(self._applied.transparency))
-            if self._recovering_preview:
+        # Released in a finally for the reason _on_preview_set_done gives.
+        try:
+            if ok:
+                self._preview_active = False
+                self._preview_session = None
+                self._sync_preview_bar()
+                self._clear_preview_css()
+                if hasattr(self, "_applied") and getattr(self._applied, "glass_mode", None) == "performance":
+                    self._sync_live_window_opacity(level_to_percent(self._applied.transparency))
+                if self._recovering_preview:
+                    self._recovering_preview = False
+                    self._toasts.add_toast(Adw.Toast(
+                        title="A preview from before was reverted"))
+                if self._close_after_revert:
+                    self._close_after_revert = False
+                    self.destroy()
+            else:
                 self._recovering_preview = False
                 self._toasts.add_toast(Adw.Toast(
-                    title="A preview from before was reverted"))
-            if self._close_after_revert:
-                self._close_after_revert = False
-                self.destroy()
-        else:
-            self._recovering_preview = False
-            self._toasts.add_toast(Adw.Toast(
-                title="Could not revert the preview — %s" % message))
-        self._preview_queue.finish(generation)
+                    title="Could not revert the preview — %s" % message))
+        finally:
+            self._preview_queue.finish(generation)
 
     def _sync_preview_bar(self):
         self._preview_reveal.set_reveal_child(self._preview_active)
@@ -9942,34 +9963,42 @@ class Window(Adw.ApplicationWindow):
             # still be armed for whichever Apply comes next.
             close_after = self._close_after_apply
             self._close_after_apply = False
-            if not ok:
-                failed = "install.sh failed"
-                if message:
-                    failed = "%s — %s" % (failed, message)
-                self._run_finished(False, failed)
-                self._toasts.add_toast(Adw.Toast(
-                    title="Could not apply — see the details"))
+            # finish() in a finally, and _run_finished too: PreviewQueue holds
+            # its slot until finish(), and _running is what greys Apply out.
+            # An error in _reload or the toast used to skip both, and the
+            # window stayed on "Applying…" with Apply dead until it was closed.
+            try:
+                if not ok:
+                    failed = "install.sh failed"
+                    if message:
+                        failed = "%s — %s" % (failed, message)
+                    self._run_finished(False, failed)
+                    self._toasts.add_toast(Adw.Toast(
+                        title="Could not apply — see the details"))
+                    return
+                # The disk first, then the verdict: _reload puts every row back
+                # in step with what was actually installed, and _run_finished
+                # ends by asking whether there is anything left to apply.
+                said = self._applied_message()
+                # commit removed the preview journal along with the marker, so
+                # the window must stop describing a preview before _reload
+                # reaches _mark_dirty.  Otherwise its no-pending-changes path
+                # asks for a Revert while this Apply still owns PreviewQueue;
+                # that request is intentionally dropped, but it leaves the
+                # terminal-request flag raised and makes the next Apply look
+                # permanently busy.
+                self._preview_active = False
+                self._preview_session = None
+                self._sync_preview_bar()
+                try:
+                    self._reload()
+                finally:
+                    self._run_finished(True, said)
+                self._toasts.add_toast(Adw.Toast(title=said))
+                if close_after:
+                    self.destroy()
+            finally:
                 self._preview_queue.finish(generation)
-                return
-            # The disk first, then the verdict: _reload puts every row back in
-            # step with what was actually installed, and _run_finished ends by
-            # asking whether there is anything left to apply.
-            said = self._applied_message()
-            # commit removed the preview journal along with the marker, so the
-            # window must stop describing a preview before _reload reaches
-            # _mark_dirty.  Otherwise its no-pending-changes path asks for a
-            # Revert while this Apply still owns PreviewQueue; that request is
-            # intentionally dropped, but it leaves the terminal-request flag
-            # raised and makes the next Apply look permanently busy.
-            self._preview_active = False
-            self._preview_session = None
-            self._sync_preview_bar()
-            self._reload()
-            self._run_finished(True, said)
-            self._toasts.add_toast(Adw.Toast(title=said))
-            if close_after:
-                self.destroy()
-            self._preview_queue.finish(generation)
 
         stream_command(argv, self._run_line, done)
 
