@@ -495,6 +495,7 @@ KI-25). Both tray profiles in Performance left dconf and both shell sheets
 untouched (KI-02). An incremental `--app-tint-color` survived the next full
 retune in the memo, the drawer and `gtk.css` (KI-01).
 
+- **Apply left the settings window on its old tint** — Apply removed the window's candidate CSS providers; the installer's GTK refresh is skipped when the preview already wrote the same gtk.css; so the window showed the old tint until reopened. Fix: keep the providers through Apply and reload them from the final file in done().
 - **KI-01** — `install.sh`: the narrow `--incremental` branch now calls `remember_glass_mode` (not under `--adaptive-blur`). Verified with the fixture reproductions and the hermetic suite; verified live 2026-10-20 (below).
 - **KI-02** — `apply_adaptive_blur` takes the no-blur baseline from the mode (`performance`); the worker skips `sample()` in performance (the `solid` half of the baseline went with KI-15); `check-adaptive-installer.sh` uses a real `glass-mode=performance` fixture. Verified with the fixture reproductions and the hermetic suite; verified live 2026-10-20 (below).
 - **KI-03** — new `sync_mode_owned_keys` / `mode_owned_dconf_keys` (`lib/steps-dconf.sh`), run on the preserved-preset path: performance always gets `solid.ini`'s keys; frosted gets `core.ini`'s values back when coming from another mode. Verified with the fixture reproductions and the hermetic suite; verified live 2026-10-20 (below).

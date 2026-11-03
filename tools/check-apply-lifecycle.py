@@ -40,7 +40,7 @@ class FakeWindow:
         })()
         self._toasts = type("Toasts", (), {"add_toast": lambda *_args: None})()
 
-    def _clear_preview_css(self):
+    def _reload_preview_css(self):
         pass
 
     def _run_started(self, _message):

@@ -39,7 +39,7 @@ and the drift found as of this rewrite.
 |---|---|---|---|
 | Settings app, Per-app blur → games | `$C/adaptive-fullscreen-apps` directly (atomic replace), then `aura-glass-adaptive refresh` | not an installer setting; the worker owns it | no lock; `refresh` is found via `PATH` |
 | Settings app, live window opacity | D-Bus `SetWindowOpacity` / `RefreshOpacity` | in-session feedback while dragging | none persisted |
-| Settings app, preview CSS providers | in-process `Gtk.CssProvider` | shows GTK changes in its own window | cleared on Apply |
+| Settings app, preview CSS providers | in-process `Gtk.CssProvider` | shows GTK changes in its own window | reloaded from the final gtk.css on Apply, cleared on Revert |
 | `aura-glass-adaptive profile` | `$C/adaptive-profile` | worker state | none |
 
 ---

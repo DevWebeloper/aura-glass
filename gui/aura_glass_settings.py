@@ -9938,10 +9938,10 @@ class Window(Adw.ApplicationWindow):
         self._preview_queue.request_terminal("apply", tuple(args))
 
     def _start_apply(self, args, generation):
-        # The preview's providers belong to a preview that is over. Cleared
-        # here rather than left on the display, where they would go on
-        # outranking nothing in particular for the life of the window.
-        self._clear_preview_css()
+        # The preview's CSS providers stay on the display until Apply finishes:
+        # removing them here would drop the window back to the gtk.css GTK read at
+        # startup, and the installer's GTK refresh is skipped when the preview
+        # already wrote the same file. done() reloads them from the final file.
         installer = ["bash", os.path.join(self._repo, "install.sh"),
                      "--settings-only", "--incremental", "--yes"] + args
         if self._preview_session is None:
@@ -9992,6 +9992,8 @@ class Window(Adw.ApplicationWindow):
                 self._sync_preview_bar()
                 try:
                     self._reload()
+                    # the final gtk.css, so this window wears what was installed
+                    self._reload_preview_css()
                 finally:
                     self._run_finished(True, said)
                 self._toasts.add_toast(Adw.Toast(title=said))
