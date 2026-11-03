@@ -242,7 +242,7 @@ by `save_glass_mode_memos`.
 | `bms-ref`, `bms-source` | installed BMS commit and `git\|ego`. `ego` is read back as `--no-bms-git` | `install_bms`; read in the resolution block |
 | `bms-backports-patch`, `bms-subwindow-patch`, `bms-buffers-patch`, `bms-fade-patch`, `bms-static-patch`, `custom-osd-patch` (legacy `openbar-patch`) | patch stamps. `bms-overview-patch`, `bms-notification-patch`, `bms-panel-patch` and `rounded-blur-patch` are left by older releases and no longer read | `patch_stamp_write` |
 | `gdm-installed`, `gdm-monitors-synced` | login-screen state | `lib/steps-gdm.sh` |
-| `gdm-look` | Icon theme, cursor theme, cursor size and font (empty for a system font) the login screen was given, one per line. A difference in the first three makes `aura-glass-gdm-sync` warn | `sync_gdm_look`; read by `aura-glass-gdm-sync` |
+| `gdm-look` | Icon theme, cursor theme, cursor size and font (empty for a system font) the login screen was given, one per line. A difference in the first three makes `aura-glass-gdm-sync` sync them (or notify if that fails) | `sync_gdm_look`; read by `aura-glass-gdm-sync` |
 | `gdm-dconf-profile` | Empty. `/etc/dconf/profile/gdm` was created by this project, so uninstall removes it | `ensure_gdm_dconf_profile`; read by `unsync_gdm_look` |
 | `gdm-gresource` | `sha256sum` line for the gresource `install_gdm` wrote. A mismatch makes `aura-glass-gdm-sync` warn that a package update reverted the login theme (KI-30) | `record_gdm_gresource`; read by `aura-glass-gdm-sync` |
 | `accent-from-wallpaper` | opt-in marker for the (currently uncatalogued) auto-accent extension | `bin/aura-glass-ext` writes it; `lib/steps-extensions.sh` reads it |

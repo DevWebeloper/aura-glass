@@ -420,28 +420,23 @@ gdm_font_dir() {
     return 0
 }
 
-# The login screen's cursor and icons, as the desktop has them now. The settings
-# are the resolved answer to --cursors, --icons and the accent, and this runs after
-# apply_gsettings. A later change needs root to get here, so the choice is left in
-# the gdm-look memo for aura-glass-gdm-sync to compare at login.
-sync_gdm_look() {
-    local icon cursor size name font fontdir
-    icon="$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d "'")"
-    cursor="$(gsettings get org.gnome.desktop.interface cursor-theme 2>/dev/null | tr -d "'")"
-    size="$(gsettings get org.gnome.desktop.interface cursor-size 2>/dev/null || true)"
-    size="${size##* }"
-    font=""
-    fontdir="$(gdm_font_dir)"
-    if [ -n "$fontdir" ]; then
-        font="$(gsettings get org.gnome.desktop.interface font-name 2>/dev/null | tr -d "'")"
+gdm_run_privileged() {
+    if sudo -n true 2>/dev/null || [ "$(id -u)" -eq 0 ]; then
+        "$@"
+    elif command -v pkexec >/dev/null 2>&1; then
+        local repo="${REPO_ROOT:-}"
+        [ -n "$repo" ] || repo="$(cat "$CONF_DIR/repo-path" 2>/dev/null || true)"
+        [ -n "$repo" ] || repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+        pkexec env HOME="$HOME" CONF_DIR="$CONF_DIR" REPO_ROOT="$repo" bash -c 'sudo() { "$@"; }; set -euo pipefail; conf="${CONF_DIR:-}"; . "$REPO_ROOT/lib/common.sh"; . "$REPO_ROOT/lib/steps.sh"; . "$REPO_ROOT/lib/steps-fonts.sh"; . "$REPO_ROOT/lib/steps-gdm.sh"; [ -n "$conf" ] && CONF_DIR="$conf"; "$@"' _ "$@"
+    else
+        warn "no way to get root for the login screen (install pkexec or run sudo once)"
+        return 1
     fi
+}
 
-    if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: copy $icon and $cursor to $GDM_ICON_ROOT and set them in $GDM_DCONF_DIR/db/gdm.d/90-aura-glass"
-        return 0
-    fi
-
-    local names=()
+gdm_look_apply_root() {
+    local icon="$1" cursor="$2" size="$3" font="$4" fontdir="$5"
+    local names=() name
     while IFS= read -r name; do
         [ -n "$name" ] && names+=("$name")
     done < <({ gdm_theme_closure "$icon"; gdm_theme_closure "$cursor"; } | sort -u)
@@ -460,10 +455,34 @@ sync_gdm_look() {
     {
         printf '[org/gnome/desktop/interface]\n'
         printf "icon-theme='%s'\ncursor-theme='%s'\n" "$icon" "$cursor"
-        [ -n "$size" ] && printf 'cursor-size=%s\n' "$size"
-        [ -n "$font" ] && printf "font-name='%s'\n" "$font"
+        [ -n "$size" ] && printf 'cursor-size=%s\n' "$size" || true
+        [ -n "$font" ] && printf "font-name='%s'\n" "$font" || true
     } | sudo tee "$GDM_DCONF_DIR/db/gdm.d/90-aura-glass" >/dev/null
     sudo dconf update
+}
+
+# The login screen's cursor and icons, as the desktop has them now. The settings
+# are the resolved answer to --cursors, --icons and the accent, and this runs after
+# apply_gsettings. A later change needs root to get here, so the choice is left in
+# the gdm-look memo for aura-glass-gdm-sync to compare at login.
+sync_gdm_look() {
+    local icon cursor size font fontdir
+    icon="$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d "'")"
+    cursor="$(gsettings get org.gnome.desktop.interface cursor-theme 2>/dev/null | tr -d "'")"
+    size="$(gsettings get org.gnome.desktop.interface cursor-size 2>/dev/null || true)"
+    size="${size##* }"
+    font=""
+    fontdir="$(gdm_font_dir)"
+    if [ -n "$fontdir" ]; then
+        font="$(gsettings get org.gnome.desktop.interface font-name 2>/dev/null | tr -d "'")"
+    fi
+
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: copy $icon and $cursor to $GDM_ICON_ROOT and set them in $GDM_DCONF_DIR/db/gdm.d/90-aura-glass"
+        return 0
+    fi
+
+    gdm_run_privileged gdm_look_apply_root "$icon" "$cursor" "$size" "$font" "$fontdir" || return 1
 
     if remembering; then
         mkdir -p "$CONF_DIR"
@@ -500,18 +519,47 @@ uninstall_gdm_sync_unit() {
     run rm -f "$HOME/.local/bin/aura-glass-gdm-sync" "$HOME/.local/bin/tahoe-glass-gdm-sync"
 }
 
+gdm_look_matches_memo() {
+    local memo="$CONF_DIR/gdm-look"
+    [ -r "$memo" ] || return 1
+    local want_icon want_cursor want_size want_font
+    {
+        read -r want_icon || true
+        read -r want_cursor || true
+        read -r want_size || true
+        read -r want_font || true
+    } < "$memo"
+    local icon cursor size font fontdir
+    icon="$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d "'")"
+    cursor="$(gsettings get org.gnome.desktop.interface cursor-theme 2>/dev/null | tr -d "'")"
+    size="$(gsettings get org.gnome.desktop.interface cursor-size 2>/dev/null || true)"
+    size="${size##* }"
+    [ -n "$icon" ] && [ -n "$cursor" ] || return 1
+    icon="${icon%-dark}"; want_icon="${want_icon%-dark}"
+    [ "$icon" = "$want_icon" ] || return 1
+    [ "$cursor" = "$want_cursor" ] || return 1
+    [ "$size" = "$want_size" ] || return 1
+    fontdir="$(gdm_font_dir)"
+    if [ -n "$fontdir" ]; then
+        font="$(gsettings get org.gnome.desktop.interface font-name 2>/dev/null | tr -d "'")"
+        [ "$font" = "$want_font" ] || return 1
+    fi
+    return 0
+}
+
 # After a change the login screen mirrors: the wallpaper, primary monitor, cursor,
 # icons and font. The wallpaper and monitor need no root; the look does, so it
-# follows every change only where sudo asks for no password. Elsewhere it waits
-# for --gdm, and aura-glass-gdm-sync warns at login.
+# follows every change, with a polkit prompt when sudo needs a password.
 sync_gdm_look_if_installed() {
     if [ -r "$CONF_DIR/gdm-installed" ] || [ -r "$CONF_DIR/gdm-monitors-synced" ]; then
         install_gdm_sync_unit
         # run, so a dry run reports it instead of copying into GDM's home.
         run "$REPO_ROOT/bin/aura-glass-gdm-sync" --once >/dev/null 2>&1 || true
     fi
-    if [ -r "$CONF_DIR/gdm-look" ] && { [ "${DRY_RUN:-0}" = 1 ] || sudo -n true 2>/dev/null; }; then
-        sync_gdm_look
+    if [ -r "$CONF_DIR/gdm-look" ]; then
+        if [ "${DRY_RUN:-0}" = 1 ] || ! gdm_look_matches_memo; then
+            sync_gdm_look || warn "login screen sync skipped"
+        fi
     fi
 }
 

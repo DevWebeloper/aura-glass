@@ -1250,7 +1250,7 @@ def gdm_theme_stale():
                                 cursor, size) != (lines[0].removesuffix("-dark"),
                                                   lines[1], lines[2]):
             return ("Your cursor or icons changed since the login screen was "
-                    "themed. Reinstall needs your password")
+                    "themed. Apply will ask for your password to update it")
     return None
 
 

@@ -423,7 +423,7 @@ changes neither.
 | Unit | Runs | Why |
 |---|---|---|
 | `aura-glass-icon-sync.service` | `aura-glass-icon-sync` | Icon packs ship `-Light`/`-Dark` variants and GNOME's key holds one name. This follows the light/dark preference. |
-| `aura-glass-gdm-sync.service` | `aura-glass-gdm-sync` | Pushes the wallpaper and primary monitor to GDM, and warns at login when a package update has replaced the themed gresource (KI-30) or the desktop's cursor or icons have moved on from the login screen's. Present only if GDM was themed or synced. |
+| `aura-glass-gdm-sync.service` | `aura-glass-gdm-sync` | Pushes the wallpaper and primary monitor to GDM, updates the login screen's cursor and icons when they change (prompting via polkit if needed, or notifying if that fails), and warns at login when a package update has replaced the themed gresource (KI-30). Present only if GDM was themed or synced. |
 | `aura-glass-update-check.{service,timer}` | `aura-glass-update-check --notify` | Runs `git ls-remote` daily. Notifies once per release and never installs. |
 | `aura-glass-adaptive.service` | `aura-glass-adaptive` → `aura_glass_adaptive.py` | Adaptive performance (§4). Enabled in Frosted only. |
 

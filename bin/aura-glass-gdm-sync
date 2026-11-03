@@ -40,7 +40,7 @@ check_gresource() {
 # same way. Light and dark of one pack count as the same: icon-sync swaps between
 # them with the colour scheme, and the choice install_gdm made still stands.
 check_look() {
-    local memo="$CONF_DIR/gdm-look" icon cursor size want_icon want_cursor want_size repo cmd
+    local memo="$CONF_DIR/gdm-look" icon cursor size want_icon want_cursor want_size repo
     [ -r "$memo" ] || return 0
     { read -r want_icon; read -r want_cursor; read -r want_size; } < "$memo" || true
     icon="$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d "'")"
@@ -52,16 +52,19 @@ check_look() {
     [ "$icon" = "$want_icon" ] && [ "$cursor" = "$want_cursor" ] && [ "$size" = "$want_size" ] && return 0
 
     repo="$(cat "$CONF_DIR/repo-path" 2>/dev/null || true)"
-    cmd="./install.sh --gdm"
-    [ -n "$repo" ] && cmd="$repo/install.sh --gdm"
-    echo "aura-glass-gdm-sync: the login screen's cursor and icons no longer match the desktop; run $cmd" >&2
+    if [ -n "$repo" ] && [ -f "$repo/lib/steps-gdm.sh" ]; then
+        if env HOME="$HOME" CONF_DIR="$CONF_DIR" REPO_ROOT="$repo" bash -c 'set -euo pipefail; REPO_ROOT="$1"; conf="${CONF_DIR:-}"; . "$REPO_ROOT/lib/common.sh"; . "$REPO_ROOT/lib/steps.sh"; . "$REPO_ROOT/lib/steps-fonts.sh"; . "$REPO_ROOT/lib/steps-gdm.sh"; [ -n "$conf" ] && CONF_DIR="$conf"; sync_gdm_look && gdm_look_matches_memo' _ "$repo"; then
+            return 0
+        fi
+    fi
+    echo "aura-glass-gdm-sync: could not update the login screen's cursor and icons. Press Apply in the Aura Glass settings to try again." >&2
     if command -v notify-send >/dev/null 2>&1; then
         notify-send \
             --app-name="Aura Glass" \
             --icon=preferences-desktop-appearance \
             --hint=string:x-canonical-private-synchronous:aura-glass-gdm-look \
             "Login screen cursor and icons differ" \
-            "Your cursor or icons changed since the login screen was themed. Run $cmd to match them." \
+            "Aura Glass could not update the login screen's cursor and icons. Press Apply in the Aura Glass settings to try again." \
             || true
     fi
 }
