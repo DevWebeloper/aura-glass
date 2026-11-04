@@ -16,6 +16,9 @@
 </p>
 
 <p align="center">
+  <a href="screenshots/welcome-settings.webp"><img src="screenshots/welcome-settings.webp" height="110" alt="The Aura Glass welcome wizard next to the settings app"></a>
+  <a href="screenshots/apps-files.webp"><img src="screenshots/apps-files.webp" height="110" alt="Claude and Files windows on the frosted glass"></a>
+  <br>
   <a href="screenshots/overview.webp"><img src="screenshots/overview.webp" height="110" alt="Overview with the dock and workspace thumbnails"></a>
   <a href="screenshots/desktop.webp"><img src="screenshots/desktop.webp" height="110" alt="Files, a terminal and the settings app on the blur"></a>
   <a href="screenshots/settings-app.webp"><img src="screenshots/settings-app.webp" height="110" alt="Aura Glass Settings"></a>
