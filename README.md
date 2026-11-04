@@ -16,19 +16,20 @@
 </p>
 
 <p align="center">
-  <a href="screenshots/welcome-settings.webp"><img src="screenshots/welcome-settings.webp" height="110" alt="The Aura Glass welcome wizard next to the settings app"></a>
-  <a href="screenshots/apps-files.webp"><img src="screenshots/apps-files.webp" height="110" alt="Claude and Files windows on the frosted glass"></a>
+  <a href="screenshots/overview.webp"><img src="screenshots/overview.webp" height="110" alt="Overview with the dock and workspace thumbnails"></a>
   <a href="screenshots/notifications-calendar.webp"><img src="screenshots/notifications-calendar.webp" height="110" alt="Notifications and calendar on the blur above the dock"></a>
+  <a href="screenshots/app-window.webp"><img src="screenshots/app-window.webp" height="120" alt="A translucent app window"></a>
+  <br>
+  <a href="screenshots/apps-files.webp"><img src="screenshots/apps-files.webp" height="110" alt="Claude and Files windows on the frosted glass"></a>
+  <a href="screenshots/quick-settings.webp"><img src="screenshots/quick-settings.webp" height="120" alt="Quick Settings"></a>
   <a href="screenshots/settings-appearance.webp"><img src="screenshots/settings-appearance.webp" height="110" alt="The settings app over GNOME Settings"></a>
   <br>
-  <a href="screenshots/overview.webp"><img src="screenshots/overview.webp" height="110" alt="Overview with the dock and workspace thumbnails"></a>
+  <a href="screenshots/youtube-music.webp"><img src="screenshots/youtube-music.webp" height="110" alt="YouTube Music on the frosted glass"></a>
+  <a href="screenshots/welcome-settings.webp"><img src="screenshots/welcome-settings.webp" height="110" alt="The Aura Glass welcome wizard next to the settings app"></a>
+  <a href="screenshots/notification.webp"><img src="screenshots/notification.webp" height="120" alt="A notification banner"></a>
+  <br>
   <a href="screenshots/desktop.webp"><img src="screenshots/desktop.webp" height="110" alt="Files, a terminal and the settings app on the blur"></a>
   <a href="screenshots/settings-app.webp"><img src="screenshots/settings-app.webp" height="110" alt="Aura Glass Settings"></a>
-  <br>
-  <a href="screenshots/quick-settings.webp"><img src="screenshots/quick-settings.webp" height="120" alt="Quick Settings"></a>
-  <a href="screenshots/notification.webp"><img src="screenshots/notification.webp" height="120" alt="A notification banner"></a>
-  <a href="screenshots/app-window.webp"><img src="screenshots/app-window.webp" height="120" alt="A translucent app window"></a>
-  <a href="screenshots/youtube-music.webp"><img src="screenshots/youtube-music.webp" height="120" alt="YouTube Music on the frosted glass"></a>
 </p>
 
 <p align="center"><sub>Click any screenshot for full size.</sub></p>
