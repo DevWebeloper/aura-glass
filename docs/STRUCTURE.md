@@ -107,6 +107,7 @@ For "which file draws this button / owns this setting", use
 | `aura-glass-update` | Put the checkout on a release tag or a branch tip (stash edits, back up diverged commits), then run `install.sh --gui`. `--no-install` switches only. What the Updates page's Install runs. | `install_update_check` |
 | `aura-glass-icon-sync` | Follow light/dark with the icon variant (service). | `install_icon_sync` |
 | `aura-glass-gdm-sync` | Push wallpaper and monitors to GDM (service, `--once`). | `install_gdm_sync_unit` |
+| `aura-glass-login-veil` | At login, overlay a patched layout.js that shows the login picture on the first frame and dissolves it into the desktop (drop-in). | `install_gdm_sync_unit` |
 | `aura-glass-adaptive` | Launcher for `aura_glass_adaptive.py`: no args runs the loop; also `profile auto\|full\|performance` and `refresh`. | `install_adaptive_performance` |
 
 ### `gui/`
@@ -131,7 +132,8 @@ menu animation speeds. Shell versions 48–51.
 
 `aura-glass-icon-sync.service`,
 `aura-glass-gdm-sync.service`, `aura-glass-update-check.service` + `.timer`,
-`aura-glass-adaptive.service`.
+`aura-glass-adaptive.service`,
+`org.gnome.Shell@.service.d/aura-glass-login-veil.conf` (drop-in).
 
 ### `tools/`: three different kinds of file
 

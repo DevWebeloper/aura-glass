@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# Carry the login screen's picture across into the desktop.
+#
+# The greeter's last frame is its #lockDialogGroup background, aura-gdm.png (the
+# login dialog fades out over it and that group stays). The session's shell then
+# puts up layout.js's #282828 SystemBackground the moment its stage shows, about
+# a second before the first extension loads and two before the desktop is drawn,
+# so no extension can cover it: that is the black gap at every login.
+#
+# Only the shell's own startup code runs early enough. So this makes a copy of
+# the installed layout.js with a veil of the same picture, with the same CSS as
+# the greeter's, on the first frame, and hands it to the session's shell through
+# G_RESOURCE_OVERLAYS (systemd/aura-glass-login-veil.conf runs this first). The
+# veil dissolves once startup completes, so the picture melts into the desktop.
+#
+# Rebuilt from the installed shell at every login so it can never be another
+# version's file. Anything unexpected (other anchors, no picture, no gresource
+# tool) leaves the env file empty, which is the stock shell and its gap.
+#
+# A shell that fails starts over at GDM with its session ended, so `pending` is
+# set here and cleared by `--started` from ExecStartPost (which systemd runs
+# only once ExecStart has succeeded: for this Type=notify unit, after READY=1):
+# finding it still set means the last overlaid shell never came up. It stands
+# down for one login; that stock login's ExecStartPost clears the flag, so the
+# login after retries. One failed login at worst, not a locked-out account,
+# and install also clears it (lib/steps-gdm.sh).
+#
+# systemd reads EnvironmentFile shortly before each process it spawns
+# (systemd.exec(5): "read shortly before the process is executed"), so
+# ExecStart sees what ExecStartPre just wrote on the same login, first one
+# included. The stable $OVERLAY path is the belt to that braces: a stale read
+# still names the file rebuilt below, and stand-down deletes that file, which
+# GLib treats as no overlay (an overlay it cannot open is skipped, leaving
+# the resource in the shell binary), never as a failed shell.
+set -euo pipefail
+
+WALLPAPER=/usr/share/backgrounds/aura-gdm.png
+DIR="$HOME/.cache/aura-glass/login-veil"
+ENV_FILE="$DIR/env"
+PENDING="$DIR/pending"
+OVERLAY="$DIR/layout.js"
+
+if [ "${1:-}" = "--started" ]; then
+    rm -f "$PENDING"
+    exit 0
+fi
+
+mkdir -p "$DIR"
+: > "$ENV_FILE"
+
+# Every bail below is the stock shell. Deleting the overlay keeps that true
+# even under a stale env read (see the header): the env just truncated is
+# empty, and a leftover overlay file is what a not-yet-reread env would name.
+stand_down() {
+    rm -f "$OVERLAY" "$OVERLAY.new"
+    exit 0
+}
+
+[ ! -e "$PENDING" ] || stand_down
+[ -r "$WALLPAPER" ] || stand_down
+shell_bin="$(command -v gnome-shell)" || stand_down
+libshell="$(ldd "$shell_bin" | awk '/libshell-/ { print $3 }')" || stand_down
+[ -n "$libshell" ] || stand_down
+gresource extract "$libshell" /org/gnome/shell/ui/layout.js > "$OVERLAY.new" 2>/dev/null || stand_down
+
+python3 - "$OVERLAY.new" "$WALLPAPER" <<'PY' || stand_down
+import sys
+
+path, wallpaper = sys.argv[1:3]
+with open(path) as f:
+    text = f.read()
+
+SHOW = "        this._systemBackground.show();\n        global.stage.show();\n"
+COMPLETE = "    _startupAnimationComplete() {\n"
+if text.count(SHOW) != 1 or text.count(COMPLETE) != 1:
+    sys.exit(1)
+
+# #222226 and cover are the greeter's #lockDialogGroup rule, so this frame is
+# that frame. Sized here rather than bound: the stage holds still until startup
+# ends, and the veil is gone soon after.
+# Guarded: this sits before _doStartupAnimation's try/finally and before
+# global.stage.show(), so a throw here would leave the stage unshown. A failed
+# veil is the stock startup, veil-less.
+text = text.replace(SHOW, f"""        this._systemBackground.show();
+        try {{
+            this._auraVeil = new St.Widget({{
+                style: "background-color: #222226; background-image: url('file://{wallpaper}'); background-size: cover;",
+                width: global.screen_width,
+                height: global.screen_height,
+            }});
+            global.stage.add_child(this._auraVeil);
+        }} catch (e) {{
+            logError(e);
+            this._auraVeil = null;
+        }}
+        global.stage.show();
+""")
+# First in the method, so a throw later in it cannot leave the veil up. The 100 ms
+# lets the last extensions' work drain, so the dissolve doesn't start on a stalled
+# main loop; 400 ms still reads as one image sharpening into the other, and 300 +
+# 800 felt slow at login.
+# Null-guarded: _startupAnimationComplete is finally-called, so it runs even
+# when veil creation failed (null above), and a second call finds null too.
+# An unguarded .ease would throw ahead of the stock body and skip its cleanup.
+text = text.replace(COMPLETE, COMPLETE + """        const auraVeil = this._auraVeil;
+        this._auraVeil = null;
+        if (auraVeil) {
+            auraVeil.ease({
+                opacity: 0,
+                delay: 100,
+                duration: 400,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                onStopped: () => auraVeil.destroy(),
+            });
+        }
+""")
+with open(path, "w") as f:
+    f.write(text)
+PY
+
+mv "$OVERLAY.new" "$OVERLAY"
+: > "$PENDING"
+printf 'G_RESOURCE_OVERLAYS=/org/gnome/shell/ui/layout.js=%s\n' "$OVERLAY" > "$ENV_FILE"

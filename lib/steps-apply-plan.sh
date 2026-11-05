@@ -139,7 +139,7 @@ declare -A UPDATE_PART_FILES=(
     [wallpapers]="wallpapers/*"
     # extensions/ too: a retune installs the helper from this step.
     [adaptive]="bin/aura-glass-adaptive tools/aura_glass_adaptive.py systemd/aura-glass-adaptive.service extensions/*"
-    [gdm]="bin/aura-glass-gdm-sync systemd/aura-glass-gdm-sync.service css/* tokens/*"
+    [gdm]="bin/aura-glass-gdm-sync systemd/aura-glass-gdm-sync.service bin/aura-glass-login-veil systemd/aura-glass-login-veil.conf css/* tokens/*"
 )
 # Installed by nothing, or read only through a part's functions: lib/ is hashed
 # by function and variable, the deps by asking whether a command is missing.

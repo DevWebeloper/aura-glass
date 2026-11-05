@@ -271,6 +271,12 @@ for u in aura-glass-panel-blur.service tahoe-glass-panel-blur.service bms-panel-
     run rm -f "$HOME/.config/systemd/user/$u"
     ok "removed $u"
 done
+if [ -f "$HOME/.config/systemd/user/org.gnome.Shell@.service.d/aura-glass-login-veil.conf" ]; then
+    found=1
+    run rm -f "$HOME/.config/systemd/user/org.gnome.Shell@.service.d/aura-glass-login-veil.conf"
+    run rmdir "$HOME/.config/systemd/user/org.gnome.Shell@.service.d" 2>/dev/null || true
+    ok "removed the login veil drop-in"
+fi
 if [ "$found" = 1 ]; then
     # || true: with no user manager to reach (a TTY, a container) a failed
     # reload used to stop the uninstall halfway, extensions and commands kept.
@@ -437,6 +443,7 @@ fi
 step "Removing aura-glass itself"
 run rm -f "$HOME/.local/bin/aura-glass-apply" "$HOME/.local/bin/aura-glass-icon-sync" \
           "$HOME/.local/bin/aura-glass-panel-blur" "$HOME/.local/bin/aura-glass-gdm-sync" \
+          "$HOME/.local/bin/aura-glass-login-veil" \
           "$HOME/.local/bin/aura-glass-adaptive" \
           "$HOME/.local/bin/aura-glass-operation" \
           "$HOME/.local/bin/aura-glass-display-sync" \
@@ -445,6 +452,7 @@ run rm -f "$HOME/.local/bin/aura-glass-apply" "$HOME/.local/bin/aura-glass-icon-
           "$HOME/.local/bin/aura-glass-open-once" \
           "$HOME/.local/bin/tahoe-glass-apply" "$HOME/.local/bin/tahoe-glass-icon-sync" \
           "$HOME/.local/bin/tahoe-glass-panel-blur" "$HOME/.local/bin/tahoe-glass-gdm-sync"
+run rm -rf "$HOME/.cache/aura-glass/login-veil"
 # The settings window: its Python, its launcher above, and the desktop entry that
 # puts it in the overview. The entry has to go with the launcher — one left
 # without the other is a search result that does nothing when clicked.

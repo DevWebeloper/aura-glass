@@ -276,6 +276,13 @@ install_gdm_sync_unit() {
     run ln -sf "$HOME/.local/bin/aura-glass-gdm-sync" "$HOME/.local/bin/tahoe-glass-gdm-sync" 2>/dev/null || true
     run install -Dm644 "$REPO_ROOT/systemd/aura-glass-gdm-sync.service" \
         "$HOME/.config/systemd/user/aura-glass-gdm-sync.service"
+    # The login screen's picture carried into the desktop; the script says why.
+    # Clearing pending re-arms it after a login where it stood down.
+    run install -Dm755 "$REPO_ROOT/bin/aura-glass-login-veil" \
+        "$HOME/.local/bin/aura-glass-login-veil"
+    run install -Dm644 "$REPO_ROOT/systemd/aura-glass-login-veil.conf" \
+        "$HOME/.config/systemd/user/org.gnome.Shell@.service.d/aura-glass-login-veil.conf"
+    run rm -f "$HOME/.cache/aura-glass/login-veil/pending"
     run systemctl --user daemon-reload || true
     run systemctl --user enable aura-glass-gdm-sync.service >/dev/null 2>&1 || true
 
@@ -515,8 +522,11 @@ uninstall_gdm_sync_unit() {
             run rm -f "$HOME/.config/systemd/user/$u"
         fi
     done
+    run rm -f "$HOME/.config/systemd/user/org.gnome.Shell@.service.d/aura-glass-login-veil.conf"
+    run rmdir "$HOME/.config/systemd/user/org.gnome.Shell@.service.d" 2>/dev/null || true
+    run rm -rf "$HOME/.cache/aura-glass/login-veil"
     run systemctl --user daemon-reload || true
-    run rm -f "$HOME/.local/bin/aura-glass-gdm-sync" "$HOME/.local/bin/tahoe-glass-gdm-sync"
+    run rm -f "$HOME/.local/bin/aura-glass-gdm-sync" "$HOME/.local/bin/tahoe-glass-gdm-sync" "$HOME/.local/bin/aura-glass-login-veil"
 }
 
 gdm_look_matches_memo() {
