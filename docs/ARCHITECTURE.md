@@ -424,6 +424,7 @@ changes neither.
 |---|---|---|
 | `aura-glass-icon-sync.service` | `aura-glass-icon-sync` | Icon packs ship `-Light`/`-Dark` variants and GNOME's key holds one name. This follows the light/dark preference. |
 | `aura-glass-gdm-sync.service` | `aura-glass-gdm-sync` | Pushes the wallpaper and primary monitor to GDM, updates the login screen's cursor and icons when they change (prompting via polkit if needed, or notifying if that fails), and warns at login when a package update has replaced the themed gresource (KI-30). Present only if GDM was themed or synced. |
+| `org.gnome.Shell@.service` drop-in (`aura-glass-login-veil.conf`) | `aura-glass-login-veil` | Rebuilds a patched `layout.js` at each login — the greeter's picture over the first frame, dissolved in `_startupAnimationComplete` — and hands it to the shell through `G_RESOURCE_OVERLAYS`. The fade clears the `pending` flag; any mismatch or failed start falls back to the stock shell for a login. |
 | `aura-glass-update-check.{service,timer}` | `aura-glass-update-check --notify` | Runs `git ls-remote` daily. Notifies once per release and never installs. |
 | `aura-glass-adaptive.service` | `aura-glass-adaptive` → `aura_glass_adaptive.py` | Adaptive performance (§4). Enabled in Frosted only. |
 

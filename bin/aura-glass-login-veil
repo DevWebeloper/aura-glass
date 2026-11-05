@@ -18,12 +18,14 @@
 # tool) leaves the env file empty, which is the stock shell and its gap.
 #
 # A shell that fails starts over at GDM with its session ended, so `pending` is
-# set here and cleared by `--started` from ExecStartPost (which systemd runs
-# only once ExecStart has succeeded: for this Type=notify unit, after READY=1):
-# finding it still set means the last overlaid shell never came up. It stands
-# down for one login; that stock login's ExecStartPost clears the flag, so the
-# login after retries. One failed login at worst, not a locked-out account,
-# and install also clears it (lib/steps-gdm.sh).
+# set here and cleared once the veil has really finished: the patched layout.js
+# deletes it when the fade ends (or at once when no veil was made, which is the
+# stock startup). `--started` from ExecStartPost clears it only on a stock login
+# (empty env file), which is what lets the login after a failure retry: finding
+# it still set means the last overlaid shell never came up. It stands down for
+# one login; a logout during the fade also leaves it set and costs one stock
+# login. One failed login at worst, not a locked-out account, and install also
+# clears it (lib/steps-gdm.sh).
 #
 # systemd reads EnvironmentFile shortly before each process it spawns
 # (systemd.exec(5): "read shortly before the process is executed"), so
@@ -41,7 +43,11 @@ PENDING="$DIR/pending"
 OVERLAY="$DIR/layout.js"
 
 if [ "${1:-}" = "--started" ]; then
-    rm -f "$PENDING"
+    # A stock login (empty env: stood down, or ExecStartPre never wrote one)
+    # clears the flag so the login after a failure retries. An overlaid login
+    # (non-empty env) leaves it set: only the veil's fade clears it, so a
+    # shell that died after READY but before the veil finished still fails.
+    [ -s "$ENV_FILE" ] || rm -f "$PENDING"
     exit 0
 fi
 
@@ -63,57 +69,103 @@ libshell="$(ldd "$shell_bin" | awk '/libshell-/ { print $3 }')" || stand_down
 [ -n "$libshell" ] || stand_down
 gresource extract "$libshell" /org/gnome/shell/ui/layout.js > "$OVERLAY.new" 2>/dev/null || stand_down
 
-python3 - "$OVERLAY.new" "$WALLPAPER" <<'PY' || stand_down
+python3 - "$OVERLAY.new" "$WALLPAPER" "$PENDING" <<'PY' || stand_down
+import json
 import sys
 
-path, wallpaper = sys.argv[1:3]
+path, wallpaper, pending = sys.argv[1:4]
 with open(path) as f:
     text = f.read()
 
-SHOW = "        this._systemBackground.show();\n        global.stage.show();\n"
+# The pair sits at 8-space indent on 50+ (_doStartupAnimation) and at 20-space
+# indent on 48/49 (the idle callback in _loadBackground). Exactly one match in
+# total, whichever shape, or this is not a shell this patch knows.
+SHOW8 = "        this._systemBackground.show();\n        global.stage.show();\n"
+SHOW20 = "                    this._systemBackground.show();\n                    global.stage.show();\n"
 COMPLETE = "    _startupAnimationComplete() {\n"
-if text.count(SHOW) != 1 or text.count(COMPLETE) != 1:
+n8, n20 = text.count(SHOW8), text.count(SHOW20)
+if n8 + n20 != 1 or text.count(COMPLETE) != 1:
     sys.exit(1)
+show, ind = (SHOW8, "        ") if n8 else (SHOW20, "                    ")
 
 # #222226 and cover are the greeter's #lockDialogGroup rule, so this frame is
 # that frame. Sized here rather than bound: the stage holds still until startup
 # ends, and the veil is gone soon after.
-# Guarded: this sits before _doStartupAnimation's try/finally and before
-# global.stage.show(), so a throw here would leave the stage unshown. A failed
-# veil is the stock startup, veil-less.
-text = text.replace(SHOW, f"""        this._systemBackground.show();
-        try {{
-            this._auraVeil = new St.Widget({{
-                style: "background-color: #222226; background-image: url('file://{wallpaper}'); background-size: cover;",
-                width: global.screen_width,
-                height: global.screen_height,
-            }});
-            global.stage.add_child(this._auraVeil);
-        }} catch (e) {{
-            logError(e);
-            this._auraVeil = null;
-        }}
-        global.stage.show();
-""")
+# Guarded: this sits before global.stage.show(), so a throw here would leave
+# the stage unshown. A failed veil is the stock startup, veil-less.
+# No veil on re-exec: X11 Alt+F2 r keeps the environment, so the overlay would
+# apply again and flash the greeter picture mid-session. 50+ may not have
+# Meta.is_restart, hence the optional call; skipped means null below, which
+# _startupAnimationComplete treats as the stock startup.
+# @I@ is the matched shape's indent, so the inserted code lines up with it;
+# @WALLPAPER@ is the greeter picture. Plain substitution: the generated JS is
+# brace-heavy, and doubling every brace for an f-string misreads next to the
+# indent field.
+veil = """@I@this._systemBackground.show();
+@I@try {
+@I@    if (Meta.is_restart?.()) {
+@I@        this._auraVeil = null;
+@I@    } else {
+@I@        this._auraVeil = new St.Widget({
+@I@            style: "background-color: #222226; background-image: url('file://@WALLPAPER@'); background-size: cover;",
+@I@            width: global.screen_width,
+@I@            height: global.screen_height,
+@I@        });
+@I@        global.stage.add_child(this._auraVeil);
+@I@    }
+@I@} catch (e) {
+@I@    logError(e);
+@I@    this._auraVeil = null;
+@I@}
+@I@global.stage.show();
+"""
+text = text.replace(show, veil.replace("@I@", ind).replace("@WALLPAPER@", wallpaper))
 # First in the method, so a throw later in it cannot leave the veil up. The 100 ms
 # lets the last extensions' work drain, so the dissolve doesn't start on a stalled
 # main loop; 400 ms still reads as one image sharpening into the other, and 300 +
 # 800 felt slow at login.
-# Null-guarded: _startupAnimationComplete is finally-called, so it runs even
-# when veil creation failed (null above), and a second call finds null too.
-# An unguarded .ease would throw ahead of the stock body and skip its cleanup.
-text = text.replace(COMPLETE, COMPLETE + """        const auraVeil = this._auraVeil;
+# Pending clears where the veil really finished: when the fade ends (after the
+# destroy), at once when no veil was made (null above, or never attempted on a
+# re-exec: that login is the stock startup), and after the destroy when the fade
+# itself threw. A missing flag file is already-clear and stays silent; anything
+# else is logged. Nothing here may throw past the stock body.
+# The fade runs guarded: _startupAnimationComplete is finally-called, so an
+# unguarded .ease would throw ahead of the stock body and skip its cleanup,
+# leaving the veil up. On a throw it logs, destroys the veil, and carries on.
+# @PENDING@ is the flag path as a JSON string: $HOME may hold a quote, so it is
+# never spliced raw. Same plain substitution as above (no f-string braces).
+complete = """        const auraVeil = this._auraVeil;
         this._auraVeil = null;
+        const auraClearPending = () => {
+            try {
+                Gio.File.new_for_path(@PENDING@).delete(null);
+            } catch (e) {
+                if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
+                    logError(e);
+            }
+        };
         if (auraVeil) {
-            auraVeil.ease({
-                opacity: 0,
-                delay: 100,
-                duration: 400,
-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                onStopped: () => auraVeil.destroy(),
-            });
+            try {
+                auraVeil.ease({
+                    opacity: 0,
+                    delay: 100,
+                    duration: 400,
+                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                    onStopped: () => {
+                        auraVeil.destroy();
+                        auraClearPending();
+                    },
+                });
+            } catch (e) {
+                logError(e);
+                auraVeil.destroy();
+                auraClearPending();
+            }
+        } else {
+            auraClearPending();
         }
-""")
+"""
+text = text.replace(COMPLETE, COMPLETE + complete.replace("@PENDING@", json.dumps(pending)))
 with open(path, "w") as f:
     f.write(text)
 PY

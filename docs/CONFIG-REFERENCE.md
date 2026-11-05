@@ -338,6 +338,9 @@ that subtree is written.
 | `~/.local/bin/` | the commands in [STRUCTURE.md](STRUCTURE.md) §1 |
 | `~/.local/share/aura-glass/` | GUI copy, the three Python workers |
 | `~/.config/systemd/user/` | the units |
+| `~/.config/systemd/user/org.gnome.Shell@.service.d/aura-glass-login-veil.conf` | the login veil's drop-in: `ExecStartPre` rebuilds it, `ExecStartPost --started` clears `pending` on a stock login |
+| `~/.cache/aura-glass/login-veil/` | `env` (this login's overlays), `layout.js` (the patched copy), `pending` (the last overlaid shell never finished starting) |
+| `~/.local/bin/aura-glass-login-veil` | the login veil's rebuild script |
 | `~/.config/environment.d/aura-glass.conf` | only with `--smooth-animations` |
 | `~/.cache/aura-glass/src/` | pinned checkouts (`$SRC_CACHE`) |
 | `~/.cache/aura-glass/operation.lock` | the writer lock |
