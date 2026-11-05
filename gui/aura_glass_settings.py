@@ -1746,14 +1746,6 @@ button.aura-app-tile:checked .aura-app-tile-icon {
   color: @accent_color;
 }
 
-/* The window buttons left floating once the header bar has scrolled away. A
- * backing of their own, because what passes under them is any page's rows. */
-.aura-float-controls {
-  padding: 3px;
-  border-radius: 99px;
-  background-color: alpha(@window_bg_color, 0.85);
-}
-
 /* The palette buttons, for the same reason button.aura-preset gives: the chip
  * inside is the whole of the picture, and button chrome around a colour is a
  * second edge competing with the one the swatch draws. */
@@ -3592,14 +3584,19 @@ class TintScene(Gtk.DrawingArea):
     Desktop, overview and a maximized window, because those are the three
     places the surfaces differ: the top bar is two different colours across
     them, and the dock is only ever in one. It paints each surface at the alpha
-    its sheet does, over a stand-in wallpaper, so a low-alpha surface looks like
-    one, and the bars and windows move with the sliders under it (set_look).
-    The chips beside it do the same job for a keyboard or a screen reader.
+    its sheet does, over a dark ground in this window's own family, so a
+    low-alpha surface looks like one, and the bars and windows move with the
+    sliders under it (set_look). The chips beside it do the same job for a
+    keyboard or a screen reader.
     """
 
-    # Bright and many-coloured because it is only there to be seen through.
-    WALLPAPER = ((0.0, 0.33, 0.45, 0.72), (0.55, 0.55, 0.37, 0.64),
-                 (1.0, 0.80, 0.52, 0.45))
+    # Dark and neutral rather than a picture: the thumbnails sit inside a dark
+    # frosted window, and a bright stand-in wallpaper made every tint read
+    # warmer and lighter than the sheet paints it. Flat enough that a surface's
+    # own alpha is what lightens or darkens it, with a top-light so the three
+    # still read as screens.
+    GROUND = ((0.0, 0.32, 0.31, 0.31), (0.55, 0.27, 0.26, 0.27),
+              (1.0, 0.18, 0.18, 0.19))
     LABEL_HEIGHT = 20
     GAP = 10
 
@@ -3736,12 +3733,19 @@ class TintScene(Gtk.DrawingArea):
             rounded_path(cr, x, 0, thumb_w, thumb_h, 8)
             cr.clip()
             gradient = cairo.LinearGradient(x, 0, x + thumb_w, thumb_h)
-            for stop, red, green, blue in self.WALLPAPER:
+            for stop, red, green, blue in self.GROUND:
                 gradient.add_color_stop_rgb(stop, red, green, blue)
             cr.set_source(gradient)
             cr.paint()
             paint(cr, x, 0, thumb_w, thumb_h)
             cr.restore()
+            # A faint edge so each desktop reads as its own screen against the
+            # window behind it. The selection outline stays per surface,
+            # drawn later over this.
+            rounded_path(cr, x + 0.5, 0.5, thumb_w - 1, thumb_h - 1, 8)
+            cr.set_source_rgba(1, 1, 1, 0.14)
+            cr.set_line_width(1)
+            cr.stroke()
 
             cr.select_font_face("sans")
             cr.set_font_size(11)
@@ -4881,26 +4885,12 @@ class Window(Adw.ApplicationWindow):
         # show when a run fails, needs a line of its own — and a header bar is
         # the one place in the window with no room for one.
         #
-        # The header is the other way about: it leaves with the page's content
-        # (_sync_top_bar), so a page gets the height back while it is being read.
-        # That takes the window buttons with it, so a second set stays behind
-        # over the content, shown only while the header is gone.
-        self._float_controls = Gtk.WindowControls(side=Gtk.PackType.END)
-        self._float_controls.add_css_class("aura-float-controls")
-        self._float_controls.connect("notify::empty",
-                                     lambda *_a: self._sync_top_bar())
-        self._float_reveal = Gtk.Revealer(
-            child=self._float_controls, can_target=False,
-            transition_type=Gtk.RevealerTransitionType.CROSSFADE,
-            halign=Gtk.Align.END, valign=Gtk.Align.START,
-            margin_top=6, margin_end=6)
-        content_overlay = Gtk.Overlay(child=self._toasts)
-        content_overlay.add_overlay(self._float_reveal)
-
-        self._content_view = Adw.ToolbarView(content=content_overlay)
+        # The header stays where it is on every page and at every scroll
+        # position, so the title, the mode and the window buttons are never
+        # scrolled away from.
+        self._content_view = Adw.ToolbarView(content=self._toasts)
         content_view = self._content_view
         header = Adw.HeaderBar()
-        self._top_bar = header
         # The page's name over the mode in force, so the answer to "which
         # glass am I in?" is on every page rather than only on Glass. The
         # subtitle is filled by _sync_mode_status.
@@ -4979,7 +4969,6 @@ class Window(Adw.ApplicationWindow):
             sidebar=sidebar_page, content=self._content_page,
             min_sidebar_width=210, max_sidebar_width=260)
         self.set_content(split)
-        self._split = split
 
         # Below 700sp the sidebar and the content pane no longer both fit at a
         # width either can read at, so the split collapses into the one
@@ -4990,12 +4979,6 @@ class Window(Adw.ApplicationWindow):
             Adw.BreakpointCondition.parse("max-width: 700sp"))
         narrow.add_setter(split, "collapsed", True)
         self.add_breakpoint(narrow)
-
-        self._page_adjustment = None
-        self._page_adjustment_handler = None
-        split.connect("notify::collapsed", lambda *_a: self._sync_top_bar())
-        self._watch_tab_stacks(self._stack)
-        self._track_page_scroller()
 
         search_shortcut = Gtk.ShortcutController()
         search_shortcut.add_shortcut(Gtk.Shortcut(
@@ -5031,81 +5014,6 @@ class Window(Adw.ApplicationWindow):
             self._preview_active = True
             self._recovering_preview = True
             self._preview_revert()
-
-    def _watch_tab_stacks(self, widget):
-        """Follow every stack in the page tree, tabs inside pages included."""
-        if isinstance(widget, (Gtk.Stack, Adw.ViewStack)):
-            widget.connect("notify::visible-child", self._track_page_scroller)
-        child = widget.get_first_child()
-        while child is not None:
-            self._watch_tab_stacks(child)
-            child = child.get_next_sibling()
-
-    def _visible_scroller(self, widget):
-        """The outermost scroller of what is on screen under `widget`.
-
-        Breadth first, so a page's own scroller is found before a list inside
-        it that happens to scroll too (the Updates page has some), and only down
-        the visible child of a stack, because the tabs not showing have
-        scrollers of their own.
-        """
-        queue = [widget]
-        while queue:
-            current = queue.pop(0)
-            if isinstance(current, Gtk.ScrolledWindow):
-                return current
-            if isinstance(current, (Gtk.Stack, Adw.ViewStack)):
-                visible = current.get_visible_child()
-                if visible is not None:
-                    queue.append(visible)
-                continue
-            child = current.get_first_child()
-            while child is not None:
-                if child.get_visible():
-                    queue.append(child)
-                child = child.get_next_sibling()
-        return None
-
-    def _track_page_scroller(self, *_a):
-        if self._page_adjustment_handler is not None:
-            self._page_adjustment.disconnect(self._page_adjustment_handler)
-        scroller = self._visible_scroller(self._stack)
-        self._page_adjustment = scroller.get_vadjustment() if scroller else None
-        self._page_adjustment_handler = None
-        if self._page_adjustment is not None:
-            self._page_adjustment_handler = self._page_adjustment.connect(
-                "value-changed", self._sync_top_bar)
-        self._sync_top_bar()
-
-    def _sync_top_bar(self, *_a):
-        """Show the header at the top of a page, and only there.
-
-        It slides off once the page has scrolled past the header's own height,
-        not at the first pixel. Hiding it gives the page that much more room,
-        which lowers how far the page can scroll: a page with less overflow than
-        this never reaches the height, and one that does can't be clamped back
-        to 0 by the room it just gained, so the two never chase each other.
-
-        Pinned while the split is collapsed: the back button is in this bar, and
-        then no sidebar is showing to go back with.
-        """
-        if not hasattr(self, "_page_adjustment"):
-            return
-        value = (self._page_adjustment.get_value()
-                 if self._page_adjustment is not None else 0)
-        shown = self._content_view.get_reveal_top_bars()
-        if self._split.get_collapsed() or value <= 0:
-            shown = True
-        elif shown and value >= self._top_bar.get_height() > 0:
-            shown = False
-        self._content_view.set_reveal_top_bars(shown)
-        # An empty side is a layout with its buttons at the other end, which
-        # the sidebar's header still has.
-        floating = not shown and not self._float_controls.get_empty()
-        self._float_reveal.set_reveal_child(floating)
-        # A revealer keeps its size while hidden, and would swallow the clicks
-        # meant for the rows under it.
-        self._float_reveal.set_can_target(floating)
 
     def _build_apply_bar(self):
         """Apply, and everything a run of install.sh has to say, along the bottom.
