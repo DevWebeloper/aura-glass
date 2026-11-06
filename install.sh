@@ -803,7 +803,10 @@ EOF
     printf '             [6] orange  [7] red    [8] pink    [9] slate\n'
     printf '  Select accent [1-9 or name, default: %s]: ' "$ACCENT"
     read -r ans_accent || ans_accent=""
-    case "${ans_accent,,}" in
+    # ASCII lowercasing: bash's ${x,,} follows LC_CTYPE, and under tr_TR it
+    # turns the I of PINK into a dotless ı, so the name matched nothing.
+    ans_accent="$(printf '%s' "$ans_accent" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+    case "$ans_accent" in
         1|purple) ACCENT="purple" ;;
         2|blue)   ACCENT="blue" ;;
         3|teal)   ACCENT="teal" ;;
@@ -815,8 +818,8 @@ EOF
         9|slate)  ACCENT="slate" ;;
         "")       ;; # Keep default
         *)
-            if [[ " $VALID_ACCENTS " =~ [[:space:]]${ans_accent,,}[[:space:]] ]]; then
-                ACCENT="${ans_accent,,}"
+            if [[ " $VALID_ACCENTS " =~ [[:space:]]${ans_accent}[[:space:]] ]]; then
+                ACCENT="$ans_accent"
             else
                 warn "Unknown accent '$ans_accent' — using $ACCENT"
             fi

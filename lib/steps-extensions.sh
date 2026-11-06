@@ -666,7 +666,9 @@ refresh_bms_after_dconf() {
     # extension, a visible flicker on every trigger clearing.
     [ -z "${ADAPTIVE_BLUR:-}" ] || return 0
     [ -d "$EXT_DIR/$BMS_UUID" ] || return 0
-    gnome-extensions info "$BMS_UUID" 2>/dev/null | grep -q 'State: ACTIVE' || return 0
+    # LC_ALL=C: the "State" label is translated (Durum, Estado, Status), so
+    # under any other language the match failed and nothing was refreshed.
+    LC_ALL=C gnome-extensions info "$BMS_UUID" 2>/dev/null | grep -q 'State: ACTIVE' || return 0
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
         info "dry-run: refresh active $BMS_UUID after loading its pipelines"

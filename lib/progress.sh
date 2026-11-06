@@ -363,7 +363,8 @@ verify_install() {
                 "./install.sh"
             continue
         fi
-        state="$(gnome-extensions info "$u" 2>/dev/null | sed -n 's/^ *State: *//p' | head -1)"
+        # LC_ALL=C: the "State" label is translated; the value is not.
+        state="$(LC_ALL=C gnome-extensions info "$u" 2>/dev/null | sed -n 's/^ *State: *//p' | head -1)"
         case "${state^^}" in
             ERROR|OUT\ OF\ DATE|OUT_OF_DATE)
                 verify_check fail Extensions "$title" \
