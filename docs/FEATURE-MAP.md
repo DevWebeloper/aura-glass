@@ -139,7 +139,7 @@ a restart.
 |---|---|---|---|
 | `TOKEN_RADIUS_WINDOW` | 30 | `gtk3-tweaks.css`, `gtk4-70-surfaces.css`, `core.ini [applications] corner-radius`, `core.ini [overview] workspace-corner-radius`, the pipeline `windows` corner in `core.ini`, the GUI preset table | `check-tokens.sh`, `check-gui-radius.py` |
 | `TOKEN_RADIUS_MENU` | 26 | `shell-20-popup-menus.css`, `shell-popup-blur.css`, `core.ini [popup] menu-corner-radius` | `check-tokens.sh` |
-| `TOKEN_RADIUS_QUICK_SETTINGS` | 33 | `shell-20-popup-menus.css` (2 sites), `shell-popup-blur.css` (2), `core.ini [popup] quick-settings-corner-radius`, `[popup] screenshot-corner-radius` (written by `apply_radius_dconf`) | `check-tokens.sh` |
+| `TOKEN_RADIUS_QUICK_SETTINGS` | 33 | `shell-20-popup-menus.css` (2 sites), `shell-popup-blur.css` (2), `core.ini [popup] quick-settings-corner-radius` and `screenshot-corner-radius` (both also written by `apply_radius_dconf`) | `check-tokens.sh` |
 | `TOKEN_RADIUS_NOTIFICATION` | 20 | `shell-30-notifications.css` (4), `shell-80-solid.css` (2), `core.ini [popup] notification-corner-radius` | `check-tokens.sh` |
 | `TOKEN_RADIUS_DIALOG` | 20 | `shell-50-dialogs.css`, `core.ini [popup] dialog-corner-radius` | `check-tokens.sh` |
 | `TOKEN_RADIUS_POPUP` | 20 | `core.ini [popup] corner-radius` | `check-tokens.sh` |

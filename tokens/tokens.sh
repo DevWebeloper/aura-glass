@@ -66,8 +66,8 @@ TOKEN_RADIUS_MENU=26
 #                                 its .popup-menu-content rule would otherwise
 #                                 repaint them at TOKEN_RADIUS_MENU
 #   dconf/core.ini                [blur-my-shell/popup] quick-settings-corner-radius
-#   lib/steps-dconf.sh            apply_radius_dconf also writes it to
-#                                 [blur-my-shell/popup] screenshot-corner-radius
+#                                 and screenshot-corner-radius
+#   lib/steps-dconf.sh            apply_radius_dconf writes both
 TOKEN_RADIUS_QUICK_SETTINGS=33
 
 # Notifications, both in the calendar popup and as arriving banners.
