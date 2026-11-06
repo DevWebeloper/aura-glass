@@ -243,6 +243,7 @@ by `save_glass_mode_memos`.
 | `system-icons` | `lucide\|pack`, top-level | `apply_icon_theme` |
 | `bms-ref`, `bms-source` | installed BMS commit and `git\|ego`. `ego` is read back as `--no-bms-git` | `install_bms`; read in the resolution block |
 | `bms-backports-patch`, `bms-subwindow-patch`, `bms-buffers-patch`, `bms-fade-patch`, `bms-static-patch`, `custom-osd-patch` (legacy `openbar-patch`) | patch stamps. `bms-overview-patch`, `bms-notification-patch`, `bms-panel-patch` and `rounded-blur-patch` are left by older releases and no longer read | `patch_stamp_write` |
+| `reversal-symbolics-patch` | hash of the Reversal symbolic pass's code and each patched theme's `index.theme` mtime. A match skips the 35 s pass on an already installed theme | `reversal_stamp_write` in `lib/steps-assets.sh` |
 | `gdm-installed`, `gdm-monitors-synced` | login-screen state | `lib/steps-gdm.sh` |
 | `gdm-look` | Icon theme, cursor theme, cursor size and font (empty for a system font) the login screen was given, one per line. A difference in the first three makes `aura-glass-gdm-sync` sync them (or notify if that fails) | `sync_gdm_look`; read by `aura-glass-gdm-sync` |
 | `gdm-dconf-profile` | Empty. `/etc/dconf/profile/gdm` was created by this project, so uninstall removes it | `ensure_gdm_dconf_profile`; read by `unsync_gdm_look` |

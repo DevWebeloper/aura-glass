@@ -299,6 +299,29 @@ patch_reversal_symbolics() {
     [ "$found" -gt 0 ] || warn "no symbolic directory found under $name — chevrons left unpatched"
 }
 
+# What patch_reversal_symbolics has been run against: its own code, the theme
+# name, and the index.theme of each of its themes that exists. Only themes
+# under $HOME count, the ones the pass writes.
+reversal_stamp() {
+    local name="$1" dir
+    {
+        printf '%s\n' "$name"
+        declare -f patch_reversal_symbolics fold_reversal_fixed_symbolics pan_svg
+        for dir in "$HOME/.local/share/icons/$name" "$HOME/.local/share/icons/$name-dark" \
+                   "$HOME/.local/share/icons/$name-Light" "$HOME/.local/share/icons/$name-Dark"; do
+            if [ -f "$dir/index.theme" ]; then stat -c '%n %Y' "$dir/index.theme"; fi
+        done
+    } | sha256sum | cut -d' ' -f1
+}
+reversal_stamp_current() {
+    [ "$(cat "$CONF_DIR/reversal-symbolics-patch" 2>/dev/null || true)" = "$(reversal_stamp "$1")" ]
+}
+reversal_stamp_write() {
+    [ "${DRY_RUN:-0}" = 1 ] && return 0
+    mkdir -p "$CONF_DIR"
+    reversal_stamp "$1" > "$CONF_DIR/reversal-symbolics-patch"
+}
+
 install_reversal() {
     local color="${ICONS#reversal}"; color="${color#-}"
     # Bare `reversal` follows the accent, the way bare `colloid` does. It used to
@@ -309,7 +332,17 @@ install_reversal() {
     step "Installing the Reversal icon theme ($color)"
     if [ "${FORCE:-0}" != 1 ] \
        && { [ -d "$HOME/.local/share/icons/$name" ] || [ -d "/usr/share/icons/$name" ]; }; then
+        # The symbolic pass walks every icon link in the pack, about 35 s of forks,
+        # and on an unchanged theme it rewrites the same files. The stamp holds the
+        # patch code and each theme's index.theme mtime, which the Reversal
+        # installer rewrites: new patch code, a new accent or a reinstalled pack
+        # runs it again, and a theme that already has it is left alone.
+        if reversal_stamp_current "$name"; then
+            skip "$name already installed and patched"
+            return 0
+        fi
         patch_reversal_symbolics "$name"
+        reversal_stamp_write "$name"
         skip "$name already installed"
         return 0
     fi
@@ -323,6 +356,7 @@ install_reversal() {
         ( cd "$src" && ./install.sh -t "$color" ) >/dev/null \
             || die "the Reversal installer failed"
         patch_reversal_symbolics "$name"
+        reversal_stamp_write "$name"
     fi
     ok "$name"
 }
