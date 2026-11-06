@@ -1,6 +1,19 @@
 # shellcheck shell=bash
 # aura-glass — output, prompting and small shared helpers.
 
+# Numbers are written with a dot whatever the user's locale. Under a
+# decimal-comma locale (fr_BE, de_DE, tr_TR, es_ES…) bash's printf '%.1f' and
+# mawk print 85,0 / 0,15, and dconf write rejects that with "expected end of
+# input", aborting the run halfway (#18, #20, #21). Every bash entry point
+# sources this file first, and exporting reaches the awk/python/dconf children.
+# LC_ALL overrides LC_NUMERIC, so a set LC_ALL is demoted to LANG: messages
+# keep the user's language, only the number format changes.
+if [ -n "${LC_ALL:-}" ]; then
+    export LANG="$LC_ALL"
+    unset LC_ALL
+fi
+export LC_NUMERIC=C
+
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     C_DIM=$'\033[2m'; C_RED=$'\033[0;31m'; C_GRN=$'\033[0;32m'
     C_YEL=$'\033[0;33m'; C_BLU=$'\033[0;34m'; C_BLD=$'\033[1m'; C_OFF=$'\033[0m'
