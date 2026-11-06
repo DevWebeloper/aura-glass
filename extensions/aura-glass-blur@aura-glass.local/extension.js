@@ -166,6 +166,20 @@ const PANEL_SHADE_CLASS = 'aura-glass-maximized';
 const SHADE_WINDOW_MS = 250;
 const SHADE_OVERVIEW_MS = 250;
 
+// How long the fullscreen cover stays fully opaque after the window's new
+// size, before it fades to the live window (_coverFullscreenChange). A
+// screencast of YouTube in Chrome put the page's re-layout 175-210 ms after
+// the new size, on every toggle in and out. Set just under the earliest, so
+// the still is held no longer than the page needs. The page's time, not an
+// animation's, so the animation speeds leave it alone.
+const FULLSCREEN_SETTLE_MS = 170;
+
+// The longest the fullscreen cover waits over the window for the client's
+// new size (_holdFullscreenCover). The wait measured 100-313 ms from a
+// screencast of YouTube in Chrome; past this the client is taken not to
+// answer, the cover goes, and GNOME's still is used if the size comes later.
+const FULLSCREEN_WAIT_MS = 1000;
+
 const PROFILES = ['auto', 'full', 'performance'];
 // State files whose change can move the window opacity this extension owns.
 const OPACITY_STATE_FILES = new Set([
@@ -431,6 +445,7 @@ export default class AuraGlassBlurExtension extends Extension {
         this._initOpacityMonitor();
         this._loadOverrideSheet();
         this._readAnimationSpeeds();
+        this._hookFullscreenTransition();
     }
 
     _attachDragScroll() {
@@ -734,6 +749,7 @@ export default class AuraGlassBlurExtension extends Extension {
         }
         this._confMonitors = null;
         this._unloadOverrideSheet();
+        this._unhookFullscreenTransition();
         this._unhookEase();
 
         if (!this._isBmsApplicationsActive()) {
@@ -1461,6 +1477,296 @@ export default class AuraGlassBlurExtension extends Extension {
         if (actor === Main.messageTray?._bannerBin)
             return this._animationScale.notification;
         return 1;
+    }
+
+    // ---- Fullscreen transition ----------------------------------------------
+
+    // GNOME animates a fullscreen change like a maximize: a still of the old
+    // frame scales and fades out over the window growing in. A browser draws
+    // fullscreen in two steps: its first buffer at the new size still holds
+    // the old page layout, and the page (a video player) lays itself out for
+    // the new size a little later. A screencast of YouTube in Chrome put that
+    // second step 175-210 ms after the first, inside GNOME's 250 ms, so the
+    // change read as a zoom and then a jump: two motions, not one. And the top
+    // bar vanishes or reappears at once, as the layout hides it.
+    // So on a fullscreen change only, a copy of GNOME's still stays opaque
+    // over the window through the same zoom, then cross-fades to the live
+    // window, which by then has settled; the browser's in-between frames are
+    // never seen. The top bar slides out with it (in, on the way back), at the
+    // window's pace. Maximize keeps GNOME's own animation.
+    //
+    // GNOME's size-change handlers are bound when Main.wm is built, so these
+    // run after them on the same signals: at size-change GNOME has made the
+    // still (__animationInfo), and at size-changed it has started both eases
+    // and thawed the window. Nothing of GNOME's is replaced, so its size-change
+    // accounting is untouched. Reduced motion keeps GNOME's cross-fade, which
+    // is all it does there.
+    _hookFullscreenTransition() {
+        this._fullscreenChanges = new WeakMap();
+        this._fullscreenCovers = new Map();
+        this._panelSlide = null;
+        this._sizeChangeIds = [
+            global.window_manager.connect('size-change',
+                (_wm, actor, change) => this._noteFullscreenChange(actor, change)),
+            global.window_manager.connect('size-changed',
+                (_wm, actor) => this._runFullscreenTransition(actor)),
+        ];
+    }
+
+    _unhookFullscreenTransition() {
+        for (const id of this._sizeChangeIds ?? [])
+            global.window_manager.disconnect(id);
+        this._sizeChangeIds = null;
+        this._endPanelSlide();
+        for (const cover of [...this._fullscreenCovers?.keys() ?? []])
+            this._endFullscreenCover(cover);
+        this._fullscreenCovers = null;
+        this._fullscreenChanges = null;
+    }
+
+    _noteFullscreenChange(actor, change) {
+        if (change !== Meta.SizeChange.FULLSCREEN && change !== Meta.SizeChange.UNFULLSCREEN)
+            return;
+        const clone = actor.__animationInfo?.clone;
+        if (!clone || St.Settings.get().reducedMotion === St.ReducedMotion.REDUCE)
+            return;
+        const earlier = this._fullscreenChanges.get(actor);
+        if (earlier?.cover)
+            this._endFullscreenCover(earlier.cover);
+        // Read now, before the layout's fullscreen check hides the bar: by
+        // size-changed (the client's new buffer) it may already be gone.
+        this._fullscreenChanges.set(actor, {
+            change,
+            clone,
+            panelShown: Main.layoutManager.panelBox.visible,
+            cover: this._holdFullscreenCover(actor, actor.__animationInfo.oldRect),
+        });
+    }
+
+    // Mutter takes GNOME's still and only then flips the window's fullscreen
+    // flag, and the window's new size comes from the client later (100-313
+    // ms in a screencast). Blur My Shell drops an application's blur, and its
+    // see-through, at that flag (unblur-when-fullscreen) and brings them back
+    // at the flag on the way out, so for that wait the frozen window showed
+    // the other look, and then the cover came in with the first: a flicker
+    // of the blur, only on a blurred window. GNOME's still does not help:
+    // the window is painted alone offscreen, so a blur in it has nothing
+    // behind it to blur.
+    // So the cover is taken here, at size-change, from the stage over the
+    // window's old frame (what is on screen, blur and all) and goes over the
+    // window at once, still opaque, until size-changed starts the zoom
+    // (_coverFullscreenChange). It goes with the window, or after
+    // FULLSCREEN_WAIT_MS if the new size never comes. If the stage cannot be
+    // read, nothing is held and size-changed falls back to GNOME's still.
+    _holdFullscreenCover(actor, rect) {
+        let content;
+        try {
+            const scale = global.display.get_monitor_scale(actor.meta_window.get_monitor());
+            content = global.stage.paint_to_content(rect, scale, null,
+                Clutter.PaintFlag.NO_CURSORS);
+        } catch (e) {
+            console.warn(`Aura Glass Helper: fullscreen cover not taken: ${e.message}`);
+            return null;
+        }
+        const cover = new St.Widget({
+            content,
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+        });
+        actor.get_parent().insert_child_above(cover, actor);
+        // Direct scanout of the fullscreen window would skip the compositor
+        // and so the cover over it. Held off while the cover lives, released
+        // in _endFullscreenCover.
+        global.compositor.disable_unredirect();
+        const hold = {actor, destroyId: 0, waitId: 0};
+        this._fullscreenCovers.set(cover, hold);
+        hold.destroyId = actor.connect('destroy', () => this._endFullscreenCover(cover));
+        hold.waitId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, FULLSCREEN_WAIT_MS, () => {
+            hold.waitId = 0;
+            this._endFullscreenCover(cover);
+            return GLib.SOURCE_REMOVE;
+        });
+        return cover;
+    }
+
+    _runFullscreenTransition(actor) {
+        const note = this._fullscreenChanges?.get(actor);
+        if (!note)
+            return;
+        this._fullscreenChanges.delete(actor);
+        // Only the size-changed that started GNOME's eases for this still: a
+        // later one for the same window finds it gone or another still.
+        const info = actor.__animationInfo;
+        const held = this._fullscreenCovers?.has(note.cover) ? note.cover : null;
+        if (!info || info.clone !== note.clone || info.frozen) {
+            if (held)
+                this._endFullscreenCover(held);
+            return;
+        }
+        const duration = this._coverFullscreenChange(actor, info, held);
+
+        const window = actor.meta_window;
+        const primary = Main.layoutManager.primaryIndex;
+        if (Main.overview.visible || window.get_monitor() !== primary)
+            return;
+        if (note.change === Meta.SizeChange.FULLSCREEN) {
+            if (note.panelShown)
+                this._slidePanel(true, duration);
+            return;
+        }
+        // Another fullscreen window on the monitor keeps the bar hidden.
+        const stillCovered = global.workspace_manager.get_active_workspace().list_windows()
+            .some(other => other !== window && other.fullscreen && !other.minimized &&
+                other.get_monitor() === primary);
+        if (!stillCovered)
+            this._slidePanel(false, duration);
+    }
+
+    // The cover is the one held since size-change, or else a second widget on
+    // GNOME's still (destroyed when its ease ends), eased to the same rect with
+    // GNOME's duration and curve, so it stays exactly over the window it hides. It
+    // sits just above the window in the window's own group, so it hides the
+    // window as GNOME's clone does but stays under the top bar, notifications
+    // and OSDs, which it is not meant to hide for the longer hold.
+    //
+    // The cross-fade does not wait for the zoom: from a maximized window the
+    // zoom is only the top bar's height, so holding the still through all of
+    // it read as the desktop hanging. It starts FULLSCREEN_SETTLE_MS after the
+    // window's new size, just under the browser's second step (175 ms at the
+    // earliest), and eases in and out, so a later step (up to 210 ms seen)
+    // lands under a cover still above 90% opaque.
+    _coverFullscreenChange(actor, info, held) {
+        const still = info.clone;
+        const target = actor.meta_window.get_frame_rect();
+        const source = info.oldRect;
+        // Read GNOME's own transition so a changed animation speed is
+        // followed. Width does not change between maximized and fullscreen on
+        // most monitors, so scale-x may have nothing to ease; look at every
+        // property GNOME eases.
+        const transition = ['scale-y', 'scale-x', 'translation-y', 'translation-x']
+            .map(name => actor.get_transition(name)).find(t => t);
+        const duration = transition?.get_duration() ?? this._shadeWindowDuration();
+
+        // The cover held since size-change, its wait over; else one on GNOME's
+        // still, the same geometry (_holdFullscreenCover).
+        let cover = held;
+        if (cover) {
+            const hold = this._fullscreenCovers.get(cover);
+            if (hold.waitId)
+                GLib.source_remove(hold.waitId);
+            hold.waitId = 0;
+        } else {
+            cover = new St.Widget({
+                content: still.get_content(),
+                x: still.x,
+                y: still.y,
+                width: still.width,
+                height: still.height,
+            });
+            actor.get_parent().insert_child_above(cover, actor);
+            global.compositor.disable_unredirect();
+            this._fullscreenCovers.set(cover, {actor, destroyId: 0, waitId: 0});
+        }
+        still.hide();
+        cover.ease({
+            x: target.x,
+            y: target.y,
+            scale_x: target.width / source.width,
+            scale_y: target.height / source.height,
+            duration,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+        });
+        // 0.9 of the zoom (225 ms at normal speed): a dissolve this long,
+        // eased at both ends, has no visible start or finish, and the whole
+        // change still ends about 400 ms after the new size.
+        cover.ease({
+            opacity: 0,
+            delay: FULLSCREEN_SETTLE_MS,
+            duration: Math.round(duration * 0.9),
+            mode: Clutter.AnimationMode.EASE_IN_OUT_QUAD,
+            onStopped: () => this._endFullscreenCover(cover),
+        });
+        return duration;
+    }
+
+    _endFullscreenCover(cover) {
+        const hold = this._fullscreenCovers?.get(cover);
+        if (!hold)
+            return;
+        this._fullscreenCovers.delete(cover);
+        if (hold.waitId)
+            GLib.source_remove(hold.waitId);
+        if (hold.destroyId)
+            hold.actor.disconnect(hold.destroyId);
+        cover.remove_all_transitions();
+        cover.destroy();
+        global.compositor.enable_unredirect();
+    }
+
+    // The layout hides and shows the bar at its own fullscreen check, which can
+    // land before or after the window's new size, and ease() on an unmapped
+    // actor jumps straight to the end (environment.js). So the bar slides as a
+    // Clutter.Clone on uiGroup both ways: a clone paints its source hidden or
+    // not, at the clone's own opacity, and the Blur My Shell panel blur is a
+    // child of panelBox, so it goes with it. panelBox itself stays transparent
+    // under the clone until the slide ends, so whichever moment the layout
+    // picks, only the clone shows.
+    // The clone moves and never fades: the window's top edge travels the bar's
+    // height in the same time on the same curve, so the bar's bottom edge
+    // rides it and no wallpaper opens between them. A screencast with the
+    // bar fading as it went showed its icons gone in a third of the slide
+    // and an empty strip of wallpaper above the window after that; on the
+    // way back, the strip came down before the icons did. duration is the
+    // cover's, read from GNOME's zoom, so a changed animation speed keeps the
+    // two edges together.
+    _slidePanel(out, duration) {
+        this._endPanelSlide();
+        const panelBox = Main.layoutManager.panelBox;
+        const monitor = Main.layoutManager.primaryMonitor;
+        if (!monitor)
+            return;
+        // panelBox and the clone are both children of uiGroup, so they share
+        // its coordinates.
+        const distance = panelBox.y + panelBox.height - monitor.y;
+        if (distance <= 0)
+            return;
+        const clone = new Clutter.Clone({
+            source: panelBox,
+            x: panelBox.x,
+            y: panelBox.y,
+            width: panelBox.width,
+            height: panelBox.height,
+            translation_y: out ? 0 : -distance,
+        });
+        Main.uiGroup.add_child(clone);
+        panelBox.opacity = 0;
+        // A fullscreen window alone on its monitor can be given direct scanout,
+        // which skips the compositor and so the clone over it. Held off for the
+        // slide only, and released in _endPanelSlide.
+        global.compositor.disable_unredirect();
+        this._panelSlide = clone;
+        clone.ease({
+            translation_y: out ? -distance : 0,
+            duration,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            onStopped: () => this._endPanelSlide(clone),
+        });
+    }
+
+    // Puts panelBox back however the slide ended. A slide's own onStopped
+    // passes its clone, so a newer slide (a quick toggle back) is not ended
+    // by the one it replaced.
+    _endPanelSlide(clone) {
+        const slide = this._panelSlide;
+        if (!slide || (clone !== undefined && clone !== slide))
+            return;
+        this._panelSlide = null;
+        slide.remove_all_transitions();
+        slide.destroy();
+        Main.layoutManager.panelBox.opacity = 255;
+        global.compositor.enable_unredirect();
     }
 
     // ---- Window actor opacity (live without restart) -----------------------
