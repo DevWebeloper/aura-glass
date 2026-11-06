@@ -51,7 +51,7 @@ Most bugs here are one front end disagreeing with another, so first find
 | The user did… | Path | Start reading |
 |---|---|---|
 | Ran `./install.sh` | full install | `install.sh` bottom section, then the step's file |
-| Pressed Apply in the settings app | `--settings-only --incremental` (narrow, or full fallback) | `lib/steps-apply-plan.sh`, the incremental branch of `install.sh` |
+| Pressed Apply in the settings app | `--settings-only --incremental` (narrow, or full fallback) | `lib/steps-apply-plan.sh` (classify), `lib/steps-apply.sh` (run) |
 | Dragged a slider and saw it live | `aura-glass-preview set/apps` | `bin/aura-glass-preview`, `gui/preview_queue.py` |
 | Switched mode | full retune with `--glass-mode` | `lib/steps-modes.sh`, `load_dconf` |
 | Nothing (battery, GPU, game, top-bar menu) | adaptive worker → `--adaptive-blur` | `tools/aura_glass_adaptive.py`, `apply_adaptive_blur` |

@@ -48,6 +48,7 @@ For "which file draws this button / owns this setting", use
 | `steps-wizard.sh` | `run_setup_wizard`, which runs the GTK wizard and reads its flags back. |
 | `progress.sh` | The progress window's side of a full install: `progress_begin` (tee to the log, launch the window), `progress_plan`/`progress_choices`/`progress_start`/`progress_end`/`progress_skip`, `progress_finish`, the `progress_note`/`progress_wait`/`progress_resume` hooks `common.sh` calls as no-ops otherwise, and `verify_install` (the checklist, also `--verify`). Sourced last. |
 | `steps-apply-plan.sh` | The incremental classifier (`select_apply_actions`), the parts table and what is out of date (`select_update_parts`), and the update's runner (`run_selective_update`). |
+| `steps-apply.sh` | The settings app's Apply (`run_incremental_apply`): runs the classified actions only, and the login-screen look sync (`sync_gdm_look_only`) once at the end. |
 
 ### `tokens/`
 

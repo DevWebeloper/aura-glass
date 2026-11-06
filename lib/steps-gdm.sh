@@ -566,6 +566,14 @@ sync_gdm_look_if_installed() {
         # run, so a dry run reports it instead of copying into GDM's home.
         run "$REPO_ROOT/bin/aura-glass-gdm-sync" --once >/dev/null 2>&1 || true
     fi
+    sync_gdm_look_only
+}
+
+# The look half alone: cursor, icons and font. An Apply that changed one of
+# those runs only this, once, after its steps. The wallpaper and monitor half
+# above regenerates the blurred picture (over a second) and re-enables the
+# unit, and neither a cursor, an icon pack nor a font changes what it writes.
+sync_gdm_look_only() {
     if [ -r "$CONF_DIR/gdm-look" ]; then
         if [ "${DRY_RUN:-0}" = 1 ] || ! gdm_look_matches_memo; then
             sync_gdm_look || warn "login screen sync skipped"

@@ -497,8 +497,10 @@ install_moga_cursors() {
         info "Moga cursor refresh: all accent variants (selected: $accent/$variant) -> $HOME/.local/share/icons/Aura-Glass-Moga-*"
         return 0
     fi
-    meta="$(mktemp)"
-    curl -fsSL -o "$meta" "$MOGA_PAGE_URL/loadFiles" || { rm -f "$meta"; die "could not download Moga release metadata"; }
+    # The release metadata is fetched only when a pack is missing. An accent
+    # Apply comes through here with every pack already on disk, and fetching
+    # it anyway cost a network round trip and failed the Apply offline.
+    meta=""
     for accent_name in $VALID_ACCENTS; do
         variant="$(moga_variant_for_accent "$accent_name")"
         dest="$HOME/.local/share/icons/Aura-Glass-Moga-$variant"
@@ -509,6 +511,10 @@ install_moga_cursors() {
                 || warn "could not redraw the Aura-Glass-Moga-$variant cursors"
             skip "Aura-Glass-Moga-$variant already installed"
             continue
+        fi
+        if [ -z "$meta" ]; then
+            meta="$(mktemp)"
+            curl -fsSL -o "$meta" "$MOGA_PAGE_URL/loadFiles" || { rm -f "$meta"; die "could not download Moga release metadata"; }
         fi
         line="$(python3 "$REPO_ROOT/tools/moga_cursor.py" resolve "$accent_name" "$meta")" || { rm -f "$meta"; die "Moga release metadata did not contain the expected $variant archive"; }
         IFS=$'\t' read -r variant archive md5 url <<<"$line"
@@ -523,7 +529,7 @@ install_moga_cursors() {
         mkdir -p "$HOME/.local/share/icons"; rm -rf "$dest"; mv "$stage" "$dest"
         ok "Aura-Glass-Moga-$variant"
     done
-    rm -f "$meta"
+    [ -z "$meta" ] || rm -f "$meta"
 }
 
 install_cursors() {

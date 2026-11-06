@@ -41,7 +41,7 @@ a restart.
 | Performance mode shell look | `shell-80-solid` (opaque ladder) | `dconf/solid.ini` (fresh preset loads only) | `TOKEN_RADIUS_NOTIFICATION` | `install_css` (when `WANT_BLUR=0`), `apply_popup_transparency` |
 | Accent colour in the shell | substituted by `bin/aura-glass-apply` (`-st-accent-color`) | none | none | `apply_accent`. gsettings `accent-color` |
 | Login screen (GDM) | `gdm-auth-menu` (session switcher menu), `shell-50-dialogs` | none | none | `lib/steps-gdm.sh`, `bin/aura-glass-gdm-sync` (opt-in, root) |
-| Login screen cursor, icons and font | none | `/etc/dconf/db/gdm.d/90-aura-glass` | none | `sync_gdm_look` copies the desktop's packs to `/usr/share/icons` and an Aura-installed font to `/usr/share/fonts/aura-glass`, marked `.aura-glass-gdm`, and sets `font-name`. Every retune that changes icons, cursor or font re-runs it (`sync_gdm_look_if_installed`) when it differs from the `gdm-look` memo, as root through `sudo -n` or one polkit (`pkexec`) prompt; `aura-glass-gdm-sync` retries the same at login |
+| Login screen cursor, icons and font | none | `/etc/dconf/db/gdm.d/90-aura-glass` | none | `sync_gdm_look` copies the desktop's packs to `/usr/share/icons` and an Aura-installed font to `/usr/share/fonts/aura-glass`, marked `.aura-glass-gdm`, and sets `font-name`. Every retune that changes icons, cursor or font re-runs it (`sync_gdm_look_if_installed`; an Apply runs only its look half, `sync_gdm_look_only`, once) when it differs from the `gdm-look` memo, as root through `sudo -n` or one polkit (`pkexec`) prompt; `aura-glass-gdm-sync` retries the same at login |
 | Login to desktop transition | none | none | none | `bin/aura-glass-login-veil`, `systemd/aura-glass-login-veil.conf`: the session's shell runs a patched `layout.js`, rebuilt each login, through `G_RESOURCE_OVERLAYS`; `aura-gdm.png` over the first frame dissolves into the desktop. Stands down to the stock shell on any mismatch or after a failed start |
 
 ## 2. GTK4 / libadwaita apps
@@ -120,6 +120,7 @@ a restart.
 |---|---|
 | Flag parsing, resolution, step order | `install.sh` |
 | Incremental Apply classification | `lib/steps-apply-plan.sh` |
+| Incremental Apply execution | `lib/steps-apply.sh` |
 | What an update runs (parts, hashes, `$C/installed-parts`) | `lib/steps-apply-plan.sh` |
 | Writer lock | `bin/aura-glass-operation`, `tools/aura_glass_operation.py` |
 | Splicing, flattening, accent swap, atomic publish | `bin/aura-glass-apply` |

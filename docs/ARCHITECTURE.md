@@ -42,7 +42,7 @@ by the GUI and the adaptive worker:
 
 | Modifier | Contract |
 |---|---|
-| `--incremental` | Classify the typed flags (`lib/steps-apply-plan.sh`) and run **only** the matching steps, plus any local part that is out of date (§ Parts, below). `--glass-mode`, any flag no class names, no narrow flag at all, or no record of what is installed falls back to the full retune. |
+| `--incremental` | Classify the typed flags (`lib/steps-apply-plan.sh`) and run **only** the matching steps (`lib/steps-apply.sh`), plus any local part that is out of date (§ Parts, below). `--glass-mode`, any flag no class names, no narrow flag at all, or no record of what is installed falls back to the full retune. |
 | `--plan-json` | With `--settings-only --incremental --dry-run`, print `{"schema_version":1,"actions":[…],"fallback_reason":…}` on stdout and exit. The settings window asks it for the pending flags (debounced, as a dry run) and shows the answer as the first row of the "N changes" popover: a quick apply and its steps, or a full reapply and why (`plan_summary`). `tools/check-incremental-apply.py` and `check-gui-flags.py` cover it. |
 | `--adaptive-blur active\|restore` | Private to the adaptive worker. Requires `--settings-only --incremental`. Applies or removes a **transient** no-blur state without writing any memo (`remembering()` is false while it's set). |
 
