@@ -239,6 +239,17 @@ class FakeWindow extends Signals {
 
 function fixture({ static_blur = false, blur_on_overview = false } = {}) {
     const counts = { static: 0, dynamic: 0, destroyed: 0 };
+    const timers = new Map();
+    let next_timer = 1;
+    const GLib = {
+        PRIORITY_DEFAULT: 0, SOURCE_REMOVE: false,
+        timeout_add(_priority, _ms, callback) { timers.set(next_timer, callback); return next_timer++; },
+        source_remove(id) { timers.delete(id); },
+    };
+    const run_timers = () => [...timers].forEach(([id, callback]) => {
+        timers.delete(id);
+        callback();
+    });
     class Pipeline {
         constructor() { counts.static++; }
         create_background_with_effects(monitor, managers, parent, name) {
@@ -288,6 +299,12 @@ function fixture({ static_blur = false, blur_on_overview = false } = {}) {
     const Meta = { FrameType, WindowClientType: { WAYLAND: 0, X11: 1 } };
     const display = new Signals();
     display.focus_window = null;
+    // net count of disable_unredirect calls, see sync_scanout
+    const scanout = { inhibited: 0 };
+    const compositor = {
+        disable_unredirect() { scanout.inhibited++; },
+        enable_unredirect() { scanout.inhibited--; },
+    };
     const surface = new FakeActor();
     const actor = new FakeActor();
     actor.insert_child_at_index(surface, 0);
@@ -305,8 +322,10 @@ function fixture({ static_blur = false, blur_on_overview = false } = {}) {
         ApplicationsService: class {},
         Clutter: { AnimationMode: {} },
         Gio: { Settings: class { get_strv() { return []; } } },
+        GLib,
         global: {
             display,
+            compositor,
             blur_my_shell: {},
             workspace_manager: {
                 get_n_workspaces: () => 1,
@@ -318,7 +337,7 @@ function fixture({ static_blur = false, blur_on_overview = false } = {}) {
         ENABLE_ALL: true, WHITELIST: [], BLACKLIST: [], STATIC_BLUR: static_blur, OPACITY: 200,
         CORNER_RADIUS: 30, ROUNDED_CORNERS: 15, CORNER_WHEN_MAXIMIZED: false,
         BLUR_ON_OVERVIEW: blur_on_overview, UNBLUR_WHEN_FULLSCREEN: true, DYNAMIC_OPACITY: false,
-        PIPELINE: 'pipeline_default',
+        PIPELINE: 'pipeline_default', MAXIMIZED_STATIC_BLUR: true, MAXIMIZED_BLUR_OPACITY: 100,
     };
     const app = new ApplicationsBlur(new Connections(), { applications, DEBUG: false }, {});
     app.enable();
@@ -341,6 +360,7 @@ function fixture({ static_blur = false, blur_on_overview = false } = {}) {
         },
     };
     return { app, window, actor, surface, overview, tracker, adjustment, display, counts, stage,
+             timers, run_timers, scanout,
              applications, covers_monitor: geometry.covers_monitor };
 }
 
@@ -472,16 +492,78 @@ test('a move alone can cross, for a window as big as the work area', () => {
     assert.equal(window.bms_static_blur, false);
 });
 
-test('fullscreen is static with no blur shown, and comes back whole', () => {
-    const { window, surface, counts } = fixture();
+const MONITOR = { x: 0, y: 0, width: 1920, height: 1080 };
+
+test('fullscreen keeps its type with no blur shown, and comes back whole', () => {
+    // unblur-when-fullscreen hides the blur, so neither the flag nor the growth to the whole
+    // monitor rebuilds it; leaving waits for the shrink, which lands where it started
+    const { window, surface, counts, timers } = fixture();
     window.set_fullscreen(true);
-    assert.equal(window.bms_static_blur, true);
+    window.set_frame(MONITOR);
+    assert.equal(window.bms_static_blur, false);
     assert_settled(window, surface, { blurred: false });
     window.set_fullscreen(false);
+    assert.equal(window.bms_static_blur, false, 'still monitor-sized, not decided yet');
     window.set_frame(SMALL);
     assert.equal(window.bms_static_blur, false);
     assert_settled(window, surface, { blurred: true });
+    assert.equal(counts.static, 0);
+    assert.equal(counts.dynamic, 1);
+    assert.equal(timers.size, 0, 'the shrink ends the wait');
+});
+
+test('leaving fullscreen onto the whole work area rebuilds as static, once', () => {
+    const { window, counts } = fixture();
+    window.set_fullscreen(true);
+    window.set_frame(MONITOR);
+    window.set_maximized(true);
+    window.set_fullscreen(false);
+    window.set_frame(WORK_AREA);
+    assert.equal(window.bms_static_blur, true);
     assert.equal(counts.static, 1);
+});
+
+test('a client that resizes before it leaves fullscreen is decided by the timeout', () => {
+    const { window, counts, timers, run_timers } = fixture();
+    window.set_fullscreen(true);
+    window.set_frame(MONITOR);
+    window.set_maximized(true);
+    window.set_frame(WORK_AREA);
+    window.set_fullscreen(false);
+    assert.equal(window.bms_static_blur, false, 'waits for a size-changed');
+    assert.equal(timers.size, 1);
+    run_timers();
+    assert.equal(window.bms_static_blur, true);
+    assert.equal(counts.static, 1);
+});
+
+test('direct scanout is inhibited while a blurred window covers its monitor, once', () => {
+    // a scanned-out window skips its blur: the translucent buffer shows over black, solid gray
+    const { app, window, scanout, run_timers } = fixture();
+    assert.equal(scanout.inhibited, 0, 'a small window leaves scanout alone');
+    window.set_maximized(true);
+    window.set_frame(WORK_AREA);
+    assert.equal(scanout.inhibited, 1);
+    window.set_frame({ ...WORK_AREA, width: 1920 });
+    assert.equal(scanout.inhibited, 1, 'held once, however many changes');
+    window.set_fullscreen(true);
+    window.set_frame(MONITOR);
+    assert.equal(scanout.inhibited, 0, 'unblurred in fullscreen, it keeps its scanout');
+    window.set_fullscreen(false);
+    window.set_frame(WORK_AREA);
+    run_timers();
+    assert.equal(scanout.inhibited, 1);
+    app.remove_blur(window);
+    assert.equal(scanout.inhibited, 0, 'removing the blur lets go');
+});
+
+test('removing the blur while waiting drops the timeout', () => {
+    const { app, window, timers } = fixture();
+    window.set_fullscreen(true);
+    window.set_fullscreen(false);
+    assert.equal(timers.size, 1);
+    app.remove_blur(window);
+    assert.equal(timers.size, 0);
 });
 
 test('nothing rebuilds while the type stays', () => {

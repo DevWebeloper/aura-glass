@@ -386,7 +386,8 @@ changes neither.
   `blur-my-shell-static-maximized.patch` (a window covering its monitor is static
   and smaller ones dynamic, a crossing rebuilding the blur as the other type once
   an interactive resize or the overview's motion is over; `--maximized-blur dynamic`
-  turns this off through its `maximized-static-blur` key). Each has its own stamp in `$C`. v73's overview,
+  turns this off through its `maximized-static-blur` key; either type inhibits
+  direct scanout while it covers its monitor, which would skip the blur). Each has its own stamp in `$C`. v73's overview,
   notification and panel-refit patches were dropped with v76, which was checked
   live without them, and its static-maximized patch with them until it came back
   re-cut. Custom OSD gets

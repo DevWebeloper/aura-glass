@@ -823,7 +823,14 @@ export default class AuraGlassBlurExtension extends Extension {
             this._focusedWindowFullscreenId = this._focusedWindow.connect(
                 'notify::fullscreen', () => {
                     this._updateFocusState();
-                    this._syncPanelShade();
+                    // Entering fullscreen is not a maximize animation: Shell hides its own chrome
+                    // on its own timeline while the video rescales itself, so the shade fading at
+                    // maximize pace lands visibly off-beat. The panel sits hidden under a
+                    // fullscreen window anyway, so it changes at once. Leaving clears the flag
+                    // while the window is still the size of the monitor, so nothing changes here:
+                    // the shade follows the shrink at size-changed, at maximize pace, as an
+                    // unmaximize does.
+                    this._syncPanelShade(0);
                 });
             // size-changed and position-changed catch a tiler's resize to the
             // work area and a move to another monitor, which set no flag.
