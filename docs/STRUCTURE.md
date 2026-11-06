@@ -126,8 +126,8 @@ For "which file draws this button / owns this setting", use
 ### `extensions/aura-glass-blur@aura-glass.local/`
 
 `extension.js` and `metadata.json`. This is "Aura Glass Helper": Blur This App,
-the D-Bus bridge, the adaptive profile menu and the window, notification and
-menu animation speeds. Shell versions 48–51.
+the D-Bus bridge, the adaptive profile menu, the window, notification and
+menu animation speeds, and the fullscreen transition. Shell versions 48–51.
 
 ### `systemd/`
 

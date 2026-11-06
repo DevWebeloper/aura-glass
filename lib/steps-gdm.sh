@@ -529,6 +529,21 @@ uninstall_gdm_sync_unit() {
     run rm -f "$HOME/.local/bin/aura-glass-gdm-sync" "$HOME/.local/bin/tahoe-glass-gdm-sync" "$HOME/.local/bin/aura-glass-login-veil"
 }
 
+# Every cursor in the desktop's pack is in the login screen's copy too. The memo
+# holds names only, so a copy left half-made (one from 2026-10-31 had 88 of 187
+# cursors and no default arrow, the rest nested a level down) or a pack rebuilt
+# under the same name kept matching while GDM drew its fallback arrow. -e follows
+# links, so a dangling one counts as missing. A package's copy isn't ours to
+# replace (copy_gdm_theme), so it always passes. Twin: bin/aura-glass-gdm-sync.
+gdm_cursor_copy_complete() {
+    local name="$1" src="$HOME/.local/share/icons/$1/cursors" dest="$GDM_ICON_ROOT/$1" f
+    [ -d "$src" ] || return 0
+    [ -d "$dest" ] && [ ! -e "$dest/$GDM_THEME_MARKER" ] && return 0
+    for f in "$src"/*; do
+        [ -e "$dest/cursors/${f##*/}" ] || return 1
+    done
+}
+
 gdm_look_matches_memo() {
     local memo="$CONF_DIR/gdm-look"
     [ -r "$memo" ] || return 1
@@ -549,6 +564,7 @@ gdm_look_matches_memo() {
     [ "$icon" = "$want_icon" ] || return 1
     [ "$cursor" = "$want_cursor" ] || return 1
     [ "$size" = "$want_size" ] || return 1
+    gdm_cursor_copy_complete "$cursor" || return 1
     fontdir="$(gdm_font_dir)"
     if [ -n "$fontdir" ]; then
         font="$(gsettings get org.gnome.desktop.interface font-name 2>/dev/null | tr -d "'")"

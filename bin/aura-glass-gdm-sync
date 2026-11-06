@@ -39,6 +39,17 @@ check_gresource() {
 # takes root, so a later change of pack or accent stops there. It only warns, the
 # same way. Light and dark of one pack count as the same: icon-sync swaps between
 # them with the colour scheme, and the choice install_gdm made still stands.
+# Twin of gdm_cursor_copy_complete in lib/steps-gdm.sh (why it exists is there):
+# this fast path runs at every login without sourcing lib/.
+cursor_copy_complete() {
+    local src="$HOME/.local/share/icons/$1/cursors" dest="/usr/share/icons/$1" f
+    [ -d "$src" ] || return 0
+    [ -d "$dest" ] && [ ! -e "$dest/.aura-glass-gdm" ] && return 0
+    for f in "$src"/*; do
+        [ -e "$dest/cursors/${f##*/}" ] || return 1
+    done
+}
+
 check_look() {
     local memo="$CONF_DIR/gdm-look" icon cursor size want_icon want_cursor want_size repo
     [ -r "$memo" ] || return 0
@@ -49,7 +60,8 @@ check_look() {
     size="${size##* }"
     [ -n "$icon" ] && [ -n "$cursor" ] || return 0
     icon="${icon%-dark}"; want_icon="${want_icon%-dark}"
-    [ "$icon" = "$want_icon" ] && [ "$cursor" = "$want_cursor" ] && [ "$size" = "$want_size" ] && return 0
+    [ "$icon" = "$want_icon" ] && [ "$cursor" = "$want_cursor" ] && [ "$size" = "$want_size" ] \
+        && cursor_copy_complete "$cursor" && return 0
 
     repo="$(cat "$CONF_DIR/repo-path" 2>/dev/null || true)"
     if [ -n "$repo" ] && [ -f "$repo/lib/steps-gdm.sh" ]; then
