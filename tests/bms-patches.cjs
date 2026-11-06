@@ -412,7 +412,10 @@ test('covers_monitor: a window on no monitor reads no work area, and is not stat
 
 test('static-blur is read in one place only, the type decision', () => {
     const source = fs.readFileSync(path.join(root, 'src/components/applications/index.js'), 'utf8');
-    assert.equal(source.match(/STATIC_BLUR/g).length, 1);
+    // Three reads: the type decision, and rest_opacity and pipeline_for, which
+    // both ask whether static-blur is on for every window rather than decide a
+    // window's type. \b keeps MAXIMIZED_STATIC_BLUR out of the count.
+    assert.equal(source.match(/\bSTATIC_BLUR\b/g).length, 3);
     assert.match(source, /wants_static_blur\(meta_window\) \{\s*return this\.settings\.applications\.STATIC_BLUR/);
 });
 

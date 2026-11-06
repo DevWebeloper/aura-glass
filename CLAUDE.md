@@ -11,7 +11,7 @@ contributor docs start at [docs/README.md](docs/README.md).
 Aura Glass is a frosted-glass desktop for **GNOME Shell 48–51**, delivered by a
 Bash installer rather than a package. `install.sh` fetches **pinned** upstreams
 (the GNOME-macOS-Tahoe theme, adopted as `Aura-Glass`, plus Blur My Shell master past v77
-with one patch and a patched Custom OSD). It copies `css/` into
+with five patches and a patched Custom OSD). It copies `css/` into
 `~/.config/aura-glass`, rewrites those copies for the user's choices, splices
 them into four generated CSS files with `bin/aura-glass-apply`, loads dconf
 presets, writes gsettings, and installs a first-party extension (Aura Glass
