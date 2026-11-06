@@ -1,8 +1,8 @@
 diff --git a/schemas/org.gnome.shell.extensions.blur-my-shell.gschema.xml b/schemas/org.gnome.shell.extensions.blur-my-shell.gschema.xml
-index 68582ea..699e352 100644
+index b6b7aa9..1548314 100644
 --- a/schemas/org.gnome.shell.extensions.blur-my-shell.gschema.xml
 +++ b/schemas/org.gnome.shell.extensions.blur-my-shell.gschema.xml
-@@ -141,6 +141,11 @@
+@@ -162,6 +162,11 @@
              <default>0.6</default>
              <summary>Deprecated, only read for migration: Global brightness to use</summary>
          </key>
@@ -114,7 +114,7 @@ index 5249bca..34d899a 100644
  
          // shared by every component so that effects are pooled instead of re-created
 diff --git a/src/render/backdrop/capture.js b/src/render/backdrop/capture.js
-index f714d82..f11c328 100644
+index 2578f1d..b4949c8 100644
 --- a/src/render/backdrop/capture.js
 +++ b/src/render/backdrop/capture.js
 @@ -10,6 +10,7 @@ import { get_painted_view, get_view_framebuffer, get_view_paint } from './painte
@@ -125,7 +125,7 @@ index f714d82..f11c328 100644
      largestViewSize,
      TEXTURE_REGION_SOURCE,
      TextureRegion,
-@@ -200,7 +201,7 @@ export const BackdropCaptureEffect = GObject.registerClass({
+@@ -207,7 +208,7 @@ export const BackdropCaptureEffect = GObject.registerClass({
          contentActor.add_child(this.output);
      }
  
@@ -134,7 +134,7 @@ index f714d82..f11c328 100644
          const context = sourceFramebuffer.get_context();
          const cached = targets.get(key) ?? null;
          const reusable = cached !== null && cached.context === context
-@@ -218,6 +219,12 @@ export const BackdropCaptureEffect = GObject.registerClass({
+@@ -225,6 +226,12 @@ export const BackdropCaptureEffect = GObject.registerClass({
  
          let textureWidth = width;
          let textureHeight = height;
@@ -147,7 +147,7 @@ index f714d82..f11c328 100644
          if (reusable) {
              const limit = largestViewSize();
              textureWidth = getTextureCapacity(width, cached.width, limit.width);
-@@ -325,7 +332,7 @@ export const BackdropCaptureEffect = GObject.registerClass({
+@@ -332,7 +339,7 @@ export const BackdropCaptureEffect = GObject.registerClass({
                  this.actorGeometry = actorGeometry;
              }
              this.ensureFramebuffer(this.targets, view,

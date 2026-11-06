@@ -1,8 +1,8 @@
 diff --git a/src/components/applications/index.js b/src/components/applications/index.js
-index 70afe6e..f1f75ff 100644
+index b72f2b0..d5b569f 100644
 --- a/src/components/applications/index.js
 +++ b/src/components/applications/index.js
-@@ -159,6 +159,13 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -174,6 +174,13 @@ export const ApplicationsBlur = class ApplicationsBlur {
              meta_window, 'notify::gtk-application-id',
              _ => this.check_blur(meta_window)
          );
@@ -17,7 +17,7 @@ index 70afe6e..f1f75ff 100644
          this.connections.connect(
              meta_window, 'unmanaging',
 diff --git a/src/components/applications/window_rules.js b/src/components/applications/window_rules.js
-index 715cbb5..d7b3a47 100644
+index e985d0c..df68b37 100644
 --- a/src/components/applications/window_rules.js
 +++ b/src/components/applications/window_rules.js
 @@ -5,6 +5,8 @@ const BLURRED_FRAME_TYPES = [
@@ -28,8 +28,8 @@ index 715cbb5..d7b3a47 100644
 +    Meta.FrameType.UTILITY,
  ];
  
- const TITLE_PREFIX = 'title:';
-@@ -17,18 +19,44 @@ function wildcard_to_regex(pattern) {
+ // GTK popovers and the menus of other Wayland clients
+@@ -28,18 +30,44 @@ function wildcard_to_regex(pattern) {
      return new RegExp(regex, 'i');
  }
  
@@ -79,22 +79,25 @@ index 715cbb5..d7b3a47 100644
  }
  
  /// Decides which windows are blurred: when blurring every window, those not in the blacklist,
-@@ -44,11 +72,14 @@ export class WindowRules {
+@@ -55,14 +83,17 @@ export class WindowRules {
          this.blacklist = this.settings.applications.BLACKLIST.map(to_rule);
      }
  
 +    /// The whitelist is consulted in both modes, so a window listed there is
 +    /// blurred even when blurring every window would block one of its classes.
-     matches(meta_window) {
--        const listed = this.settings.applications.ENABLE_ALL
+     listed(meta_window) {
+-        return this.settings.applications.ENABLE_ALL
 -            ? !matches_any(meta_window, this.blacklist)
 -            : matches_any(meta_window, this.whitelist);
--        return meta_window.get_wm_class() !== ''
 +        const chain = window_chain(meta_window);
-+        const listed = matches_any(chain, this.whitelist)
++        return matches_any(chain, this.whitelist)
 +            || (this.settings.applications.ENABLE_ALL
 +                && !matches_any(chain, this.blacklist));
-+        return chain.some(has_class)
-             && listed
+     }
+ 
+     matches(meta_window) {
+-        return meta_window.get_wm_class() !== ''
++        return window_chain(meta_window).some(has_class)
+             && this.listed(meta_window)
              && BLURRED_FRAME_TYPES.includes(meta_window.get_frame_type());
      }

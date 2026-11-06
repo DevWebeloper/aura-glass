@@ -18,8 +18,12 @@ function test(name, fn) {
 }
 
 const FrameType = { NORMAL: 0, DIALOG: 1, MODAL_DIALOG: 2, UTILITY: 3, MENU: 4, ATTACHED: 5 };
+// WindowType and WindowClientType only feed upstream's is_app_popup (#1237), which these tests
+// do not reach; window_rules.js reads them when it loads.
+const WindowType = { NORMAL: 0, DROPDOWN_MENU: 8, POPUP_MENU: 9 };
+const WindowClientType = { WAYLAND: 0, X11: 1 };
 const WindowRules = load('src/components/applications/window_rules.js', 'WindowRules',
-    { Meta: { FrameType } });
+    { Meta: { FrameType, WindowType, WindowClientType } });
 
 function win(wm_class, { app_id = null, parent = null, frame = FrameType.NORMAL, title = null } = {}) {
     return {
@@ -320,6 +324,9 @@ function fixture({ static_blur = false, blur_on_overview = false } = {}) {
         DynamicPipeline, RoundedPipeline, BLUR_ACTOR_NAME, BLUR_FADE_IN_TIME: 200,
         finish_preview_fade() {}, is_desktop_window: () => false,
         ApplicationsService: class {},
+        ApplicationMenus: class { enable() {} disable() {} },
+        connect_system_style_changes() {},
+        get_pipeline_id: settings => settings.PIPELINE,
         Clutter: { AnimationMode: {} },
         Gio: { Settings: class { get_strv() { return []; } } },
         GLib,

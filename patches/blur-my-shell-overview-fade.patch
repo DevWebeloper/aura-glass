@@ -1,5 +1,5 @@
 diff --git a/src/components/applications/index.js b/src/components/applications/index.js
-index f1f75ff..4ddafea 100644
+index d5b569f..99dd090 100644
 --- a/src/components/applications/index.js
 +++ b/src/components/applications/index.js
 @@ -1,3 +1,4 @@
@@ -7,7 +7,7 @@ index f1f75ff..4ddafea 100644
  import Gio from 'gi://Gio';
  import Meta from 'gi://Meta';
  import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-@@ -10,7 +11,7 @@ import { RoundedPipeline } from '../../render/rounded_pipeline.js';
+@@ -12,7 +13,7 @@ import { ApplicationMenus } from './menus.js';
  import { WindowRules } from './window_rules.js';
  import { BLUR_ACTOR_NAME, WindowOpacity } from './window_opacity.js';
  import { compute_scale, place_dynamic_blur, place_static_blur } from './window_geometry.js';
@@ -16,9 +16,9 @@ index f1f75ff..4ddafea 100644
  
  export const ApplicationsBlur = class ApplicationsBlur {
      constructor(connections, settings, effects_manager) {
-@@ -23,6 +24,10 @@ export const ApplicationsBlur = class ApplicationsBlur {
- 
+@@ -26,6 +27,10 @@ export const ApplicationsBlur = class ApplicationsBlur {
          this.rules = new WindowRules(settings);
+         this.menus = new ApplicationMenus(settings, effects_manager, this.rules);
          this.window_opacity = new WindowOpacity();
 +        // blur actors fading out as the overview opens, see reconcile_window_visibility
 +        this.fading_out = new WeakSet();
@@ -27,7 +27,7 @@ index f1f75ff..4ddafea 100644
          this.enabled = false;
  
          this.service = new ApplicationsService;
-@@ -98,12 +103,71 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -105,12 +110,71 @@ export const ApplicationsBlur = class ApplicationsBlur {
          this.connections.disconnect_all_for(Main.overview);
          this.overview_visible = Main.overview.visible;
  
@@ -100,7 +100,7 @@ index f1f75ff..4ddafea 100644
          });
          this.connections.connect(Main.overview, 'hidden', _ => {
              this.overview_visible = false;
-@@ -405,7 +469,9 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -420,7 +484,9 @@ export const ApplicationsBlur = class ApplicationsBlur {
          }
      }
  
@@ -111,7 +111,7 @@ index f1f75ff..4ddafea 100644
          const blur_actor = meta_window.blur_actor;
          if (!blur_actor)
              return;
-@@ -423,14 +489,99 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -438,14 +504,99 @@ export const ApplicationsBlur = class ApplicationsBlur {
              && !is_fullscreen
              && (this.settings.applications.BLUR_ON_OVERVIEW || !this.overview_visible);
  

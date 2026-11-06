@@ -1,10 +1,10 @@
 diff --git a/schemas/org.gnome.shell.extensions.blur-my-shell.gschema.xml b/schemas/org.gnome.shell.extensions.blur-my-shell.gschema.xml
-index 699e352..94b0cf7 100644
+index 1548314..66204d5 100644
 --- a/schemas/org.gnome.shell.extensions.blur-my-shell.gschema.xml
 +++ b/schemas/org.gnome.shell.extensions.blur-my-shell.gschema.xml
-@@ -438,6 +438,17 @@
-             <default>false</default>
-             <summary>Whether or not to unblur applications when they are fullscreen</summary>
+@@ -549,6 +549,17 @@
+             <default>15</default>
+             <summary>Corner radius of the blur of application menus, for edge effects like refraction</summary>
          </key>
 +        <!-- MAXIMIZED STATIC BLUR (Aura Glass) -->
 +        <key type="b" name="maximized-static-blur">
@@ -21,7 +21,7 @@ index 699e352..94b0cf7 100644
          <key type="b" name="enable-all">
              <default>false</default>
 diff --git a/src/components/applications/index.js b/src/components/applications/index.js
-index 4ddafea..a226701 100644
+index 99dd090..3b0a736 100644
 --- a/src/components/applications/index.js
 +++ b/src/components/applications/index.js
 @@ -1,5 +1,6 @@
@@ -31,8 +31,8 @@ index 4ddafea..a226701 100644
  import Meta from 'gi://Meta';
  import * as Main from 'resource:///org/gnome/shell/ui/main.js';
  
-@@ -10,9 +11,17 @@ import { DynamicPipeline } from '../../render/dynamic_surface.js';
- import { RoundedPipeline } from '../../render/rounded_pipeline.js';
+@@ -12,9 +13,17 @@ import { RoundedPipeline } from '../../render/rounded_pipeline.js';
+ import { ApplicationMenus } from './menus.js';
  import { WindowRules } from './window_rules.js';
  import { BLUR_ACTOR_NAME, WindowOpacity } from './window_opacity.js';
 -import { compute_scale, place_dynamic_blur, place_static_blur } from './window_geometry.js';
@@ -50,7 +50,7 @@ index 4ddafea..a226701 100644
  export const ApplicationsBlur = class ApplicationsBlur {
      constructor(connections, settings, effects_manager) {
          this.connections = connections;
-@@ -28,6 +37,10 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -31,6 +40,10 @@ export const ApplicationsBlur = class ApplicationsBlur {
          this.fading_out = new WeakSet();
          // while a touchpad swipe moves the overview, see follow_overview_gesture
          this.following_gesture = false;
@@ -61,7 +61,7 @@ index 4ddafea..a226701 100644
          this.enabled = false;
  
          this.service = new ApplicationsService;
-@@ -58,11 +71,28 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -65,11 +78,28 @@ export const ApplicationsBlur = class ApplicationsBlur {
              global.display,
              'window-entered-monitor',
              (_display, _monitor, meta_window) => {
@@ -91,7 +91,7 @@ index 4ddafea..a226701 100644
          this.focused_window = null;
          this.init_dynamic_opacity();
          this.connections.connect(
-@@ -130,6 +160,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -137,6 +167,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
                  const stop = () => {
                      this.following_gesture = false;
                      follow_windows();
@@ -99,7 +99,7 @@ index 4ddafea..a226701 100644
                  };
                  // an ease cut short is a new swipe taking over, which goes on following
                  if (settle)
-@@ -157,6 +188,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -164,6 +195,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
                  this.reconcile_window_visibility(meta_window, BLUR_FADE_IN_TIME)
              );
          });
@@ -107,7 +107,7 @@ index 4ddafea..a226701 100644
          // Leaving the overview put the windows back with their blur, which used to switch on in
          // one frame after the previews had settled at full opacity. The blur fades in instead,
          // and the window content eases from opaque to its translucent opacity with it. Both start
-@@ -172,10 +204,11 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -179,10 +211,11 @@ export const ApplicationsBlur = class ApplicationsBlur {
          this.connections.connect(Main.overview, 'hidden', _ => {
              this.overview_visible = false;
              reconcile_windows();
@@ -120,7 +120,7 @@ index 4ddafea..a226701 100644
          });
  
          this.meta_windows.forEach(meta_window =>
-@@ -251,10 +284,23 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -266,10 +299,23 @@ export const ApplicationsBlur = class ApplicationsBlur {
              meta_window,
              meta_window,
              'size-changed',
@@ -146,7 +146,7 @@ index 4ddafea..a226701 100644
              this.connect_blur_signal(
                  meta_window,
                  meta_window,
-@@ -302,13 +348,20 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -317,13 +363,20 @@ export const ApplicationsBlur = class ApplicationsBlur {
              meta_window,
              meta_window,
              ['notify::maximized-horizontally', 'notify::maximized-vertically'],
@@ -168,7 +168,7 @@ index 4ddafea..a226701 100644
                  this.update_corner_radius(meta_window);
                  this.reconcile_window_visibility(meta_window);
              }
-@@ -318,7 +371,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -333,7 +386,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
              window_actor,
              'child-added',
              () => {
@@ -177,7 +177,7 @@ index 4ddafea..a226701 100644
                      && meta_window.get_client_type() === Meta.WindowClientType.X11)
                      window_actor.set_child_below_sibling(meta_window.blur_actor, null);
                  this.reconcile_window_visibility(meta_window);
-@@ -348,7 +401,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -363,7 +416,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
      update_size(meta_window) {
          const blur_actor = meta_window.blur_actor;
  
@@ -186,7 +186,7 @@ index 4ddafea..a226701 100644
              const window_monitor_index = meta_window.get_monitor();
              const monitor = Main.layoutManager.monitors[window_monitor_index];
              if (!monitor)
-@@ -372,6 +425,93 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -387,6 +440,93 @@ export const ApplicationsBlur = class ApplicationsBlur {
          }
      }
  
@@ -221,7 +221,7 @@ index 4ddafea..a226701 100644
 +    pipeline_for(meta_window) {
 +        return meta_window.bms_static_blur && !this.settings.applications.STATIC_BLUR
 +            ? MAXIMIZED_PIPELINE
-+            : this.settings.applications.PIPELINE;
++            : get_pipeline_id(this.settings.applications);
 +    }
 +
 +    /// Rebuilds the blur as the other type when the window has crossed between covering its monitor
@@ -280,7 +280,7 @@ index 4ddafea..a226701 100644
      /// Adds or removes the blur of a tracked window, following the window rules.
      check_blur(meta_window) {
          if (!is_desktop_window(meta_window) && this.rules.matches(meta_window)) {
-@@ -392,11 +532,14 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -407,11 +547,14 @@ export const ApplicationsBlur = class ApplicationsBlur {
          let blur_actor, bg_manager;
          let rounded_pipeline = null;
  
@@ -292,12 +292,12 @@ index 4ddafea..a226701 100644
              const pipeline = new Pipeline(
                  this.effects_manager,
                  global.blur_my_shell._pipelines_manager,
--                this.settings.applications.PIPELINE
+-                get_pipeline_id(this.settings.applications)
 +                this.pipeline_for(meta_window)
              );
              const bg_managers = [];
              blur_actor = pipeline.create_background_with_effects(
-@@ -459,7 +602,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -474,7 +617,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
  
          let use_0_radius = !this.settings.applications.CORNER_WHEN_MAXIMIZED && (is_maximized || is_fullscreen);
  
@@ -306,7 +306,7 @@ index 4ddafea..a226701 100644
              meta_window.bms_rounded_pipeline.update();
              meta_window.bms_rounded_pipeline.setStraightCorners(use_0_radius);
          } else {
-@@ -469,14 +612,42 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -484,14 +627,42 @@ export const ApplicationsBlur = class ApplicationsBlur {
          }
      }
  
@@ -349,7 +349,7 @@ index 4ddafea..a226701 100644
  
          const is_focused = this.settings.applications.DYNAMIC_OPACITY
              && meta_window === this.focused_window;
-@@ -513,14 +684,17 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -528,14 +699,17 @@ export const ApplicationsBlur = class ApplicationsBlur {
                  blur_actor.opacity = 0;
              blur_actor.show();
              blur_actor.ease({
@@ -369,7 +369,7 @@ index 4ddafea..a226701 100644
              }
              // a fade in is otherwise left to finish
              blur_actor.show();
-@@ -534,7 +708,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -549,7 +723,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
                      this.fading_out.delete(blur_actor);
                      if (finished) {
                          blur_actor.hide();
@@ -378,7 +378,7 @@ index 4ddafea..a226701 100644
                      }
                  },
              });
-@@ -542,7 +716,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -557,7 +731,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
              // a fade on its way out is left to finish; it hides the blur itself. One on its way in
              // is cut, so the blur is whole the next time it shows.
              blur_actor.remove_transition('opacity');
@@ -387,7 +387,7 @@ index 4ddafea..a226701 100644
              blur_actor.hide();
          }
  
-@@ -565,17 +739,18 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -580,17 +754,18 @@ export const ApplicationsBlur = class ApplicationsBlur {
          // and the content's distance from opaque (1 - p)² is EASE_OUT_QUAD to opaque and
          // EASE_IN_QUAD back. So the blur still covers whatever the content's own translucency
          // lets through, as it does in reconcile_window_visibility.
@@ -408,16 +408,16 @@ index 4ddafea..a226701 100644
          }
  
          const opacity = this.settings.applications.OPACITY;
-@@ -616,7 +791,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -631,7 +806,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
      change_pipeline() {
          this.meta_windows.forEach(meta_window => {
              meta_window.bg_manager?._bms_pipeline.change_pipeline_to(
--                this.settings.applications.PIPELINE
+-                get_pipeline_id(this.settings.applications)
 +                this.pipeline_for(meta_window)
              );
              this.update_corner_radius(meta_window);
          });
-@@ -630,6 +805,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -646,6 +821,7 @@ export const ApplicationsBlur = class ApplicationsBlur {
              return;
  
          this._log('removing window blur');
@@ -425,7 +425,7 @@ index 4ddafea..a226701 100644
  
          this.blur_signal_ids.get(meta_window).forEach(({ object, id }) =>
              this.connections.disconnect(object, id)
-@@ -648,6 +824,8 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -664,6 +840,8 @@ export const ApplicationsBlur = class ApplicationsBlur {
          delete meta_window.blur_actor;
          delete meta_window.bg_manager;
          delete meta_window.bms_rounded_pipeline;
@@ -434,7 +434,7 @@ index 4ddafea..a226701 100644
      }
  
      /// Kinda the same as `remove_blur`, but better: it also untracks the window.
-@@ -660,6 +838,8 @@ export const ApplicationsBlur = class ApplicationsBlur {
+@@ -676,6 +854,8 @@ export const ApplicationsBlur = class ApplicationsBlur {
          this.meta_windows.delete(meta_window);
          if (this.focused_window === meta_window)
              this.focused_window = null;
@@ -495,13 +495,13 @@ index b49e741..eda745d 100644
  /// buffer's corner.
  export function place_dynamic_blur(blur_actor, meta_window, scale) {
 diff --git a/src/components/settings_connections.js b/src/components/settings_connections.js
-index e52896d..3783045 100644
+index 6449eaf..d85ba7a 100644
 --- a/src/components/settings_connections.js
 +++ b/src/components/settings_connections.js
-@@ -119,6 +119,10 @@ export function connect_component_settings(extension) {
-         applications,
-         () => applications.change_pipeline()
-     ));
+@@ -149,6 +149,10 @@ export function connect_component_settings(extension) {
+             () => applications.change_pipeline()
+         ))
+     );
 +    connect(settings.applications, 'MAXIMIZED_STATIC_BLUR', when_enabled(
 +        applications,
 +        () => applications.update_blur_types()
@@ -509,7 +509,7 @@ index e52896d..3783045 100644
      ['CORNER_WHEN_MAXIMIZED', 'CORNER_RADIUS', 'ROUNDED_CORNERS'].forEach(property =>
          connect(settings.applications, property, when_enabled(
              applications,
-@@ -129,6 +133,10 @@ export function connect_component_settings(extension) {
+@@ -159,6 +163,10 @@ export function connect_component_settings(extension) {
          applications,
          () => applications.set_opacity()
      ));
@@ -520,7 +520,7 @@ index e52896d..3783045 100644
      connect(settings.applications, 'DYNAMIC_OPACITY', when_enabled(
          applications,
          () => applications.init_dynamic_opacity()
-@@ -137,9 +145,14 @@ export function connect_component_settings(extension) {
+@@ -167,9 +175,14 @@ export function connect_component_settings(extension) {
          applications,
          () => applications.connect_to_overview()
      ));
@@ -534,16 +534,16 @@ index e52896d..3783045 100644
 +            applications.update_blur_types();
 +        }
      ));
-     connect(settings.applications, 'ENABLE_ALL', when_enabled(
+     connect(settings.applications, 'BLUR_MENUS', when_enabled(
          applications,
 diff --git a/src/settings/keys.js b/src/settings/keys.js
-index 4d2462b..9c81a7f 100644
+index 2e30b6f..b1a414c 100644
 --- a/src/settings/keys.js
 +++ b/src/settings/keys.js
-@@ -64,6 +64,8 @@ export const KEYS = [
-             { type: Type.B, name: "dynamic-opacity" },
-             { type: Type.B, name: "blur-on-overview" },
+@@ -82,6 +82,8 @@ export const KEYS = [
              { type: Type.B, name: "unblur-when-fullscreen" },
+             { type: Type.B, name: "blur-menus" },
+             { type: Type.I, name: "menu-corner-radius" },
 +            { type: Type.B, name: "maximized-static-blur" },
 +            { type: Type.I, name: "maximized-blur-opacity" },
              { type: Type.B, name: "enable-all" },

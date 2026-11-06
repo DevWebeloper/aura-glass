@@ -375,6 +375,11 @@ apply_radius_dconf() {
     run dconf write "$base/overview/workspace-corner-radius" "$TOKEN_RADIUS_WINDOW"
     run dconf write "$base/popup/menu-corner-radius" "$TOKEN_RADIUS_MENU"
     run dconf write "$base/popup/quick-settings-corner-radius" "$TOKEN_RADIUS_QUICK_SETTINGS"
+    # Blur My Shell blurred the screenshot panel at the quick-settings radius
+    # until #1236 gave it a key of its own, and its settings migration (version
+    # 10) copies the quick-settings value over once. Written here so a preset
+    # change keeps moving both, as it did before the split.
+    run dconf write "$base/popup/screenshot-corner-radius" "$TOKEN_RADIUS_QUICK_SETTINGS"
     run dconf write "$base/popup/notification-corner-radius" "$TOKEN_RADIUS_NOTIFICATION"
     run dconf write "$base/popup/dialog-corner-radius" "$TOKEN_RADIUS_DIALOG"
     run dconf write "$base/popup/corner-radius" "$TOKEN_RADIUS_POPUP"

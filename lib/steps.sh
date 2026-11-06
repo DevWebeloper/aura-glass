@@ -32,26 +32,15 @@ UPSTREAM_THEME_NAME="Tahoe-Dark"
 THEME_NAME="Aura-Glass"
 
 BMS_REPO="https://github.com/aunetx/blur-my-shell.git"
-BMS_REF="b1e415cc5ff3"            # v77. v76 replaced the native gaussian effects, which
-                                  # lost their radius after a resume from suspend
-                                  # (upstream #700, #850)
+BMS_REF="88a6d639ccca"            # master after v77 (78 in development). v76 replaced
+                                  # the native gaussian effects, which lost their
+                                  # radius after a resume from suspend (upstream
+                                  # #700, #850). Master carries what Aura used to
+                                  # backport onto v77 (#1208, #1211, #1217, #1218),
+                                  # and moved the preferences UI into a GResource
+                                  # (#1220), which install_bms now builds. Move the
+                                  # pin to the v78 tag once it is released.
 BMS_UUID="blur-my-shell@aunetx"
-
-# Applied right after the pin, so the patches below stack on it: four
-# commits from upstream master that v77 does not have. BMS_REF stays on the
-# release because master also moved the preferences UI into a GResource (#1220),
-# which changes the build install_bms mirrors. Drop this and move the pin once a
-# release carries them.
-#   #1208 stops tearing every component down during the lock and unlock
-#         animations; only the panel blur and the window picker go off there.
-#   #1211 moves the native dash's blur inside the dash, so it shows the app grid
-#         under it. See unblur-in-overview in dconf/core.ini: Aura's value used
-#         to hide that blur for as long as the dash is on screen.
-#   #1217 adds title: entries to the blur lists. BMS_SUBWIN_PATCH makes them
-#         follow the transient-for chain like class entries do.
-#   #1218 keeps a static blur lined up with the monitor while the window actor
-#         scales and moves in its open and unminimize animations.
-BMS_BACKPORTS_PATCH="blur-my-shell-upstream-backports.patch"
 
 # First-party — no upstream repo or ref, since the source lives in
 # extensions/ next to this script. See install_aura_ext in
@@ -66,9 +55,12 @@ AURA_EXT_UUID="aura-glass-blur@aura-glass.local"
 # which already re-checks a window on gtk-application-id and keeps one set of
 # listeners per window, both of which the v73 patch had to add itself, and for
 # v77, which accepts ATTACHED itself, so only UTILITY is still added. Re-cut
-# again for #1217 in BMS_BACKPORTS_PATCH: a rule now tests a window rather than
-# a string, so the chain is a list of windows and title: entries follow it too.
-# See the patch's own comments.
+# again for #1217: a rule now tests a window rather than a string, so the chain
+# is a list of windows and title: entries follow it too. Re-cut for master,
+# whose app menus (#1237) follow the rules of their root window through
+# listed(); the chain goes into listed(), so menus see it as well. Upstream
+# still matches only the window itself for dialogs and palettes. See the
+# patch's own comments.
 #
 # v73 needed four more patches. v76 was checked live without them on
 # 2026-10-27 and they were dropped: the overview previews no longer show a

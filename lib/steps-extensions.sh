@@ -103,10 +103,10 @@ install_ext_ego() {
 
 # Blur My Shell carries the popup component upstream: menus, quick settings,
 # notifications, dialogs and the OSD get blur directly. We build from pinned
-# release v77 with the upstream-backports, subwindow, full-size-buffers,
+# master (BMS_REF, past v77) with the subwindow, full-size-buffers,
 # overview-fade, static-maximized and osd-corners patches applied on top (see
-# BMS_BACKPORTS_PATCH, BMS_SUBWIN_PATCH, BMS_BUFFERS_PATCH, BMS_FADE_PATCH,
-# BMS_STATIC_PATCH and BMS_OSD_PATCH in lib/steps.sh).
+# BMS_SUBWIN_PATCH, BMS_BUFFERS_PATCH, BMS_FADE_PATCH, BMS_STATIC_PATCH and
+# BMS_OSD_PATCH in lib/steps.sh).
 # gnome-extensions pack and gnome-extensions install both write under $HOME, so
 # this needs no root.
 install_bms() {
@@ -127,7 +127,6 @@ install_bms() {
     if [ "${FORCE:-0}" != 1 ] \
        && [ -f "$EXT_DIR/$BMS_UUID/components/popup/index.js" ] \
        && [ "$(cat "$CONF_DIR/bms-ref" 2>/dev/null || true)" = "$BMS_REF" ] \
-       && patch_stamp_current bms-backports-patch "$REPO_ROOT/patches/$BMS_BACKPORTS_PATCH" \
        && patch_stamp_current bms-subwindow-patch "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH" \
        && patch_stamp_current bms-buffers-patch "$REPO_ROOT/patches/$BMS_BUFFERS_PATCH" \
        && patch_stamp_current bms-fade-patch "$REPO_ROOT/patches/$BMS_FADE_PATCH" \
@@ -139,7 +138,7 @@ install_bms() {
         return 0
     fi
 
-    info "building Blur My Shell from $BMS_REF + patches/$BMS_BACKPORTS_PATCH + patches/$BMS_SUBWIN_PATCH + patches/$BMS_BUFFERS_PATCH + patches/$BMS_FADE_PATCH + patches/$BMS_STATIC_PATCH + patches/$BMS_OSD_PATCH"
+    info "building Blur My Shell from $BMS_REF + patches/$BMS_SUBWIN_PATCH + patches/$BMS_BUFFERS_PATCH + patches/$BMS_FADE_PATCH + patches/$BMS_STATIC_PATCH + patches/$BMS_OSD_PATCH"
     local src="$SRC_CACHE/blur-my-shell"
     if [ -d "$src/.git" ]; then
         run git -C "$src" checkout --quiet -- . 2>/dev/null || true
@@ -153,8 +152,6 @@ install_bms() {
     # The checkout above is reset by the `git checkout -- .` that precedes it,
     # so this always applies to a clean tree.
     if [ "${DRY_RUN:-0}" != 1 ]; then
-        git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_BACKPORTS_PATCH" \
-            || die "the Blur My Shell upstream-backports patch did not apply — upstream may have moved"
         git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH" \
             || die "the Blur My Shell subwindow patch did not apply — upstream may have moved"
         git -C "$src" apply --whitespace=nowarn "$REPO_ROOT/patches/$BMS_BUFFERS_PATCH" \
@@ -174,7 +171,7 @@ install_bms() {
     fi
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: apply patches/$BMS_BACKPORTS_PATCH, patches/$BMS_SUBWIN_PATCH, patches/$BMS_BUFFERS_PATCH, patches/$BMS_FADE_PATCH, patches/$BMS_STATIC_PATCH and patches/$BMS_OSD_PATCH, bundle the stylesheets, gnome-extensions pack in $src/src, then install the zip"
+        info "dry-run: apply patches/$BMS_SUBWIN_PATCH, patches/$BMS_BUFFERS_PATCH, patches/$BMS_FADE_PATCH, patches/$BMS_STATIC_PATCH and patches/$BMS_OSD_PATCH, bundle the stylesheets, compile the preferences GResource, gnome-extensions pack in $src/src, then install the zip"
         return 0
     fi
 
@@ -192,10 +189,19 @@ install_bms() {
     # is not silently left out.
     local sheet sources=()
     for sheet in panel dash popup/base popup/transparent popup/light \
-                 popup/dark popup/menu-items overview appfolders panel-light-text; do
+                 popup/dark popup/menu-items popup/unblurred overview appfolders \
+                 panel-light-text; do
         cat "$src/src/styles/$sheet.css" \
             || die "Blur My Shell has no styles/$sheet.css — upstream's layout may have moved"
     done > "$src/build/stylesheet.css"
+    # Since #1220 the preferences window loads its .ui templates and icons
+    # from resources.gresource at the extension's root (src/preferences/
+    # resources.js) instead of from resources/ui and resources/icons, so a zip
+    # without it has a preferences window that fails to open.
+    glib-compile-resources --sourcedir="$src/resources" \
+        --target="$src/build/resources.gresource" \
+        "$src/resources/blur-my-shell.gresource.xml" \
+        || die "compiling Blur My Shell's preferences resources failed — upstream's layout may have moved"
     local dir
     for dir in "$src"/src/*/; do
         dir="$(basename "$dir")"
@@ -205,8 +211,7 @@ install_bms() {
         --extra-source=../build/stylesheet.css \
         --extra-source=../metadata.json \
         --extra-source=../LICENSE \
-        --extra-source=../resources/icons \
-        --extra-source=../resources/ui \
+        --extra-source=../build/resources.gresource \
         "${sources[@]}" \
         "${podir[@]}" \
         --schema=../schemas/org.gnome.shell.extensions.blur-my-shell.gschema.xml \
@@ -239,14 +244,13 @@ install_bms() {
     mkdir -p "$CONF_DIR"
     printf '%s\n' "$BMS_REF" > "$CONF_DIR/bms-ref"
     printf 'git\n' > "$CONF_DIR/bms-source"
-    patch_stamp_write bms-backports-patch "$REPO_ROOT/patches/$BMS_BACKPORTS_PATCH"
     patch_stamp_write bms-subwindow-patch "$REPO_ROOT/patches/$BMS_SUBWIN_PATCH"
     patch_stamp_write bms-buffers-patch "$REPO_ROOT/patches/$BMS_BUFFERS_PATCH"
     patch_stamp_write bms-fade-patch "$REPO_ROOT/patches/$BMS_FADE_PATCH"
     patch_stamp_write bms-static-patch "$REPO_ROOT/patches/$BMS_STATIC_PATCH"
     patch_stamp_write bms-osd-patch "$REPO_ROOT/patches/$BMS_OSD_PATCH"
     pin_bms_version
-    ok "$BMS_UUID (built from $BMS_REF, with the upstream-backports, subwindow, full-size-buffers, overview-fade, static-maximized and osd-corners patches)"
+    ok "$BMS_UUID (built from $BMS_REF, with the subwindow, full-size-buffers, overview-fade, static-maximized and osd-corners patches)"
 }
 
 # GNOME Shell checks every user-installed extension against extensions.gnome.org

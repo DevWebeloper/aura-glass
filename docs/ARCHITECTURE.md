@@ -370,10 +370,9 @@ changes neither.
 
 - Upstreams are **pinned by commit** (table in §12). A theme that changes under
   the CSS gives a half-applied look with no error.
-- Blur My Shell gets five patches: `blur-my-shell-upstream-backports.patch`
-  (upstream #1208, #1211, #1217 and #1218, which v77 does not have and which
-  come without master's GResource build change), then
-  `blur-my-shell-subwindows.patch` (a blurred app's dialogs and tool palettes
+- Blur My Shell is built from pinned master past v77 (which has #1208, #1211,
+  #1217 and #1218, once backported here, and builds its preferences UI into a
+  GResource, #1220) and gets five patches: `blur-my-shell-subwindows.patch` (a blurred app's dialogs and tool palettes
   match through their transient-for app, its GTK application id and its title;
   ATTACHED and UTILITY frame types), then
   `blur-my-shell-full-size-buffers.patch` (the `full-size-buffers` key
@@ -476,7 +475,7 @@ after 30 s instead of interleaving.
 | What | Repo | Pin |
 |---|---|---|
 | Base theme | kayozxo/GNOME-macOS-Tahoe | `6dfcd9d941e5` (installed as `Tahoe-Dark`, adopted as `Aura-Glass`) |
-| Blur My Shell | aunetx/blur-my-shell | `b1e415cc5ff3` (v77) + 4 patches |
+| Blur My Shell | aunetx/blur-my-shell | `88a6d639ccca` (master after v77) + 5 patches |
 | Custom OSD | neuromorph/custom-osd | `334ac17e9348` + GNOME 50/51 patch |
 | Colloid / Reversal / MacTahoe icons | vinceliuice, yeyushengfan258, vinceliuice | `c9e702beb96f` / `2c8122287e3b` / `b85923bb87f5` |
 | Hatter icons | Mibea/Hatter | full SHA, shallow sparse fetch |
