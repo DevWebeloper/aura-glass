@@ -1,6 +1,6 @@
 diff --color -ruN a/cursor.js b/cursor.js
---- a/cursor.js	2026-11-01 03:03:16.194067183 +0200
-+++ b/cursor.js	2026-10-31 22:45:02.009099603 +0200
+--- a/cursor.js	2026-11-11 11:21:44.263580712 +0200
++++ b/cursor.js	2026-11-01 15:08:04.368578345 +0200
 @@ -36,6 +36,14 @@
          return this._tracker.get_sprite();
      }
@@ -40,8 +40,8 @@ diff --color -ruN a/cursor.js b/cursor.js
  
      hide() {
 diff --color -ruN a/effect.js b/effect.js
---- a/effect.js	2026-11-01 03:03:16.194067183 +0200
-+++ b/effect.js	2026-11-01 03:03:41.832355519 +0200
+--- a/effect.js	2026-11-11 11:21:44.263580712 +0200
++++ b/effect.js	2026-11-11 11:21:53.695604887 +0200
 @@ -1,24 +1,165 @@
  'use strict';
  
@@ -210,7 +210,7 @@ diff --color -ruN a/effect.js b/effect.js
          this.isHidden = true;
          this.magnifyDuration = 250;
          this.unmagnifyDuration = 150;
-@@ -26,33 +167,326 @@
+@@ -26,34 +167,336 @@
          this.isWiggling = false;
          this._isInTransition = false;
          this.cursor = new Cursor();
@@ -541,18 +541,42 @@ diff --color -ruN a/effect.js b/effect.js
 +        this.set_scale(1.0 / this._ratio, 1.0 / this._ratio);
 +        this._choosePicture();
          Main.uiGroup.add_child(this);
++        // The copy is drawn on the stage, and the real pointer is hidden for
++        // it. A window alone over a whole monitor (a maximized one on a monitor
++        // without the top bar) can be given direct scanout, which skips the
++        // stage there, so the shake hid the pointer and showed nothing.
++        // Held off while the copy is on the stage (_releaseScanout).
++        if (!this._scanoutHeld) {
++            global.compositor.disable_unredirect();
++            this._scanoutHeld = true;
++        }
          if (this.isHidden) {
              this.cursor.hide();
-@@ -89,6 +523,8 @@
+         }
+@@ -67,6 +510,12 @@
+         });
+     }
+ 
++    _releaseScanout() {
++        if (!this._scanoutHeld) return;
++        this._scanoutHeld = false;
++        global.compositor.enable_unredirect();
++    }
++
+     unmagnify() {
+         if (this._isInTransition) return;
+ 
+@@ -89,6 +538,9 @@
                  pivot_point: this._pivot,
                  onComplete: () => {
                      Main.uiGroup.remove_child(this);
++                    this._releaseScanout();
 +                    this._stopLoop();
 +                    this._sprite.texture = null;
                      if (this.isHidden) this.cursor.show();
  
                      this.isWiggling = false;
-@@ -108,6 +544,11 @@
+@@ -108,11 +560,17 @@
              this._unmagnifyDelayId = null;
          }
          this.remove_all_transitions();
@@ -564,9 +588,15 @@ diff --color -ruN a/effect.js b/effect.js
          this.cursor.destroy();
  
          if (this.get_parent()) {
+             Main.uiGroup.remove_child(this);
+         }
++        this._releaseScanout();
+ 
+         this.isWiggling = false;
+         this._isInTransition = false;
 diff --color -ruN a/extension.js b/extension.js
---- a/extension.js	2026-11-01 03:03:16.194067183 +0200
-+++ b/extension.js	2026-11-01 03:03:41.832209552 +0200
+--- a/extension.js	2026-11-11 11:21:44.263580712 +0200
++++ b/extension.js	2026-11-01 15:08:04.368578345 +0200
 @@ -1,5 +1,6 @@
  'use strict';
  
@@ -636,7 +666,7 @@ diff --color -ruN a/extension.js b/extension.js
              this._checkTimeoutId = null;
 diff --color -ruN a/theme.js b/theme.js
 --- a/theme.js	1970-01-01 02:00:00.000000000 +0200
-+++ b/theme.js	2026-10-31 22:45:02.009099603 +0200
++++ b/theme.js	2026-11-01 15:08:04.368578345 +0200
 @@ -0,0 +1,508 @@
 +'use strict';
 +
