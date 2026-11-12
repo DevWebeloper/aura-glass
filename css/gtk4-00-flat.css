@@ -69,6 +69,17 @@ label.dim-label {
   border-radius: 0;
 }
 
+/* ---------- Stacks stay square ----------
+ * The same blanket rounding reaches GtkStack, which Adwaita leaves square. A
+ * stack that clips its children (`overflow: hidden`) clips them to that 20px
+ * corner: GNOME Settings' Wi-Fi page puts the "Visible Networks" heading at the
+ * top-left of such a stack, and its "V" lost its left half. A stack never paints
+ * a background of its own here, so square costs nothing visible.
+ */
+stack {
+  border-radius: 0;
+}
+
 /* ---------- Window reset ----------
  * Upstream Tahoe-Dark set `padding: 10px` on `window`, `.maximized window`,
  * and `window.maximized`. In GTK4, this insets all window contents by 10px,
