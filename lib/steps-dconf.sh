@@ -887,9 +887,13 @@ apply_maximized_blur() {
 # a time, shrinking them after 2 s below half size and freeing them 5 s after
 # opacity 0, so the first open of a menu scaling in, an app folder zooming from
 # its icon or a banner fading in still reallocates the capture and the whole
-# kawase chain in its first frames. With the key on they
-# are allocated once at the largest monitor's size (about 50 MB per blurred
-# surface at 3440x1440) and kept. Blur My Shell reads it live.
+# kawase chain in its first frames. With the key on they never shrink and are
+# kept while their actor hides; they still start at the actor's size and grow
+# 1.25x up to the largest monitor's, the capture sized for the actor at full
+# scale. The first version allocated the monitor's size up front (about 60 MB
+# per blurred surface at 3440x1600, the 32 px top bar too), some 700 MB over
+# stock on 2026-11-12 for nothing an animation used. Blur My Shell reads it
+# live.
 #
 # CLUTTER_PAINT=disable-dynamic-max-render-time stops Mutter from scheduling
 # the next frame from the cost of the last few. While nothing moves those are

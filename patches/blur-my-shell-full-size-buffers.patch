@@ -15,34 +15,21 @@ index b6b7aa9..1548314 100644
          <key type="b" name="debug">
              <default>false</default>
 diff --git a/src/effects/blur/dual_kawase_blur.js b/src/effects/blur/dual_kawase_blur.js
-index 4da5ccf..2c541ad 100644
+index 4da5ccf..111d287 100644
 --- a/src/effects/blur/dual_kawase_blur.js
 +++ b/src/effects/blur/dual_kawase_blur.js
-@@ -26,8 +26,11 @@ import {
+@@ -26,8 +26,10 @@ import {
      setVector2,
  } from './kawase_passes.js';
  import {
 +    full_size_buffers,
      getTextureCapacity,
-+    initialTextureCapacity,
      largestViewSize,
 +    released_textures,
      TextureRegion,
      textureFits,
  } from '../../render/shader/texture_region.js';
-@@ -274,8 +277,9 @@ const DualKawaseBlurEffectClass = utils.IS_IN_PREFERENCES ? null : GObject.regis
-         const height = Math.max(1, Math.ceil(logicalHeight * scale));
-         if (this.context !== context) {
-             this.releaseTargets();
--            this.capacityWidth = width;
--            this.capacityHeight = height;
-+            const limit = largestViewSize();
-+            this.capacityWidth = initialTextureCapacity(width, limit.width);
-+            this.capacityHeight = initialTextureCapacity(height, limit.height);
-             this.context = context;
-         } else if (!textureFits(this, width, height, this.capacityWidth, this.capacityHeight)) {
-             const limit = largestViewSize();
-@@ -495,7 +499,22 @@ const DualKawaseBlurEffectClass = utils.IS_IN_PREFERENCES ? null : GObject.regis
+@@ -495,7 +497,22 @@ const DualKawaseBlurEffectClass = utils.IS_IN_PREFERENCES ? null : GObject.regis
          }
      }
  
@@ -65,7 +52,7 @@ index 4da5ccf..2c541ad 100644
          this.downTargets = [];
          this.upTargets = [];
          this.downPipelines = [];
-@@ -518,10 +537,15 @@ const DualKawaseBlurEffectClass = utils.IS_IN_PREFERENCES ? null : GObject.regis
+@@ -518,10 +535,15 @@ const DualKawaseBlurEffectClass = utils.IS_IN_PREFERENCES ? null : GObject.regis
      /// An invisible blur doesn't need its textures, but keeps them a little while in case it shows up
      /// again, like a menu opened right after being closed.
      updateRelease() {
@@ -84,7 +71,7 @@ index 4da5ccf..2c541ad 100644
      }
  
      queueRelease() {
-@@ -544,7 +568,7 @@ const DualKawaseBlurEffectClass = utils.IS_IN_PREFERENCES ? null : GObject.regis
+@@ -544,7 +566,7 @@ const DualKawaseBlurEffectClass = utils.IS_IN_PREFERENCES ? null : GObject.regis
      vfunc_set_actor(actor) {
          if (!actor) {
              this.cancelRelease();
@@ -129,14 +116,15 @@ index 5249bca..f98d221 100644
          // make sure no settings change can re-enable a component
          this._settings.disconnect_all_settings();
 diff --git a/src/render/backdrop/capture.js b/src/render/backdrop/capture.js
-index 2578f1d..45848e3 100644
+index 2578f1d..f3e0f43 100644
 --- a/src/render/backdrop/capture.js
 +++ b/src/render/backdrop/capture.js
-@@ -10,7 +10,9 @@ import { get_painted_view, get_view_framebuffer, get_view_paint } from './painte
+@@ -9,8 +9,10 @@ import { registerBackdrop, unregisterBackdrop, queueBackdropRedraw } from './dam
+ import { get_painted_view, get_view_framebuffer, get_view_paint } from './painted_view.js';
  import { get_snippet } from '../shader/snippet_cache.js';
  import {
++    full_size_buffers,
      getTextureCapacity,
-+    initialTextureCapacity,
      largestViewSize,
 +    released_textures,
      TEXTURE_REGION_SOURCE,
@@ -159,15 +147,23 @@ index 2578f1d..45848e3 100644
          const context = sourceFramebuffer.get_context();
          const cached = targets.get(key) ?? null;
          const reusable = cached !== null && cached.context === context
-@@ -225,11 +228,19 @@ export const BackdropCaptureEffect = GObject.registerClass({
+@@ -225,11 +228,27 @@ export const BackdropCaptureEffect = GObject.registerClass({
  
          let textureWidth = width;
          let textureHeight = height;
-+        if (fullSize && !reusable) {
-+            // Aura Glass: see full-size-buffers in texture_region.js.
++        if (fullSize && !reusable && full_size_buffers()) {
++            // Aura Glass: see full-size-buffers in texture_region.js. The
++            // capture is in screen pixels, so one first met mid-animation (a
++            // menu scaling in) would grow a step at a time to the end of the
++            // scale. Sized for the actor at full scale, up to the largest
++            // monitor, it fits from the first frame.
++            const actor = this.get_actor();
++            const scale = actor?.get_resource_scale() ?? 1;
 +            const limit = largestViewSize();
-+            textureWidth = initialTextureCapacity(width, limit.width);
-+            textureHeight = initialTextureCapacity(height, limit.height);
++            textureWidth = Math.max(width,
++                Math.min(Math.ceil((actor?.width ?? 0) * scale), limit.width));
++            textureHeight = Math.max(height,
++                Math.min(Math.ceil((actor?.height ?? 0) * scale), limit.height));
 +        }
          if (reusable) {
              const limit = largestViewSize();
@@ -179,7 +175,7 @@ index 2578f1d..45848e3 100644
          const texture = Cogl.Texture2D.new_with_size(context, textureWidth, textureHeight);
          texture.set_components(Cogl.TextureComponents.RGBA);
          texture.allocate();
-@@ -276,16 +287,56 @@ export const BackdropCaptureEffect = GObject.registerClass({
+@@ -276,16 +295,56 @@ export const BackdropCaptureEffect = GObject.registerClass({
  
          const now = GLib.get_monotonic_time();
          for (const [key, target] of targets) {
@@ -237,7 +233,7 @@ index 2578f1d..45848e3 100644
          this.targets.delete(view);
          this.cloneTargets.delete(view);
          const destroyId = this.viewDestroyIds.get(view);
-@@ -332,7 +383,7 @@ export const BackdropCaptureEffect = GObject.registerClass({
+@@ -332,7 +391,7 @@ export const BackdropCaptureEffect = GObject.registerClass({
                  this.actorGeometry = actorGeometry;
              }
              this.ensureFramebuffer(this.targets, view,
@@ -246,7 +242,7 @@ index 2578f1d..45848e3 100644
          }
  
          this.target.geometry = geometry;
-@@ -373,6 +424,13 @@ export const BackdropCaptureEffect = GObject.registerClass({
+@@ -373,6 +432,13 @@ export const BackdropCaptureEffect = GObject.registerClass({
              this.output.destroy();
          for (const view of [...this.viewDestroyIds.keys()])
              this.releaseView(view);
@@ -261,34 +257,21 @@ index 2578f1d..45848e3 100644
          this.cloneTargets.clear();
          this.target = null;
 diff --git a/src/render/shader/shader_effect.js b/src/render/shader/shader_effect.js
-index ed6a514..1f1b55b 100644
+index ed6a514..0ecf5d1 100644
 --- a/src/render/shader/shader_effect.js
 +++ b/src/render/shader/shader_effect.js
-@@ -6,8 +6,11 @@ import { getEffectBounds } from '../effect_bounds.js';
+@@ -6,8 +6,10 @@ import { getEffectBounds } from '../effect_bounds.js';
  import { get_view_framebuffer } from '../backdrop/painted_view.js';
  import { addRectangle, setPaintOpacity } from '../paint_nodes.js';
  import {
 +    full_size_buffers,
      getTextureCapacity,
-+    initialTextureCapacity,
      largestViewSize,
 +    released_textures,
      SURFACE_TEXTURE_REGION,
      TextureRegion,
      textureFits,
-@@ -28,7 +31,10 @@ export const SurfaceShaderEffect = GObject.registerClass({
-         const usedHeight = Math.max(1, Math.ceil(height * scale));
-         const current = this.target !== null && this.target.context === context ? this.target : null;
-         if (current === null) {
--            this.createTarget(context, usedWidth, usedHeight);
-+            const limit = largestViewSize();
-+            this.createTarget(context,
-+                initialTextureCapacity(usedWidth, limit.width),
-+                initialTextureCapacity(usedHeight, limit.height));
-         } else if (!textureFits(current, usedWidth, usedHeight, current.width, current.height)) {
-             const limit = largestViewSize();
-             this.createTarget(context,
-@@ -54,6 +60,8 @@ export const SurfaceShaderEffect = GObject.registerClass({
+@@ -54,6 +56,8 @@ export const SurfaceShaderEffect = GObject.registerClass({
      }
  
      createTarget(context, textureWidth, textureHeight) {
@@ -297,7 +280,7 @@ index ed6a514..1f1b55b 100644
          const texture = Cogl.Texture2D.new_with_size(context, textureWidth, textureHeight);
          texture.set_components(Cogl.TextureComponents.RGBA);
          texture.allocate();
-@@ -173,7 +181,11 @@ export const SurfaceShaderEffect = GObject.registerClass({
+@@ -173,7 +177,11 @@ export const SurfaceShaderEffect = GObject.registerClass({
      }
  
      vfunc_set_actor(actor) {
@@ -311,7 +294,7 @@ index ed6a514..1f1b55b 100644
          super.vfunc_set_actor(actor);
      }
 diff --git a/src/render/shader/texture_region.js b/src/render/shader/texture_region.js
-index 93c035c..e989a2b 100644
+index 93c035c..7c359f6 100644
 --- a/src/render/shader/texture_region.js
 +++ b/src/render/shader/texture_region.js
 @@ -1,4 +1,5 @@
@@ -320,18 +303,25 @@ index 93c035c..e989a2b 100644
  
  const TEXTURE_HEADROOM = 1.25;
  const SHRINK_DELAY_US = 2000000;
-@@ -20,6 +21,65 @@ export function textureRegionDeclarations(name) {
+@@ -20,6 +21,72 @@ export function textureRegionDeclarations(name) {
      return `${uniforms}\n#define ${name} vec4(${components})\n`;
  }
  
-+// Aura Glass: with the full-size-buffers key on, a blur texture is allocated
-+// at the largest monitor's size the first time and never shrinks or is freed
-+// while its effect lives. Stock v77 starts at the exact size and grows 1.25x at
-+// a time, keeping a texture until it has stayed below half for 2 s, so the first
-+// open of an animation (a menu scaling in, an app folder zooming from its icon, a
-+// banner fading in from opacity 0) still reallocates the capture, the whole
-+// kawase chain and the shader target in its first frames. Costs about
-+// 2.7 monitor-sized RGBA buffers per blurred actor, plus the idle pooled ones.
++// Aura Glass: with the full-size-buffers key on, a blur texture never shrinks
++// and is not freed while its actor hides, for as long as its effect lives.
++// Stock v77 shrinks a texture once its content has stayed below half for 2 s
++// and frees the kawase chain 5 s after opacity 0, so the next open of a menu,
++// an app folder or a banner reallocated the capture, the whole chain and the
++// shader target in its first frames. The size still starts at the content's
++// own and grows 1.25x at a time up to the largest monitor's: the first
++// version allocated that full size up front, about 60 MB per blurred actor
++// at 3440x1600 even for the 32 px top bar, some 700 MB over stock on this
++// desktop, and bought little. The chain and the shader target are sized from
++// the actor's unscaled clip, which a menu scaling in or a folder zooming from
++// its icon never changes; only the screen-space capture follows the scale,
++// and that shrinks from the actor's full size, so it fits. An actor pays one
++// reallocation the first time it outgrows its texture (a window's first
++// maximize), never on the next open.
 +let fullSizeBuffers = false;
 +
 +export function set_full_size_buffers(value) {
@@ -386,7 +376,7 @@ index 93c035c..e989a2b 100644
  /// Whether a texture can keep holding content of this size. It has to grow as soon as the content
  /// doesn't fit, but only shrinks once the content has stayed under half its size for a while, so
  /// that animations, which go through every size, don't reallocate it on every frame.
-@@ -27,6 +87,9 @@ export function textureFits(owner, width, height, capacityWidth, capacityHeight)
+@@ -27,6 +94,9 @@ export function textureFits(owner, width, height, capacityWidth, capacityHeight)
      if (width > capacityWidth || height > capacityHeight)
          return false;
  
@@ -396,23 +386,13 @@ index 93c035c..e989a2b 100644
      if (width * 2 > capacityWidth && height * 2 > capacityHeight) {
          owner.shrinkableSince = 0;
          return true;
-@@ -37,6 +100,10 @@ export function textureFits(owner, width, height, capacityWidth, capacityHeight)
-     return now - owner.shrinkableSince < SHRINK_DELAY_US;
- }
- 
-+export function initialTextureCapacity(size, limit) {
-+    return fullSizeBuffers ? Math.max(size, limit) : size;
-+}
-+
- export function largestViewSize() {
-     let width = 1;
-     let height = 1;
-@@ -51,6 +118,8 @@ export function largestViewSize() {
- /// The headroom stops at the size of the largest view, unless the content is already bigger, like
- /// the padded blur of a window taller than the screen.
- export function getTextureCapacity(size, capacity, limit) {
-+    if (fullSizeBuffers)
-+        return Math.max(size, limit);
-     if (size > capacity) {
+@@ -55,7 +125,8 @@ export function getTextureCapacity(size, capacity, limit) {
          const grown = Math.ceil(size * TEXTURE_HEADROOM);
          return size <= limit ? Math.min(grown, limit) : grown;
+     }
+-    if (size * 2 <= capacity)
++    // Aura Glass: the dimension that still fits keeps its size, see above.
++    if (size * 2 <= capacity && !fullSizeBuffers)
+         return size;
+     return capacity;
+ }

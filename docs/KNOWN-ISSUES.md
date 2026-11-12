@@ -1192,10 +1192,10 @@ texture frees its VRAM only when GJS finalizes the small JS object that wraps it
 and GJS collects on JS heap growth, which those wrappers barely cause, so every
 dropped capture, kawase chain and shader target stayed resident until some
 unrelated collection: the sawtooth. (2) Each overview preview keeps a clone
-capture (monitor-sized with full-size buffers, since a preview outgrows its first
-size as it zooms), and upstream drops a stale one only when a clone is painted
-again, so the last overview's captures stayed referenced until the next one: the
-220 MB.
+capture (kept at its largest size with full-size buffers, since a preview
+outgrows its first size as it zooms), and upstream drops a stale one only when
+a clone is painted again, so the last overview's captures stayed referenced
+until the next one: the 220 MB.
 
 **Fix.** `patches/blur-my-shell-full-size-buffers.patch` (applied whether the key
 is on or not): every release adds its size to `released_textures`
