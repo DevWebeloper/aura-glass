@@ -39,7 +39,7 @@ import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
-import {BoxPointer} from 'resource:///org/gnome/shell/ui/boxpointer.js';
+import {BoxPointer, POPUP_ANIMATION_TIME} from 'resource:///org/gnome/shell/ui/boxpointer.js';
 import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 import {EndSessionDialog} from 'resource:///org/gnome/shell/ui/endSessionDialog.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -179,6 +179,37 @@ const FULLSCREEN_SETTLE_MS = 170;
 // screencast of YouTube in Chrome; past this the client is taken not to
 // answer, the cover goes, and GNOME's still is used if the size comes later.
 const FULLSCREEN_WAIT_MS = 1000;
+
+// The menus _warmPopups opens, unseen, after login, so the first open anyone
+// sees isn't the one that runs the shell's opening code cold.
+const WARM_POPUP_MENUS = ['quickSettings', 'dateMenu'];
+// Times each is opened. A probe on GNOME 51 (2026-11-12) timed the first
+// open of each at about 60 ms, the second still at 25-37 ms and the third
+// at 4-5, the same as every one after: 2 passes leave the user the third.
+const WARM_POPUPS_PASSES = 2;
+// Milliseconds after startup-complete: past the login veil's 100 ms wait and
+// 400 ms dissolve (bin/aura-glass-login-veil), and early, since people open
+// these menus soon after login: a run that waited 4 s, and then for the
+// overview to close, ran after the first opens it was for.
+const WARM_POPUPS_DELAY_MS = 1000;
+// Stage paints before each closes, and not before its scale-in has run: the
+// probe's stalls came in the open's first frames. Blur My Shell finds a popup
+// the frame it maps and blurs it the next. The stage signals a paint once per
+// monitor, so 8 is 4 frames on two monitors, 8 on one.
+const WARM_POPUPS_FRAMES = 8;
+// The painted frames above can't come from an idle stage that stopped
+// drawing, so each menu closes by this time anyway: the scale-in's 150 ms
+// (POPUP_ANIMATION_TIME) at the slowest menu animation speed, with margin.
+const WARM_POPUPS_MAX_MS = 1000;
+// While a menu or a dialog is up the warm-up waits WARM_POPUPS_DELAY_MS and
+// tries again, this many times, then gives up: it's a nicety, not a fix.
+// The overview doesn't count: the session starts in it, and the menus open
+// from it. A key typed in the moment a warm-up menu is up goes to its muted
+// grab, which the second after login makes unlikely.
+const WARM_POPUPS_TRIES = 30;
+// Once per shell: extensions in the user session mode are disabled on lock
+// and enabled again on unlock, and the shell keeps what was built.
+let popupsWarmed = false;
 
 const PROFILES = ['auto', 'full', 'performance'];
 // State files whose change can move the window opacity this extension owns.
@@ -446,6 +477,128 @@ export default class AuraGlassBlurExtension extends Extension {
         this._loadOverrideSheet();
         this._readAnimationSpeeds();
         this._hookFullscreenTransition();
+        this._scheduleWarmPopups();
+    }
+
+    // The first open of quick settings or the date menu after login used to
+    // stutter and every later one ran smooth. A probe of that first open on
+    // GNOME 51 (2026-11-12) put the time in JavaScript, not in painting:
+    // menu.open() took about 60 ms the first time, 25-37 the second and 4-6
+    // from the third on, nearly all of it in showing the menu, and a few
+    // frames of the open animation stalled 40-87 ms on the CPU. That's the
+    // shell's own code running cold: the open, its handlers, the grab, the
+    // scale-in. Showing the box alone left most of it, so each menu is opened
+    // for real, WARM_POPUPS_PASSES times, one after the other, and closed a
+    // few frames later, at opacity 1 so it isn't seen. Its button's highlight
+    // is taken off, and clicks and keys on it are muted while it is up.
+    _scheduleWarmPopups() {
+        if (popupsWarmed)
+            return;
+        this._warmTries = 0;
+        if (Main.layoutManager._startingUp) {
+            this._warmStartupId = Main.layoutManager.connect('startup-complete', () => {
+                Main.layoutManager.disconnect(this._warmStartupId);
+                this._warmStartupId = 0;
+                this._queueWarmPopups();
+            });
+        } else {
+            this._queueWarmPopups();
+        }
+    }
+
+    _queueWarmPopups() {
+        this._warmTimer = GLib.timeout_add(GLib.PRIORITY_LOW,
+            WARM_POPUPS_DELAY_MS, () => {
+                this._warmTimer = 0;
+                this._warmPopups();
+                return GLib.SOURCE_REMOVE;
+            });
+    }
+
+    _warmPopups() {
+        const menus = WARM_POPUP_MENUS
+            .map(name => Main.panel.statusArea[name]?.menu)
+            .filter(menu => menu?._boxPointer);
+        if (Main.modalCount > (Main.overview.visible ? 1 : 0) || menus.some(menu => menu.isOpen)) {
+            if (++this._warmTries < WARM_POPUPS_TRIES)
+                this._queueWarmPopups();
+            return;
+        }
+        popupsWarmed = true;
+
+        // The date menu's message list marks every notification in it read
+        // as it maps (NotificationMessageGroup.vfunc_map), so with any
+        // waiting it is left cold rather than have them read unseen.
+        const dateMenu = Main.panel.statusArea.dateMenu?.menu;
+        const waiting = Main.messageTray.getSources()
+            .some(source => source.notifications.length > 0);
+        const queue = menus.filter(menu => !(menu === dateMenu && waiting));
+        this._warmQueue = Array(WARM_POPUPS_PASSES).fill(queue).flat();
+        this._warmNext();
+    }
+
+    _warmNext() {
+        const menu = this._warmQueue?.shift();
+        if (!menu || Main.modalCount > (Main.overview.visible ? 1 : 0) || menu.isOpen) {
+            this._warmQueue = null;
+            return;
+        }
+
+        menu.open({animate: true});
+        if (!menu.isOpen) {
+            this._warmNext();
+            return;
+        }
+        // BoxPointer.open eases the opacity in from 0: stopped, it holds at
+        // 1, and its onComplete, which unmutes input, never runs.
+        const box = menu._boxPointer;
+        box.remove_transition('opacity');
+        box.opacity = 1;
+        box._muteInput.enabled = true;
+        box._muteKeys.enabled = true;
+        menu.sourceActor?.remove_style_pseudo_class('active');
+
+        const started = GLib.get_monotonic_time();
+        let frames = 0;
+        this._warmFinish = () => {
+            this._warmFinish = null;
+            global.stage.disconnect(this._warmPaintId);
+            this._warmPaintId = 0;
+            if (this._warmTimer) {
+                GLib.source_remove(this._warmTimer);
+                this._warmTimer = 0;
+            }
+            // Unless someone closed it, or closed and opened it for real
+            // (which puts the opacity back on its way to 255) meanwhile.
+            if (menu.isOpen && box.opacity === 1)
+                menu.close({animate: false});
+            this._warmNext();
+        };
+        this._warmPaintId = global.stage.connect('after-paint', () => {
+            const elapsedMs = (GLib.get_monotonic_time() - started) / 1000;
+            if (++frames >= WARM_POPUPS_FRAMES && elapsedMs >= POPUP_ANIMATION_TIME)
+                this._warmFinish();
+            else
+                global.stage.queue_redraw();
+        });
+        this._warmTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, WARM_POPUPS_MAX_MS, () => {
+            this._warmTimer = 0;
+            this._warmFinish();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _cancelWarmPopups() {
+        if (this._warmStartupId) {
+            Main.layoutManager.disconnect(this._warmStartupId);
+            this._warmStartupId = 0;
+        }
+        this._warmQueue = null;
+        this._warmFinish?.();
+        if (this._warmTimer) {
+            GLib.source_remove(this._warmTimer);
+            this._warmTimer = 0;
+        }
     }
 
     _attachDragScroll() {
@@ -751,6 +904,7 @@ export default class AuraGlassBlurExtension extends Extension {
         this._unloadOverrideSheet();
         this._unhookFullscreenTransition();
         this._unhookEase();
+        this._cancelWarmPopups();
 
         if (!this._isBmsApplicationsActive()) {
             this.setWindowOpacityAll(255);

@@ -1232,6 +1232,41 @@ longer reverse-applies), not a retune.
 **Verify.** Needs a re-login. Lock and unlock, then change a Wiggly key: no
 `TypeError` from `wiggly@mojarch` in `journalctl --user -b`.
 
+## KI-45
+
+**First open of quick settings or the date menu after login stuttered** (fixed)
+
+**Symptom.** The first open of either menu after a login dropped frames, and
+every later open was smooth.
+
+**Root cause.** The shell's own code ran cold, not painting: frames painted in
+1-13 ms. Probed on GNOME 51 (2026-11-12, 144 Hz, two monitors), `menu.open()`
+took about 60 ms the first time, 25-37 ms the second and 4-6 ms from the third
+on. Nearly all of it was in showing the menu's actor, and a few frames of the
+open animation stalled 40-87 ms.
+
+**Fix.** Aura Glass Helper (`_scheduleWarmPopups`, `_warmPopups`, `_warmNext`):
+1 s after `startup-complete`, once per shell, it opens each menu for real twice
+and closes it a few frames later. The menu is held at opacity 1 so it is never
+seen, its button's highlight is removed, and clicks and keys on it are muted.
+It runs in the overview too, because the session starts there and the menus
+open from it. It waits while another menu or a dialog is up. The date menu is
+skipped while notifications are waiting, because mapping its message list marks
+them read. Two things failed first:
+- Showing the box alone left most of the cost in place.
+- A start 4 s after login, which also waited for the overview to close, ran
+  after the user's first opens.
+
+**Verify.** Needs a re-login. Probed live (2026-11-12) at the first open after
+login:
+
+| Menu | Before | After |
+|---|---|---|
+| Date menu | 62 ms | 6.7 ms |
+| Quick settings | 60 ms | 29 ms |
+
+The user confirmed both opened smooth.
+
 ---
 
 ## Phase 3 fixes (2026-10-20, `07689ba`)

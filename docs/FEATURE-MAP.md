@@ -114,6 +114,7 @@ a restart.
 | Mouse wheel switches workspaces while dragging in the overview | `extensions/aura-glass-blur@aura-glass.local/extension.js` (`_attachDragScroll`, `_onDragScroll`) |
 | A window let go near a workspace or thumbnail in the overview still lands there | `extensions/aura-glass-blur@aura-glass.local/extension.js` (`_hookDropTargets`, `_workspaceNear`, `_delegateOtherScreens`) |
 | The log out dialog starts keyboard focus on Log Out | `extensions/aura-glass-blur@aura-glass.local/extension.js` (`_hookEndSessionDialog`) |
+| Quick settings and the date menu open smooth the first time after login | `extensions/aura-glass-blur@aura-glass.local/extension.js` (`_scheduleWarmPopups`, `_warmPopups`, `_warmNext`): each opened twice, unseen, 1 s after login (KI-45) |
 
 ## 7. Installer / system behaviour
 
