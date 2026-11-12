@@ -1210,6 +1210,30 @@ come back to its idle level within about 4 s of each close instead of climbing.
 
 ---
 
+## KI-44
+
+**Wiggly kept its settings handlers across lock and unlock** (fixed, uncommitted)
+
+**Symptom.** None visible day to day. Wiggly declares no `unlock-dialog` session
+mode, so GNOME Shell disables it at every lock and enables it again on unlock.
+Each cycle left 13 `changed::` handlers on the old GSettings, and a Wiggly key
+changed while locked threw on the destroyed effect.
+
+**Root cause.** Upstream `initSettings` in `extension.js` connects one handler
+per key and drops the IDs; `disable()` only nulls `this._settings`.
+
+**Fix.** `patches/wiggly-follow-cursor.patch`: `initSettings` returns the IDs,
+`enable()` keeps them, `disable()` disconnects them. The rest of the audit found
+no leak: timers, the tracker signal, the scanout hold and cursor inhibit are
+balanced, `_named` is capped at 16 sprites, and the per-theme picture and loop
+contents are dropped on a theme change. A full run reapplies the patch (it no
+longer reverse-applies), not a retune.
+
+**Verify.** Needs a re-login. Lock and unlock, then change a Wiggly key: no
+`TypeError` from `wiggly@mojarch` in `journalctl --user -b`.
+
+---
+
 ## Phase 3 fixes (2026-10-20, `07689ba`)
 
 - **KI-09** — `bin/aura-glass-adaptive` and `bin/aura-glass-panel-blur` now prefer the checkout's `tools/` worker when run from a checkout's `bin/`, like `aura-glass-operation`. The copies in `~/.local/bin` have no `tools/` beside them, so the services keep the installed worker. `AURA_GLASS_ADAPTIVE_WORKER` still wins.

@@ -1,5 +1,5 @@
 diff --color -ruN a/cursor.js b/cursor.js
---- a/cursor.js	2026-11-11 11:21:44.263580712 +0200
+--- a/cursor.js	2026-11-12 14:41:21.457622191 +0200
 +++ b/cursor.js	2026-11-01 15:08:04.368578345 +0200
 @@ -36,6 +36,14 @@
          return this._tracker.get_sprite();
@@ -40,8 +40,8 @@ diff --color -ruN a/cursor.js b/cursor.js
  
      hide() {
 diff --color -ruN a/effect.js b/effect.js
---- a/effect.js	2026-11-11 11:21:44.263580712 +0200
-+++ b/effect.js	2026-11-11 11:21:53.695604887 +0200
+--- a/effect.js	2026-11-12 14:41:21.457622191 +0200
++++ b/effect.js	2026-11-11 11:22:04.440413983 +0200
 @@ -1,24 +1,165 @@
  'use strict';
  
@@ -595,8 +595,8 @@ diff --color -ruN a/effect.js b/effect.js
          this.isWiggling = false;
          this._isInTransition = false;
 diff --color -ruN a/extension.js b/extension.js
---- a/extension.js	2026-11-11 11:21:44.263580712 +0200
-+++ b/extension.js	2026-11-01 15:08:04.368578345 +0200
+--- a/extension.js	2026-11-12 14:41:21.457622191 +0200
++++ b/extension.js	2026-11-12 14:41:28.751184808 +0200
 @@ -1,5 +1,6 @@
  'use strict';
  
@@ -604,7 +604,24 @@ diff --color -ruN a/extension.js b/extension.js
  import GLib from 'gi://GLib';
  import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
  
-@@ -44,7 +45,15 @@
+@@ -14,9 +15,14 @@
+         'i': () => settings.get_int(name),
+         's': () => settings.get_string(name),
+     }[type]());
+-    entries.forEach(([name, type, func]) => {
++    // The handler IDs are returned for disable() to disconnect. Left
++    // connected, every lock and unlock (Wiggly has no unlock-dialog session
++    // mode, so it is disabled and enabled again) kept the last GSettings and
++    // its handlers alive until a collection, and a key changed while locked
++    // threw on the destroyed effect.
++    return entries.map(([name, type, func]) => {
+         func(getValue(name, type));
+-        settings.connect(`changed::${name}`, () => func(getValue(name, type)));
++        return settings.connect(`changed::${name}`, () => func(getValue(name, type)));
+     });
+ };
+ 
+@@ -44,7 +50,15 @@
  
      _checkCursorHiddenByProgram() {
          // different program might take other methods to hide the cursor, so this check should contain more conditions
@@ -621,8 +638,12 @@ diff --color -ruN a/extension.js b/extension.js
              if (!this._isHiddenByProgram) {
                  this._togglePointerWatcher(false);
                  this._isHiddenByProgram = true;
-@@ -103,7 +112,11 @@
-         initSettings(this._settings, [
+@@ -100,10 +114,14 @@
+         this._history = new History();
+         this._effect = new Effect();
+         this._settings = this.getSettings();
+-        initSettings(this._settings, [
++        this._settingsIds = initSettings(this._settings, [
              [Field.HIDE, 'b', (r) => {this._effect.isHidden = r}],
              [Field.SIZE, 'i', (r) => {this._effect.cursorSize = r}],
 -            [Field.PATH, 's', (r) => {this._effect.cursorPath = r}],
@@ -634,7 +655,7 @@ diff --color -ruN a/extension.js b/extension.js
              [Field.MAGN, 'i', (r) => {this._effect.magnifyDuration = r}],
              [Field.UMGN, 'i', (r) => {this._effect.unmagnifyDuration = r}],
              [Field.DLAY, 'i', (r) => {this._effect.unmagnifyDelay = r}],
-@@ -114,9 +127,29 @@
+@@ -114,9 +132,32 @@
              [Field.CHCK, 'i', (r) => this._onCheckIntervalChange(r)],
              [Field.DRAW, 'i', (r) => this._onDrawIntervalChange(r)],
          ]);
@@ -661,6 +682,9 @@ diff --color -ruN a/extension.js b/extension.js
 +            this._sizeChangedId = null;
 +        }
 +        this._interface = null;
++        for (const id of this._settingsIds ?? [])
++            this._settings.disconnect(id);
++        this._settingsIds = null;
          if (this._checkTimeoutId) {
              GLib.Source.remove(this._checkTimeoutId);
              this._checkTimeoutId = null;
