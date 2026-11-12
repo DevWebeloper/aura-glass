@@ -1269,6 +1269,47 @@ The user confirmed both opened smooth.
 
 ---
 
+## KI-46
+
+**Pooled Blur My Shell effects kept their full-size buffers** (fixed;
+[issue 22](https://github.com/DevWebeloper/aura-glass/issues/22))
+
+**Symptom.** With `full-size-buffers` on, GNOME Shell's VRAM climbed after KI-43.
+Reported on GNOME 51.1 with three monitors (largest view 5120x3840), app blur
+`all`: one lock and unlock kept about 1.3 GB, and a long session reached
+9-10 GB of a 12 GB card. Only disabling and re-enabling Blur My Shell gave it
+back (4.37 GB to 1.60 GB). A `System.gc()` freed nothing, so the buffers were
+still referenced.
+
+**Root cause.** Two, both in `patches/blur-my-shell-full-size-buffers.patch`.
+(1) With the key on, the patch made `DualKawaseBlurEffect.vfunc_set_actor(null)`
+only mark the chain stale (`dropTargets`), and `SurfaceShaderEffect` kept its
+target, so the next actor could reuse them. But a detached effect goes into
+`EffectsManager`'s pool, which never shrinks (only `destroy_all` empties it).
+Every effect ever pooled kept its chain, so VRAM sat at the high-water mark of
+blurred actors alive at once. A lock is a burst (the session's effects pooled,
+the lock screen's created), and so is each window closed under app blur.
+6667293 made each chain smaller, not fewer. (2) `disable()` cancelled the
+pending `released_textures` collection, so what the teardown dropped stayed
+resident until some unrelated collection.
+
+**Fix.** Same patch. `vfunc_set_actor(null)` releases the kawase chain and the
+shader target whether the key is on or not. The fade case (a hidden actor at
+opacity 0, `updateRelease`) still keeps them, and the next actor starts from
+its own size anyway. `disable()` calls `flush_released_textures()`, which
+replaces the cancel with one `System.gc()` at low-priority idle, after teardown
+has dropped its references. Patch checks pass (`check-bms-patches.sh`,
+`tests/check-bms-patches.py`). An install picks it up on the next full run (the
+patch stamp changed), not a retune.
+
+**Verify.** Needs a full run and a re-login. Note GNOME Shell's VRAM
+(`nvidia-smi` or `drm-resident-vram`), lock and unlock a few times, and open and
+close some blurred windows: it should come back near idle instead of
+climbing. Disabling Blur My Shell should drop it within a second, not only
+after re-enabling.
+
+---
+
 ## Phase 3 fixes (2026-10-20, `07689ba`)
 
 - **KI-09** — `bin/aura-glass-adaptive` and `bin/aura-glass-panel-blur` now prefer the checkout's `tools/` worker when run from a checkout's `bin/`, like `aura-glass-operation`. The copies in `~/.local/bin` have no `tools/` beside them, so the services keep the installed worker. `AURA_GLASS_ADAPTIVE_WORKER` still wins.
