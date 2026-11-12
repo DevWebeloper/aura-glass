@@ -35,6 +35,45 @@ list.content row:hover {
   background-color: rgba(255, 255, 255, 0.05);
 }
 
+/* What an expander row reveals belongs to the box it opens out of. libadwaita
+ * shades that nested list a step darker. Here the theme's blanket 20px rounding
+ * also reaches it, so it sat in the card as a dark, rounded inset whose top corners
+ * pulled away from the header row above it (the changelog in Aura Glass Settings'
+ * Releases). Square and unshaded, with the row separator line on top, it reads
+ * as more of the same card, as Adwaita's square nested list does.
+ */
+row.expander list.nested {
+  background-color: transparent;
+  border-radius: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* The hover above matches the expander row as a whole too, so pointing anywhere
+ * in an open one lit the header and everything it revealed as one square block,
+ * and its corners stood out of the card's 16px curve. Only the header is the
+ * control, and only a revealed row that does something lights on its own. The
+ * header takes the card's corners where it meets them: on top when its row
+ * is first, and at the bottom when its row is last and closed.
+ */
+row.expander:hover,
+row.expander list.nested > row:not(.activatable):hover {
+  background-color: transparent;
+}
+
+list.boxed-list > row.expander:first-child row.header,
+list.content > row.expander:first-child row.header,
+preferencesgroup > box > list > row.expander:first-child row.header {
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+}
+
+list.boxed-list > row.expander:last-child:not(:checked) row.header,
+list.content > row.expander:last-child:not(:checked) row.header,
+preferencesgroup > box > list > row.expander:last-child:not(:checked) row.header {
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+}
+
 /* ---------- Split-view container spacing ----------
  * A gap between the sidebar pane and the content pane, so the two read as two
  * surfaces rather than one surface with a line drawn on it.
