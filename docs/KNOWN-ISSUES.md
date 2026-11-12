@@ -1174,6 +1174,42 @@ small slot between two thumbnails still makes a new workspace.
 
 ---
 
+## KI-43
+
+**GNOME Shell's VRAM climbed with every overview open, and dropped Blur My Shell
+buffers stayed resident.** Measured 2026-11-12 on GNOME Shell 51, a 3440x1440
+monitor beside a 2560x1600 one at 1.67, all-apps blur, `--smooth-animations`.
+
+**Symptom.** After 3.5 h GNOME Shell held 4.85 GB of the card's 8 GB
+(`drm-resident-vram` in its `/proc/<pid>/fdinfo`). Opening and closing the
+overview 8 times (`OverviewActive` over D-Bus, 1.5 s apart) ran it up 250-500 MB
+a toggle, as high as 6.45 GB, falling back to 5.07 GB every third toggle or so,
+and settling 220 MB above where it started.
+
+**Root cause.** Two, both in Blur My Shell's buffers, none in the theme's CSS or
+the helper (its signals, timers, covers and clones are all released). (1) A Cogl
+texture frees its VRAM only when GJS finalizes the small JS object that wraps it,
+and GJS collects on JS heap growth, which those wrappers barely cause, so every
+dropped capture, kawase chain and shader target stayed resident until some
+unrelated collection: the sawtooth. (2) Each overview preview keeps a clone
+capture (monitor-sized with full-size buffers, since a preview outgrows its first
+size as it zooms), and upstream drops a stale one only when a clone is painted
+again, so the last overview's captures stayed referenced until the next one: the
+220 MB.
+
+**Fix.** `patches/blur-my-shell-full-size-buffers.patch` (applied whether the key
+is on or not): every release adds its size to `released_textures`
+(`texture_region.js`), which runs one `System.gc()` at low priority 3 s after the
+last release once 64 MiB are waiting; the capture effect prunes stale clone
+captures on a timer (`scheduleClonePrune`) instead of on the next clone paint.
+Patch checks pass (`check-bms-patches.sh`, `tests/check-bms-patches.py`). An
+install picks it up on the next full run (the patch stamp changed), not a retune.
+
+**Verify.** Needs a re-login. Toggle the overview 8 times as above: VRAM should
+come back to its idle level within about 4 s of each close instead of climbing.
+
+---
+
 ## Phase 3 fixes (2026-10-20, `07689ba`)
 
 - **KI-09** — `bin/aura-glass-adaptive` and `bin/aura-glass-panel-blur` now prefer the checkout's `tools/` worker when run from a checkout's `bin/`, like `aura-glass-operation`. The copies in `~/.local/bin` have no `tools/` beside them, so the services keep the installed worker. `AURA_GLASS_ADAPTIVE_WORKER` still wins.

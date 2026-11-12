@@ -15,10 +15,10 @@ index b6b7aa9..1548314 100644
          <key type="b" name="debug">
              <default>false</default>
 diff --git a/src/effects/blur/dual_kawase_blur.js b/src/effects/blur/dual_kawase_blur.js
-index 4da5ccf..8077b8e 100644
+index 4da5ccf..2c541ad 100644
 --- a/src/effects/blur/dual_kawase_blur.js
 +++ b/src/effects/blur/dual_kawase_blur.js
-@@ -26,7 +26,9 @@ import {
+@@ -26,8 +26,11 @@ import {
      setVector2,
  } from './kawase_passes.js';
  import {
@@ -26,9 +26,11 @@ index 4da5ccf..8077b8e 100644
      getTextureCapacity,
 +    initialTextureCapacity,
      largestViewSize,
++    released_textures,
      TextureRegion,
      textureFits,
-@@ -274,8 +276,9 @@ const DualKawaseBlurEffectClass = utils.IS_IN_PREFERENCES ? null : GObject.regis
+ } from '../../render/shader/texture_region.js';
+@@ -274,8 +277,9 @@ const DualKawaseBlurEffectClass = utils.IS_IN_PREFERENCES ? null : GObject.regis
          const height = Math.max(1, Math.ceil(logicalHeight * scale));
          if (this.context !== context) {
              this.releaseTargets();
@@ -40,7 +42,7 @@ index 4da5ccf..8077b8e 100644
              this.context = context;
          } else if (!textureFits(this, width, height, this.capacityWidth, this.capacityHeight)) {
              const limit = largestViewSize();
-@@ -495,6 +498,18 @@ const DualKawaseBlurEffectClass = utils.IS_IN_PREFERENCES ? null : GObject.regis
+@@ -495,7 +499,22 @@ const DualKawaseBlurEffectClass = utils.IS_IN_PREFERENCES ? null : GObject.regis
          }
      }
  
@@ -57,9 +59,13 @@ index 4da5ccf..8077b8e 100644
 +    }
 +
      releaseTargets() {
++        // Aura Glass: see released_textures.
++        released_textures(...[...this.downTargets, ...this.upTargets]
++            .map(target => target?.texture));
          this.downTargets = [];
          this.upTargets = [];
-@@ -518,10 +533,15 @@ const DualKawaseBlurEffectClass = utils.IS_IN_PREFERENCES ? null : GObject.regis
+         this.downPipelines = [];
+@@ -518,10 +537,15 @@ const DualKawaseBlurEffectClass = utils.IS_IN_PREFERENCES ? null : GObject.regis
      /// An invisible blur doesn't need its textures, but keeps them a little while in case it shows up
      /// again, like a menu opened right after being closed.
      updateRelease() {
@@ -78,7 +84,7 @@ index 4da5ccf..8077b8e 100644
      }
  
      queueRelease() {
-@@ -544,7 +564,7 @@ const DualKawaseBlurEffectClass = utils.IS_IN_PREFERENCES ? null : GObject.regis
+@@ -544,7 +568,7 @@ const DualKawaseBlurEffectClass = utils.IS_IN_PREFERENCES ? null : GObject.regis
      vfunc_set_actor(actor) {
          if (!actor) {
              this.cancelRelease();
@@ -88,18 +94,19 @@ index 4da5ccf..8077b8e 100644
          super.vfunc_set_actor(actor);
      }
 diff --git a/src/extension.js b/src/extension.js
-index 5249bca..34d899a 100644
+index 5249bca..f98d221 100644
 --- a/src/extension.js
 +++ b/src/extension.js
-@@ -24,6 +24,7 @@ import { connect_component_settings } from './components/settings_connections.js
+@@ -24,6 +24,8 @@ import { connect_component_settings } from './components/settings_connections.js
  import { enable_system_style, disable_system_style } from './conveniences/style.js';
  import { track_painted_views } from './render/backdrop/painted_view.js';
  import { clear_snippets } from './render/shader/snippet_cache.js';
++import { cancel_released_textures } from './render/shader/texture_region.js';
 +import { set_full_size_buffers } from './render/shader/texture_region.js';
  
  
  /// The main extension class, created when the GNOME Shell is loaded.
-@@ -51,6 +52,13 @@ export default class BlurMyShell extends Extension {
+@@ -51,6 +53,13 @@ export default class BlurMyShell extends Extension {
          // callbacks queued during that teardown afterwards, when every actor is already disposed
          this._connection.connect(Main.uiGroup, 'destroy', () => this.disable());
          track_painted_views(this._connection);
@@ -113,19 +120,37 @@ index 5249bca..34d899a 100644
          enable_system_style();
  
          // shared by every component so that effects are pooled instead of re-created
+@@ -134,6 +143,7 @@ export default class BlurMyShell extends Extension {
+         this._pipelines_manager.destroy();
+         this._pipelines_manager = null;
+         clear_snippets();
++        cancel_released_textures();
+ 
+         // make sure no settings change can re-enable a component
+         this._settings.disconnect_all_settings();
 diff --git a/src/render/backdrop/capture.js b/src/render/backdrop/capture.js
-index 2578f1d..b4949c8 100644
+index 2578f1d..45848e3 100644
 --- a/src/render/backdrop/capture.js
 +++ b/src/render/backdrop/capture.js
-@@ -10,6 +10,7 @@ import { get_painted_view, get_view_framebuffer, get_view_paint } from './painte
+@@ -10,7 +10,9 @@ import { get_painted_view, get_view_framebuffer, get_view_paint } from './painte
  import { get_snippet } from '../shader/snippet_cache.js';
  import {
      getTextureCapacity,
 +    initialTextureCapacity,
      largestViewSize,
++    released_textures,
      TEXTURE_REGION_SOURCE,
      TextureRegion,
-@@ -207,7 +208,7 @@ export const BackdropCaptureEffect = GObject.registerClass({
+     textureFits,
+@@ -195,6 +197,7 @@ export const BackdropCaptureEffect = GObject.registerClass({
+         this.cloneTargets = new Map();
+         this.cloneViewPaint = -1;
+         this.clonesPainted = 0;
++        this.clonePruneId = 0;
+         this.viewDestroyIds = new Map();
+         this.actorGeometry = null;
+         this.output = new St.Widget();
+@@ -207,7 +210,7 @@ export const BackdropCaptureEffect = GObject.registerClass({
          contentActor.add_child(this.output);
      }
  
@@ -134,7 +159,7 @@ index 2578f1d..b4949c8 100644
          const context = sourceFramebuffer.get_context();
          const cached = targets.get(key) ?? null;
          const reusable = cached !== null && cached.context === context
-@@ -225,6 +226,12 @@ export const BackdropCaptureEffect = GObject.registerClass({
+@@ -225,11 +228,19 @@ export const BackdropCaptureEffect = GObject.registerClass({
  
          let textureWidth = width;
          let textureHeight = height;
@@ -147,7 +172,72 @@ index 2578f1d..b4949c8 100644
          if (reusable) {
              const limit = largestViewSize();
              textureWidth = getTextureCapacity(width, cached.width, limit.width);
-@@ -332,7 +339,7 @@ export const BackdropCaptureEffect = GObject.registerClass({
+             textureHeight = getTextureCapacity(height, cached.height, limit.height);
+         }
++        // Aura Glass: see released_textures.
++        released_textures(cached?.texture);
+         const texture = Cogl.Texture2D.new_with_size(context, textureWidth, textureHeight);
+         texture.set_components(Cogl.TextureComponents.RGBA);
+         texture.allocate();
+@@ -276,16 +287,56 @@ export const BackdropCaptureEffect = GObject.registerClass({
+ 
+         const now = GLib.get_monotonic_time();
+         for (const [key, target] of targets) {
+-            if (now - target.lastUsed > CLONE_TARGET_LIFETIME_US)
++            if (now - target.lastUsed > CLONE_TARGET_LIFETIME_US) {
+                 targets.delete(key);
++                released_textures(target.texture);
++            }
+         }
++        this.scheduleClonePrune();
+         return targets;
+     }
+ 
++    // Aura Glass: upstream drops a stale clone capture only when a clone is
++    // painted again, so every preview's capture from the last overview (each
++    // one monitor-sized with full-size-buffers, since a preview outgrows its
++    // first size as it zooms) stayed referenced until the next overview. This
++    // drops them once their lifetime is over, whatever is painted next.
++    scheduleClonePrune() {
++        if (this.clonePruneId)
++            return;
++        this.clonePruneId = GLib.timeout_add(GLib.PRIORITY_LOW,
++            CLONE_TARGET_LIFETIME_US / 1000, () => {
++                this.pruneCloneTargets();
++                if (this.cloneTargets.size > 0)
++                    return GLib.SOURCE_CONTINUE;
++                this.clonePruneId = 0;
++                return GLib.SOURCE_REMOVE;
++            });
++    }
++
++    pruneCloneTargets() {
++        const now = GLib.get_monotonic_time();
++        for (const [view, targets] of this.cloneTargets) {
++            for (const [key, target] of targets) {
++                if (now - target.lastUsed <= CLONE_TARGET_LIFETIME_US)
++                    continue;
++                targets.delete(key);
++                if (this.target === target)
++                    this.target = null;
++                released_textures(target.texture);
++            }
++            if (targets.size === 0)
++                this.cloneTargets.delete(view);
++        }
++    }
++
+     releaseView(view) {
+         if (this.target && [this.targets.get(view), ...this.cloneTargets.get(view)?.values() ?? []]
+             .includes(this.target))
+             this.target = null;
++        // Aura Glass: see released_textures.
++        released_textures(this.targets.get(view)?.texture,
++            ...[...this.cloneTargets.get(view)?.values() ?? []].map(target => target.texture));
+         this.targets.delete(view);
+         this.cloneTargets.delete(view);
+         const destroyId = this.viewDestroyIds.get(view);
+@@ -332,7 +383,7 @@ export const BackdropCaptureEffect = GObject.registerClass({
                  this.actorGeometry = actorGeometry;
              }
              this.ensureFramebuffer(this.targets, view,
@@ -156,11 +246,25 @@ index 2578f1d..b4949c8 100644
          }
  
          this.target.geometry = geometry;
+@@ -373,6 +424,13 @@ export const BackdropCaptureEffect = GObject.registerClass({
+             this.output.destroy();
+         for (const view of [...this.viewDestroyIds.keys()])
+             this.releaseView(view);
++        // Aura Glass: see released_textures and scheduleClonePrune.
++        if (this.clonePruneId)
++            GLib.source_remove(this.clonePruneId);
++        this.clonePruneId = 0;
++        released_textures(...[...this.targets.values()].map(target => target.texture),
++            ...[...this.cloneTargets.values()].flatMap(targets =>
++                [...targets.values()].map(target => target.texture)));
+         this.targets.clear();
+         this.cloneTargets.clear();
+         this.target = null;
 diff --git a/src/render/shader/shader_effect.js b/src/render/shader/shader_effect.js
-index ed6a514..7e17df0 100644
+index ed6a514..1f1b55b 100644
 --- a/src/render/shader/shader_effect.js
 +++ b/src/render/shader/shader_effect.js
-@@ -6,7 +6,9 @@ import { getEffectBounds } from '../effect_bounds.js';
+@@ -6,8 +6,11 @@ import { getEffectBounds } from '../effect_bounds.js';
  import { get_view_framebuffer } from '../backdrop/painted_view.js';
  import { addRectangle, setPaintOpacity } from '../paint_nodes.js';
  import {
@@ -168,9 +272,11 @@ index ed6a514..7e17df0 100644
      getTextureCapacity,
 +    initialTextureCapacity,
      largestViewSize,
++    released_textures,
      SURFACE_TEXTURE_REGION,
      TextureRegion,
-@@ -28,7 +30,10 @@ export const SurfaceShaderEffect = GObject.registerClass({
+     textureFits,
+@@ -28,7 +31,10 @@ export const SurfaceShaderEffect = GObject.registerClass({
          const usedHeight = Math.max(1, Math.ceil(height * scale));
          const current = this.target !== null && this.target.context === context ? this.target : null;
          if (current === null) {
@@ -182,22 +288,39 @@ index ed6a514..7e17df0 100644
          } else if (!textureFits(current, usedWidth, usedHeight, current.width, current.height)) {
              const limit = largestViewSize();
              this.createTarget(context,
-@@ -173,7 +178,9 @@ export const SurfaceShaderEffect = GObject.registerClass({
+@@ -54,6 +60,8 @@ export const SurfaceShaderEffect = GObject.registerClass({
+     }
+ 
+     createTarget(context, textureWidth, textureHeight) {
++        // Aura Glass: see released_textures.
++        released_textures(this.target?.texture);
+         const texture = Cogl.Texture2D.new_with_size(context, textureWidth, textureHeight);
+         texture.set_components(Cogl.TextureComponents.RGBA);
+         texture.allocate();
+@@ -173,7 +181,11 @@ export const SurfaceShaderEffect = GObject.registerClass({
      }
  
      vfunc_set_actor(actor) {
 -        this.target = null;
 +        // Aura Glass: kept for the next actor; see full-size-buffers.
-+        if (!full_size_buffers())
++        if (!full_size_buffers()) {
++            released_textures(this.target?.texture);
 +            this.target = null;
++        }
          this.sourceValid = false;
          super.vfunc_set_actor(actor);
      }
 diff --git a/src/render/shader/texture_region.js b/src/render/shader/texture_region.js
-index 93c035c..94343eb 100644
+index 93c035c..e989a2b 100644
 --- a/src/render/shader/texture_region.js
 +++ b/src/render/shader/texture_region.js
-@@ -20,6 +20,24 @@ export function textureRegionDeclarations(name) {
+@@ -1,4 +1,5 @@
+ import GLib from 'gi://GLib';
++import System from 'system';
+ 
+ const TEXTURE_HEADROOM = 1.25;
+ const SHRINK_DELAY_US = 2000000;
+@@ -20,6 +21,65 @@ export function textureRegionDeclarations(name) {
      return `${uniforms}\n#define ${name} vec4(${components})\n`;
  }
  
@@ -219,10 +342,51 @@ index 93c035c..94343eb 100644
 +    return fullSizeBuffers;
 +}
 +
++// Aura Glass: a Cogl texture gives its VRAM back only when GJS finalizes the
++// small JS object that wraps it, and GJS collects when the JS heap grows,
++// which these wrappers barely make it do. So a dropped blur buffer stayed
++// resident until some unrelated collection. On a 3440x1440 monitor with
++// full-size-buffers on, each overview open and close left 250-500 MB more
++// (the previews' clone captures and their reallocations), and GNOME Shell
++// went from 5.1 to 6.4 GB of an 8 GB card before a collection brought it
++// back (measured 2026-11-12). Every release adds its size here. Once 64 MiB
++// are waiting, one collection runs 3 s after the last release, at low
++// priority, so an animation that drops buffers frame after frame never has a
++// collection land inside it, and small menus coming and going never start one
++// on their own.
++const RELEASE_GC_BYTES = 64 * 1024 * 1024;
++const RELEASE_GC_DELAY_S = 3;
++let releasedBytes = 0;
++let releaseGcId = 0;
++
++export function released_textures(...textures) {
++    for (const texture of textures) {
++        if (texture)
++            releasedBytes += texture.get_width() * texture.get_height() * 4;
++    }
++    if (releasedBytes < RELEASE_GC_BYTES)
++        return;
++    if (releaseGcId)
++        GLib.source_remove(releaseGcId);
++    releaseGcId = GLib.timeout_add_seconds(GLib.PRIORITY_LOW, RELEASE_GC_DELAY_S, () => {
++        releaseGcId = 0;
++        releasedBytes = 0;
++        System.gc();
++        return GLib.SOURCE_REMOVE;
++    });
++}
++
++export function cancel_released_textures() {
++    if (releaseGcId)
++        GLib.source_remove(releaseGcId);
++    releaseGcId = 0;
++    releasedBytes = 0;
++}
++
  /// Whether a texture can keep holding content of this size. It has to grow as soon as the content
  /// doesn't fit, but only shrinks once the content has stayed under half its size for a while, so
  /// that animations, which go through every size, don't reallocate it on every frame.
-@@ -27,6 +45,9 @@ export function textureFits(owner, width, height, capacityWidth, capacityHeight)
+@@ -27,6 +87,9 @@ export function textureFits(owner, width, height, capacityWidth, capacityHeight)
      if (width > capacityWidth || height > capacityHeight)
          return false;
  
@@ -232,7 +396,7 @@ index 93c035c..94343eb 100644
      if (width * 2 > capacityWidth && height * 2 > capacityHeight) {
          owner.shrinkableSince = 0;
          return true;
-@@ -37,6 +58,10 @@ export function textureFits(owner, width, height, capacityWidth, capacityHeight)
+@@ -37,6 +100,10 @@ export function textureFits(owner, width, height, capacityWidth, capacityHeight)
      return now - owner.shrinkableSince < SHRINK_DELAY_US;
  }
  
@@ -243,7 +407,7 @@ index 93c035c..94343eb 100644
  export function largestViewSize() {
      let width = 1;
      let height = 1;
-@@ -51,6 +76,8 @@ export function largestViewSize() {
+@@ -51,6 +118,8 @@ export function largestViewSize() {
  /// The headroom stops at the size of the largest view, unless the content is already bigger, like
  /// the padded blur of a window taller than the screen.
  export function getTextureCapacity(size, capacity, limit) {

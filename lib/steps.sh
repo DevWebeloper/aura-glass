@@ -74,7 +74,10 @@ BMS_SUBWIN_PATCH="blur-my-shell-subwindows.patch"
 # Applied after it: a `full-size-buffers` key that keeps every blur texture at
 # the largest monitor's size instead of reallocating it while an animation
 # resizes or fades its actor. Off unless --smooth-animations asks; see
-# apply_smooth_animations and the patch's own comments.
+# apply_smooth_animations and the patch's own comments. Whether the key is on
+# or not, the patch also gives dropped blur textures' VRAM back: GJS frees a
+# Cogl texture only when it collects the wrapper, which left GNOME Shell up to
+# 1.4 GB over its idle level after a few overview opens (KI-43).
 BMS_BUFFERS_PATCH="blur-my-shell-full-size-buffers.patch"
 # Applied after it: opening the overview fades the window blur out and the window
 # content back to opaque, where the blur went in one frame and let the
