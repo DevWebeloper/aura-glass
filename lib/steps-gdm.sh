@@ -265,6 +265,39 @@ unsync_gdm_monitors() {
     ok "GDM monitor layout reverted to system default"
 }
 
+# One login wallpaper per saved monitor layout, chosen at boot for the outputs
+# plugged in (bin/aura-glass-gdm-layout says why). The directory belongs to the
+# desktop user so aura-glass-gdm-sync fills it without root; the picker runs as
+# nobody before the display manager.
+GDM_LAYOUT_DIR="/usr/share/backgrounds/aura-gdm.d"
+GDM_LAYOUT_BIN="/usr/local/libexec/aura-glass-gdm-layout"
+GDM_LAYOUT_UNIT="/etc/systemd/system/aura-glass-gdm-layout.service"
+
+install_gdm_layout_unit() {
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: sudo install $GDM_LAYOUT_DIR (owned by $(id -un)), $GDM_LAYOUT_BIN and $GDM_LAYOUT_UNIT, enable it"
+        return 0
+    fi
+    sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 755 "$GDM_LAYOUT_DIR" || return 0
+    sudo install -Dm755 "$REPO_ROOT/bin/aura-glass-gdm-layout" "$GDM_LAYOUT_BIN" || return 0
+    sudo install -Dm644 "$REPO_ROOT/systemd/aura-glass-gdm-layout.service" "$GDM_LAYOUT_UNIT" || return 0
+    sudo systemctl daemon-reload 2>/dev/null || true
+    sudo systemctl enable aura-glass-gdm-layout.service >/dev/null 2>&1 || true
+    ok "login wallpaper follows the monitors connected at boot"
+}
+
+uninstall_gdm_layout_unit() {
+    [ -e "$GDM_LAYOUT_UNIT" ] || [ -e "$GDM_LAYOUT_BIN" ] || [ -e "$GDM_LAYOUT_DIR" ] || return 0
+    if [ "${DRY_RUN:-0}" = 1 ]; then
+        info "dry-run: sudo remove $GDM_LAYOUT_UNIT, $GDM_LAYOUT_BIN and $GDM_LAYOUT_DIR"
+        return 0
+    fi
+    sudo systemctl disable aura-glass-gdm-layout.service >/dev/null 2>&1 || true
+    sudo rm -f "$GDM_LAYOUT_UNIT" "$GDM_LAYOUT_BIN" 2>/dev/null || true
+    sudo rm -rf "$GDM_LAYOUT_DIR" 2>/dev/null || true
+    sudo systemctl daemon-reload 2>/dev/null || true
+}
+
 install_gdm_sync_unit() {
     if [ -f "$HOME/.config/systemd/user/tahoe-glass-gdm-sync.service" ]; then
         run systemctl --user disable --now tahoe-glass-gdm-sync.service >/dev/null 2>&1 || true
@@ -633,6 +666,7 @@ install_gdm() {
         sudo chmod 666 "$target_wall"
         ok "GDM background configured from desktop wallpaper ($target_wall)"
     fi
+    install_gdm_layout_unit
 
     # 3. Compile and install GDM theme patched to link directly to file:///usr/share/backgrounds/aura-gdm.png
     info "Preparing WhiteSur GDM resources..."
@@ -748,6 +782,7 @@ uninstall_gdm() {
     done
 
     unsync_gdm_look
+    uninstall_gdm_layout_unit
 
     # Disable sync unit
     uninstall_gdm_sync_unit

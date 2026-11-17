@@ -107,7 +107,8 @@ For "which file draws this button / owns this setting", use
 | `aura-glass-update-check` | Compare the checkout with the remote's tags or branch. `--notify` is used by the timer. | `install_update_check` |
 | `aura-glass-update` | Put the checkout on a release tag or a branch tip (stash edits, back up diverged commits), then run `install.sh --gui`. `--no-install` switches only. What the Updates page's Install runs. | `install_update_check` |
 | `aura-glass-icon-sync` | Follow light/dark with the icon variant (service). | `install_icon_sync` |
-| `aura-glass-gdm-sync` | Push wallpaper and monitors to GDM (service, `--once`). | `install_gdm_sync_unit` |
+| `aura-glass-gdm-sync` | Push wallpaper and monitors to GDM (service, `--once`), plus one wallpaper per saved layout in `/usr/share/backgrounds/aura-gdm.d`. | `install_gdm_sync_unit` |
+| `aura-glass-gdm-layout` | At boot, as `nobody`, copy the `aura-gdm.d` wallpaper for the connected outputs over the login wallpaper. Installed to `/usr/local/libexec`, run by the system unit `/etc/systemd/system/aura-glass-gdm-layout.service`. | `install_gdm_layout_unit` |
 | `aura-glass-login-veil` | At login, overlay a patched layout.js that shows the login picture on the first frame and dissolves it into the desktop (drop-in). | `install_gdm_sync_unit` |
 | `aura-glass-adaptive` | Launcher for `aura_glass_adaptive.py`: no args runs the loop; also `profile auto\|full\|performance` and `refresh`. | `install_adaptive_performance` |
 

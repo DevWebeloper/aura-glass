@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# aura-glass-gdm-layout — at boot, before the login screen, put the wallpaper
+# made for the connected monitors in place.
+#
+# The greeter draws aura-gdm.png as one CSS background over its whole stage
+# (aura-glass-gdm-sync says why), so the picture has to be laid out for the
+# monitors GDM will have. The sync service can only lay it out for the layout
+# its session last had. Power off on two monitors, unplug one (or shut the lid
+# on the external-only layout) and boot: GDM cover-scaled the two-monitor
+# canvas onto the one screen left, a cropped slice with the seam in it. The
+# sync service now leaves one picture per saved layout in aura-gdm.d, named by
+# the connectors the layout names; this picks one from what is plugged in.
+#
+# Runs as nobody from aura-glass-gdm-layout.service: the directory belongs to
+# the desktop user and the target is 0666, so root buys nothing here and would
+# copy whatever a planted link pointed at. Never fails, never waits long.
+set -u
+
+SYSFS="${AURA_GDM_SYSFS:-/sys/class/drm}"
+LID="${AURA_GDM_LID:-/proc/acpi/button/lid}"
+DIR="${AURA_GDM_LAYOUTS:-/usr/share/backgrounds/aura-gdm.d}"
+TARGET="${AURA_GDM_TARGET:-}"
+if [ -z "$TARGET" ]; then
+    TARGET=/usr/share/backgrounds/aura-gdm.png
+    [ -e "$TARGET" ] || [ ! -e /usr/share/backgrounds/tahoe-gdm.png ] || TARGET=/usr/share/backgrounds/tahoe-gdm.png
+fi
+export LC_ALL=C
+
+[ -d "$DIR" ] && [ ! -L "$DIR" ] && [ -f "$TARGET" ] && [ ! -L "$TARGET" ] || exit 0
+
+connected() {
+    local c n
+    for c in "$SYSFS"/card*-*; do
+        [ "$(cat "$c/status" 2>/dev/null)" = connected ] || continue
+        n="${c##*/}"; n="${n#card*-}"
+        # Mutter names HDMI-A-n "HDMI-n" (meta-kms-connector.c), and that is
+        # the name monitors.xml carries.
+        case "$n" in HDMI-A-*) n="HDMI-${n#HDMI-A-}" ;; Writeback-*) continue ;; esac
+        printf '%s\n' "$n"
+    done
+}
+
+# The GPU driver may still be probing outputs; GDM waits for it too. Five
+# seconds at most, so a machine with no display never holds up the boot.
+outs=""
+for _ in $(seq 50); do
+    outs="$(connected | sort -u)"
+    [ -n "$outs" ] && break
+    sleep 0.1
+done
+[ -n "$outs" ] || exit 0
+
+# Mutter leaves the built-in panel out of the layout while the lid is shut, as
+# long as another output remains.
+if grep -qs closed "$LID"/*/state; then
+    rest="$(printf '%s\n' "$outs" | grep -Ev '^(eDP|LVDS|DSI)-' || true)"
+    [ -n "$rest" ] && outs="$rest"
+fi
+
+# One output never needs a layout: the plain picture, whatever monitors.xml says.
+if [ "$(printf '%s\n' "$outs" | wc -l)" -eq 1 ]; then
+    src="$DIR/single.png"
+else
+    src="$DIR/$(printf '%s\n' "$outs" | paste -sd+).png"
+fi
+# No saved layout for these outputs: leave the session's last picture.
+[ -f "$src" ] && [ ! -L "$src" ] || exit 0
+cmp -s "$src" "$TARGET" && exit 0
+cat "$src" > "$TARGET" 2>/dev/null || true
+exit 0

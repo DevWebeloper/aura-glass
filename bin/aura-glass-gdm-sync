@@ -2,8 +2,12 @@
 # aura-glass-gdm-sync — dynamically sync desktop wallpaper & primary monitor to GDM login screen
 set -euo pipefail
 
-TARGET_WALL="/usr/share/backgrounds/aura-gdm.png"
-[ -w "$TARGET_WALL" ] || [ ! -w "/usr/share/backgrounds/tahoe-gdm.png" ] || TARGET_WALL="/usr/share/backgrounds/tahoe-gdm.png"
+TARGET_WALL="${AURA_GDM_TARGET:-/usr/share/backgrounds/aura-gdm.png}"
+[ -n "${AURA_GDM_TARGET:-}" ] || [ -w "$TARGET_WALL" ] || [ ! -w "/usr/share/backgrounds/tahoe-gdm.png" ] || TARGET_WALL="/usr/share/backgrounds/tahoe-gdm.png"
+# One picture per monitor layout in monitors.xml, for aura-glass-gdm-layout to
+# choose from at boot (it says why). install_gdm makes the directory, owned by
+# the desktop user; an older install has none and gets the current layout only.
+LAYOUT_DIR="${AURA_GDM_LAYOUTS:-/usr/share/backgrounds/aura-gdm.d}"
 USER_MONITORS="$HOME/.config/monitors.xml"
 CONF_DIR="${AURA_GLASS_CONF:-$HOME/.config/aura-glass}"
 
@@ -105,12 +109,16 @@ sync_wallpaper() {
     # fixed /tmp/aura-gdm-sync-$$.png let two renders write one file.
     local tmp
     tmp="$(mktemp --suffix=.png /tmp/aura-gdm-sync-XXXXXX)" || return 0
-    python3 - "$wall" "$tmp" <<'PY' || { rm -f "$tmp"; return 0; }
-import os, sys, urllib.parse, subprocess
+    local layouts=""
+    [ -d "$LAYOUT_DIR" ] && [ -w "$LAYOUT_DIR" ] && [ ! -L "$LAYOUT_DIR" ] && layouts="$LAYOUT_DIR"
+    python3 - "$wall" "$tmp" "$layouts" "$USER_MONITORS" <<'PY' || { rm -f "$tmp"; return 0; }
+import os, sys, urllib.parse, subprocess, tempfile
 from PIL import Image, ImageFilter, ImageEnhance, ImageOps
 
 src = sys.argv[1]
 dst = sys.argv[2]
+layout_dir = sys.argv[3]
+monitors_xml = sys.argv[4]
 
 if not os.path.exists(src):
     sys.exit(1)
@@ -189,10 +197,10 @@ def monitor_rects():
 # monitor rect, the canvas the size of the stage's bounding box, so cover maps
 # it back 1:1. Gaps between unequal monitors are never on screen; they take the
 # theme's #lockDialogGroup background-color.
-def span_monitors():
-    rects = monitor_rects()
+def lay_out(im, rects):
+    """im laid out like a stage of rects; im itself for one monitor."""
     if len(rects) < 2:
-        return
+        return im
     x0 = min(r[0] for r in rects)
     y0 = min(r[1] for r in rects)
     width = max(r[0] + r[2] for r in rects) - x0
@@ -200,18 +208,96 @@ def span_monitors():
     # The image is blurred, so 3840 px across keeps the file small with no
     # visible loss on a wide two-monitor stage.
     k = min(1.0, 3840 / width)
-    im = Image.open(dst).convert('RGB')
     canvas = Image.new('RGB', (max(1, round(width * k)), max(1, round(height * k))), (0x22, 0x22, 0x26))
     for x, y, w, h in rects:
         tile = ImageOps.fit(im, (max(1, round(w * k)), max(1, round(h * k))), Image.Resampling.LANCZOS)
         canvas.paste(tile, (round((x - x0) * k), round((y - y0) * k)))
-    canvas.save(dst, format="PNG")
+    return canvas
+
+
+def saved_layouts():
+    """(key, rects) for each configuration in the user's monitors.xml.
+
+    The key is every connector the configuration names, enabled or disabled,
+    sorted and joined with '+': the outputs that must be plugged in for Mutter
+    to choose it, which is all aura-glass-gdm-layout can see at boot."""
+    import xml.etree.ElementTree as ET
+    out = []
+    for conf in ET.parse(monitors_xml).getroot().findall('configuration'):
+        physical = (conf.findtext('layoutmode') or 'logical').strip() == 'physical'
+        connectors, rects = set(), []
+        for lm in conf.findall('logicalmonitor'):
+            mons = lm.findall('monitor')
+            for m in mons:
+                connectors.add(m.findtext('monitorspec/connector', '').strip())
+            if not mons:
+                continue
+            w = int(mons[0].findtext('mode/width'))
+            h = int(mons[0].findtext('mode/height'))
+            if (lm.findtext('transform/rotation') or '').strip() in ('left', 'right'):
+                w, h = h, w
+            scale = float(lm.findtext('scale') or 1)
+            if not physical:
+                w, h = round(w / scale), round(h / scale)
+            rects.append((int(lm.findtext('x')), int(lm.findtext('y')), w, h))
+        for spec in conf.findall('disabled/monitorspec'):
+            connectors.add(spec.findtext('connector', '').strip())
+        connectors.discard('')
+        if connectors and rects:
+            out.append(('+'.join(sorted(connectors)), rects))
+    return out
+
+
+def save_atomic(im, path):
+    fd, tmp = tempfile.mkstemp(suffix='.png', dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            im.save(f, format='PNG')
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, path)
+    except Exception:
+        os.unlink(tmp)
+        raise
+
+
+# The login screen is drawn before any session, on whatever monitors are
+# plugged in at boot, so the current layout's picture is wrong after a change
+# made while powered off: unplug the external monitor, boot, and GDM cover-scales
+# a two-monitor canvas onto the laptop panel alone. Every saved layout gets its
+# own picture here, plus single.png for one output, and aura-glass-gdm-layout
+# copies the one for the connected outputs over the login wallpaper at boot.
+def write_layouts(base):
+    if not layout_dir:
+        return
+    keep = {'single.png'}
+    save_atomic(base, os.path.join(layout_dir, 'single.png'))
+    try:
+        layouts = saved_layouts() if os.path.isfile(monitors_xml) else []
+    except Exception:
+        layouts = []
+    for key, rects in layouts:
+        name = key + '.png'
+        if '/' in name or name in keep:
+            continue
+        keep.add(name)
+        save_atomic(lay_out(base, rects), os.path.join(layout_dir, name))
+    for name in os.listdir(layout_dir):
+        if name.endswith('.png') and name not in keep:
+            try:
+                os.unlink(os.path.join(layout_dir, name))
+            except OSError:
+                pass
 
 
 if not render():
     sys.exit(1)
+base = Image.open(dst).convert('RGB')
 try:
-    span_monitors()
+    write_layouts(base)
+except Exception:
+    pass
+try:
+    lay_out(base, monitor_rects()).save(dst, format="PNG")
 except Exception:
     pass
 sys.exit(0)
