@@ -370,7 +370,7 @@ changes neither.
 
 - Upstreams are **pinned by commit** (table in §12). A theme that changes under
   the CSS gives a half-applied look with no error.
-- Blur My Shell is built from pinned master past v77 (which has #1208, #1211,
+- Blur My Shell is built from the pinned v78 tag, `66c7e7a282f6` (which has #1208, #1211,
   #1217 and #1218, once backported here, and builds its preferences UI into a
   GResource, #1220) and gets five patches: `blur-my-shell-subwindows.patch` (a blurred app's dialogs and tool palettes
   match through their transient-for app, its GTK application id and its title;
@@ -390,7 +390,7 @@ changes neither.
   notification and panel-refit patches were dropped with v76, which was checked
   live without them, and its static-maximized patch with them until it came back
   re-cut. Custom OSD gets
-  `custom-osd-gnome50.patch`. Copyous gets `copyous-gnome51.patch`. Wiggly gets
+  `custom-osd-gnome50.patch`. Copyous gets two small in-place fixes (`patch_copyous_extension`). Wiggly gets
   `wiggly-follow-cursor.patch` on its EGO download (`patch_wiggly_extension`).
   Status Tray gets its default icon effect and its theme lookup edited in place
   (`patch_status_tray_extension`, `patch_status_tray_icon_lookup`).
@@ -475,7 +475,7 @@ after 30 s instead of interleaving.
 | What | Repo | Pin |
 |---|---|---|
 | Base theme | kayozxo/GNOME-macOS-Tahoe | `6dfcd9d941e5` (installed as `Tahoe-Dark`, adopted as `Aura-Glass`) |
-| Blur My Shell | aunetx/blur-my-shell | `88a6d639ccca` (master after v77) + 5 patches |
+| Blur My Shell | aunetx/blur-my-shell | `66c7e7a282f6` (tag v78) + 5 patches |
 | Custom OSD | neuromorph/custom-osd | `334ac17e9348` + GNOME 50/51 patch |
 | Colloid / Reversal / MacTahoe icons | vinceliuice, yeyushengfan258, vinceliuice | `c9e702beb96f` / `2c8122287e3b` / `b85923bb87f5` |
 | Hatter icons | Mibea/Hatter | full SHA, shallow sparse fetch |

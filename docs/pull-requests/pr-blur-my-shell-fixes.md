@@ -27,6 +27,7 @@ When `show_blur` evaluates to false (or when overview is visible and `BLUR_ON_OV
 Modal dialogs, file pickers, preferences windows, and tool palettes frequently have a different `wm_class` or do not yet have their transient relationship established at `window-created` time. This left child windows unblurred next to their blurred parent.
 
 ### Solution
+The UTILITY frame type part of this was merged upstream in #1262 (v78); the patch no longer adds it.
 - Connect to `notify::gtk-application-id` and `shown` signals on `MetaWindow` in addition to `window-created`.
 - Resolve window identity across its `wm_class`, `gtk_application_id`, and its parent's transient-for chain (with cycle detection).
 

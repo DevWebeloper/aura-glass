@@ -102,9 +102,9 @@ install_ext_ego() {
 }
 
 # Blur My Shell carries the popup component upstream: menus, quick settings,
-# notifications, dialogs and the OSD get blur directly. We build from pinned
-# master (BMS_REF, past v77) with the subwindow, full-size-buffers,
-# overview-fade, static-maximized and osd-corners patches applied on top (see
+# notifications, dialogs and the OSD get blur directly. We build from the pinned
+# v78 tag (BMS_REF) with the subwindow, full-size-buffers, overview-fade,
+# static-maximized and osd-corners patches applied on top (see
 # BMS_SUBWIN_PATCH, BMS_BUFFERS_PATCH, BMS_FADE_PATCH, BMS_STATIC_PATCH and
 # BMS_OSD_PATCH in lib/steps.sh).
 # gnome-extensions pack and gnome-extensions install both write under $HOME, so
@@ -574,8 +574,7 @@ patch_copyous_extension() {
     # Copyous 2.1.2 (and upstream main) connects TextItem's entry listener with
     # no tracking object, so connectObject throws "No object to track signals"
     # and that clipboard entry is never built. Its destroy() already calls
-    # entry.disconnectObject(this), so `this` is the object it meant. Checked
-    # apart from the GLSLEffect marker below, which an older run already wrote.
+    # entry.disconnectObject(this), so `this` is the object it meant.
     local text="$target/lib/ui/items/textItem.js"
     local untracked="entry.connectObject('notify::content', this.updateTextInfo.bind(this));"
     if [ -f "$text" ] && grep -qF "$untracked" "$text"; then
@@ -597,61 +596,9 @@ patch_copyous_extension() {
             "$indicator"
     fi
 
-    local file="$target/lib/ui/items/clipboardItem.js"
-    [ -f "$file" ] || return 0
-    if grep -q "Shell.GLSLEffect || Clutter.Effect" "$file"; then
-        return 0
-    fi
-    info "Patching Copyous for GNOME 50/51 GLSLEffect compatibility..."
-    python3 - "$file" "$target/metadata.json" <<'PY' || true
-import sys, json
-
-js_path, meta_path = sys.argv[1], sys.argv[2]
-try:
-    with open(js_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    if "const BaseEffect" not in content and "let HoleEffect = class HoleEffect extends Shell.GLSLEffect" in content:
-        content = content.replace(
-            "let HoleEffect = class HoleEffect extends Shell.GLSLEffect {",
-            "const BaseEffect = Shell.GLSLEffect || Clutter.Effect;\nlet HoleEffect = class HoleEffect extends BaseEffect {"
-        )
-        content = content.replace(
-            "this._sizeLocation = this.get_uniform_location('size');",
-            "if (Shell.GLSLEffect) {\n\t\t\tthis._sizeLocation = this.get_uniform_location('size');"
-        )
-        content = content.replace(
-            "target.connect('notify::allocation', () => this.queue_repaint());",
-            "target.connect('notify::allocation', () => this.queue_repaint());\n\t\t}"
-        )
-        content = content.replace(
-            "vfunc_paint_target(node, paintContext) {",
-            "vfunc_paint_target(node, paintContext) {\n\t\tif (!Shell.GLSLEffect) return;"
-        )
-        content = content.replace(
-            "vfunc_build_pipeline() {",
-            "vfunc_build_pipeline() {\n\t\tif (!Shell.GLSLEffect) return;"
-        )
-        with open(js_path, "w", encoding="utf-8") as f:
-            f.write(content)
-except Exception:
-    pass
-
-try:
-    with open(meta_path, "r", encoding="utf-8") as f:
-        meta = json.load(f)
-    shells = meta.get("shell-version", [])
-    changed = False
-    for v in ["50", "51"]:
-        if v not in shells:
-            shells.append(v)
-            changed = True
-    if changed:
-        meta["shell-version"] = shells
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump(meta, f, indent=2)
-except Exception:
-    pass
-PY
+    # Copyous 2.1.2 ships its own GLSLEffect fallback (holeEffect.js) and lists
+    # GNOME 48-51, so the earlier GLSLEffect/metadata patch was dropped (checked
+    # 2026-11-17).
 }
 
 # dconf can reach the running extension after it has constructed its components:

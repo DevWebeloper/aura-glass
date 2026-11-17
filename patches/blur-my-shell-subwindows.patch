@@ -17,19 +17,10 @@ index b72f2b0..d5b569f 100644
          this.connections.connect(
              meta_window, 'unmanaging',
 diff --git a/src/components/applications/window_rules.js b/src/components/applications/window_rules.js
-index e985d0c..df68b37 100644
+index 9cc3a1f..593a7db 100644
 --- a/src/components/applications/window_rules.js
 +++ b/src/components/applications/window_rules.js
-@@ -5,6 +5,8 @@ const BLURRED_FRAME_TYPES = [
-     Meta.FrameType.DIALOG,
-     Meta.FrameType.MODAL_DIALOG,
-     Meta.FrameType.ATTACHED,
-+    // UTILITY covers tool palettes and floating panels the set above was already meant to include.
-+    Meta.FrameType.UTILITY,
- ];
- 
- // GTK popovers and the menus of other Wayland clients
-@@ -28,18 +30,44 @@ function wildcard_to_regex(pattern) {
+@@ -29,18 +29,44 @@ function wildcard_to_regex(pattern) {
      return new RegExp(regex, 'i');
  }
  
@@ -79,7 +70,7 @@ index e985d0c..df68b37 100644
  }
  
  /// Decides which windows are blurred: when blurring every window, those not in the blacklist,
-@@ -55,14 +83,17 @@ export class WindowRules {
+@@ -56,14 +82,17 @@ export class WindowRules {
          this.blacklist = this.settings.applications.BLACKLIST.map(to_rule);
      }
  
