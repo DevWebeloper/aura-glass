@@ -249,14 +249,20 @@ def saved_layouts():
 
 
 def save_atomic(im, path):
-    fd, tmp = tempfile.mkstemp(suffix='.png', dir=os.path.dirname(path))
+    # Not *.png: the three watchers can render at once, and write_layouts
+    # prunes every *.png it did not write, so a .png temp name let one
+    # render delete another's file before its rename.
+    fd, tmp = tempfile.mkstemp(prefix='.', suffix='.tmp', dir=os.path.dirname(path))
     try:
         with os.fdopen(fd, 'wb') as f:
             im.save(f, format='PNG')
         os.chmod(tmp, 0o644)
         os.replace(tmp, path)
     except Exception:
-        os.unlink(tmp)
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
         raise
 
 
