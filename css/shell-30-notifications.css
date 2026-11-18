@@ -87,10 +87,13 @@
 
 /* The app name is the one piece of identity in a notification, so it takes the
  * accent. Everything else stays neutral so the message itself still leads.
+ * The raw accent reads at 1.7-3.4:1 on the glass (every accent fails WCAG AA),
+ * so it is mixed toward white: 40% accent keeps the tint and reaches about
+ * 5.3:1 on a purple wallpaper. st-mix's percentage is the first colour's share.
  */
 .notification-banner .message-header .message-header-content .message-source-title,
 .message .message-header .message-header-content .message-source-title {
-  color: -st-accent-color;
+  color: st-mix(-st-accent-color, #ffffff, 40%);
 }
 
 .notification-banner .message-close-button,
