@@ -1,4 +1,5 @@
-# System unit (installed to /etc/systemd/system by install_gdm). The login
+# System unit (installed to /etc/systemd/system by install_gdm, which replaces
+# @AURA_USER@ with the desktop user who owns the files this writes). The login
 # wallpaper for the monitors connected at boot; bin/aura-glass-gdm-layout says why.
 [Unit]
 Description=Pick the Aura Glass login wallpaper for the connected monitors
@@ -7,7 +8,7 @@ Before=display-manager.service gdm.service gdm3.service
 
 [Service]
 Type=oneshot
-User=nobody
+User=@AURA_USER@
 ExecStart=/usr/local/libexec/aura-glass-gdm-layout
 TimeoutStartSec=15
 

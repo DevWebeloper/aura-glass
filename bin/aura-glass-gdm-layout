@@ -11,9 +11,10 @@
 # sync service now leaves one picture per saved layout in aura-gdm.d, named by
 # the connectors the layout names; this picks one from what is plugged in.
 #
-# Runs as nobody from aura-glass-gdm-layout.service: the directory belongs to
-# the desktop user and the target is 0666, so root buys nothing here and would
-# copy whatever a planted link pointed at. Never fails, never waits long.
+# Runs as the desktop user from aura-glass-gdm-layout.service: that user owns
+# both the directory and the target (mode 644, not world-writable), so root buys
+# nothing here and would copy whatever a planted link pointed at. Links are
+# still refused below. Never fails, never waits long.
 set -u
 
 SYSFS="${AURA_GDM_SYSFS:-/sys/class/drm}"

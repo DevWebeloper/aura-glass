@@ -185,7 +185,7 @@ sync_gdm_monitors() {
     else
         sudo mkdir -p /etc/xdg
         sudo cp -f "$user_monitors" /etc/xdg/monitors.xml
-        sudo chmod 666 /etc/xdg/monitors.xml || sudo chmod 644 /etc/xdg/monitors.xml
+        sudo chown "$(id -un):$(id -gn)" /etc/xdg/monitors.xml && sudo chmod 644 /etc/xdg/monitors.xml
         synced=1
     fi
 
@@ -199,7 +199,7 @@ sync_gdm_monitors() {
                 sudo mkdir -p "$gdm_dir/.config"
                 sudo cp -f "$user_monitors" "$gdm_dir/.config/monitors.xml"
                 sudo chmod 755 "$gdm_dir/.config"
-                sudo chmod 666 "$gdm_dir/.config/monitors.xml" || sudo chmod 644 "$gdm_dir/.config/monitors.xml"
+                sudo chown "$(id -un):$(id -gn)" "$gdm_dir/.config/monitors.xml" && sudo chmod 644 "$gdm_dir/.config/monitors.xml"
                 synced=1
             fi
         fi
@@ -268,7 +268,9 @@ unsync_gdm_monitors() {
 # One login wallpaper per saved monitor layout, chosen at boot for the outputs
 # plugged in (bin/aura-glass-gdm-layout says why). The directory belongs to the
 # desktop user so aura-glass-gdm-sync fills it without root; the picker runs as
-# nobody before the display manager.
+# that same user before the display manager. The files it and the sync service
+# write are owned by the desktop user and mode 644, never world-writable, so
+# no other local account can swap the login wallpaper or GDM's monitor layout.
 GDM_LAYOUT_DIR="/usr/share/backgrounds/aura-gdm.d"
 GDM_LAYOUT_BIN="/usr/local/libexec/aura-glass-gdm-layout"
 GDM_LAYOUT_UNIT="/etc/systemd/system/aura-glass-gdm-layout.service"
@@ -280,7 +282,13 @@ install_gdm_layout_unit() {
     fi
     sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 755 "$GDM_LAYOUT_DIR" || return 0
     sudo install -Dm755 "$REPO_ROOT/bin/aura-glass-gdm-layout" "$GDM_LAYOUT_BIN" || return 0
-    sudo install -Dm644 "$REPO_ROOT/systemd/aura-glass-gdm-layout.service" "$GDM_LAYOUT_UNIT" || return 0
+    # The shipped unit names a placeholder user; the desktop user owns the files
+    # the picker writes, so that is who it runs as. Rendered into a temp file so
+    # a re-run installs identical bytes and replaces an old User=nobody unit.
+    local unit_tmp; unit_tmp="$(mktemp)" || return 0
+    sed "s|@AURA_USER@|$(id -un)|" "$REPO_ROOT/systemd/aura-glass-gdm-layout.service" > "$unit_tmp"
+    sudo install -Dm644 "$unit_tmp" "$GDM_LAYOUT_UNIT" || { rm -f "$unit_tmp"; return 0; }
+    rm -f "$unit_tmp"
     sudo systemctl daemon-reload 2>/dev/null || true
     sudo systemctl enable aura-glass-gdm-layout.service >/dev/null 2>&1 || true
     ok "login wallpaper follows the monitors connected at boot"
@@ -653,7 +661,7 @@ install_gdm() {
     local cur_wall; cur_wall="$(get_desktop_wallpaper)"
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
-        info "dry-run: generate $target_wall from $cur_wall and make writable for live wallpaper sync"
+        info "dry-run: generate $target_wall from $cur_wall and hand it to $(id -un) (mode 644) for live wallpaper sync"
     else
         sudo mkdir -p /usr/share/backgrounds
         local tmp_init="/tmp/aura-gdm-init.png"
@@ -663,7 +671,7 @@ install_gdm() {
         else
             sudo touch "$target_wall"
         fi
-        sudo chmod 666 "$target_wall"
+        sudo chown "$(id -un):$(id -gn)" "$target_wall" && sudo chmod 644 "$target_wall"
         ok "GDM background configured from desktop wallpaper ($target_wall)"
     fi
     install_gdm_layout_unit
