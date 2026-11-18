@@ -2025,6 +2025,21 @@ apply_tiling_maximize() {
 # Same shape as apply_window_buttons and for the same reason: cursor-size is
 # a GNOME preference shared with Tweaks, not this project's styling, so a
 # flagless install leaves it exactly where it found it.
+# Sets one key in a GTK settings.ini. --follow-symlinks keeps a settings.ini
+# that is a link into a dotfiles repo a link, where plain sed -i would swap it
+# for a regular file. A file with no [Settings] header gets one first, because
+# the append below anchors on it and would otherwise drop the key on every run.
+set_gtk_ini_key() {
+    local file="$1" key="$2" value="$3"
+    if ! grep -q '^\[Settings\]' "$file"; then
+        # A file whose last line has no newline would glue the header onto it.
+        [ ! -s "$file" ] || [ -z "$(tail -c1 "$file")" ] || printf '\n' >> "$file"
+        printf '[Settings]\n' >> "$file"
+    fi
+    sed -i --follow-symlinks "/^$key=/d" "$file"
+    sed -i --follow-symlinks "/^\[Settings\]/a $key=$value" "$file"
+}
+
 apply_cursor_size() {
     local want="${CURSOR_SIZE:-}" memo="$CONF_DIR/cursor-size"
     if [ -z "$want" ] && [ -f "$memo" ]; then
@@ -2042,12 +2057,10 @@ apply_cursor_size() {
         mkdir -p "$CONF_DIR"
         printf '%s\n' "$want" > "$memo"
         if [ -f "$HOME/.config/gtk-3.0/settings.ini" ]; then
-            sed -i "/^gtk-cursor-theme-size=/d" "$HOME/.config/gtk-3.0/settings.ini"
-            sed -i "/^\[Settings\]/a gtk-cursor-theme-size=$want" "$HOME/.config/gtk-3.0/settings.ini"
+            set_gtk_ini_key "$HOME/.config/gtk-3.0/settings.ini" gtk-cursor-theme-size "$want"
         fi
         if [ -f "$HOME/.config/gtk-4.0/settings.ini" ]; then
-            sed -i "/^gtk-cursor-theme-size=/d" "$HOME/.config/gtk-4.0/settings.ini"
-            sed -i "/^\[Settings\]/a gtk-cursor-theme-size=$want" "$HOME/.config/gtk-4.0/settings.ini"
+            set_gtk_ini_key "$HOME/.config/gtk-4.0/settings.ini" gtk-cursor-theme-size "$want"
         fi
     fi
 }
@@ -2129,12 +2142,10 @@ sync_cursor_theme_files() {
     done
 
     if [ -f "$HOME/.config/gtk-3.0/settings.ini" ]; then
-        sed -i "/^gtk-cursor-theme-name=/d" "$HOME/.config/gtk-3.0/settings.ini"
-        sed -i "/^\[Settings\]/a gtk-cursor-theme-name=$cursor" "$HOME/.config/gtk-3.0/settings.ini"
+        set_gtk_ini_key "$HOME/.config/gtk-3.0/settings.ini" gtk-cursor-theme-name "$cursor"
     fi
     if [ -f "$HOME/.config/gtk-4.0/settings.ini" ]; then
-        sed -i "/^gtk-cursor-theme-name=/d" "$HOME/.config/gtk-4.0/settings.ini"
-        sed -i "/^\[Settings\]/a gtk-cursor-theme-name=$cursor" "$HOME/.config/gtk-4.0/settings.ini"
+        set_gtk_ini_key "$HOME/.config/gtk-4.0/settings.ini" gtk-cursor-theme-name "$cursor"
     fi
 }
 

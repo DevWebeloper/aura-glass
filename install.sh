@@ -664,6 +664,14 @@ parse_flags() {
 
 parse_flags "$@"
 
+# Run through sudo, everything in the home folder would end up owned by root
+# (or land in /root, with no session bus for gsettings), and later runs as the
+# desktop user would fail on it. The installer asks for sudo itself, for the
+# few parts that need it. A dry run writes nothing, so it is allowed.
+if [ "${EUID:-$(id -u)}" = 0 ] && [ "$DRY_RUN" != 1 ] && [ "${AURA_GLASS_ALLOW_ROOT:-0}" != 1 ]; then
+    die "do not run the installer as root: run it as the desktop user (it asks for sudo itself)"
+fi
+
 # Before the first $CONF_DIR read below, and so before the accent, the packs,
 # the font, the transparency and the glass mode are all resolved from it. An
 # install made under the old name keeps its settings somewhere else entirely,

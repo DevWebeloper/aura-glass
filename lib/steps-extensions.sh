@@ -110,6 +110,13 @@ install_ext_ego() {
 # gnome-extensions pack and gnome-extensions install both write under $HOME, so
 # this needs no root.
 install_bms() {
+    # A run cut off while Blur My Shell was moved aside (below) left only the
+    # aside copy. Put it back first, so every path through here, including the
+    # ones that skip the rebuild, starts from an installed extension.
+    if [ "${DRY_RUN:-0}" != 1 ] && [ ! -d "$EXT_DIR/$BMS_UUID" ] \
+       && [ -d "$EXT_DIR/.$BMS_UUID.aura-glass-old" ]; then
+        mv "$EXT_DIR/.$BMS_UUID.aura-glass-old" "$EXT_DIR/$BMS_UUID"
+    fi
     if [ "${WANT_BMS_GIT:-1}" != 1 ]; then
         install_ext_ego "$BMS_UUID" || true
         if [ "${DRY_RUN:-0}" != 1 ]; then
@@ -228,10 +235,23 @@ install_bms() {
     # directories, so an overlay would leave both and load the wrong one.
     # Settings live in dconf, not here, so nothing is lost. This runs only
     # after the zip exists and has been checked.
-    rm -rf "$EXT_DIR/$BMS_UUID"
+    # The old copy is moved aside rather than deleted, so a failed or
+    # interrupted install puts it back instead of leaving the desktop with
+    # dconf pointing at an extension that is no longer there.
+    local aside="$EXT_DIR/.$BMS_UUID.aura-glass-old"
+    rm -rf "$aside"
+    if [ -d "$EXT_DIR/$BMS_UUID" ]; then
+        mv "$EXT_DIR/$BMS_UUID" "$aside"
+    fi
     rm -rf "$HOME/.local/share/gnome-shell/extension-updates/$BMS_UUID"
-    gnome-extensions install --force "$zip" >/dev/null \
-        || die "installing Blur My Shell failed"
+    if ! gnome-extensions install --force "$zip" >/dev/null; then
+        if [ -d "$aside" ]; then
+            rm -rf "$EXT_DIR/$BMS_UUID"
+            mv "$aside" "$EXT_DIR/$BMS_UUID"
+        fi
+        die "installing Blur My Shell failed"
+    fi
+    rm -rf "$aside"
 
     # gnome-extensions install compiles the schema itself, but the whole popup
     # section is unreadable if it ever stops, and that would show up as the
@@ -528,6 +548,10 @@ patch_status_tray_icon_lookup() {
 patch_wiggly_extension() {
     local target="$EXT_DIR/wiggly@mojarch"
     local patch="$REPO_ROOT/patches/wiggly-follow-cursor.patch"
+    # A run killed during the re-fetch below leaves only the aside copy.
+    if [ ! -d "$target" ] && [ -d "$target.aura-glass-old" ]; then
+        mv "$target.aura-glass-old" "$target"
+    fi
     [ -d "$target" ] || return 0
     # The ceiling keeps git from treating a dotfiles repo above the extension
     # as the tree to patch: with no repository found it applies to the cwd.
@@ -577,8 +601,11 @@ patch_copyous_extension() {
     # entry.disconnectObject(this), so `this` is the object it meant.
     local text="$target/lib/ui/items/textItem.js"
     local untracked="entry.connectObject('notify::content', this.updateTextInfo.bind(this));"
+    local tracked="entry.connectObject('notify::content', this.updateTextInfo.bind(this), this);"
     if [ -f "$text" ] && grep -qF "$untracked" "$text"; then
         run sed -i "s|entry\.connectObject('notify::content', this\.updateTextInfo\.bind(this));|entry.connectObject('notify::content', this.updateTextInfo.bind(this), this);|" "$text"
+    elif [ -f "$text" ] && ! grep -qF "$tracked" "$text"; then
+        warn "Copyous changed upstream; its text items keep the stock signal tracking"
     fi
 
     # The top bar icon. Copyous draws its own clipboard from a bundled SVG,
@@ -589,11 +616,15 @@ patch_copyous_extension() {
     # Copyous's crossed-out clipboard: no theme has a standard name for it.
     # Its padding is css/shell-00-flat.css's.
     local indicator="$target/lib/ui/indicator.js"
-    if [ -f "$indicator" ] && grep -qF "loadIcon(this.ext, value ? Icon.ClipboardDisabled : Icon.Clipboard)" "$indicator"; then
+    local ind_a="gicon: loadIcon(ext, Icon.Clipboard),"
+    local ind_b="this._icon.gicon = loadIcon(this.ext, value ? Icon.ClipboardDisabled : Icon.Clipboard);"
+    if [ -f "$indicator" ] && grep -qF "$ind_a" "$indicator" && grep -qF "$ind_b" "$indicator"; then
         run sed -i \
             -e "s|gicon: loadIcon(ext, Icon\.Clipboard),|gicon: Gio.ThemedIcon.new('edit-paste-symbolic'),|" \
             -e "s|this\._icon\.gicon = loadIcon(this\.ext, value ? Icon\.ClipboardDisabled : Icon\.Clipboard);|this._icon.gicon = value ? loadIcon(this.ext, Icon.ClipboardDisabled) : Gio.ThemedIcon.new('edit-paste-symbolic');|" \
             "$indicator"
+    elif [ -f "$indicator" ] && ! grep -qF "Gio.ThemedIcon.new('edit-paste-symbolic')" "$indicator"; then
+        warn "Copyous changed upstream; its top bar icon keeps its own clipboard"
     fi
 
     # Copyous 2.1.2 ships its own GLSLEffect fallback (holeEffect.js) and lists

@@ -401,8 +401,14 @@ install_hatter() {
     mkdir -p "$dest"
     local d
     for d in Hatter "$name"; do
+        # Copied beside its final name and moved in, so an interrupted copy
+        # leaves a leftover this clears next run instead of a truncated pack
+        # that the "already installed" check would trust forever. The same
+        # directory keeps the mv a rename, not a copy.
+        rm -rf "${dest:?}/.$d.aura-glass-new"
+        cp -r "$src/$d" "$dest/.$d.aura-glass-new"
         rm -rf "${dest:?}/$d"
-        cp -r "$src/$d" "$dest/$d"
+        mv "$dest/.$d.aura-glass-new" "$dest/$d"
         # The pack ships a prebuilt icon-theme.cache, and GTK reads it in
         # preference to the directory it describes. One built elsewhere against
         # a different GTK is the kind of thing that serves stale icons forever,
@@ -522,11 +528,16 @@ install_moga_cursors() {
         mapfile -t matches < <(find "$src" -type f -name index.theme -print)
         [ "${#matches[@]}" -eq 1 ] || { rm -f "$meta"; die "Moga archive must contain exactly one index.theme"; }
         [ -d "$(dirname "${matches[0]}")/cursors" ] || { rm -f "$meta"; die "Moga archive index.theme has no cursors directory"; }
-        stage="$(mktemp -d)"; cp -a "$(dirname "${matches[0]}")/." "$stage/"
+        mkdir -p "$HOME/.local/share/icons"
+        # Staged next to the destination, not in /tmp: the mv below is then a
+        # rename, so an interruption never leaves a half-moved pack at the
+        # final name. Stages left by an earlier interrupted run go first.
+        rm -rf "$HOME/.local/share/icons"/.moga-stage.*
+        stage="$(mktemp -d "$HOME/.local/share/icons/.moga-stage.XXXXXX")"; cp -a "$(dirname "${matches[0]}")/." "$stage/"
         sed -i "s/^Name=.*/Name=Aura Glass Moga $variant/" "$stage/index.theme"
         python3 "$REPO_ROOT/tools/moga_cursor.py" recolor "$stage" >/dev/null \
             || { rm -f "$meta"; rm -rf "$stage"; die "could not redraw the Moga $variant cursors"; }
-        mkdir -p "$HOME/.local/share/icons"; rm -rf "$dest"; mv "$stage" "$dest"
+        rm -rf "$dest"; mv "$stage" "$dest"
         ok "Aura-Glass-Moga-$variant"
     done
     [ -z "$meta" ] || rm -f "$meta"
@@ -573,9 +584,14 @@ install_cursors() {
             [ -d "$SRC_CACHE/aosp-cursors/aosp-cursors" ] \
                 || die "the AOSP cursors release did not contain aosp-cursors/"
             mkdir -p "$HOME/.local/share/icons"
-            rm -rf "$HOME/.local/share/icons/aosp-cursors"
+            # Copied beside the final name and moved in, so an interrupted
+            # copy never leaves a truncated pack the skip check would trust.
+            rm -rf "$HOME/.local/share/icons/.aosp-cursors.aura-glass-new"
             cp -r "$SRC_CACHE/aosp-cursors/aosp-cursors" \
-                  "$HOME/.local/share/icons/aosp-cursors"
+                  "$HOME/.local/share/icons/.aosp-cursors.aura-glass-new"
+            rm -rf "$HOME/.local/share/icons/aosp-cursors"
+            mv "$HOME/.local/share/icons/.aosp-cursors.aura-glass-new" \
+               "$HOME/.local/share/icons/aosp-cursors"
         fi
         ok "aosp-cursors"
         return 0
