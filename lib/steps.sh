@@ -32,14 +32,17 @@ UPSTREAM_THEME_NAME="Tahoe-Dark"
 THEME_NAME="Aura-Glass"
 
 BMS_REPO="https://github.com/aunetx/blur-my-shell.git"
-BMS_REF="88a6d639ccca"            # master after v77 (78 in development). v76 replaced
-                                  # the native gaussian effects, which lost their
-                                  # radius after a resume from suspend (upstream
-                                  # #700, #850). Master carries what Aura used to
+BMS_REF="66c7e7a282f6"            # the v78 tag (2026-11-10). v76 replaced the native
+                                  # gaussian effects, which lost their radius after a
+                                  # resume from suspend (upstream #700, #850). v77 was
+                                  # left behind for what master carried past it, and
+                                  # v78 includes all of that: what Aura used to
                                   # backport onto v77 (#1208, #1211, #1217, #1218),
-                                  # and moved the preferences UI into a GResource
-                                  # (#1220), which install_bms now builds. Move the
-                                  # pin to the v78 tag once it is released.
+                                  # and the preferences UI moved into a GResource
+                                  # (#1220), which install_bms builds. Master past
+                                  # v78 (#1273, a shared static blur) would need the
+                                  # full-size-buffers and static-maximized patches
+                                  # re-cut, so the pin stays on tags.
 BMS_UUID="blur-my-shell@aunetx"
 
 # First-party — no upstream repo or ref, since the source lives in
@@ -54,7 +57,9 @@ AURA_EXT_UUID="aura-glass-blur@aura-glass.local"
 # left a blurred app's own dialogs and tool palettes unblurred. Re-cut for v76,
 # which already re-checks a window on gtk-application-id and keeps one set of
 # listeners per window, both of which the v73 patch had to add itself, and for
-# v77, which accepts ATTACHED itself, so only UTILITY is still added. Re-cut
+# v77, which accepts ATTACHED itself, so only UTILITY was still added. v78
+# (#1262) accepts UTILITY itself too, so the patch adds no frame type any more:
+# only the class and app-id match up the transient-for chain. Re-cut
 # again for #1217: a rule now tests a window rather than a string, so the chain
 # is a list of windows and title: entries follow it too. Re-cut for master,
 # whose app menus (#1237) follow the rules of their root window through

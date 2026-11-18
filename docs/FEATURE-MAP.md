@@ -20,7 +20,7 @@ a restart.
 | Panel blur after monitor changes | none | none | none | Blur My Shell v76 keeps it aligned itself. The old `aura-glass-panel-blur.service` is removed by `remove_panel_blur_unit` |
 | Panel icon size for this display, Copyous and tray icons included | generated `shell-90-density`, Status Tray `icon-size` | none | `TUNED_PPI` (in `steps-css.sh`) | `measure_logical_ppi`, `density_css`, `sync_tray_icon_size`; re-measured on a layout change by the Helper (`aura-glass-display-sync`, `write_display_sheet`) |
 | Top bar height (24–48 px, settings app → Glass → Top bar; reset goes to GNOME's 32), snapped so there is no seam under a maximized window | generated `shell-90-density` (`#panel { height }`: the asked height snapped to whole device pixels, so 39px for the theme's 40 at 1.33/1.67; absent when that is the theme's own 40) | none | `PANEL_HEIGHT_THEME` 40, `PANEL_HEIGHT_GNOME` 32 (`steps-css.sh`, copied in `gui/aura_glass_settings.py`, held by `check-gui-flags.py`) | `resolve_panel_height`, `measure_primary_scale`, `panel_height_css`. Memo `$C/panel-height` |
-| Quick Settings panel | `shell-20-popup-menus`, `shell-popup-blur` | `[blur-my-shell/popup] quick-settings-corner-radius` | `TOKEN_RADIUS_QUICK_SETTINGS` | `install_css`, `apply_radius_*` |
+| Quick Settings panel, the date menu and the quick-toggle menu | `shell-20-popup-menus`, `shell-popup-blur` | `[blur-my-shell/popup] quick-settings-corner-radius`, `calendar-corner-radius` (date menu), `submenu-corner-radius` (quick-toggle menu) | `TOKEN_RADIUS_QUICK_SETTINGS` | `install_css`, `apply_radius_*` |
 | Quick Settings sliders | `shell-10-quick-settings` | none | none | `install_css` |
 | Quick toggles and switches | `shell-40-quick-toggles` | none | none (follows `-st-accent-color`) | `install_css` |
 | Popup menus (panel, right-click) | `shell-20-popup-menus`, `shell-popup-blur` | `[blur-my-shell/popup] menu-corner-radius`, pipeline `popups` | `TOKEN_RADIUS_MENU`, `TOKEN_BLUR_RADIUS_POPUP` | `install_css`, `apply_popup_blur`, `apply_blur_pipelines`; opacity `apply_popup_transparency` (`--popup-opacity`, else the windows' level) |
@@ -141,7 +141,7 @@ a restart.
 |---|---|---|---|
 | `TOKEN_RADIUS_WINDOW` | 30 | `gtk3-tweaks.css`, `gtk4-70-surfaces.css`, `core.ini [applications] corner-radius`, `core.ini [overview] workspace-corner-radius`, the pipeline `windows` corner in `core.ini`, the GUI preset table | `check-tokens.sh`, `check-gui-radius.py` |
 | `TOKEN_RADIUS_MENU` | 26 | `shell-20-popup-menus.css`, `shell-popup-blur.css`, `core.ini [popup] menu-corner-radius` | `check-tokens.sh` |
-| `TOKEN_RADIUS_QUICK_SETTINGS` | 33 | `shell-20-popup-menus.css` (2 sites), `shell-popup-blur.css` (2), `core.ini [popup] quick-settings-corner-radius` and `screenshot-corner-radius` (both also written by `apply_radius_dconf`) | `check-tokens.sh` |
+| `TOKEN_RADIUS_QUICK_SETTINGS` | 33 | `shell-20-popup-menus.css` (2 sites), `shell-popup-blur.css` (2), `core.ini [popup] quick-settings-corner-radius`, `screenshot-corner-radius`, `calendar-corner-radius` and `submenu-corner-radius` (all four also written by `apply_radius_dconf`) | `check-tokens.sh` |
 | `TOKEN_RADIUS_NOTIFICATION` | 20 | `shell-30-notifications.css` (4), `shell-80-solid.css` (2), `core.ini [popup] notification-corner-radius` | `check-tokens.sh` |
 | `TOKEN_RADIUS_DIALOG` | 20 | `shell-50-dialogs.css`, `core.ini [popup] dialog-corner-radius` | `check-tokens.sh` |
 | `TOKEN_RADIUS_POPUP` | 20 | `core.ini [popup] corner-radius` | `check-tokens.sh` |

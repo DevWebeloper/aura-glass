@@ -1310,6 +1310,34 @@ after re-enabling.
 
 ---
 
+## KI-47
+
+**Blur behind the date menu and quick-toggle menu stuck out past their corners**
+(fixed; found 2026-11-18)
+
+**Symptom.** Over a bright wallpaper the calendar's top-right corner showed a
+lighter rounded edge outside the painted menu. The quick-toggle menu (the
+Wi-Fi/Bluetooth device list) did the same. It followed the preset: 17 on
+"small", 24 on medium, 33 shipped.
+
+**Root cause.** Blur My Shell #1164 (2026-10-28, in our pin since 2026-11-06
+and in v78) split both surfaces out of `quick-settings-corner-radius` into
+`calendar-corner-radius` (`datemenu-popover`, schema default 30) and
+`submenu-corner-radius` (`quick-toggle-menu`, default 24), and its settings
+migration does not copy the old value into them. Nothing here wrote either
+key, so the blur stayed at 30 and 24 while `css/shell-20-popup-menus.css`
+paints both at `TOKEN_RADIUS_QUICK_SETTINGS`.
+
+**Fix.** `apply_radius_dconf` (`lib/steps-dconf.sh`) writes both keys at
+`TOKEN_RADIUS_QUICK_SETTINGS`, `dconf/core.ini` ships them at 33, and
+`tools/token_manifest.py` makes `check-tokens.sh` hold them equal to the token.
+Setting both keys to the Quick Settings value in live dconf was the check.
+
+**Verify.** Needs a full run or a retune. Open the calendar and a quick-toggle
+menu over a bright wallpaper on each radius preset: no blur outside the corners.
+
+---
+
 ## Phase 3 fixes (2026-10-20, `07689ba`)
 
 - **KI-09** — `bin/aura-glass-adaptive` and `bin/aura-glass-panel-blur` now prefer the checkout's `tools/` worker when run from a checkout's `bin/`, like `aura-glass-operation`. The copies in `~/.local/bin` have no `tools/` beside them, so the services keep the installed worker. `AURA_GLASS_ADAPTIVE_WORKER` still wins.
