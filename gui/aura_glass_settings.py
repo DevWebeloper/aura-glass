@@ -143,7 +143,7 @@ RADIUS_PRESETS = [
 # fail on a name its own table no longer has.
 RADIUS_PRESET_ALIASES = {"pill": "rounded"}
 
-# The eight surfaces, in the order --radius-custom takes them, which is
+# The eight slots (seven have a row), in the order --radius-custom takes them, which is
 # tools/token_manifest.py's RADIUS_TOKENS order.
 #
 # The bounds and the preset rows below are the same numbers as radius_bounds()
@@ -167,17 +167,20 @@ RADIUS_SURFACES = [
     ("notification", "Notifications", 4, 26,
      "Banners as they arrive, and the stack in the calendar"),
     ("dialog", "Dialogs", 4, 26,
-     "Log out, restart, power off"),
+     "Log out, restart, power off, Alt+Tab and the workspace switcher"),
     ("popup", "Other popups", 4, 26,
      "Anything the more specific ones above don't claim"),
-    # The id is the token's. Blur My Shell's key of that name rounds the switchers
-    # now; the volume and brightness popup's radius belongs to its design.
-    ("osd", "Window switcher", 2, 16,
-     "Alt+Tab and the workspace switcher — past its ceiling the corners meet "
-     "and it turns into an ellipse"),
+    # No row: unused since KI-48 (switchers follow TOKEN_RADIUS_DIALOG, so the
+    # Dialogs row rounds Alt+Tab and the workspace switcher); kept so older memos
+    # and flags still parse. The slot stays in --radius-custom and the presets,
+    # and the page carries its value through unchanged (RADIUS_HIDDEN).
+    ("osd", "Window switcher", 2, 16, ""),
     ("button", "Buttons", 4, 9999,
      "Apply, Save and every other labelled button — pill-shaped by default"),
 ]
+
+# The surface without a row, see its entry above.
+RADIUS_HIDDEN = "osd"
 
 # The spin row's own ceiling for the button surface. 9999 is a shape, not a
 # pixel count worth a slider — past roughly half a button's own height every
@@ -1920,7 +1923,6 @@ PREVIEW_SHAPES = {
     "notification":   (0.56, 0.30, 0.44),
     "dialog":         (0.44, 0.52, 0.48),
     "popup":          (0.30, 0.34, 0.48),
-    "osd":            (0.42, 0.13, 0.55),
     "button":         (0.30, 0.16, 0.50),
 }
 
@@ -2029,11 +2031,6 @@ class RadiusPreview(Gtk.DrawingArea):
                     alpha=0.18, r=min(8, radius * 0.6))
         elif ident == "popup":
             bar(x + pad, y + h / 2.0 - 3, w - pad * 2, 6)
-        elif ident == "osd":
-            inset = min(pad, h * 0.3)
-            track = h - inset * 2
-            bar(x + inset, y + inset, w - inset * 2, track, alpha=0.14)
-            bar(x + inset, y + inset, (w - inset * 2) * 0.6, track, alpha=0.30)
         elif ident == "button":
             label_w, label_h = w * 0.5, min(h * 0.3, 7)
             bar(x + (w - label_w) / 2.0, y + (h - label_h) / 2.0,
@@ -5877,7 +5874,7 @@ class Window(Adw.ApplicationWindow):
             lambda: self._radius_hover)
 
         # 21:9, which is wide enough for a window shape to read as a window and
-        # short enough not to push the eight rows off the page. The frame holds
+        # short enough not to push the seven rows off the page. The frame holds
         # the ratio whatever the window is resized to, so the shapes keep their
         # proportions rather than stretching with it.
         shape = Gtk.AspectFrame(ratio=21 / 9, obey_child=False,
@@ -5896,7 +5893,13 @@ class Window(Adw.ApplicationWindow):
         # a pill into 32 and a hand-typed 50 into 32 as well. This holds what
         # was actually loaded; the row shows as much of it as it can.
         self._button_pixels = RADIUS_PRESET_VALUES["soft"][-1]
+        # The slot with no row: whatever was loaded, written back as it was so
+        # that applying never changes an older memo's value for it.
+        self._radius_hidden = RADIUS_PRESET_VALUES["default"][
+            [s[0] for s in RADIUS_SURFACES].index(RADIUS_HIDDEN)]
         for ident, title, low, high, subtitle in RADIUS_SURFACES:
+            if ident == RADIUS_HIDDEN:
+                continue
             if ident == "button":
                 # A switch rather than folding 9999 into the spin row's own
                 # range: a spin row that could be dragged from 32 to 9999
@@ -5996,13 +5999,15 @@ class Window(Adw.ApplicationWindow):
         return button
 
     def _load_radius(self, settings):
-        """Put the eight rows where a Settings says they are."""
+        """Put the seven rows (and the hidden slot) where a Settings says they are."""
         values = (settings.radius_custom if settings.radius == "custom"
                   else RADIUS_PRESET_VALUES[settings.radius])
         was, self._loading = self._loading, True
         for (ident, _t, _lo, _hi, _s), value in zip(RADIUS_SURFACES, values):
             if ident == "button":
                 self._set_button_radius(value)
+            elif ident == RADIUS_HIDDEN:
+                self._radius_hidden = value
             else:
                 self._radius_rows[ident].set_value(value)
         self._loading = was
@@ -6028,6 +6033,8 @@ class Window(Adw.ApplicationWindow):
             if ident == "button":
                 values.append(9999 if self._radius_pill_row.get_active()
                               else self._button_radius())
+            elif ident == RADIUS_HIDDEN:
+                values.append(self._radius_hidden)
             else:
                 values.append(int(self._radius_rows[ident].get_value()))
         return tuple(values)
@@ -6064,7 +6071,8 @@ class Window(Adw.ApplicationWindow):
                                  "%s %s" % (s[1].lower(),
                                            "pill" if v >= 9999 else v)
                                  for s, v in zip(RADIUS_SURFACES,
-                                                 self._radius_values()))))
+                                                 self._radius_values())
+                                 if s[0] != RADIUS_HIDDEN)))
         for ident, frame in self._radius_preset_frames.items():
             # The active card takes an accent edge rather than going
             # insensitive: it is still the way back after moving a spin row.
@@ -6090,6 +6098,8 @@ class Window(Adw.ApplicationWindow):
                 RADIUS_SURFACES, RADIUS_PRESET_VALUES[ident]):
             if surface == "button":
                 self._set_button_radius(value)
+            elif surface == RADIUS_HIDDEN:
+                self._radius_hidden = value
             else:
                 self._radius_rows[surface].set_value(value)
         self._loading = was

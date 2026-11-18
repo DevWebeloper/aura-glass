@@ -265,6 +265,7 @@ cmd_set() {
     [ -n "$maximized_opacity" ] && export MAXIMIZED_OPACITY="$maximized_opacity"
 
     if [ -n "$radius_custom" ]; then
+        # TOKEN_RADIUS_OSD: unused since KI-48 (switchers follow TOKEN_RADIUS_DIALOG); kept so older memos and flags still parse.
         IFS=',' read -r TOKEN_RADIUS_WINDOW TOKEN_RADIUS_MENU \
             TOKEN_RADIUS_QUICK_SETTINGS TOKEN_RADIUS_NOTIFICATION \
             TOKEN_RADIUS_DIALOG TOKEN_RADIUS_POPUP TOKEN_RADIUS_OSD \

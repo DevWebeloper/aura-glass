@@ -149,7 +149,7 @@ a restart.
 | `TOKEN_RADIUS_NOTIFICATION` | 20 | `shell-30-notifications.css` (4), `shell-80-solid.css` (2), `core.ini [popup] notification-corner-radius` | `check-tokens.sh` |
 | `TOKEN_RADIUS_DIALOG` | 20 | `shell-50-dialogs.css`, `core.ini [popup] dialog-corner-radius`, `osd-corner-radius` (switchers) and `resize-popup-corner-radius` | `check-tokens.sh` |
 | `TOKEN_RADIUS_POPUP` | 20 | `core.ini [popup] corner-radius` | `check-tokens.sh` |
-| `TOKEN_RADIUS_OSD` | 12 | nothing: unused since BMS v76 (preset-row column kept by position) | `check-tokens.sh` |
+| `TOKEN_RADIUS_OSD` | 12 | nothing: unused since KI-48 (2026-11-18), the switchers follow `TOKEN_RADIUS_DIALOG`; the settings app's "Window switcher" row is gone, the preset-row column is kept by position | `check-tokens.sh` |
 | `TOKEN_RADIUS_BUTTON` | 9999 | `gtk4-20-buttons.css` | `check-tokens.sh` |
 | `TOKEN_BLUR_RADIUS_{PANEL,APPFOLDER,POPUP,WINDOW_LIST,APPLICATIONS,DASH_TO_DOCK}` | 12 / 100 / 60 / 60 / 24 / 8 | the `unscaled_radius` of the matching pipeline in `core.ini` (`APPLICATIONS`: both `windows` and `maximized`) | `check-tokens.sh` |
 | `TOKEN_APP_TRANSPARENCY_SHIPPED` | 0.92 | `gtk4-transparency.css` | `check-tokens.sh` |

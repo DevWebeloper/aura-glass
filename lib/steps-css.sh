@@ -624,9 +624,9 @@ install_transparency_css() {
 # checker asserts against — so a radius the checker watches is a radius a preset
 # can move, and neither can quietly fall out of step with the other.
 #
-# The OSD radius is passed but has no stylesheet to rewrite: Custom OSD draws the
-# pill and Blur My Shell rounds the blur, so apply_radius_dconf writes it as a
-# dconf key. BUTTON is the opposite case — a stylesheet site and no dconf key —
+# The OSD radius is passed but has no stylesheet to rewrite and no dconf key
+# reads it: unused since KI-48 (switchers follow TOKEN_RADIUS_DIALOG); kept so
+# older memos and flags still parse. BUTTON is the opposite case — a stylesheet site and no dconf key —
 # so it moves here and apply_radius_dconf skips it. Both stay in the argument
 # vector so that one preset is one argument vector everywhere rather than two
 # shapes to keep in step.
@@ -643,6 +643,7 @@ apply_radius_css() {
         return 0
     fi
 
+    # TOKEN_RADIUS_OSD: unused since KI-48 (switchers follow TOKEN_RADIUS_DIALOG); kept so older memos and flags still parse.
     python3 "$REPO_ROOT/tools/apply-radius-preset.py" "$CONF_DIR" \
         "$TOKEN_RADIUS_WINDOW" "$TOKEN_RADIUS_MENU" \
         "$TOKEN_RADIUS_QUICK_SETTINGS" "$TOKEN_RADIUS_NOTIFICATION" \

@@ -56,6 +56,12 @@ When you fix one, move it to the bottom section with the commit that fixed it.
 | [KI-40](#ki-40) | Medium | **Fixed** (`fix/bms-v76`, resume needs a live check) | Blur My Shell's blur renders wrong after resume from suspend or hibernate until the extension is toggled |
 | [KI-41](#ki-41) | Medium | **Fixed** (needs a live check) | A window dragged in the overview sometimes snaps back instead of dropping: the magnified pointer took the drop |
 | [KI-42](#ki-42) | Medium | **Fixed** (needs a live check) | A window dragged to another workspace or screen in the overview landed only if let go in exactly the right strip |
+| [KI-43](#ki-43) | Medium | **Fixed** | GNOME Shell's VRAM climbed with every overview open, and dropped Blur My Shell buffers stayed resident |
+| [KI-44](#ki-44) | Low | **Fixed** (365a5b7) | Wiggly kept its settings handlers across lock and unlock |
+| [KI-45](#ki-45) | Low | **Fixed** | First open of quick settings or the date menu after login stuttered |
+| [KI-46](#ki-46) | Medium | **Fixed** | Pooled Blur My Shell effects kept their full-size buffers |
+| [KI-47](#ki-47) | Low | **Fixed** | Blur behind the date menu and quick-toggle menu stuck out past their corners |
+| [KI-48](#ki-48) | Low | **Fixed** | Blur corners did not match the painted corners on the switchers, resize popup, GTK app menus and input-method popup |
 
 ---
 

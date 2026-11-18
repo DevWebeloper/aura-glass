@@ -100,10 +100,12 @@ TOKEN_RADIUS_DIALOG=20
 #   dconf/core.ini        [blur-my-shell/popup] corner-radius
 TOKEN_RADIUS_POPUP=20
 
-# Preset-row column kept by position (the radius-custom memo and the rows carry
-# it), but nothing consumes it any more: since Blur My Shell v76
+# Unused since KI-48 (switchers follow TOKEN_RADIUS_DIALOG); kept so older memos
+# and flags still parse. A positional slot: the radius-custom memo and the preset
+# rows carry it, but nothing consumes it. Since Blur My Shell v76
 # `osd-corner-radius` rounds only .switcher-list and .workspace-switcher, which
-# the dialog rule paints, so that key follows TOKEN_RADIUS_DIALOG. The volume and
+# the dialog rule paints, so that key follows TOKEN_RADIUS_DIALOG; the settings
+# app has no row for it. The volume and
 # brightness popup moved to `osd-window-corner-radius`, see
 # TOKEN_RADIUS_OSD_CAPSULE below.
 #
