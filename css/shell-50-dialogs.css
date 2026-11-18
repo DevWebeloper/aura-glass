@@ -454,3 +454,18 @@ StEntry StIcon.peek-password:hover {
 .login-dialog-auth-menu-button-indicator .login-dialog-auth-menu-button-indicator-icon {
   icon-size: 2em;
 }
+
+/* Secondary text in dialogs and the Alt+Tab scroll arrow were the base
+ * theme's #afafaf / #999999, muddy on the glass; secondary text here is 70%
+ * white and hints 55% (see the white steps in shell-20-popup-menus.css). */
+.dialog-list-item-description,
+.run-dialog-description,
+.prompt-dialog-info-label,
+.prompt-dialog-null-label,
+.switcher-arrow {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+StEntry StLabel.hint-text {
+  color: rgba(255, 255, 255, 0.55);
+}

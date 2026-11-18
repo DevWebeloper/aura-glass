@@ -170,3 +170,73 @@
   background-color: rgba(255, 255, 255, 0.12);
   height: 1px;
 }
+
+/* ---------- Text on the glass: three steps of white ----------
+ * The base theme colours popup text for its own opaque grey cards: #afafaf for
+ * content, #999999 for secondary text, 35% grey for dim text. On the glass over
+ * a bright purple wallpaper those read at about 1.8:1 and look muddy rather
+ * than quiet. Aura keeps the same three steps but in white: content 90%,
+ * secondary 70%, dim 40-60%, so the order of importance survives and every
+ * step stays legible. The date menu header above uses the same steps.
+ * .popup-menu is the colour every popup label inherits when it sets none.
+ */
+.popup-menu {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.popup-inactive-menu-item {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.popup-menu .user-icon {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.no-networks-label {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Day numbers. Days with events and today stay at full content strength;
+ * weekends one step down; days of the next and previous month dimmest, but
+ * above the base theme's 35%, which all but vanished. The base marks today and
+ * other-month days !important, so these must too. */
+.calendar .calendar-day,
+.calendar .calendar-day-base,
+.calendar .calendar-day-with-events,
+.calendar .calendar-day-with-events.calendar-work-day {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.calendar .calendar-today {
+  color: #ffffff !important;
+}
+
+.calendar .calendar-nonwork-day {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.calendar .calendar-other-month,
+.calendar .calendar-other-month-day,
+.calendar .calendar-other-month.calendar-weekend,
+.calendar .calendar-other-month-day.calendar-weekend {
+  color: rgba(255, 255, 255, 0.4) !important;
+}
+
+.calendar .calendar-week-number {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Events, world clocks and weather, under the calendar. */
+.events-button .events-box,
+.events-button .event-time,
+.world-clocks-button .world-clocks-timezone,
+.weather-button .weather-forecast-time {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.world-clocks-button .world-clocks-city,
+.world-clocks-button .world-clocks-time,
+.weather-button .weather-header,
+.weather-button .weather-header.location {
+  color: rgba(255, 255, 255, 0.9);
+}

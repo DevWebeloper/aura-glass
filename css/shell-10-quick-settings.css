@@ -65,3 +65,10 @@
 .quick-slider .icon-button StIcon {
   icon-size: 18px;
 }
+
+/* The second line on a device row (battery level, "Connected") was 50% grey;
+ * secondary text on the glass is 70% white (see the white steps in
+ * shell-20-popup-menus.css). */
+.device-subtitle {
+  color: rgba(255, 255, 255, 0.7);
+}

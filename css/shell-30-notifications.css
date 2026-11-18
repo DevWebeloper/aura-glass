@@ -124,3 +124,16 @@
 .message .button:hover {
   background-color: rgba(255, 255, 255, 0.16);
 }
+
+/* The timestamp beside the app name ("10 minutes ago") was the base theme's
+ * 35% grey, near invisible on the glass. It stays the quietest text in the
+ * card, at 55% white. Media and action buttons are controls, so they read at
+ * content strength (see the white steps in shell-20-popup-menus.css). */
+.message .message-header .message-header-content .event-time {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.message-media-control,
+.notification-button {
+  color: rgba(255, 255, 255, 0.9);
+}
