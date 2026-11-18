@@ -1,0 +1,26 @@
+# Aura Glass
+
+> Aura Glass is a free, open-source (MIT) frosted-glass GNOME theme with real blur and a macOS-style look, for GNOME Shell 48, 49, 50 and 51 on Wayland. It themes GNOME Shell, GTK4/libadwaita apps and GTK3 apps, installs and tunes Blur My Shell for blur behind the panel, overview, dock, menus, Quick Settings, notifications, dialogs and app windows, and ships icon and cursor packs, fonts and a settings app. One install script; tested on Arch, CachyOS and EndeavourOS, with dependency mappings for Fedora, Debian, Ubuntu and openSUSE.
+
+Install:
+
+```
+git clone https://github.com/DevWebeloper/aura-glass.git
+cd aura-glass
+./install.sh
+```
+
+Then log out and back in. Remove it with `./uninstall.sh`.
+
+## Links
+
+- [Project page](https://devwebeloper.github.io/aura-glass/): screenshots, per-distro install commands, FAQ
+- [Source code and README](https://github.com/DevWebeloper/aura-glass)
+- [Latest release](https://github.com/DevWebeloper/aura-glass/releases/latest)
+- [Issues](https://github.com/DevWebeloper/aura-glass/issues)
+
+## Good to know
+
+- Looking for a macOS-like GNOME theme, a glassmorphism GNOME theme, or a way to get blur in GNOME Shell: Aura Glass covers all three in one install.
+- Performance mode keeps the look without blur shaders; Adaptive performance (Auto) drops blur on battery, under heavy GPU load or in fullscreen games.
+- Everything installs under the home folder except two opt-in steps (system packages, the GDM login screen theme).
