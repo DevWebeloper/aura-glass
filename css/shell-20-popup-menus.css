@@ -57,6 +57,41 @@
   border-radius: 33px !important;
 }
 
+/* The date menu's header (the weekday and full date) and the weekday letters
+ * over the grid. The base theme colours them for its own opaque grey card:
+ * #afafaf and #999999 read at about 1.8:1 on the purple glass, so the date
+ * looked washed out. The full date is the headline, so it goes white. The
+ * weekday keeps a hint of the accent so the header still carries the theme
+ * colour; 20% accent and 80% white, because 40% fell to about 2:1 where the
+ * glass sits over a bright wallpaper. The weekday letters go to 90% white;
+ * !important is needed to beat the base theme's own !important.
+ * The hover and press states drop the base theme's solid #454545 box, which
+ * showed as a grey slab on the glass, for a light white wash.
+ */
+.datemenu-today-button .day-label {
+  color: st-mix(-st-accent-color, #ffffff, 20%);
+}
+
+.datemenu-today-button .date-label {
+  color: #ffffff;
+}
+
+.datemenu-today-button:hover,
+.datemenu-today-button:focus {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
+}
+
+.datemenu-today-button:active {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+.calendar .calendar-day-heading {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
 /* ---------- Quick Settings panel ----------
  * The panel shares .popup-menu-content with every other menu, so it needs its
  * own treatment afterwards. Dropping the menu.svg border-image is deliberate:
