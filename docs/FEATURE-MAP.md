@@ -27,9 +27,13 @@ a restart.
 | Date / calendar menu | `shell-20-popup-menus`, `shell-popup-blur` | grouped with **Quick Settings** radius, not the menu one | `TOKEN_RADIUS_QUICK_SETTINGS` | as above |
 | Notification banners and history cards | `shell-30-notifications`, `shell-notification-blur` | the popup blur (v76 has no separate notification switch), `notification-corner-radius` | `TOKEN_RADIUS_NOTIFICATION` | `install_css` (the sheet goes with `--popup-blur`), `apply_notification_opacity` (`tools/apply-notification-opacity.py`, ground 40 × the popup opacity / 90) |
 | Modal dialogs (auth, power, run) | `shell-50-dialogs` | `[blur-my-shell/popup] dialog-corner-radius` | `TOKEN_RADIUS_DIALOG` | `install_css` |
+| Window and workspace switchers | `shell-50-dialogs` (dialog rule) | `[blur-my-shell/popup] osd-corner-radius` (switchers only since BMS v76) | `TOKEN_RADIUS_DIALOG` | `apply_radius_dconf` |
+| Resize popup (`.resize-popup`) | `shell-50-dialogs` (same rule as `.modal-dialog`) | `[blur-my-shell/popup] resize-popup-corner-radius` | `TOKEN_RADIUS_DIALOG` | `apply_radius_dconf` |
+| GTK app popup menus | `gtk4-70-surfaces` (`popover > contents`, 18px) | `[blur-my-shell/applications] menu-corner-radius` = 18, pinned | none (constant; `check-bms-patches.sh` PINNED) | `apply_radius_dconf` |
+| Input-method candidate popup | none (the adopted theme paints `.candidate-popup-content` at 14px) | `[blur-my-shell/popup] candidate-corner-radius` = 14, pinned | none (constant; `check-bms-patches.sh` PINNED) | `apply_radius_dconf` |
 | Copyous clipboard dialog (Super+V) | `.modal-dialog.clipboard-dialog` in `shell-50-dialogs`, `shell-popup-blur`, `shell-80-solid`; its cards, buttons and search bar on the white lift ladder in `shell-50-dialogs` | as modal dialogs | `TOKEN_RADIUS_DIALOG` | `aura-glass-apply` copies those rules into `$CONF_DIR/extension-overrides.css`; Aura Glass Helper loads it as an extension sheet, the only rank that outranks Copyous's own stylesheet |
 | Other popups | `shell-popup-blur` | `[blur-my-shell/popup] corner-radius` | `TOKEN_RADIUS_POPUP` | `apply_radius_dconf` |
-| Volume / brightness OSD pill | none (drawn by Custom OSD) | `[custom-osd]`, `[blur-my-shell/popup] osd-corner-radius` | `TOKEN_RADIUS_OSD` | `apply_osd_device_name`, `sync_osd_profile`, `apply_radius_dconf`. Patch: `patches/custom-osd-gnome50.patch` |
+| Volume / brightness OSD pill | none (drawn by Custom OSD) | `[custom-osd]`, `[blur-my-shell/popup] osd-window-corner-radius` | `TOKEN_RADIUS_OSD_CAPSULE` / `_TAB` | `apply_osd_device_name`, `sync_osd_profile`, `apply_osd_style`. Patch: `patches/custom-osd-gnome50.patch` |
 | Volume / brightness OSD background opacity and tint | none (drawn by Custom OSD) | `[custom-osd] alpha`, `[custom-osd] bgcolor` | none | `apply_osd_background`, `sync_osd_profile`. Memos `$C/osd-opacity`, `$C/osd-tint` |
 | App folders | `shell-00-flat` | `[blur-my-shell/appfolder]`, pipeline `app folders` | `TOKEN_BLUR_RADIUS_APPFOLDER` | `load_dconf` |
 | Overview workspace corners | none | `[blur-my-shell/overview] workspace-corner-radius`. Only while the overview blur is on: with it off (performance, adaptive overlay) Blur My Shell leaves GNOME's hardcoded 30 | `TOKEN_RADIUS_WINDOW` | `apply_radius_dconf` |
@@ -143,9 +147,9 @@ a restart.
 | `TOKEN_RADIUS_MENU` | 26 | `shell-20-popup-menus.css`, `shell-popup-blur.css`, `core.ini [popup] menu-corner-radius` | `check-tokens.sh` |
 | `TOKEN_RADIUS_QUICK_SETTINGS` | 33 | `shell-20-popup-menus.css` (2 sites), `shell-popup-blur.css` (2), `core.ini [popup] quick-settings-corner-radius`, `screenshot-corner-radius`, `calendar-corner-radius` and `submenu-corner-radius` (all four also written by `apply_radius_dconf`) | `check-tokens.sh` |
 | `TOKEN_RADIUS_NOTIFICATION` | 20 | `shell-30-notifications.css` (4), `shell-80-solid.css` (2), `core.ini [popup] notification-corner-radius` | `check-tokens.sh` |
-| `TOKEN_RADIUS_DIALOG` | 20 | `shell-50-dialogs.css`, `core.ini [popup] dialog-corner-radius` | `check-tokens.sh` |
+| `TOKEN_RADIUS_DIALOG` | 20 | `shell-50-dialogs.css`, `core.ini [popup] dialog-corner-radius`, `osd-corner-radius` (switchers) and `resize-popup-corner-radius` | `check-tokens.sh` |
 | `TOKEN_RADIUS_POPUP` | 20 | `core.ini [popup] corner-radius` | `check-tokens.sh` |
-| `TOKEN_RADIUS_OSD` | 12 | `core.ini [popup] osd-corner-radius` | `check-tokens.sh` |
+| `TOKEN_RADIUS_OSD` | 12 | nothing: unused since BMS v76 (preset-row column kept by position) | `check-tokens.sh` |
 | `TOKEN_RADIUS_BUTTON` | 9999 | `gtk4-20-buttons.css` | `check-tokens.sh` |
 | `TOKEN_BLUR_RADIUS_{PANEL,APPFOLDER,POPUP,WINDOW_LIST,APPLICATIONS,DASH_TO_DOCK}` | 12 / 100 / 60 / 60 / 24 / 8 | the `unscaled_radius` of the matching pipeline in `core.ini` (`APPLICATIONS`: both `windows` and `maximized`) | `check-tokens.sh` |
 | `TOKEN_APP_TRANSPARENCY_SHIPPED` | 0.92 | `gtk4-transparency.css` | `check-tokens.sh` |

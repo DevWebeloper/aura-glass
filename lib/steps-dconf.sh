@@ -347,13 +347,17 @@ load_dconf() {
 # the blur half, and the two read the same TOKEN_RADIUS_* variables from the same
 # call to radius_preset_values so they cannot disagree.
 #
-# Three of these have no painted counterpart at all. `corner-radius` under popup
-# is the generic fallback for surfaces the specific keys do not claim,
-# `osd-corner-radius` belongs to the window and workspace switchers' blur rather
-# than to any stylesheet — see TOKEN_RADIUS_OSD for why that one does not simply
-# scale with the rest, and apply_osd_style for the volume and brightness popup,
-# which has a key of its own and no preset — and `workspace-corner-radius` is the corner Blur My Shell v77 clips
-# overview workspaces at, which follows the window's token.
+# Two of these have no painted counterpart at all. `corner-radius` under popup
+# is the generic fallback for surfaces the specific keys do not claim, and
+# `workspace-corner-radius` is the corner Blur My Shell v77 clips overview
+# workspaces at, which follows the window's token. `osd-corner-radius` and
+# `resize-popup-corner-radius` take the dialog radius: since v76 the first
+# rounds only the switchers, and both are painted by the dialog rule in
+# css/shell-50-dialogs.css. The volume and brightness popup has a key of its
+# own and no preset — see apply_osd_style.
+#
+# `candidate-corner-radius` and applications' `menu-corner-radius` are written
+# as constants, not preset-scaled: nothing aura paints scales with them.
 #
 # That last key only works while the overview component is on: with its blur off
 # (performance, an adaptive overlay, a user's own switch) Blur My Shell hands the
@@ -390,7 +394,17 @@ apply_radius_dconf() {
     run dconf write "$base/popup/notification-corner-radius" "$TOKEN_RADIUS_NOTIFICATION"
     run dconf write "$base/popup/dialog-corner-radius" "$TOKEN_RADIUS_DIALOG"
     run dconf write "$base/popup/corner-radius" "$TOKEN_RADIUS_POPUP"
-    run dconf write "$base/popup/osd-corner-radius" "$TOKEN_RADIUS_OSD"
+    # Both surfaces are painted by the dialog rule in css/shell-50-dialogs.css:
+    # .resize-popup alongside .modal-dialog, and the switchers (the only thing
+    # osd-corner-radius rounds since BMS v76) as .switcher-list/.workspace-switcher.
+    run dconf write "$base/popup/resize-popup-corner-radius" "$TOKEN_RADIUS_DIALOG"
+    run dconf write "$base/popup/osd-corner-radius" "$TOKEN_RADIUS_DIALOG"
+    # The input-method popup is not painted by aura's css: the adopted theme
+    # paints .candidate-popup-content at 14px !important (its gnome-shell.css).
+    run dconf write "$base/popup/candidate-corner-radius" 14
+    # GTK app popup menus, which BMS blurs (components/applications/menus.js),
+    # are painted by css/gtk4-70-surfaces.css `popover > contents` at 18px.
+    run dconf write "$base/applications/menu-corner-radius" 18
     ok "blur corner radii follow the '${RADIUS_PRESET:-default}' preset"
 }
 

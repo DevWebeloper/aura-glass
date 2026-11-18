@@ -1333,8 +1333,39 @@ paints both at `TOKEN_RADIUS_QUICK_SETTINGS`.
 `tools/token_manifest.py` makes `check-tokens.sh` hold them equal to the token.
 Setting both keys to the Quick Settings value in live dconf was the check.
 
+Guarded by check-bms-patches.sh's radius-key step.
+
 **Verify.** Needs a full run or a retune. Open the calendar and a quick-toggle
 menu over a bright wallpaper on each radius preset: no blur outside the corners.
+
+## KI-48
+
+**Blur corners did not match the painted corners on the switchers, resize popup,
+GTK app menus and input-method popup** (fixed; 2026-11-18)
+
+**Symptom.** Over a bright wallpaper the blur behind each of these surfaces
+showed a different corner from the one painted on top.
+
+**Root cause.** Per surface: the window and workspace switchers are rounded by
+`osd-corner-radius` since BMS v76, but it was written at `TOKEN_RADIUS_OSD`
+(12) while `css/shell-50-dialogs.css` paints them with the dialog rule (20).
+`.resize-popup` is painted by that same rule, and nothing wrote
+`resize-popup-corner-radius`. GTK app popup menus, which BMS blurs, are painted
+by `css/gtk4-70-surfaces.css` `popover > contents` at 18px, and
+`applications/menu-corner-radius` was left at its default. The input-method
+popup is painted by the adopted theme at 14px (`.candidate-popup-content`), and
+`candidate-corner-radius` was left at its default.
+
+**Fix.** `apply_radius_dconf` writes `osd-corner-radius` and
+`resize-popup-corner-radius` from `TOKEN_RADIUS_DIALOG`, and the other two as
+constants (14, 18); `dconf/core.ini` ships all four; `tools/token_manifest.py`
+holds the first two to the dialog token. `check-bms-patches.sh` pins the
+constants (PINNED) against `core.ini` and the GTK css rule. `TOKEN_RADIUS_OSD`
+is now unconsumed. Found by check-bms-patches.sh's radius-key step.
+
+**Verify.** Checked live on two machines. Open the window switcher, resize a
+window, a GTK app's context menu and an input-method popup over a bright
+wallpaper: no blur outside the corners.
 
 ---
 

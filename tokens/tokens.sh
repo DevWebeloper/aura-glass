@@ -87,9 +87,12 @@ TOKEN_RADIUS_QUICK_SETTINGS=33
 #   dconf/core.ini        [blur-my-shell/popup] notification-corner-radius
 TOKEN_RADIUS_NOTIFICATION=20
 
-# Modal dialogs (log out, restart, power off).
-#   css/shell-tweaks.css  .modal-dialog, .end-session-dialog
-#   dconf/core.ini        [blur-my-shell/popup] dialog-corner-radius
+# Modal dialogs (log out, restart, power off), and everything else the dialog
+# rule in css/shell-50-dialogs.css paints: the window and workspace switchers and
+# .resize-popup. The blur behind each is a key of its own.
+#   css/shell-50-dialogs.css  .modal-dialog, .resize-popup, .switcher-list
+#   dconf/core.ini        [blur-my-shell/popup] dialog-corner-radius,
+#                         osd-corner-radius (switchers), resize-popup-corner-radius
 TOKEN_RADIUS_DIALOG=20
 
 # The generic popup fallback, for surfaces the more specific keys above do not
@@ -97,18 +100,18 @@ TOKEN_RADIUS_DIALOG=20
 #   dconf/core.ini        [blur-my-shell/popup] corner-radius
 TOKEN_RADIUS_POPUP=20
 
-# The window and workspace switchers' blur, despite the name. dconf only: no
-# stylesheet paints against it. Blur My Shell v76 split the key it was named for:
-# `osd-corner-radius` now rounds .switcher-list and .workspace-switcher, and the
-# volume and brightness popup moved to `osd-window-corner-radius`, whose default
-# this project never set. See TOKEN_RADIUS_OSD_CAPSULE below. The name stays
-# because the radius-custom memo and the preset rows carry this column by position.
+# Preset-row column kept by position (the radius-custom memo and the rows carry
+# it), but nothing consumes it any more: since Blur My Shell v76
+# `osd-corner-radius` rounds only .switcher-list and .workspace-switcher, which
+# the dialog rule paints, so that key follows TOKEN_RADIUS_DIALOG. The volume and
+# brightness popup moved to `osd-window-corner-radius`, see
+# TOKEN_RADIUS_OSD_CAPSULE below.
 #
-# This key does NOT clamp. Past half the blurred box's height the four corner
-# arcs overlap and the shape turns into a soft ellipse — which is what 100
-# produced. 12 was found by bisecting 0 (hard rectangle) against 25 (bulging),
-# when it still reached the popup. Raise it only against a screenshot.
-#   dconf/core.ini        [blur-my-shell/popup] osd-corner-radius
+# The lesson it carried still holds for any popup radius: a corner radius does
+# NOT clamp. Past half the blurred box's height the four corner arcs overlap and
+# the shape turns into a soft ellipse — which is what 100 produced. 12 was found
+# by bisecting 0 (hard rectangle) against 25 (bulging) for the OSD bar. Raise a
+# radius against a screenshot.
 TOKEN_RADIUS_OSD=12
 
 # The volume and brightness popup, one radius per --osd-style. Fixed design values,

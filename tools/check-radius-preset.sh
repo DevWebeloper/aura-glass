@@ -186,11 +186,18 @@ def dconf_writes(name):
     return set(res.stdout.splitlines())
 
 
+# Written at a constant on every preset because what paints them is a constant
+# (tools/check-bms-patches.sh PINNED holds each against its css or theme).
+CONSTANT_WRITES = {
+    "dconf write /org/gnome/shell/extensions/blur-my-shell/popup/candidate-corner-radius 14",
+    "dconf write /org/gnome/shell/extensions/blur-my-shell/applications/menu-corner-radius 18",
+}
+
 for name, values in presets.items():
     want_values = dict(zip(RADIUS_TOKENS, values))
     want = {"dconf write /org/gnome/shell/extensions/%s/%s %s"
             % (section, key, want_values[token])
-            for token, _, _, section, key in RADIUS_INI}
+            for token, _, _, section, key in RADIUS_INI} | CONSTANT_WRITES
     got = dconf_writes(name)
     for line in sorted(want - got):
         failures.append("%s: apply_radius_dconf did not run `%s`" % (name, line))

@@ -138,11 +138,16 @@ MANIFEST = [
      r"^\.modal-dialog,[^}]*?border-radius: (\d+)px"),
     ("TOKEN_RADIUS_DIALOG", "ini", "dconf/core.ini",
      "blur-my-shell/popup", "dialog-corner-radius"),
+    # Since BMS v76 osd-corner-radius rounds only .switcher-list and
+    # .workspace-switcher, which the dialog rule paints; .resize-popup shares
+    # that rule too (css/shell-50-dialogs.css).
+    ("TOKEN_RADIUS_DIALOG", "ini", "dconf/core.ini",
+     "blur-my-shell/popup", "osd-corner-radius"),
+    ("TOKEN_RADIUS_DIALOG", "ini", "dconf/core.ini",
+     "blur-my-shell/popup", "resize-popup-corner-radius"),
 
     ("TOKEN_RADIUS_POPUP", "ini", "dconf/core.ini",
      "blur-my-shell/popup", "corner-radius"),
-    ("TOKEN_RADIUS_OSD", "ini", "dconf/core.ini",
-     "blur-my-shell/popup", "osd-corner-radius"),
 
     # The popup's two designs. The tab has no ini entry for the reason core.ini
     # carries only the default style's: apply_osd_style writes the one in force.
@@ -158,7 +163,7 @@ MANIFEST = [
      r'"tab": \{[^}]*?"radius": (\d+)'),
 
     # No ini entry: buttons have no Blur My Shell component to disagree with,
-    # the same way TOKEN_RADIUS_OSD has no css/ site — one direction each.
+    # the same way TOKEN_RADIUS_POPUP has no css/ site — one direction each.
     ("TOKEN_RADIUS_BUTTON", "css", "css/gtk4-20-buttons.css",
      r"^button\.text-button,\nbutton\.flat\.text-button,\nbutton\.pill,\n"
      r"button\.suggested-action,\nbutton\.destructive-action \{"
