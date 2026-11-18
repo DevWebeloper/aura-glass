@@ -2493,20 +2493,53 @@ def follows_commits(repo):
     return is_test_build(repo)
 
 
+# Paths nothing installs or runs from: a commit that touches only these is
+# invisible to the update system (it stays in the repo, but is no version, no
+# row and no update). bin/aura-glass-update-check's NOT_INSTALLED_PATHS is the
+# same list, and the two must stay identical. tools/ and LICENSE are not in it:
+# the installer runs tools/*.py and builds an extension package from LICENSE.
+NOT_INSTALLED_PATHS = (
+    "README.md", "llms.txt", "AGENTS.md", "CLAUDE.md", "RELEASING.md",
+    "CONTRIBUTING.md", "CHANGELOG.md", "docs/", "screenshots/", ".github/",
+    "packaging/", "tests/",
+)
+INSTALLED_PATHSPEC = ["--", "."] + [":(exclude)%s" % p
+                                    for p in NOT_INSTALLED_PATHS]
+
+
 def version_name(repo, ref="HEAD"):
     """A commit on the released line, named the way people read versions.
 
     The release tag at it (v0.3.5), or the release before it plus how many
-    commits later (v0.3.5+16) — every commit on main is a "tag" of its own this
-    way, with nothing to create on GitHub. bin/aura-glass-update-check's
-    version_name says exactly the same, and the two must agree.
+    commits later that touch something installed (v0.3.5+16) — every such commit
+    on main is a "tag" of its own this way, with nothing to create on GitHub.
+    bin/aura-glass-update-check's version_name says exactly the same, and the
+    two must agree.
     """
     d = git_out(repo, "describe", "--tags", "--long", "--match", "v[0-9]*", ref)
     if not d:
         return git_out(repo, "rev-parse", "--short=7", ref)
-    d = d.rsplit("-g", 1)[0]
-    tag, _, count = d.rpartition("-")
-    return tag if count == "0" else "%s+%s" % (tag, count)
+    tag = d.rsplit("-g", 1)[0].rpartition("-")[0]
+    count = git_out(repo, "rev-list", "--count",
+                    "refs/tags/%s..%s" % (tag, ref), *INSTALLED_PATHSPEC)
+    return "%s+%s" % (tag, count) if count and count.isdigit() \
+        and count != "0" else tag
+
+
+def installed_commit(repo, ref="HEAD"):
+    """The newest commit at or before ref that counts as a version: one that
+    touches something installed, or a release tag. A checkout on a docs-only
+    commit past it is that version, so it is the one marked Installed."""
+    meaningful = git_out(repo, "log", "-1", "--format=%H", ref,
+                         *INSTALLED_PATHSPEC)
+    tag = git_out(repo, "describe", "--tags", "--abbrev=0", "--match",
+                  "v[0-9]*", ref)
+    release = git_out(repo, "rev-parse", "-q", "--verify",
+                      "refs/tags/%s^{commit}" % tag) if tag else None
+    if meaningful and release and release != meaningful and git_out(
+            repo, "merge-base", "--is-ancestor", meaningful, release) is not None:
+        return release
+    return meaningful or release
 
 
 def installed_version(repo):
@@ -2646,15 +2679,17 @@ def list_releases(repo):
     return releases
 
 
-def commit_subjects(repo, since, until, limit=60):
+def commit_subjects(repo, since, until, limit=60, installed_only=True):
     """The non-merge commit subjects in since..until, newest first.
 
     The changelog of last resort: a release with no GitHub notes still shows
-    what went into it. since may be None for the first release there is.
+    what went into it. since may be None for the first release there is. Commits
+    that touch nothing installed are left out, as version_name does.
     """
     span = until if since is None else "%s..%s" % (since, until)
     out = git_out(repo, "log", "--no-merges", "--format=%s",
-                  "--max-count=%d" % limit, span)
+                  "--max-count=%d" % limit, span,
+                  *(INSTALLED_PATHSPEC if installed_only else ()))
     return [l for l in (out or "").splitlines() if l]
 
 
@@ -2675,8 +2710,17 @@ def history_lines(repo, ref, limit=150):
     out = git_out(repo, "log", "--graph", "--max-count=%d" % limit,
                   "--decorate=full", "--decorate-refs=refs/tags",
                   "--format=%x00%H%x00%h%x00%cs%x00%D%x00%s", ref)
-    head = git_out(repo, "rev-parse", "HEAD")
-    tip = git_out(repo, "rev-parse", ref)
+    # A test build follows its own raw commits; only the released line hides
+    # the ones that touch nothing installed — except a release's own commit,
+    # which always shows.
+    raw = is_test_build(repo)
+    counted = None if raw else set((git_out(
+        repo, "log", "--max-count=5000", "--format=%H", ref,
+        *INSTALLED_PATHSPEC) or "").split())
+    head = git_out(repo, "rev-parse", "HEAD") if raw else (
+        installed_commit(repo) or git_out(repo, "rev-parse", "HEAD"))
+    tip = git_out(repo, "rev-parse", ref) if raw else (
+        installed_commit(repo, ref) or git_out(repo, "rev-parse", ref))
     lines = []
     for raw in (out or "").splitlines():
         graph, sep, rest = raw.partition("\0")
@@ -2689,7 +2733,8 @@ def history_lines(repo, ref, limit=150):
         tags = [t for t in tags if RELEASE_TAG.match(t)]
         # Dropping a commit's line leaves the graph's | lines above and below
         # it meeting, so the drawing stays whole. A release is never dropped.
-        if not tags and not shown_on_main(sha, subject, head, tip):
+        if not tags and (not shown_on_main(sha, subject, head, tip)
+                         or (counted is not None and sha not in counted)):
             continue
         lines.append({"graph": graph.rstrip(), "sha": sha, "short": short,
                       "date": date, "subject": subject, "tags": tags})
@@ -2903,14 +2948,21 @@ def updates_snapshot(repo, fetch):
         since = releases[0]["sha"] if releases else None
         span = main_tip if since is None else "%s..%s" % (since, main_tip)
         out = git_out(repo, "log", "--first-parent", "--max-count=200",
-                      "--format=%H%x00%h%x00%cs%x00%s%x00%ct", span)
-        head = git_out(repo, "rev-parse", "HEAD")
-        tip = git_out(repo, "rev-parse", main_tip)
+                      "--format=%H%x00%h%x00%cs%x00%s%x00%ct", span,
+                      *INSTALLED_PATHSPEC)
+        # Commits that touch only docs are no versions, so main's tip for the
+        # update system is the newest one that touches something installed —
+        # or the newest release when there is none since it. HEAD counts as at
+        # the newest such commit at or before it.
+        head = git_out(repo, "rev-parse", "HEAD") if is_test_build(repo) else (
+            installed_commit(repo) or git_out(repo, "rev-parse", "HEAD"))
+        lines = [l.split("\0") for l in (out or "").splitlines()]
+        lines = [f for f in lines if len(f) == 5]
+        tip = lines[0][0] if lines else (
+            releases[0]["sha"] if releases
+            else git_out(repo, "rev-parse", main_tip))
         tags = []
-        for line in (out or "").splitlines():
-            fields = line.split("\0")
-            if len(fields) != 5:
-                continue
+        for fields in lines:
             tag = dict(zip(("sha", "short", "date", "subject"), fields[:4]))
             tag["time"] = int(fields[4]) if fields[4].isdigit() else 0
             if not shown_on_main(tag["sha"], tag["subject"], head, tip):
@@ -2920,8 +2972,7 @@ def updates_snapshot(repo, fetch):
             # the whole changelog of what the next release will be.
             if tag["sha"] == tip:
                 tag["name"] = version_name(repo, tip)
-                tag["changes"] = commit_subjects(repo, since, main_tip,
-                                                 limit=200)
+                tag["changes"] = commit_subjects(repo, since, tip, limit=200)
             tags.append(tag)
         main = {"tip": tip, "tags": tags}
     branch = current_branch(repo)
@@ -2932,13 +2983,15 @@ def updates_snapshot(repo, fetch):
             test = {"branch": branch,
                     "short": git_out(repo, "rev-parse", "--short=7", remote),
                     "behind": count_commits(repo, "HEAD", remote),
-                    "changes": commit_subjects(repo, "HEAD", remote, limit=40)}
+                    "changes": commit_subjects(repo, "HEAD", remote, limit=40,
+                                               installed_only=False)}
     return {
         "fetched": fetched,
         "releases": releases,
         "main": main,
         "test": test,
-        "head": git_out(repo, "rev-parse", "HEAD"),
+        "head": git_out(repo, "rev-parse", "HEAD") if is_test_build(repo) else (
+            installed_commit(repo) or git_out(repo, "rev-parse", "HEAD")),
         "head_tag": git_out(repo, "describe", "--tags", "--exact-match",
                             "HEAD"),
         "branch": branch,

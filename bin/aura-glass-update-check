@@ -137,20 +137,33 @@ main|master|HEAD|"") ;;
 *) line=commits ;;
 esac
 
+# Paths nothing installs or runs from: a commit that touches only these is
+# invisible to the update system (it stays in the repo, but is no version and no
+# update). gui/aura_glass_settings.py's NOT_INSTALLED_PATHS is the same list, and
+# the two must stay identical. tools/ and LICENSE are not in it: the installer
+# runs tools/*.py and builds an extension package from LICENSE.
+NOT_INSTALLED_PATHS=(
+    README.md llms.txt AGENTS.md CLAUDE.md RELEASING.md CONTRIBUTING.md
+    CHANGELOG.md docs/ screenshots/ .github/ packaging/ tests/
+)
+INSTALLED_PATHSPEC=(.)
+for p in "${NOT_INSTALLED_PATHS[@]}"; do INSTALLED_PATHSPEC+=(":(exclude)$p"); done
+
 # What a commit on the released line is called: the release tag at it, or the
-# release before it plus how many commits later (v0.3.5+16), or its short hash
-# when no release is behind it at all. gui/aura_glass_settings.py's
-# version_name says the same, and the two must agree.
+# release before it plus how many commits later that touch something installed
+# (v0.3.5+16), or its short hash when no release is behind it at all.
+# gui/aura_glass_settings.py's version_name says the same, and the two must agree.
 version_name() {
-    local d n
+    local d n tag
     d="$(git -C "$REPO" describe --tags --long --match 'v[0-9]*' "$1" 2>/dev/null || true)"
     if [ -z "$d" ]; then
         git -C "$REPO" rev-parse --short=7 "$1"
         return
     fi
     d="${d%-g*}"
-    n="${d##*-}"
-    if [ "$n" = 0 ]; then printf '%s\n' "${d%-*}"; else printf '%s+%s\n' "${d%-*}" "$n"; fi
+    tag="${d%-*}"
+    n="$(git -C "$REPO" rev-list --count "refs/tags/$tag..$1" -- "${INSTALLED_PATHSPEC[@]}" 2>/dev/null || echo 0)"
+    if [ "$n" = 0 ]; then printf '%s\n' "$tag"; else printf '%s+%s\n' "$tag" "$n"; fi
 }
 
 case "$line" in
@@ -202,6 +215,10 @@ tags)
         # main), is nothing to install.
         if [ -z "$tip" ] || [ "$tip" = "$local_sha" ] \
             || git -C "$REPO" merge-base --is-ancestor "$tip" HEAD 2>/dev/null; then
+            up_to_date "$(version_name HEAD)"
+        fi
+        # Main moved on, but only in files nothing installs: nothing to install.
+        if [ "$(git -C "$REPO" rev-list --count "HEAD..$tip" -- "${INSTALLED_PATHSPEC[@]}" 2>/dev/null || echo 1)" = 0 ]; then
             up_to_date "$(version_name HEAD)"
         fi
         local_version="$(version_name HEAD)"

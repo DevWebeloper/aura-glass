@@ -140,6 +140,44 @@ out="$(AURA_GLASS_CONF="$TMP/conf" bash "$CHECK" 2>&1 || true)"
   && git -c user.email=t@t -c user.name=t commit -m three >/dev/null 2>&1 ) || true
 check_run 0 "a local commit on main is not an update"
 
+# ---- docs-only commits are not updates --------------------------------------
+#
+# A commit that touches only files nothing installs (README.md, docs/ ...) is no
+# version: the check says up to date, and names versions as if it was not there.
+# One that touches anything installed counts, and counts once however many
+# files of the other kind come with it.
+push_files() {
+    # push_files MESSAGE FILE... — one commit on the remote's main, from a clone.
+    local msg="$1" f; shift
+    rm -rf "$TMP/clone"
+    git_quiet clone -b main "$TMP/remote" "$TMP/clone"
+    ( cd "$TMP/clone"
+      for f in "$@"; do
+          mkdir -p "$(dirname "$f")"
+          printf '%s\n' "$msg" >> "$f"
+          git add "$f" >/dev/null 2>&1
+      done
+      git -c user.email=t@t -c user.name=t commit -m "$msg" >/dev/null 2>&1
+      git push origin main >/dev/null 2>&1 ) || note "docs-only: could not push '$msg'"
+}
+build v1.0.0 v1.0.0 || note "docs-only: could not build the fixture"
+push_files "docs only" README.md
+out="$(AURA_GLASS_CONF="$TMP/conf" bash "$CHECK" 2>&1 || true)"
+[ "$out" = "up to date (v1.0.0)" ] || note "a README-only commit: '$out', want 'up to date (v1.0.0)'"
+git_quiet -C "$TMP/work" fetch origin
+got="$(git -C "$TMP/work" rev-list --count v1.0.0..origin/main -- . ':(exclude)README.md')"
+[ "$got" = 0 ] || note "the README-only commit counts as $got installed commits"
+push_files "css change" css/theme.css
+check_run 10 "a commit touching css/ after docs-only ones is an update" "v1.0.0+1"
+[ "$(cat "$TMP/conf/update-available")" = "v1.0.0+1" ] \
+    || note "the update is named '$(cat "$TMP/conf/update-available")', want v1.0.0+1 (not +2)"
+build v1.0.0 v1.0.0 || note "docs-only: could not build the fixture"
+push_files "docs and lib" README.md docs/notes.md lib/new.sh
+check_run 10 "a commit touching both README and lib/ counts" "v1.0.0+1"
+build v1.0.0 v1.0.0 || note "docs-only: could not build the fixture"
+push_files "tooling" tools/helper.py
+check_run 10 "tools/ is installed from, so it counts" "v1.0.0+1"
+
 # ---- the test-build line ---------------------------------------------------
 #
 # Someone testing a branch is not on the released line: there are no tags on the
@@ -266,7 +304,8 @@ git_quiet -C "$TMP/work" checkout --detach HEAD
 check_run 10 "a detached HEAD follows main's remote" "v0.1.8"
 # The newest-tag half of the question, main's tip on that same remote.
 build_fork v0.1.7 v0.1.7 || note "fork: could not build the fixture"
-( cd "$TMP/work" && git -c user.email=t@t -c user.name=t commit --allow-empty -m two >/dev/null 2>&1 \
+( cd "$TMP/work" && : > two && git -c user.email=t@t -c user.name=t add two >/dev/null 2>&1 \
+  && git -c user.email=t@t -c user.name=t commit -m two >/dev/null 2>&1 \
   && git push upstream main >/dev/null 2>&1 \
   && git reset --hard HEAD~1 >/dev/null 2>&1 ) || note "fork: could not add a commit"
 check_run 10 "main moved on the remote main tracks" "v0.1.7+1"

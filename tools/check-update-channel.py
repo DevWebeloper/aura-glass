@@ -40,7 +40,7 @@ except ImportError:
 import aura_glass_settings  # noqa: E402
 from aura_glass_settings import (  # noqa: E402
     current_branch, installed_version, is_test_build, main_ref, update_blockers,
-    update_remote, updates_snapshot)
+    update_remote, updates_snapshot, version_name)
 
 fail = 0
 
@@ -301,6 +301,66 @@ with tempfile.TemporaryDirectory() as tmp:
     git(repo, "config", "branch.main.remote", "gone")
     if update_remote(repo) != "origin":
         note("a tracked remote that is gone: %r, want origin" % update_remote(repo))
+
+with tempfile.TemporaryDirectory() as tmp:
+    # Commits that touch nothing installed are no versions and no rows; the
+    # checkout on one of them is still on the newest version before it.
+    repo, conf = build(tmp, tags=("v0.1.7",))
+    release = out(repo, "rev-parse", "HEAD")
+
+    def commit_file(path, subject):
+        full = os.path.join(repo, path)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "a") as fh:
+            fh.write(subject + "\n")
+        git(repo, "add", path)
+        git(repo, "commit", "-m", subject)
+        git(repo, "push", "-q", "origin", "main")
+
+    commit_file("README.md", "docs: readme")
+    snap = updates_snapshot(repo, False)
+    if version_name(repo) != "v0.1.7":
+        note("a README-only commit named %r, want v0.1.7" % version_name(repo))
+    if snap["main"]["tags"] or snap["main"]["tip"] != release:
+        note("a README-only commit got a main row: %r" % snap["main"])
+    if snap["head"] != release:
+        note("on a docs-only commit the installed one is %r, want the release"
+             % snap["head"])
+    if [l for l in snap["history"] if l.get("subject") == "docs: readme"]:
+        note("a README-only commit is in the history")
+    commit_file("css/theme.css", "fix(css): glass")
+    commit_file("docs/notes.md", "docs: notes")
+    snap = updates_snapshot(repo, False)
+    css = out(repo, "log", "-1", "--format=%H", "HEAD~1")
+    if version_name(repo) != "v0.1.7+1":
+        note("one installed commit named %r, want v0.1.7+1" % version_name(repo))
+    rows = snap["main"]["tags"]
+    if snap["main"]["tip"] != css or len(rows) != 1 or rows[0]["sha"] != css:
+        note("main's row is not the newest installed commit: %r" % snap["main"])
+    elif rows[0]["name"] != "v0.1.7+1" or rows[0]["changes"] != ["fix(css): glass"]:
+        note("main's row names/changes wrong: %r" % rows[0])
+    if snap["head"] != css:
+        note("HEAD on a docs-only commit past %s is %r" % (css[:7], snap["head"]))
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    # A release cut on a commit that only touches docs is still a version: it
+    # shows in the history and the releases, and is Installed when HEAD is there.
+    repo, conf = build(tmp, tags=("v1.0.0",))
+    with open(os.path.join(repo, "CHANGELOG.md"), "w") as fh:
+        fh.write("1.0.1\n")
+    git(repo, "add", "CHANGELOG.md")
+    git(repo, "commit", "-m", "chore: changelog for 1.0.1")
+    git(repo, "tag", "v1.0.1")
+    git(repo, "push", "-q", "origin", "main", "v1.0.1")
+    cut = out(repo, "rev-parse", "HEAD")
+    snap = updates_snapshot(repo, False)
+    if not [l for l in snap["history"] if l.get("sha") == cut and "v1.0.1" in l["tags"]]:
+        note("a CHANGELOG-only release commit is missing from the history")
+    if cut not in [r["sha"] for r in snap["releases"]]:
+        note("a CHANGELOG-only release is missing from the releases")
+    if snap["head"] != cut:
+        note("HEAD on a CHANGELOG-only release: installed is %r" % snap["head"])
 
 if fail:
     print("\nupdate channel FAILED\n")
