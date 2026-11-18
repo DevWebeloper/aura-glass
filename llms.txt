@@ -1,6 +1,6 @@
 # aura-glass
 
-> A frosted-glass desktop for GNOME Shell 48–51, installed by a Bash script (install.sh) from pinned upstreams (GNOME-macOS-Tahoe theme, Blur My Shell v73 + patches, Custom OSD), with its own GTK4/St/GTK3 stylesheets, dconf presets, design tokens, a first-party GNOME extension, user systemd services and a GTK settings app. Two glass modes (frosted, performance) plus a transient adaptive-performance overlay. Everything installs under $HOME and is reversible.
+> A frosted-glass desktop for GNOME Shell 48–51, installed by a Bash script (install.sh) from pinned upstreams (GNOME-macOS-Tahoe theme, Blur My Shell v78 + patches, Custom OSD), with its own GTK4/St/GTK3 stylesheets, dconf presets, design tokens, a first-party GNOME extension, user systemd services and a GTK settings app. Two glass modes (frosted, performance) plus a transient adaptive-performance overlay. Everything installs under $HOME and is reversible.
 
 ## Agent instructions
 - [CLAUDE.md](CLAUDE.md): rules, where to look, bug-fix protocol (vendor-neutral)

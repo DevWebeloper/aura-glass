@@ -6,10 +6,13 @@
 [![License](https://img.shields.io/github/license/DevWebeloper/aura-glass?style=flat-square)](LICENSE)
 
 > **A frosted-glass desktop for GNOME Shell 48–51.**
-> Real background blur behind the panel, menus, Quick Settings, notifications,
+> Aura Glass is a free, open-source GNOME theme with a macOS-style glass look
+> (glassmorphism): real background blur behind the panel, menus, Quick Settings, notifications,
 > dialogs and app windows, one consistent shape language across the shell, GTK4
 > and GTK3, and a settings app to retune it all. Everything installs under your
 > home directory and comes back out with `./uninstall.sh`.
+>
+> **Website:** [devwebeloper.github.io/aura-glass](https://devwebeloper.github.io/aura-glass/)
 
 <p align="center">
   <img src="screenshots/showcase.gif" width="100%" alt="Aura Glass on GNOME Shell: overview, desktop, settings app, Quick Settings, notification and app windows">
@@ -172,6 +175,45 @@ install and the GDM login screen.
 - **Looks half-applied after an update?** Run `aura-glass-apply`, then log out and back in.
 - **GTK apps didn't change?** Restart them. The shell reloads itself.
 - **Reporting a bug?** Include `gnome-shell --version`, your session type, your distro, the output of `./install.sh --dry-run`, and `ls ~/.config/aura-glass`.
+
+## FAQ
+
+**What is Aura Glass?**
+A free, MIT-licensed GNOME theme that turns GNOME Shell 48–51 into a
+frosted-glass desktop. It themes the shell, GTK4/libadwaita apps and GTK3 apps,
+adds real blur through a pinned and patched Blur My Shell, and comes with a
+settings app to retune it.
+
+**How do I make GNOME look like macOS?**
+Install Aura Glass with `./install.sh`. Its theme is built on GNOME-macOS-Tahoe,
+with frosted blur, macOS-style traffic-light window buttons, and matching icon
+and pointer packs and fonts (Inter, MiSans or SF Pro), all chosen in the setup
+wizard.
+
+**How do I get blur in GNOME Shell?**
+Aura Glass installs Blur My Shell and tunes it so the top bar, overview, dock,
+menus, Quick Settings, notifications, dialogs and app windows all blur what's
+behind them, with corners that match the theme. You can also blur a single app
+from its window menu ("Blur This App").
+
+**Which GNOME versions and distros does it support?**
+GNOME Shell 48, 49, 50 and 51, on Wayland. Arch, CachyOS and EndeavourOS are
+the tested path. Fedora, Debian, Ubuntu and openSUSE have dependency mappings
+and the installer runs there.
+
+**Does the blur slow my computer down or drain the battery?**
+Blur costs GPU time mainly while something behind it keeps redrawing. If that
+matters, the **Performance** mode keeps the look without any blur shaders, and
+**Adaptive performance → Auto** drops blur by itself on battery, under heavy GPU
+load or while a fullscreen game is focused.
+
+**Is it safe to try, and how do I remove it?**
+Everything installs under your home folder except two opt-in steps (system
+packages and the GDM login screen). `./uninstall.sh` takes it back out.
+
+**Does it change the login screen?**
+Only if you ask for it: the GDM step themes the login screen and keeps its
+wallpaper in step with your desktop's.
 
 ## Documentation
 
