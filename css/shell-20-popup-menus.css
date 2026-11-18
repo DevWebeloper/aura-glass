@@ -92,6 +92,28 @@
   color: rgba(255, 255, 255, 0.9) !important;
 }
 
+/* The rest of the date menu's text has the same problem: the base theme's
+ * #afafaf / #999999 headings and its 35% grey placeholders were tuned for an
+ * opaque grey card and go muddy on the purple glass. Headings go to 90% white
+ * and event text to 80%. The empty-state lines ("No Notifications",
+ * "No Events") stay quieter than real content, at 60% white, but read as text
+ * rather than as a smudge.
+ */
+.events-button .events-title,
+.events-button .events-section-title,
+.world-clocks-button .world-clocks-header {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.events-button .events-list {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.events-button .event-placeholder,
+.message-list .message-list-placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
 /* ---------- Quick Settings panel ----------
  * The panel shares .popup-menu-content with every other menu, so it needs its
  * own treatment afterwards. Dropping the menu.svg border-image is deliberate:
