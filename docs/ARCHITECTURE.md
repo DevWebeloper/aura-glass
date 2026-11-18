@@ -181,7 +181,7 @@ the recorded extensions are re-enabled, and the marker and both drawers go.
 ```
 top-bar menu (Aura Glass Helper)          aura-glass-adaptive.service (user)
   Auto / Full Glass / Performance             loop every 2 s (AURA_GLASS_ADAPTIVE_INTERVAL)
-        │ aura-glass-adaptive profile X           │ battery? GPU ≥80% ×3 (clears <65%)? listed game fullscreen+focused?
+        │ aura-glass-adaptive profile X           │ battery? GPU ≥80% ×3 (clears <65%; amdgpu busy file or Intel idle residency)? listed game fullscreen+focused?
         ▼                                         ▼
   $CONF_DIR/adaptive-profile  ◀── tools/aura_glass_adaptive.py (AdaptiveReducer: hysteresis, debounce)
                                           │ on a state change only

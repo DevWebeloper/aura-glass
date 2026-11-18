@@ -209,7 +209,7 @@ by `save_glass_mode_memos`.
 | `adaptive-fullscreen-apps` | wm_class per line | settings app |
 | `adaptive-install` | absolute path of the `install.sh` the worker runs | `install_adaptive_performance` |
 | `adaptive-performance/active` | `0\|1` | worker, `install_adaptive_performance` |
-| `adaptive-performance/reason` | e.g. `normal`, `battery`, `gpu`, `game`, `performance`, `no-blur` | worker, installer |
+| `adaptive-performance/reason` | e.g. `normal`, `battery`, `gpu` (amdgpu `gpu_busy_percent` or Intel i915/xe idle residency), `game`, `performance`, `no-blur` | worker, installer |
 | `adaptive-performance/saved-mode-keys` | `key<TAB>value` lines (the keys a mode owns) while active | `apply_adaptive_blur` |
 
 ### Assets
@@ -318,6 +318,7 @@ that subtree is written.
 | `AURA_GLASS_OPERATION_PREVIEW` | operation lock | which `aura-glass-preview` handles `app-blur` (set for checkout runs) |
 | `AURA_GLASS_OPERATION` | adaptive worker | operation command path |
 | `AURA_GLASS_ADAPTIVE_WORKER` | `aura-glass-adaptive` | worker path override |
+| `AURA_GLASS_DRM_ROOT` | worker | DRM sysfs root for GPU load (default `/sys/class/drm`; test hook) |
 | `AURA_GLASS_ADAPTIVE_INTERVAL`, `AURA_GLASS_ADAPTIVE_SUSTAINED` | worker | sample period (2 s), GPU samples to trigger (3) |
 | `AURA_PREVIEW_DIR`, `AURA_PREVIEW_SHOTS`, `AURA_PREVIEW_RES` | `tools/preview.sh` | harness profile, output, resolution |
 | `AURA_SHOT_BASELINE` | `check-shots.py` | accepted baselines |

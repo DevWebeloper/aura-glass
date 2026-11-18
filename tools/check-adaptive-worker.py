@@ -218,6 +218,81 @@ def test_sample_lifecycle():
                 assert f.read().strip() == "normal"
 
 
+def _write(path, value):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write(str(value))
+
+
+def test_intel_idle_residency():
+    import aura_glass_adaptive as mod
+
+    old_root = mod.DRM_ROOT
+    try:
+        for rel in ("card0/gt/gt0/rc6_residency_ms",
+                    "card0/device/tile0/gt0/gtidle/idle_residency_ms"):
+            with tempfile.TemporaryDirectory() as tmp:
+                mod.DRM_ROOT = tmp
+                path = os.path.join(tmp, rel)
+                reader = mod.IdleResidencyBusy()
+                _write(path, 1000)
+                assert reader.sample(now_ms=10000) == [], "first sample has no reading"
+                _write(path, 1500)
+                assert reader.sample(now_ms=11000) == [50.0]
+                _write(path, 1500)
+                assert reader.sample(now_ms=12000) == [100.0]
+                assert reader.sample(now_ms=12000) == [], "zero wall delta gives no reading"
+                _write(path, 100)
+                assert reader.sample(now_ms=13000) == [], "counter reset gives no reading"
+                _write(path, 600)
+                assert reader.sample(now_ms=14000) == [50.0], "measured from the new baseline"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            mod.DRM_ROOT = tmp
+            _write(os.path.join(tmp, "card0/device/gpu_busy_percent"), 42)
+            mod._IDLE = mod.IdleResidencyBusy()
+            assert mod.gpu_busy_percent() == 42.0, "amdgpu alone"
+            _write(os.path.join(tmp, "card1/gt/gt0/rc6_residency_ms"), 0)
+            assert mod.gpu_busy_percent() == 42.0, "intel first sample adds nothing"
+            _write(os.path.join(tmp, "card1/gt/gt0/rc6_residency_ms"), 0)
+            with patch("aura_glass_adaptive.time.monotonic", return_value=mod._IDLE._prev[
+                    os.path.join(tmp, "card1/gt/gt0/rc6_residency_ms")][0] / 1000 + 1.0):
+                assert mod.gpu_busy_percent() == 100.0, "max of amdgpu 42 and intel 100"
+            mod._IDLE = mod.IdleResidencyBusy()
+            _write(os.path.join(tmp, "card1/gt/gt0/rc6_residency_ms"), 0)
+            mod._IDLE.sample(now_ms=0)
+            _write(os.path.join(tmp, "card1/gt/gt0/rc6_residency_ms"), 300)
+            assert max([42.0] + mod._IDLE.sample(now_ms=1000)) == 70.0
+    finally:
+        mod.DRM_ROOT = old_root
+
+
+def test_intel_counter_vanishes_and_returns():
+    # A GPU that disappears and comes back must restart as a first sample,
+    # not report an average over the whole time it was gone.
+    import aura_glass_adaptive as mod
+    root = tempfile.mkdtemp()
+    gt = os.path.join(root, "card1", "gt", "gt0")
+    os.makedirs(gt)
+    counter = os.path.join(gt, "rc6_residency_ms")
+    with patch.object(mod, "DRM_ROOT", root):
+        reader = mod.IdleResidencyBusy()
+        with open(counter, "w") as f:
+            f.write("1000")
+        assert reader.sample(0) == []
+        with open(counter, "w") as f:
+            f.write("1500")
+        assert reader.sample(1000) == [50.0]
+        os.remove(counter)
+        assert reader.sample(2000) == []
+        with open(counter, "w") as f:
+            f.write("9000")
+        assert reader.sample(100000) == []
+        with open(counter, "w") as f:
+            f.write("9500")
+        assert reader.sample(101000) == [50.0]
+
+
 def main():
     test_reducer_profiles()
     test_reducer_battery_trigger()
@@ -227,6 +302,8 @@ def main():
     test_reducer_missing_data()
     test_config_persistence()
     test_sample_lifecycle()
+    test_intel_idle_residency()
+    test_intel_counter_vanishes_and_returns()
     print("adaptive-worker check passed — profiles, triggers, hysteresis, reasons and lifecycle all verified")
     return 0
 

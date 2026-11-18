@@ -76,15 +76,59 @@ def on_battery():
     return False
 
 
+DRM_ROOT = os.environ.get("AURA_GLASS_DRM_ROOT", "/sys/class/drm")  # test hook
+
+
+class IdleResidencyBusy:
+    """Busy percent for Intel GPUs (i915 and xe).
+
+    Intel exposes cumulative idle time in ms, not a busy percentage, so busy is
+    derived from the idle delta between two samples over the wall-clock delta.
+    """
+
+    PATTERNS = ("card*/gt/gt*/rc6_residency_ms",
+                "card*/device/tile*/gt*/gtidle/idle_residency_ms")
+
+    def __init__(self):
+        self._prev = {}
+
+    def sample(self, now_ms=None):
+        wall = time.monotonic() * 1000 if now_ms is None else now_ms
+        readings = []
+        seen = {}
+        for pattern in self.PATTERNS:
+            for path in glob.glob(os.path.join(DRM_ROOT, pattern)):
+                try:
+                    idle = float(read_text(path))
+                except (TypeError, ValueError):
+                    continue
+                prev = self._prev.get(path)
+                seen[path] = (wall, idle)
+                # No reading on the first sample, a stalled clock or a counter reset.
+                if prev is None or wall - prev[0] <= 0 or idle < prev[1]:
+                    continue
+                busy = 100 - (idle - prev[1]) / (wall - prev[0]) * 100
+                readings.append(min(100.0, max(0.0, busy)))
+        # Only keep counters read this time: a GPU that vanishes and comes back
+        # (hot-unplug, renumbered card, failed read) restarts as a first sample
+        # instead of averaging over the whole gap.
+        self._prev = seen
+        return readings
+
+
+_IDLE = IdleResidencyBusy()
+
+
 def gpu_busy_percent():
     """Return the highest supported DRM busy reading, or None when unavailable."""
     readings = []
-    for path in glob.glob("/sys/class/drm/card*/device/gpu_busy_percent"):
+    for path in glob.glob(os.path.join(DRM_ROOT, "card*/device/gpu_busy_percent")):
         value = read_text(path)
         try:
             readings.append(float(value))
         except (TypeError, ValueError):
             continue
+    readings.extend(_IDLE.sample())
     return max(readings) if readings else None
 
 
