@@ -65,8 +65,10 @@ TOKEN_RADIUS_MENU=26
 #                                 !important — that sheet is spliced last and
 #                                 its .popup-menu-content rule would otherwise
 #                                 repaint them at TOKEN_RADIUS_MENU
-#   dconf/core.ini                [blur-my-shell/popup] quick-settings-corner-radius
-#                                 and screenshot-corner-radius
+#   dconf/core.ini                [blur-my-shell/popup] quick-settings-corner-radius,
+#                                 screenshot-corner-radius, calendar-corner-radius
+#                                 (the date menu) and submenu-corner-radius (the
+#                                 quick-toggle menu)
 #   lib/steps-dconf.sh            apply_radius_dconf writes both
 TOKEN_RADIUS_QUICK_SETTINGS=33
 

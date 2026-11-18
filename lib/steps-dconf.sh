@@ -380,6 +380,13 @@ apply_radius_dconf() {
     # 10) copies the quick-settings value over once. Written here so a preset
     # change keeps moving both, as it did before the split.
     run dconf write "$base/popup/screenshot-corner-radius" "$TOKEN_RADIUS_QUICK_SETTINGS"
+    # Blur My Shell #1164 split the date menu and the quick-toggle menu out of
+    # quick-settings-corner-radius too, with defaults of 30 and 24 and no
+    # migration to carry the old value over. The css paints both at the Quick
+    # Settings radius (css/shell-20-popup-menus.css), so the blur behind them
+    # has to be written at it as well or it sticks out past the corners.
+    run dconf write "$base/popup/calendar-corner-radius" "$TOKEN_RADIUS_QUICK_SETTINGS"
+    run dconf write "$base/popup/submenu-corner-radius" "$TOKEN_RADIUS_QUICK_SETTINGS"
     run dconf write "$base/popup/notification-corner-radius" "$TOKEN_RADIUS_NOTIFICATION"
     run dconf write "$base/popup/dialog-corner-radius" "$TOKEN_RADIUS_DIALOG"
     run dconf write "$base/popup/corner-radius" "$TOKEN_RADIUS_POPUP"

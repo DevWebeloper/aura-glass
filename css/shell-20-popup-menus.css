@@ -35,20 +35,22 @@
  * fill's, which reads as two stacked surfaces rather than one menu.
  *
  * The value is 33 and not 26, which is not guessable from the name. Blur My
- * Shell groups both surfaces with Quick Settings, not with menus —
- * components/popup/targets.js:
- *
- *     key: 'quick-settings-corner-radius',
- *     style_classes: ['quick-settings', 'quick-toggle-menu', 'datemenu-popover'],
- *
- * so both are blurred at quick-settings-corner-radius, while every other
- * .popup-menu-content is blurred at menu-corner-radius. quick-toggle-menu had
- * no rule here at all until now, which is the same fault as the date menu's —
- * fill at 26, blur at 33 — just never written down.
+ * Shell blurs every other .popup-menu-content at menu-corner-radius, but gives
+ * these two surfaces keys of their own (components/popup/targets.js):
+ * calendar-corner-radius for ['datemenu-popover'] and submenu-corner-radius
+ * for ['quick-toggle-menu']. Until #1164 split them out they shared
+ * quick-settings-corner-radius with the panel, and the split migrates nothing,
+ * so they would stay at their schema defaults of 30 and 24. apply_radius_dconf
+ * and dconf/core.ini keep both equal to quick-settings-corner-radius, so the
+ * blur behind them is the Quick Settings radius, as it was before the split.
+ * quick-toggle-menu had no rule here at all until the 33 below, which is the
+ * same fault as the date menu's — fill at 26, blur at 33 — just never written
+ * down.
  *
  * A painted radius must always equal the blur radius behind it. !important is
  * required to answer the theme's own, and this tracks
- * blur-my-shell/popup/quick-settings-corner-radius in dconf/core.ini.
+ * blur-my-shell/popup/calendar-corner-radius, submenu-corner-radius and
+ * quick-settings-corner-radius in dconf/core.ini.
  */
 .datemenu-popover,
 .quick-toggle-menu {

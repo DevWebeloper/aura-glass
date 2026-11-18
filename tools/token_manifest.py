@@ -98,6 +98,12 @@ MANIFEST = [
     # screenshot panel keeps the Quick Settings radius.
     ("TOKEN_RADIUS_QUICK_SETTINGS", "ini", "dconf/core.ini",
      "blur-my-shell/popup", "screenshot-corner-radius"),
+    # Split from quick-settings-corner-radius by Blur My Shell #1164, with
+    # defaults of 30 and 24 and no migration; css paints both at this radius.
+    ("TOKEN_RADIUS_QUICK_SETTINGS", "ini", "dconf/core.ini",
+     "blur-my-shell/popup", "calendar-corner-radius"),
+    ("TOKEN_RADIUS_QUICK_SETTINGS", "ini", "dconf/core.ini",
+     "blur-my-shell/popup", "submenu-corner-radius"),
 
     ("TOKEN_RADIUS_NOTIFICATION", "css", "css/shell-30-notifications.css",
      r"^(?:\.popup-menu \.message,\s*)?\.message \{[^}]*?border-radius: (\d+)px"),
