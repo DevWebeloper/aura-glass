@@ -178,6 +178,28 @@ build v1.0.0 v1.0.0 || note "docs-only: could not build the fixture"
 push_files "tooling" tools/helper.py
 check_run 10 "tools/ is installed from, so it counts" "v1.0.0+1"
 
+# ---- maintenance commits are not updates ------------------------------------
+#
+# A commit whose subject is docs, chore, ci, build, test or style, or any type
+# scoped `updates`, is no version even when it touches something installed. A
+# release tag on one still is.
+build v1.0.0 v1.0.0 || note "maintenance: could not build the fixture"
+push_files "fix(updates): count versions differently" bin/tool
+out="$(AURA_GLASS_CONF="$TMP/conf" bash "$CHECK" 2>&1 || true)"
+[ "$out" = "up to date (v1.0.0)" ] || note "a fix(updates) commit: '$out', want 'up to date (v1.0.0)'"
+push_files "chore(x): tidy" css/theme.css
+out="$(AURA_GLASS_CONF="$TMP/conf" bash "$CHECK" 2>&1 || true)"
+[ "$out" = "up to date (v1.0.0)" ] || note "a chore(x) commit touching css: '$out', want 'up to date (v1.0.0)'"
+push_files "feat(shell): panel" css/theme.css
+check_run 10 "a feat commit after maintenance ones is an update" "v1.0.0+1"
+[ "$(cat "$TMP/conf/update-available")" = "v1.0.0+1" ] \
+    || note "the update is named '$(cat "$TMP/conf/update-available")', want v1.0.0+1"
+build v1.0.0 v1.0.0 || note "maintenance: could not build the fixture"
+push_files "fix(updates): release it" bin/tool
+git_quiet -C "$TMP/clone" tag v1.0.1
+git_quiet -C "$TMP/clone" push origin v1.0.1
+check_run 10 "a release tag on a fix(updates) commit is still offered" "v1.0.1"
+
 # ---- the test-build line ---------------------------------------------------
 #
 # Someone testing a branch is not on the released line: there are no tags on the

@@ -2506,12 +2506,37 @@ NOT_INSTALLED_PATHS = (
 INSTALLED_PATHSPEC = ["--", "."] + [":(exclude)%s" % p
                                     for p in NOT_INSTALLED_PATHS]
 
+# Subjects of maintenance commits: docs, chore, ci, build, test and style types
+# (conventional `type(scope)!?: text`), and any type scoped `updates`, since a
+# change to how versions are counted or shown is not a version itself. One that
+# touches something installed is still not a version.
+# bin/aura-glass-update-check's MAINTENANCE_SUBJECT is the same pattern, and the
+# two must stay identical. A commit carrying a release tag is a version whatever
+# its subject says.
+MAINTENANCE_SUBJECT = re.compile(
+    r"^((docs|chore|ci|build|test|style)(\([^)]*\))?|[a-z]+\(updates\))!?:",
+    re.IGNORECASE)
+
+
+def counted_commits(repo, *span_args):
+    """SHAs, newest first, of the commits in span_args that count as versions:
+    they touch something installed and their subject is not maintenance."""
+    out = git_out(repo, "log", "--format=%H%x00%s", *span_args,
+                  *INSTALLED_PATHSPEC)
+    shas = []
+    for line in (out or "").splitlines():
+        sha, _, subject = line.partition("\0")
+        if sha and not MAINTENANCE_SUBJECT.match(subject):
+            shas.append(sha)
+    return shas
+
 
 def version_name(repo, ref="HEAD"):
     """A commit on the released line, named the way people read versions.
 
     The release tag at it (v0.3.5), or the release before it plus how many
-    commits later that touch something installed (v0.3.5+16) — every such commit
+    commits later that touch something installed and are not maintenance
+    (v0.3.5+16) — every such commit
     on main is a "tag" of its own this way, with nothing to create on GitHub.
     bin/aura-glass-update-check's version_name says exactly the same, and the
     two must agree.
@@ -2520,18 +2545,17 @@ def version_name(repo, ref="HEAD"):
     if not d:
         return git_out(repo, "rev-parse", "--short=7", ref)
     tag = d.rsplit("-g", 1)[0].rpartition("-")[0]
-    count = git_out(repo, "rev-list", "--count",
-                    "refs/tags/%s..%s" % (tag, ref), *INSTALLED_PATHSPEC)
-    return "%s+%s" % (tag, count) if count and count.isdigit() \
-        and count != "0" else tag
+    count = len(counted_commits(repo, "refs/tags/%s..%s" % (tag, ref)))
+    return "%s+%d" % (tag, count) if count else tag
 
 
 def installed_commit(repo, ref="HEAD"):
     """The newest commit at or before ref that counts as a version: one that
-    touches something installed, or a release tag. A checkout on a docs-only
-    commit past it is that version, so it is the one marked Installed."""
-    meaningful = git_out(repo, "log", "-1", "--format=%H", ref,
-                         *INSTALLED_PATHSPEC)
+    touches something installed and is not maintenance, or a release tag. A
+    checkout on a docs-only commit past it is that version, so it is the one
+    marked Installed."""
+    meaningful = (counted_commits(repo, "--max-count=5000", ref)
+                  or [None])[0]
     tag = git_out(repo, "describe", "--tags", "--abbrev=0", "--match",
                   "v[0-9]*", ref)
     release = git_out(repo, "rev-parse", "-q", "--verify",
@@ -2684,13 +2708,19 @@ def commit_subjects(repo, since, until, limit=60, installed_only=True):
 
     The changelog of last resort: a release with no GitHub notes still shows
     what went into it. since may be None for the first release there is. Commits
-    that touch nothing installed are left out, as version_name does.
+    that touch nothing installed, and maintenance ones, are left out, as
+    version_name does.
     """
     span = until if since is None else "%s..%s" % (since, until)
+    if not installed_only:
+        out = git_out(repo, "log", "--no-merges", "--format=%s",
+                      "--max-count=%d" % limit, span)
+        return [l for l in (out or "").splitlines() if l]
     out = git_out(repo, "log", "--no-merges", "--format=%s",
-                  "--max-count=%d" % limit, span,
-                  *(INSTALLED_PATHSPEC if installed_only else ()))
-    return [l for l in (out or "").splitlines() if l]
+                  "--max-count=%d" % max(limit * 5, 500), span,
+                  *INSTALLED_PATHSPEC)
+    return [l for l in (out or "").splitlines()
+            if l and not MAINTENANCE_SUBJECT.match(l)][:limit]
 
 
 def count_commits(repo, since, until):
@@ -2714,9 +2744,8 @@ def history_lines(repo, ref, limit=150):
     # the ones that touch nothing installed — except a release's own commit,
     # which always shows.
     raw = is_test_build(repo)
-    counted = None if raw else set((git_out(
-        repo, "log", "--max-count=5000", "--format=%H", ref,
-        *INSTALLED_PATHSPEC) or "").split())
+    counted = None if raw else set(counted_commits(
+        repo, "--max-count=5000", ref))
     head = git_out(repo, "rev-parse", "HEAD") if raw else (
         installed_commit(repo) or git_out(repo, "rev-parse", "HEAD"))
     tip = git_out(repo, "rev-parse", ref) if raw else (
@@ -2950,14 +2979,15 @@ def updates_snapshot(repo, fetch):
         out = git_out(repo, "log", "--first-parent", "--max-count=200",
                       "--format=%H%x00%h%x00%cs%x00%s%x00%ct", span,
                       *INSTALLED_PATHSPEC)
-        # Commits that touch only docs are no versions, so main's tip for the
-        # update system is the newest one that touches something installed —
+        # Commits that touch only docs, and maintenance ones, are no versions,
+        # so main's tip for the update system is the newest one that counts —
         # or the newest release when there is none since it. HEAD counts as at
         # the newest such commit at or before it.
         head = git_out(repo, "rev-parse", "HEAD") if is_test_build(repo) else (
             installed_commit(repo) or git_out(repo, "rev-parse", "HEAD"))
         lines = [l.split("\0") for l in (out or "").splitlines()]
-        lines = [f for f in lines if len(f) == 5]
+        counted = set(counted_commits(repo, "--first-parent", span))
+        lines = [f for f in lines if len(f) == 5 and f[0] in counted]
         tip = lines[0][0] if lines else (
             releases[0]["sha"] if releases
             else git_out(repo, "rev-parse", main_tip))

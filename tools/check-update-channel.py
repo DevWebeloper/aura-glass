@@ -342,6 +342,41 @@ with tempfile.TemporaryDirectory() as tmp:
     if snap["head"] != css:
         note("HEAD on a docs-only commit past %s is %r" % (css[:7], snap["head"]))
 
+    # Maintenance subjects are no versions even when they touch something
+    # installed; a feature after them is the first one.
+    repo, conf = build(tmp, tags=("v0.2.0",))
+    release = out(repo, "rev-parse", "HEAD")
+    commit_file("bin/tool", "fix(updates): count versions differently")
+    commit_file("css/theme.css", "chore(x): tidy")
+    snap = updates_snapshot(repo, False)
+    if version_name(repo) != "v0.2.0":
+        note("maintenance commits named %r, want v0.2.0" % version_name(repo))
+    if snap["main"]["tags"] or snap["main"]["tip"] != release:
+        note("maintenance commits got a main row: %r" % snap["main"])
+    if snap["head"] != release:
+        note("on maintenance commits the installed one is %r" % snap["head"])
+    if [l for l in snap["history"] if l.get("subject") in (
+            "fix(updates): count versions differently", "chore(x): tidy")]:
+        note("maintenance commits are in the history")
+    commit_file("css/theme.css", "feat(shell): panel")
+    snap = updates_snapshot(repo, False)
+    if version_name(repo) != "v0.2.0+1":
+        note("a feature after maintenance named %r, want v0.2.0+1"
+             % version_name(repo))
+    if [r["name"] for r in snap["main"]["tags"]] != ["v0.2.0+1"] \
+            or snap["main"]["tags"][0]["changes"] != ["feat(shell): panel"]:
+        note("a feature after maintenance: main row is %r" % snap["main"])
+    # A release cut on a maintenance commit still lists as that release.
+    commit_file("bin/tool", "fix(updates): release it")
+    git(repo, "tag", "v0.2.1")
+    git(repo, "push", "-q", "origin", "v0.2.1")
+    cut = out(repo, "rev-parse", "HEAD")
+    snap = updates_snapshot(repo, False)
+    if not [l for l in snap["history"] if l.get("sha") == cut and "v0.2.1" in l["tags"]]:
+        note("a release on a fix(updates) commit is missing from the history")
+    if cut not in [r["sha"] for r in snap["releases"]] or snap["head"] != cut:
+        note("a release on a fix(updates) commit: head is %r" % snap["head"])
+
 
 with tempfile.TemporaryDirectory() as tmp:
     # A release cut on a commit that only touches docs is still a version: it

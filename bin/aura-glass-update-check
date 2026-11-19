@@ -149,9 +149,28 @@ NOT_INSTALLED_PATHS=(
 INSTALLED_PATHSPEC=(.)
 for p in "${NOT_INSTALLED_PATHS[@]}"; do INSTALLED_PATHSPEC+=(":(exclude)$p"); done
 
+# Subjects of maintenance commits: docs, chore, ci, build, test and style types
+# (conventional `type(scope)!?: text`), and any type scoped `updates`, since a
+# change to how versions are counted or shown is not a version itself. One that
+# touches something installed is still not a version. gui/aura_glass_settings.py's
+# MAINTENANCE_SUBJECT is the same pattern, and the two must stay identical. A
+# commit carrying a release tag is a version whatever its subject says.
+MAINTENANCE_SUBJECT='^((docs|chore|ci|build|test|style)(\([^)]*\))?|[a-z]+\(updates\))!?:'
+
+# How many commits in a range count as versions: they touch something installed
+# and their subject is not maintenance. Fails when git cannot read the range.
+counted_count() {
+    local subjects
+    subjects="$(git -C "$REPO" log --format=%s "$1" -- "${INSTALLED_PATHSPEC[@]}" 2>/dev/null)" \
+        || return 1
+    if [ -z "$subjects" ]; then echo 0; return; fi
+    printf '%s\n' "$subjects" | grep -Eivc "$MAINTENANCE_SUBJECT" || true
+}
+
 # What a commit on the released line is called: the release tag at it, or the
 # release before it plus how many commits later that touch something installed
-# (v0.3.5+16), or its short hash when no release is behind it at all.
+# and are not maintenance (v0.3.5+16), or its short hash when no release is
+# behind it at all.
 # gui/aura_glass_settings.py's version_name says the same, and the two must agree.
 version_name() {
     local d n tag
@@ -162,7 +181,7 @@ version_name() {
     fi
     d="${d%-g*}"
     tag="${d%-*}"
-    n="$(git -C "$REPO" rev-list --count "refs/tags/$tag..$1" -- "${INSTALLED_PATHSPEC[@]}" 2>/dev/null || echo 0)"
+    n="$(counted_count "refs/tags/$tag..$1" || echo 0)"
     if [ "$n" = 0 ]; then printf '%s\n' "$tag"; else printf '%s+%s\n' "$tag" "$n"; fi
 }
 
@@ -217,8 +236,9 @@ tags)
             || git -C "$REPO" merge-base --is-ancestor "$tip" HEAD 2>/dev/null; then
             up_to_date "$(version_name HEAD)"
         fi
-        # Main moved on, but only in files nothing installs: nothing to install.
-        if [ "$(git -C "$REPO" rev-list --count "HEAD..$tip" -- "${INSTALLED_PATHSPEC[@]}" 2>/dev/null || echo 1)" = 0 ]; then
+        # Main moved on, but only in files nothing installs or in maintenance
+        # commits: nothing to install.
+        if [ "$(counted_count "HEAD..$tip" || echo 1)" = 0 ]; then
             up_to_date "$(version_name HEAD)"
         fi
         local_version="$(version_name HEAD)"
